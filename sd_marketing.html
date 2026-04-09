@@ -1,0 +1,804 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>송도제일 마케팅 시스템</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif;background:#f7f8fa;color:#1a1a1a;min-height:100vh}
+.hdr{background:#fff;border-bottom:0.5px solid #e0e0e0;padding:0 1rem;position:sticky;top:0;z-index:100}
+.hdr-inner{max-width:1000px;margin:0 auto;display:flex;align-items:center;gap:12px;padding:10px 0}
+.logo{font-size:14px;font-weight:700;color:#1a1a1a;white-space:nowrap}
+.logo span{color:#1565c0}
+.tabs{display:flex;gap:2px;overflow-x:auto;flex:1;scrollbar-width:none}
+.tabs::-webkit-scrollbar{display:none}
+.tnb{padding:6px 10px;font-size:12px;font-weight:400;color:#666;border:none;background:none;cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap;transition:all .15s}
+.tnb.on{color:#1a1a1a;font-weight:500;border-bottom-color:#1a1a1a}
+.wrap{max-width:1000px;margin:0 auto;padding:1.25rem 1rem}
+.tc{display:none}.tc.on{display:block}
+.card{background:#fff;border:0.5px solid #e0e0e0;border-radius:14px;padding:1.25rem;margin-bottom:1rem}
+.sec{font-size:13px;font-weight:600;color:#1a1a1a;margin-bottom:10px}
+.fi{width:100%;padding:8px 12px;border:0.5px solid #e0e0e0;border-radius:8px;font-size:13px;font-family:inherit;background:#fff;outline:none;transition:border-color .15s}
+.fi:focus{border-color:#1565c0}
+.fl{font-size:12px;color:#666;display:block;margin-bottom:5px}
+.btn-p{background:#1a1a1a;color:#fff;border:none;border-radius:8px;padding:9px 18px;font-size:13px;font-weight:500;cursor:pointer;font-family:inherit}
+.btn-p:hover{background:#333}
+.btn-s{background:#fff;color:#1a1a1a;border:0.5px solid #e0e0e0;border-radius:8px;padding:7px 12px;font-size:12px;cursor:pointer;font-family:inherit}
+.btn-s:hover{background:#f5f5f3}
+.btn-d{background:#fff;color:#cc3333;border:0.5px solid #f5c6c6;border-radius:8px;padding:5px 8px;font-size:11px;cursor:pointer;font-family:inherit}
+.stat-n{font-size:22px;font-weight:700;line-height:1}
+.stat-l{font-size:11px;color:#888;margin-top:2px}
+.rbox{width:100%;border:none;outline:none;resize:vertical;font-family:inherit;font-size:13px;line-height:1.8;background:transparent;color:#1a1a1a}
+.spin-el{width:32px;height:32px;border:3px solid #e0e0e0;border-top-color:#1565c0;border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 8px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.tbl{width:100%;border-collapse:collapse;font-size:12px}
+.tbl th{background:#f5f5f3;padding:8px 10px;text-align:left;font-weight:500;border-bottom:0.5px solid #e0e0e0;white-space:nowrap}
+.tbl td{padding:7px 10px;border-bottom:0.5px solid #f0f0f0;vertical-align:top}
+.tbl tr:last-child td{border-bottom:none}
+.tag{display:inline-block;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:500}
+.tag-news{background:#e3f2fd;color:#1565c0}
+.tag-blog{background:#e8f5e9;color:#2e7d32}
+.tag-yt{background:#fce4ec;color:#c62828}
+.tag-sns{background:#f3e5f5;color:#7b1fa2}
+.tag-card{background:#fff3e0;color:#e65100}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+.cal-day{background:#fff;border:0.5px solid #e0e0e0;border-radius:8px;padding:6px;min-height:70px;cursor:pointer;transition:border-color .15s;font-size:11px}
+.cal-day:hover{border-color:#1565c0}
+.cal-day.today{border-color:#1565c0;background:#f0f7ff}
+.cal-day.has-post{background:#f9fdf9;border-color:#a5d6a7}
+.cal-head{font-size:11px;font-weight:500;color:#888;text-align:center;padding:4px 0}
+/* 디지털 명함 */
+.biz-card{background:linear-gradient(135deg,#1a2744 0%,#1565c0 100%);color:#fff;border-radius:16px;padding:24px;max-width:380px;margin:0 auto;box-shadow:0 8px 32px rgba(21,101,192,.25)}
+.biz-name{font-size:20px;font-weight:700;margin-bottom:4px}
+.biz-title{font-size:13px;opacity:.8;margin-bottom:16px}
+.biz-info{font-size:12px;line-height:2;opacity:.9}
+.biz-links{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}
+.biz-link{background:rgba(255,255,255,.15);color:#fff;text-decoration:none;padding:5px 12px;border-radius:20px;font-size:11px;border:0.5px solid rgba(255,255,255,.3)}
+.biz-link:hover{background:rgba(255,255,255,.25)}
+</style>
+  <!-- ═══ Firebase SDK (compat v9) ═══ -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+  <!-- ═══ Firebase Storage 어댑터 (window.storage 호환) ═══ -->
+  <script src="firebase-storage.js"></script>
+</head>
+<body>
+<!-- ═══ 시스템 네비게이션 바 ═══ -->
+<div style="background:#f5f5f3;border-bottom:1px solid #e0e0e0;padding:7px 16px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">
+  <span style="font-size:11px;color:#bbb;margin-right:4px">바로가기:</span>
+  <a href="sd_hub.html"        style="color:#666;text-decoration:none;padding:3px 10px;background:#fff;border:0.5px solid #ddd;border-radius:6px;font-size:11px">🏢 허브</a>
+  <a href="sd_props.html"      style="color:#1565c0;text-decoration:none;padding:3px 10px;background:#e3f2fd;border:0.5px solid #bbdefb;border-radius:6px;font-size:11px">🏠 매물</a>
+  <a href="sd_contracts.html"  style="color:#b71c1c;text-decoration:none;padding:3px 10px;background:#ffebee;border:0.5px solid #ffcdd2;border-radius:6px;font-size:11px">📑 계약</a>
+  <a href="sd_custs.html"      style="color:#1b5e20;text-decoration:none;padding:3px 10px;background:#e8f5e9;border:0.5px solid #c8e6c9;border-radius:6px;font-size:11px">👥 고객</a>
+  <a href="sd_schedule.html"   style="color:#4a148c;text-decoration:none;padding:3px 10px;background:#f3e5f5;border:0.5px solid #e1bee7;border-radius:6px;font-size:11px">📅 일정</a>
+  <a href="sd_marketing.html"  style="color:#e65100;text-decoration:none;padding:3px 10px;background:#fff3e0;border:0.5px solid #ffe0b2;border-radius:6px;font-size:11px">📢 마케팅</a>
+  <span id="fb-status" style="margin-left:auto;font-size:10px;color:#bbb">⏳ 연결 중...</span>
+</div>
+
+<div class="hdr">
+  <div class="hdr-inner">
+    <div class="logo">송도제일 <span>마케팅</span></div>
+    <div class="tabs">
+      <button onclick="sw(0)" id="tn0" class="tnb on">🏠 홈</button>
+      <button onclick="sw(1)" id="tn1" class="tnb">📰 뉴스 수집</button>
+      <button onclick="sw(2)" id="tn2" class="tnb">✍️ 블로그 작성</button>
+      <button onclick="sw(3)" id="tn3" class="tnb">🎬 유튜브 스크립트</button>
+      <button onclick="sw(4)" id="tn4" class="tnb">📱 SNS 문구</button>
+      <button onclick="sw(5)" id="tn5" class="tnb">💳 디지털 명함</button>
+      <button onclick="sw(6)" id="tn6" class="tnb">📅 콘텐츠 캘린더</button>
+    </div>
+  </div>
+</div>
+
+<div class="wrap">
+
+<!-- TAB0 홈 -->
+<div id="tc0" class="tc on">
+  <div class="card">
+    <p class="sec">📊 마케팅 현황</p>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px" id="hub-stat">
+      <div style="background:#e3f2fd;border:0.5px solid #e0e0e0;border-radius:10px;padding:10px;text-align:center"><div class="stat-n" style="color:#1565c0" id="hub-news-cnt">0</div><div class="stat-l">저장된 뉴스</div></div>
+      <div style="background:#e8f5e9;border:0.5px solid #e0e0e0;border-radius:10px;padding:10px;text-align:center"><div class="stat-n" style="color:#2e7d32" id="hub-post-cnt">0</div><div class="stat-l">콘텐츠 계획</div></div>
+      <div style="background:#fff3e0;border:0.5px solid #e0e0e0;border-radius:10px;padding:10px;text-align:center"><div class="stat-n" style="color:#e65100" id="hub-done-cnt">0</div><div class="stat-l">완료 콘텐츠</div></div>
+      <div style="background:#f3e5f5;border:0.5px solid #e0e0e0;border-radius:10px;padding:10px;text-align:center"><div class="stat-n" style="color:#7b1fa2" id="hub-week-cnt">0</div><div class="stat-l">이번 주 예정</div></div>
+    </div>
+  </div>
+  <div class="card">
+    <p class="sec">⚡ 빠른 실행</p>
+    <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:8px">
+      <button onclick="sw(1)" style="padding:14px 8px;background:#fff;border:0.5px solid #e0e0e0;border-radius:12px;cursor:pointer;font-size:12px;color:#1a1a1a"><div style="font-size:20px;margin-bottom:4px">📰</div>뉴스 수집</button>
+      <button onclick="sw(2)" style="padding:14px 8px;background:#fff;border:0.5px solid #e0e0e0;border-radius:12px;cursor:pointer;font-size:12px;color:#1a1a1a"><div style="font-size:20px;margin-bottom:4px">✍️</div>블로그</button>
+      <button onclick="sw(3)" style="padding:14px 8px;background:#fff;border:0.5px solid #e0e0e0;border-radius:12px;cursor:pointer;font-size:12px;color:#1a1a1a"><div style="font-size:20px;margin-bottom:4px">🎬</div>유튜브</button>
+      <button onclick="sw(4)" style="padding:14px 8px;background:#fff;border:0.5px solid #e0e0e0;border-radius:12px;cursor:pointer;font-size:12px;color:#1a1a1a"><div style="font-size:20px;margin-bottom:4px">📱</div>SNS</button>
+      <button onclick="sw(5)" style="padding:14px 8px;background:#fff;border:0.5px solid #e0e0e0;border-radius:12px;cursor:pointer;font-size:12px;color:#1a1a1a"><div style="font-size:20px;margin-bottom:4px">💳</div>명함</button>
+      <button onclick="sw(6)" style="padding:14px 8px;background:#fff;border:0.5px solid #e0e0e0;border-radius:12px;cursor:pointer;font-size:12px;color:#1a1a1a"><div style="font-size:20px;margin-bottom:4px">📅</div>캘린더</button>
+    </div>
+  </div>
+  <div class="card">
+    <p class="sec">📰 최근 수집 뉴스</p>
+    <div id="hub-news-list"><p style="font-size:12px;color:#aaa">뉴스를 수집해 보세요.</p></div>
+  </div>
+  <div class="card">
+    <p class="sec">📅 이번 주 콘텐츠 계획</p>
+    <div id="hub-cal-preview"><p style="font-size:12px;color:#aaa">콘텐츠 캘린더를 작성해 보세요.</p></div>
+  </div>
+</div>
+
+<!-- TAB1 뉴스 수집 -->
+<div id="tc1" class="tc">
+  <div class="card">
+    <p class="sec">📰 송도 뉴스 자동 수집</p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+      <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer"><input type="radio" name="news-cat" value="종합" checked> 종합</label>
+      <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer"><input type="radio" name="news-cat" value="아파트"> 아파트 시세</label>
+      <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer"><input type="radio" name="news-cat" value="개발"> 개발·인프라</label>
+      <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer"><input type="radio" name="news-cat" value="정책"> 부동산 정책</label>
+      <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer"><input type="radio" name="news-cat" value="GTX"> GTX·교통</label>
+    </div>
+    <div style="display:flex;gap:8px">
+      <input id="news-keyword" type="text" class="fi" placeholder="추가 키워드 (예: 더샵, 분양, 재건축)" style="flex:1">
+      <button onclick="fetchNews()" class="btn-p">🔍 뉴스 수집</button>
+    </div>
+  </div>
+  <div id="news-load" style="display:none;text-align:center;padding:2rem"><div class="spin-el"></div><p style="font-size:12px;color:#666">뉴스를 검색하고 있습니다...</p></div>
+  <div id="news-result" style="display:none">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+      <span id="news-cnt" style="font-size:12px;color:#666"></span>
+      <div style="display:flex;gap:6px">
+        <button onclick="saveAllNews()" class="btn-s" style="font-size:11px">💾 전체 저장</button>
+        <button onclick="copyNewsText()" class="btn-s" style="font-size:11px">📋 텍스트 복사</button>
+      </div>
+    </div>
+    <div id="news-list"></div>
+  </div>
+  <div class="card" style="margin-top:1rem">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+      <p class="sec" style="margin:0">📁 저장된 뉴스 <span id="saved-news-cnt" style="font-weight:400;color:#aaa"></span></p>
+      <button onclick="clearSavedNews()" class="btn-d" style="font-size:11px">전체 삭제</button>
+    </div>
+    <div id="saved-news-list"><p style="font-size:12px;color:#aaa">저장된 뉴스가 없습니다.</p></div>
+  </div>
+</div>
+
+<!-- TAB2 블로그 작성 -->
+<div id="tc2" class="tc">
+  <div class="card">
+    <p class="sec">✍️ 블로그 글 작성</p>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+      <div>
+        <label class="fl">주제 유형</label>
+        <select id="blog-type" class="fi">
+          <option value="단지소개">🏢 단지 소개</option>
+          <option value="시세분석">📊 시세 분석</option>
+          <option value="지역이슈">📰 지역 이슈</option>
+          <option value="투자분석">💰 투자 분석</option>
+          <option value="생활정보">🌳 생활 정보</option>
+          <option value="정책정보">📋 정책·규제</option>
+        </select>
+      </div>
+      <div>
+        <label class="fl">키워드 / 단지명</label>
+        <input id="blog-keyword" type="text" class="fi" placeholder="예: 더샵하버뷰, GTX-B, 송도 전세">
+      </div>
+    </div>
+    <div style="margin-bottom:10px">
+      <label class="fl">추가 내용 / 강조 포인트</label>
+      <textarea id="blog-extra" rows="3" class="fi" style="resize:vertical" placeholder="예: 최근 실거래가 언급, 학군 강조, 투자 수익률 분석 등 블로그에 반드시 포함할 내용"></textarea>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button onclick="genBlog()" class="btn-p" style="flex:1">✍️ 블로그 글 생성</button>
+    </div>
+  </div>
+  <div id="blog-load" style="display:none;text-align:center;padding:2rem"><div class="spin-el"></div><p style="font-size:12px;color:#666">블로그 글을 작성하고 있습니다...</p></div>
+  <div id="blog-res" style="display:none">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:8px">
+      <span style="font-size:13px;font-weight:500">✍️ 블로그 글 생성 완료</span>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <button onclick="doPrint('blog-txt')" class="btn-s" style="font-size:11px">🖨️ 인쇄</button>
+        <button onclick="dlTxt('blog-txt','블로그','blog-keyword')" class="btn-s" style="font-size:11px">📥 저장</button>
+        <button onclick="cpTxt('blog-txt')" class="btn-s" style="font-size:11px">📋 복사</button>
+        <button onclick="addToCalendar('blog')" class="btn-s" style="font-size:11px;color:#2e7d32;border-color:#a5d6a7">📅 캘린더 추가</button>
+        <button onclick="genBlog()" class="btn-s" style="font-size:11px">↺ 다시</button>
+      </div>
+    </div>
+    <div style="border:0.5px solid #e0e0e0;border-radius:12px;overflow:hidden">
+      <div style="padding:8px 14px;background:#f5f5f3;border-bottom:0.5px solid #e0e0e0;display:flex;justify-content:space-between">
+        <span style="font-size:12px;font-weight:500">✍️ 블로그 초안</span>
+        <span id="blog-char" style="font-size:11px;color:#aaa"></span>
+      </div>
+      <textarea id="blog-txt" rows="26" class="rbox" style="padding:1rem" oninput="document.getElementById('blog-char').textContent=this.value.length+'자'"></textarea>
+    </div>
+  </div>
+</div>
+
+<!-- TAB3 유튜브 스크립트 -->
+<div id="tc3" class="tc">
+  <div class="card">
+    <p class="sec">🎬 유튜브 영상 스크립트 작성</p>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+      <div>
+        <label class="fl">영상 유형</label>
+        <select id="yt-type" class="fi">
+          <option value="단지투어">🏢 단지 투어</option>
+          <option value="시세브리핑">📊 시세 브리핑</option>
+          <option value="지역소개">🌆 지역 소개</option>
+          <option value="투자분석">💰 투자 분석</option>
+          <option value="정책해설">📋 정책 해설</option>
+          <option value="매물소개">🏠 매물 소개</option>
+        </select>
+      </div>
+      <div>
+        <label class="fl">주제 / 단지명</label>
+        <input id="yt-topic" type="text" class="fi" placeholder="예: 더샵하버뷰 투자 분석, 송도 GTX-B 호재">
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+      <div>
+        <label class="fl">영상 길이</label>
+        <select id="yt-length" class="fi">
+          <option value="쇼츠(60초)">⚡ 쇼츠 (60초)</option>
+          <option value="5분" selected>📱 5분</option>
+          <option value="10분">🎬 10분</option>
+          <option value="15분 이상">🎥 15분 이상</option>
+        </select>
+      </div>
+      <div>
+        <label class="fl">타겟 시청자</label>
+        <select id="yt-target" class="fi">
+          <option>실거주 매수자</option>
+          <option>갭투자자</option>
+          <option>전세 수요자</option>
+          <option>송도 이주 예정자</option>
+          <option>부동산 관심자</option>
+        </select>
+      </div>
+    </div>
+    <div style="margin-bottom:12px">
+      <label class="fl">추가 강조 내용</label>
+      <textarea id="yt-extra" rows="2" class="fi" style="resize:vertical" placeholder="예: 최근 실거래가 반드시 포함, 경쟁 단지 비교, 학군 강조"></textarea>
+    </div>
+    <button onclick="genYT()" class="btn-p" style="width:100%">🎬 스크립트 생성</button>
+  </div>
+  <div id="yt-load" style="display:none;text-align:center;padding:2rem"><div class="spin-el"></div><p style="font-size:12px;color:#666">스크립트를 작성하고 있습니다...</p></div>
+  <div id="yt-res" style="display:none">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:8px">
+      <span style="font-size:13px;font-weight:500">🎬 스크립트 생성 완료</span>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <button onclick="dlTxt('yt-txt','유튜브스크립트','yt-topic')" class="btn-s" style="font-size:11px">📥 저장</button>
+        <button onclick="cpTxt('yt-txt')" class="btn-s" style="font-size:11px">📋 복사</button>
+        <button onclick="addToCalendar('yt')" class="btn-s" style="font-size:11px;color:#c62828;border-color:#f48fb1">📅 캘린더 추가</button>
+        <button onclick="genYT()" class="btn-s" style="font-size:11px">↺ 다시</button>
+      </div>
+    </div>
+    <div style="border:0.5px solid #e0e0e0;border-radius:12px;overflow:hidden">
+      <div style="padding:8px 14px;background:#f5f5f3;border-bottom:0.5px solid #e0e0e0;display:flex;justify-content:space-between">
+        <span style="font-size:12px;font-weight:500">🎬 유튜브 스크립트</span>
+        <span id="yt-char" style="font-size:11px;color:#aaa"></span>
+      </div>
+      <textarea id="yt-txt" rows="26" class="rbox" style="padding:1rem" oninput="document.getElementById('yt-char').textContent=this.value.length+'자'"></textarea>
+    </div>
+  </div>
+</div>
+
+<!-- TAB4 SNS 문구 -->
+<div id="tc4" class="tc">
+  <div class="card">
+    <p class="sec">📱 SNS 문구 생성</p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+      <button onclick="setSNSType('네이버블로그')" id="sns-네이버블로그" class="btn-s" style="font-size:12px;background:#e8f5e9;border-color:#a5d6a7;color:#2e7d32">N 네이버 블로그</button>
+      <button onclick="setSNSType('인스타그램')" id="sns-인스타그램" class="btn-s" style="font-size:12px">📸 인스타그램</button>
+      <button onclick="setSNSType('카카오채널')" id="sns-카카오채널" class="btn-s" style="font-size:12px">💬 카카오 채널</button>
+      <button onclick="setSNSType('네이버카페')" id="sns-네이버카페" class="btn-s" style="font-size:12px">☕ 네이버 카페</button>
+      <button onclick="setSNSType('카드뉴스')" id="sns-카드뉴스" class="btn-s" style="font-size:12px">🗂️ 카드뉴스 문구</button>
+      <button onclick="setSNSType('페이스북')" id="sns-페이스북" class="btn-s" style="font-size:12px">📘 페이스북</button>
+      <button onclick="setSNSType('X')" id="sns-X" class="btn-s" style="font-size:12px">𝕏 X (트위터)</button>
+      <button onclick="setSNSType('카카오스토리')" id="sns-카카오스토리" class="btn-s" style="font-size:12px">🟡 카카오스토리</button>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+      <div>
+        <label class="fl">내용 유형</label>
+        <select id="sns-content-type" class="fi">
+          <option>매물 소개</option>
+          <option>시세 정보</option>
+          <option>지역 뉴스</option>
+          <option>투자 포인트</option>
+          <option>생활 정보</option>
+          <option>이벤트·공지</option>
+        </select>
+      </div>
+      <div>
+        <label class="fl">키워드</label>
+        <input id="sns-keyword" type="text" class="fi" placeholder="예: 더샵하버뷰, GTX-B, 급매">
+      </div>
+    </div>
+    <div style="margin-bottom:12px">
+      <label class="fl">전달 내용</label>
+      <textarea id="sns-content" rows="3" class="fi" style="resize:vertical" placeholder="예: 더샵하버뷰 84㎡ 9억 급매 — 이번 주 마감 / 송도 GTX-B 착공 확정 소식"></textarea>
+    </div>
+    <button onclick="genSNS()" class="btn-p" style="width:100%">📱 SNS 문구 생성</button>
+  </div>
+  <div id="sns-load" style="display:none;text-align:center;padding:2rem"><div class="spin-el"></div></div>
+  <div id="sns-res" style="display:none">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:8px">
+      <span style="font-size:13px;font-weight:500">📱 SNS 문구 생성 완료</span>
+      <div style="display:flex;gap:6px">
+        <button onclick="cpTxt('sns-txt')" class="btn-s" style="font-size:11px">📋 복사</button>
+        <button onclick="addToCalendar('sns')" class="btn-s" style="font-size:11px;color:#7b1fa2;border-color:#ce93d8">📅 캘린더 추가</button>
+        <button onclick="genSNS()" class="btn-s" style="font-size:11px">↺ 다시</button>
+      </div>
+    </div>
+    <div style="border:0.5px solid #e0e0e0;border-radius:12px;overflow:hidden">
+      <div style="padding:8px 14px;background:#f5f5f3;border-bottom:0.5px solid #e0e0e0;display:flex;justify-content:space-between">
+        <span id="sns-platform-label" style="font-size:12px;font-weight:500">📱 SNS 문구</span>
+        <span id="sns-char" style="font-size:11px;color:#aaa"></span>
+      </div>
+      <textarea id="sns-txt" rows="14" class="rbox" style="padding:1rem;font-size:13px;line-height:1.9" oninput="document.getElementById('sns-char').textContent=this.value.length+'자'"></textarea>
+    </div>
+  </div>
+</div>
+
+<!-- TAB5 디지털 명함 -->
+<div id="tc5" class="tc">
+  <div class="card">
+    <p class="sec">💳 디지털 명함 설정</p>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+      <div><label class="fl">이름</label><input id="bc-name" type="text" class="fi" value="문영은" placeholder="이름"></div>
+      <div><label class="fl">직함</label><input id="bc-title" type="text" class="fi" value="대표 공인중개사" placeholder="직함"></div>
+    </div>
+    <div style="margin-bottom:10px"><label class="fl">회사명</label><input id="bc-company" type="text" class="fi" value="송도제일공인중개사사무소"></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+      <div><label class="fl">휴대폰</label><input id="bc-mobile" type="text" class="fi" value="010-6401-9345"></div>
+      <div><label class="fl">사무실</label><input id="bc-office" type="text" class="fi" value="032-851-6688"></div>
+    </div>
+    <div style="margin-bottom:10px"><label class="fl">주소</label><input id="bc-addr" type="text" class="fi" value="인천 연수구 해돋이로 168, 1층 103호 (혜인프라자)"></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:10px">
+      <div><label class="fl">홈페이지</label><input id="bc-web" type="text" class="fi" value="www.songdojeil.com"></div>
+      <div><label class="fl">블로그 URL</label><input id="bc-blog" type="text" class="fi" placeholder="네이버 블로그 URL"></div>
+      <div><label class="fl">유튜브 URL</label><input id="bc-yt" type="text" class="fi" placeholder="유튜브 채널 URL"></div>
+    </div>
+    <div style="margin-bottom:12px"><label class="fl">한 줄 소개 <span style="color:#aaa;font-weight:400">(경력·전문분야)</span></label><input id="bc-intro" type="text" class="fi" value="송도국제도시 21년 전문 공인중개사 · 아파트·상가·오피스텔 전문" placeholder="짧은 소개"></div>
+    <button onclick="renderCard()" class="btn-p" style="width:100%">💳 명함 미리보기</button>
+  </div>
+  <div id="card-preview" style="display:none">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+      <span style="font-size:13px;font-weight:500">💳 디지털 명함 미리보기</span>
+      <div style="display:flex;gap:6px">
+        <button onclick="cpCardHTML()" class="btn-s" style="font-size:11px">📋 HTML 복사</button>
+        <button onclick="dlCardTxt()" class="btn-s" style="font-size:11px">📥 텍스트 저장</button>
+        <button onclick="doPrint('card-print-area')" class="btn-s" style="font-size:11px">🖨️ 인쇄</button>
+      </div>
+    </div>
+    <div id="card-print-area" style="padding:10px">
+      <div class="biz-card" id="biz-card-render"></div>
+    </div>
+    <div style="margin-top:12px;padding:12px;background:#f5f5f3;border-radius:10px">
+      <p style="font-size:12px;font-weight:500;margin-bottom:6px">📤 공유 방법</p>
+      <p style="font-size:12px;color:#666;line-height:1.8">1. <strong>📋 HTML 복사</strong> → 카카오톡/이메일에 붙여넣기<br>2. <strong>🖨️ 인쇄</strong> → PDF로 저장 후 공유<br>3. <strong>스크린샷</strong> → 화면 캡처 후 이미지로 전송</p>
+    </div>
+  </div>
+</div>
+
+<!-- TAB6 콘텐츠 캘린더 -->
+<div id="tc6" class="tc">
+  <div class="card">
+    <p class="sec">📅 새 콘텐츠 계획 추가</p>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:10px">
+      <div>
+        <label class="fl">날짜</label>
+        <input id="cal-date" type="date" class="fi">
+      </div>
+      <div>
+        <label class="fl">채널</label>
+        <select id="cal-channel" class="fi">
+          <option value="blog">✍️ 블로그</option>
+          <option value="yt">🎬 유튜브</option>
+          <option value="sns">📱 인스타</option>
+          <option value="kakao">💬 카카오</option>
+          <option value="cafe">☕ 카페</option>
+        </select>
+      </div>
+      <div>
+        <label class="fl">상태</label>
+        <select id="cal-status" class="fi">
+          <option value="예정">📌 예정</option>
+          <option value="작성중">✏️ 작성중</option>
+          <option value="완료">✅ 완료</option>
+        </select>
+      </div>
+    </div>
+    <div style="margin-bottom:10px"><label class="fl">제목 / 주제</label><input id="cal-title" type="text" class="fi" placeholder="예: 더샵하버뷰 84㎡ 투자 분석, 송도 GTX-B 완공 후 시세 전망"></div>
+    <div style="margin-bottom:12px"><label class="fl">메모</label><input id="cal-memo" type="text" class="fi" placeholder="키워드, 참고사항 등"></div>
+    <button onclick="addCalPost()" class="btn-p" style="width:100%">📅 추가</button>
+  </div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;align-items:center">
+    <select id="cal-filter-channel" class="fi" style="width:auto;font-size:12px" onchange="renderCal()">
+      <option value="">전체 채널</option>
+      <option value="blog">✍️ 블로그</option>
+      <option value="yt">🎬 유튜브</option>
+      <option value="sns">📱 인스타</option>
+      <option value="kakao">💬 카카오</option>
+      <option value="cafe">☕ 카페</option>
+    </select>
+    <select id="cal-filter-status" class="fi" style="width:auto;font-size:12px" onchange="renderCal()">
+      <option value="">전체 상태</option>
+      <option value="예정">📌 예정</option>
+      <option value="작성중">✏️ 작성중</option>
+      <option value="완료">✅ 완료</option>
+    </select>
+    <span id="cal-cnt" style="font-size:12px;color:#666"></span>
+    <button onclick="exportCalXL()" class="btn-s" style="font-size:11px;margin-left:auto">📥 엑셀 다운로드</button>
+  </div>
+  <div id="cal-list"></div>
+</div>
+
+</div><!-- /wrap -->
+
+<script>
+var snsType='네이버블로그';
+var savedNews=[];
+var calPosts=[];
+
+// ─ 스토리지
+async function toStoreNews(){try{await window.storage.set('sd_mktg_news',JSON.stringify(savedNews));}catch(e){}}
+async function fromStoreNews(){try{var r=await window.storage.get('sd_mktg_news');if(r&&r.value)savedNews=JSON.parse(r.value);}catch(e){savedNews=[];}}
+async function toStoreCal(){try{await window.storage.set('sd_mktg_posts',JSON.stringify(calPosts));}catch(e){}}
+async function fromStoreCal(){try{var r=await window.storage.get('sd_mktg_posts');if(r&&r.value)calPosts=JSON.parse(r.value);}catch(e){calPosts=[];}}
+
+// ─ sw()
+function sw(n){
+  for(var i=0;i<=6;i++){
+    var tc=document.getElementById('tc'+i),tn=document.getElementById('tn'+i);
+    if(tc)tc.className='tc'+(i===n?' on':'');
+    if(tn){tn.style.borderBottomColor=i===n?'#1a1a1a':'transparent';tn.style.color=i===n?'#1a1a1a':'#666';tn.style.fontWeight=i===n?'500':'400';}
+  }
+  if(n===0)refreshHub();
+  if(n===1)renderSavedNews();
+  if(n===5)renderCard();
+  if(n===6){renderCal();setTodayDate();}
+}
+
+function setTodayDate(){
+  var t=new Date(),ds=t.getFullYear()+'-'+String(t.getMonth()+1).padStart(2,'0')+'-'+String(t.getDate()).padStart(2,'0');
+  if(!document.getElementById('cal-date').value)document.getElementById('cal-date').value=ds;
+}
+
+// ─ 공통 유틸
+function callAPI(prompt,loadId,ltxt,cb){
+  document.getElementById(loadId).style.display='block';
+  if(ltxt)document.getElementById(ltxt).textContent='AI가 작성 중입니다...';
+  fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:3000,
+      tools:[{type:'web_search_20250305',name:'web_search'}],
+      messages:[{role:'user',content:prompt}]})
+  }).then(function(r){return r.json();})
+  .then(function(d){
+    document.getElementById(loadId).style.display='none';
+    var txt=d.content.filter(function(b){return b.type==='text';}).map(function(b){return b.text;}).join('\n').trim();
+    cb(txt);
+  }).catch(function(e){document.getElementById(loadId).style.display='none';alert('오류: '+e.message);});
+}
+
+function cpTxt(id){
+  navigator.clipboard.writeText(document.getElementById(id).value).then(function(){
+    alert('복사됐습니다! 붙여넣기 하세요 (Ctrl+V)');
+  });
+}
+
+function dlTxt(id,prefix,kwId){
+  var txt=document.getElementById(id).value;if(!txt){alert('내용이 없습니다.');return;}
+  var kw=(kwId&&document.getElementById(kwId))?document.getElementById(kwId).value.trim().split(' ')[0].replace(/[\/\\:*?"<>|]/g,''):'';
+  var now=new Date(),ds=now.getFullYear()+String(now.getMonth()+1).padStart(2,'0')+String(now.getDate()).padStart(2,'0');
+  var fname='송도제일_'+prefix+(kw?'_'+kw:'')+'_'+ds+'.txt';
+  var blob=new Blob([txt],{type:'text/plain;charset=utf-8'});
+  var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=fname;a.click();URL.revokeObjectURL(a.href);
+}
+
+function doPrint(id){
+  var txt='',el=document.getElementById(id);
+  if(!el)return;
+  if(el.tagName==='TEXTAREA'){txt='<pre style="font-family:inherit;white-space:pre-wrap;font-size:13px;line-height:1.9">'+el.value.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')+'</pre>';}
+  else{txt=el.outerHTML;}
+  var w=window.open('','_blank');
+  w.document.write('<html><head><meta charset="UTF-8"><style>body{font-family:"Malgun Gothic",AppleGothic,sans-serif;padding:2cm;max-width:21cm;margin:0 auto}@media print{@page{margin:1.5cm 2cm}body{padding:0}}</style></head><body>'+txt+'<script>window.onload=function(){window.print()}<\/script></body></html>');
+  w.document.close();
+}
+
+// ─ 홈 refreshHub
+async function refreshHub(){
+  await fromStoreNews();await fromStoreCal();
+  document.getElementById('hub-news-cnt').textContent=savedNews.length;
+  document.getElementById('hub-post-cnt').textContent=calPosts.length;
+  document.getElementById('hub-done-cnt').textContent=calPosts.filter(function(p){return p.status==='완료';}).length;
+  var today=new Date();today.setHours(0,0,0,0);
+  var week=new Date(today);week.setDate(week.getDate()+7);
+  document.getElementById('hub-week-cnt').textContent=calPosts.filter(function(p){
+    if(!p.date)return false;var d=new Date(p.date);d.setHours(0,0,0,0);return d>=today&&d<=week&&p.status!=='완료';
+  }).length;
+  // 최근 뉴스 5개
+  document.getElementById('hub-news-list').innerHTML=savedNews.slice(0,5).map(function(n){
+    return'<div style="padding:6px 0;border-bottom:0.5px solid #f0f0f0"><a href="'+n.url+'" target="_blank" style="font-size:12px;color:#1565c0;text-decoration:none">'+n.title+'</a><span style="font-size:10px;color:#aaa;margin-left:6px">'+n.savedAt+'</span></div>';
+  }).join('')||'<p style="font-size:12px;color:#aaa">저장된 뉴스 없음</p>';
+  // 이번 주 캘린더
+  var weekPosts=calPosts.filter(function(p){
+    if(!p.date)return false;var d=new Date(p.date);d.setHours(0,0,0,0);return d>=today&&d<=week;
+  }).sort(function(a,b){return new Date(a.date)-new Date(b.date);});
+  document.getElementById('hub-cal-preview').innerHTML=weekPosts.length?weekPosts.map(function(p){
+    var ch={blog:'✍️',yt:'🎬',sns:'📱',kakao:'💬',cafe:'☕'}[p.channel]||'📌';
+    return'<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:0.5px solid #f0f0f0"><div><span style="font-size:11px;color:#888">'+p.date+'</span> '+ch+' <span style="font-size:12px">'+p.title+'</span></div><span style="font-size:11px;padding:1px 6px;border-radius:6px;background:'+(p.status==='완료'?'#e8f5e9':p.status==='작성중'?'#fff8e1':'#f5f5f3')+';color:'+(p.status==='완료'?'#2e7d32':p.status==='작성중'?'#f57f17':'#888')+'">'+p.status+'</span></div>';
+  }).join(''):'<p style="font-size:12px;color:#aaa">이번 주 예정 콘텐츠 없음</p>';
+}
+
+// ─ TAB1 뉴스 수집
+function fetchNews(){
+  var cat=document.querySelector('input[name="news-cat"]:checked').value;
+  var kw=document.getElementById('news-keyword').value.trim();
+  var catMap={
+    '종합':'송도 부동산 시장 동향',
+    '아파트':'송도 아파트 시세 매매 전세',
+    '개발':'송도 개발 인프라 착공 준공',
+    '정책':'부동산 정책 규제 세금 취득세',
+    'GTX':'GTX-B 인천 교통 호재'
+  };
+  var searchQ='인천 연수구 송도 '+catMap[cat]+(kw?' '+kw:'');
+  var prompt='웹 검색으로 아래 키워드 관련 최신 뉴스를 10개 수집해줘.\n\n키워드: '+searchQ+'\n\n아래 JSON 형식으로만 출력해. 다른 텍스트 없이 JSON만:\n[\n  {"title":"뉴스 제목","url":"URL","summary":"2줄 요약","source":"언론사명","date":"YYYY-MM-DD"},\n  ...\n]\n\n반드시 실제 존재하는 URL만 포함하고, 최근 1개월 이내 기사 우선으로 선택해.';
+  document.getElementById('news-load').style.display='block';
+  document.getElementById('news-result').style.display='none';
+  fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:3000,
+      tools:[{type:'web_search_20250305',name:'web_search'}],
+      messages:[{role:'user',content:prompt}]})
+  }).then(function(r){return r.json();})
+  .then(function(d){
+    document.getElementById('news-load').style.display='none';
+    var raw=d.content.filter(function(b){return b.type==='text';}).map(function(b){return b.text;}).join('').trim();
+    var clean=raw.replace(/```json|```/g,'').trim();
+    var items=[];
+    try{items=JSON.parse(clean);}catch(e){
+      // JSON 파싱 실패 시 텍스트로 표시
+      document.getElementById('news-list').innerHTML='<div style="padding:1rem;font-size:12px;line-height:2;white-space:pre-wrap">'+raw+'</div>';
+      document.getElementById('news-cnt').textContent='텍스트 형식으로 수집됨';
+      document.getElementById('news-result').style.display='block';
+      return;
+    }
+    document.getElementById('news-cnt').textContent=items.length+'건 수집';
+    document.getElementById('news-list').innerHTML=items.map(function(n,i){
+      return'<div style="padding:10px 0;border-bottom:0.5px solid #f0f0f0">'
+        +'<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">'
+        +'<div style="flex:1">'
+        +'<a href="'+n.url+'" target="_blank" style="font-size:13px;font-weight:500;color:#1565c0;text-decoration:none;display:block;margin-bottom:3px">'+n.title+'</a>'
+        +'<p style="font-size:11px;color:#666;margin:0 0 4px">'+n.summary+'</p>'
+        +'<span style="font-size:10px;color:#aaa">'+n.source+(n.date?' · '+n.date:'')+'</span>'
+        +'</div>'
+        +'<button onclick="saveOneNews('+i+')" class="btn-s" style="font-size:11px;padding:3px 8px;white-space:nowrap">💾 저장</button>'
+        +'</div></div>';
+    }).join('');
+    document.getElementById('news-result').style.display='block';
+    window._newsItems=items;
+  }).catch(function(e){document.getElementById('news-load').style.display='none';alert('오류: '+e.message);});
+}
+
+function saveOneNews(i){
+  var n=(window._newsItems||[])[i];if(!n)return;
+  var now=new Date();n.savedAt=now.getFullYear()+'.'+(now.getMonth()+1)+'.'+now.getDate();
+  if(savedNews.find(function(x){return x.url===n.url;})){alert('이미 저장된 뉴스입니다.');return;}
+  savedNews.unshift(n);toStoreNews();renderSavedNews();
+  var b=event.target;b.textContent='✅';setTimeout(function(){b.textContent='💾 저장';},1500);
+}
+
+function saveAllNews(){
+  if(!window._newsItems||!window._newsItems.length)return;
+  var now=new Date(),ds=now.getFullYear()+'.'+(now.getMonth()+1)+'.'+now.getDate();
+  var added=0;
+  window._newsItems.forEach(function(n){
+    if(!savedNews.find(function(x){return x.url===n.url;})){n.savedAt=ds;savedNews.unshift(n);added++;}
+  });
+  toStoreNews();renderSavedNews();refreshHub();
+  alert(added+'건 저장됐습니다.');
+}
+
+function copyNewsText(){
+  if(!window._newsItems)return;
+  var txt=window._newsItems.map(function(n,i){return(i+1)+'. '+n.title+'\n'+n.url+'\n'+n.summary;}).join('\n\n');
+  navigator.clipboard.writeText(txt).then(function(){alert('복사됐습니다!');});
+}
+
+async function renderSavedNews(){
+  await fromStoreNews();
+  document.getElementById('saved-news-cnt').textContent='('+savedNews.length+'건)';
+  document.getElementById('saved-news-list').innerHTML=savedNews.length?savedNews.map(function(n,i){
+    return'<div style="padding:8px 0;border-bottom:0.5px solid #f0f0f0;display:flex;justify-content:space-between;align-items:flex-start;gap:8px">'
+      +'<div style="flex:1"><a href="'+n.url+'" target="_blank" style="font-size:12px;font-weight:500;color:#1565c0;text-decoration:none">'+n.title+'</a>'
+      +'<span style="font-size:10px;color:#aaa;margin-left:6px">'+n.savedAt+'</span>'
+      +'<p style="font-size:11px;color:#888;margin:2px 0 0">'+n.summary+'</p></div>'
+      +'<button onclick="delSavedNews('+i+')" class="btn-d" style="font-size:10px;padding:2px 6px;white-space:nowrap">삭제</button>'
+      +'</div>';
+  }).join(''):'<p style="font-size:12px;color:#aaa">저장된 뉴스가 없습니다.</p>';
+}
+
+function delSavedNews(i){savedNews.splice(i,1);toStoreNews();renderSavedNews();refreshHub();}
+function clearSavedNews(){if(!confirm('저장된 뉴스를 모두 삭제할까요?'))return;savedNews=[];toStoreNews();renderSavedNews();refreshHub();}
+
+// ─ TAB2 블로그
+function genBlog(){
+  var type=document.getElementById('blog-type').value;
+  var kw=document.getElementById('blog-keyword').value.trim()||'송도 부동산';
+  var extra=document.getElementById('blog-extra').value.trim();
+  var typeMap={'단지소개':'단지 소개 및 특징 분석','시세분석':'최근 시세 동향 및 실거래가 분석','지역이슈':'지역 개발·이슈 소식','투자분석':'투자 관점 분석 및 수익률','생활정보':'생활 인프라 및 편의시설','정책정보':'부동산 정책·규제 해설'};
+  var now=new Date(),ds=now.getFullYear()+'년 '+(now.getMonth()+1)+'월 '+now.getDate()+'일';
+  var prompt='당신은 송도 21년 차 전문가 문영은 대표(송도제일공인중개사사무소)의 공식 네이버 블로그 에디터입니다.\n\n웹검색으로 ['+kw+'] 관련 최신 정보를 수집한 뒤, 아래 조건의 블로그 글을 작성하세요.\n\n[주제] '+typeMap[type]+'\n[키워드] '+kw+(extra?'\n[추가 강조] '+extra:'')+'\n\n[블로그 글 구성]\n① 제목 2개 제안 (클릭 유도, 35자 이내)\n\n② 오프닝 — 독자에게 말 걸기 형식 😊\n\n   [📸 이미지 추천: 단지 외관 또는 지역 항공뷰]\n\n③ 핵심 내용 (이모지 + ✅ 체크리스트 또는 소제목 형식)\n\n   [📸 이미지 추천: 관련 사진 or 인포그래픽]\n\n④ 데이터 & 수치 (웹검색 기반 실거래가 또는 시세)\n\n⑤ 마무리 + 연락처\n\n📌 송도제일공인중개사사무소 | ☎ 010-6401-9345 | 🌐 www.songdojeil.com | 작성일: '+ds+'\n\n[작성 규칙]\n- 네이버 블로그 스타일, 이모지 풍부, 모바일 가독성 (2~3줄 줄바꿈)\n- 총 1,500~2,000자\n- 해시태그 6~8개 (끝에)\n- [📸 이미지 추천: ...] 형식으로 최적 이미지 위치 표시';
+  callAPI(prompt,'blog-load',null,function(txt){
+    document.getElementById('blog-txt').value=txt;
+    document.getElementById('blog-char').textContent=txt.length+'자';
+    document.getElementById('blog-res').style.display='block';
+  });
+}
+
+// ─ TAB3 유튜브 스크립트
+function genYT(){
+  var type=document.getElementById('yt-type').value;
+  var topic=document.getElementById('yt-topic').value.trim()||'송도 부동산';
+  var length=document.getElementById('yt-length').value;
+  var target=document.getElementById('yt-target').value;
+  var extra=document.getElementById('yt-extra').value.trim();
+  var typeMap={'단지투어':'단지 투어 및 현장 리뷰','시세브리핑':'시세 동향 브리핑','지역소개':'지역 소개','투자분석':'투자 분석','정책해설':'정책 해설','매물소개':'매물 소개'};
+  var prompt='당신은 송도 21년 차 공인중개사 문영은 대표(송도제일공인중개사사무소)의 유튜브 영상 스크립트 작가입니다.\n\n웹검색으로 ['+topic+'] 관련 최신 정보를 수집한 뒤, 아래 조건의 유튜브 스크립트를 작성하세요.\n\n[영상 유형] '+typeMap[type]+'\n[주제] '+topic+'\n[길이] '+length+'\n[타겟] '+target+(extra?'\n[추가 강조] '+extra:'')+'\n\n[스크립트 구성]\n📌 제목 (유튜브 SEO 최적화, 35자 이내) — 2개 제안\n📌 설명란 문구 (200자 이내)\n📌 태그 10개\n\n[인트로 (15초)]\n[본론 각 섹션별]\n[아웃트로 + CTA (구독/좋아요/연락처)]\n\n✅ 각 섹션 앞에 [시간대] 표시\n✅ 카메라 위치/행동 지시 [] 안에 표시\n✅ 자연스러운 대화체, 전문성 + 친근함\n✅ 구체적 수치/실거래가 포함 (웹검색)\n✅ 마지막: 송도제일공인중개사사무소 / ☎ 010-6401-9345';
+  callAPI(prompt,'yt-load',null,function(txt){
+    document.getElementById('yt-txt').value=txt;
+    document.getElementById('yt-char').textContent=txt.length+'자';
+    document.getElementById('yt-res').style.display='block';
+  });
+}
+
+// ─ TAB4 SNS
+function setSNSType(t){
+  snsType=t;
+  var all=['네이버블로그','인스타그램','카카오채널','네이버카페','카드뉴스','페이스북','X','카카오스토리'];
+  var colors={'네이버블로그':'#e8f5e9','인스타그램':'#fce4ec','카카오채널':'#fffde7','네이버카페':'#e3f2fd','카드뉴스':'#f3e5f5'};
+  var bcolors={'네이버블로그':'#a5d6a7','인스타그램':'#f48fb1','카카오채널':'#ffe082','네이버카페':'#90caf9','카드뉴스':'#ce93d8'};
+  var tcolors={'네이버블로그':'#2e7d32','인스타그램':'#c62828','카카오채널':'#f57f17','네이버카페':'#1565c0','카드뉴스':'#7b1fa2'};
+  all.forEach(function(b){
+    var el=document.getElementById('sns-'+b);if(!el)return;
+    if(b===t){el.style.background=colors[b];el.style.borderColor=bcolors[b];el.style.color=tcolors[b];}
+    else{el.style.background='#fff';el.style.borderColor='#e0e0e0';el.style.color='#555';}
+  });
+}
+
+function genSNS(){
+  var kw=document.getElementById('sns-keyword').value.trim();
+  var ct=document.getElementById('sns-content-type').value;
+  var content=document.getElementById('sns-content').value.trim();
+  var lenMap={'네이버블로그':'500~800자 (소제목 + 이모지)','인스타그램':'150~300자 + 해시태그 20개','카카오채널':'200~350자 (친근·간결)','네이버카페':'300~500자 (상세 설명)','카드뉴스':'슬라이드 6장 구성, 각 슬라이드 2~3줄','페이스북':'200~400자 (친근·정보형, 이모지 적절히, 링크 첨부 유도)','X':'140자 이내 (임팩트 있게, 핵심만, 해시태그 2~3개)','카카오스토리':'150~300자 (친근·감성적, 이모지 풍부, 지인 공유 유도)'};
+  var platform=snsType+'용';
+  var prompt='당신은 송도제일공인중개사사무소 마케팅 담당입니다.\n\n[플랫폼] '+platform+'\n[내용 유형] '+ct+(kw?'\n[키워드] '+kw:'')+(content?'\n[전달 내용] '+content:'')+'\n\n아래 형식에 맞게 SNS 문구를 작성하세요.\n길이: '+lenMap[snsType]+'\n\n[작성 규칙]\n- 해당 플랫폼 특성에 맞는 어투와 형식\n- 이모지 적절히 활용\n- 전문성 + 친근함 균형\n- 마지막에 반드시: 송도제일공인중개사사무소 | 010-6401-9345\n- 카드뉴스는 슬라이드별로 [슬라이드 1], [슬라이드 2] 형식으로 구분\n\n문구 본문만 출력. 설명 없이 바로 시작.';
+  callAPI(prompt,'sns-load',null,function(txt){
+    document.getElementById('sns-txt').value=txt;
+    document.getElementById('sns-char').textContent=txt.length+'자';
+    document.getElementById('sns-platform-label').textContent={'네이버블로그':'N 네이버 블로그','인스타그램':'📸 인스타그램','카카오채널':'💬 카카오 채널','네이버카페':'☕ 네이버 카페','카드뉴스':'🗂️ 카드뉴스','페이스북':'📘 페이스북','X':'𝕏 X (트위터)','카카오스토리':'🟡 카카오스토리'}[snsType]||'📱 SNS 문구';
+    document.getElementById('sns-res').style.display='block';
+  });
+}
+
+// ─ TAB5 디지털 명함
+function renderCard(){
+  var name=document.getElementById('bc-name').value;
+  var title=document.getElementById('bc-title').value;
+  var company=document.getElementById('bc-company').value;
+  var mobile=document.getElementById('bc-mobile').value;
+  var office=document.getElementById('bc-office').value;
+  var addr=document.getElementById('bc-addr').value;
+  var web=document.getElementById('bc-web').value;
+  var blog=document.getElementById('bc-blog').value;
+  var yt=document.getElementById('bc-yt').value;
+  var intro=document.getElementById('bc-intro').value;
+  var links='';
+  if(web)links+='<a href="https://'+web.replace(/^https?:\/\//,'')+'" target="_blank" class="biz-link">🌐 홈페이지</a>';
+  if(blog)links+='<a href="'+blog+'" target="_blank" class="biz-link">✍️ 블로그</a>';
+  if(yt)links+='<a href="'+yt+'" target="_blank" class="biz-link">🎬 유튜브</a>';
+  document.getElementById('biz-card-render').innerHTML=
+    '<div class="biz-name">'+name+'</div>'
+    +'<div class="biz-title">'+title+' · '+company+'</div>'
+    +(intro?'<div style="font-size:11px;opacity:.7;margin-bottom:12px;line-height:1.6">'+intro+'</div>':'')
+    +'<div class="biz-info">'
+    +'📞 '+mobile+(office?' &nbsp;|&nbsp; 🏢 '+office:'')+'<br>'
+    +'📍 '+addr
+    +'</div>'
+    +(links?'<div class="biz-links">'+links+'</div>':'');
+  document.getElementById('card-preview').style.display='block';
+}
+
+function cpCardHTML(){
+  var html=document.getElementById('biz-card-render').outerHTML;
+  navigator.clipboard.writeText(html).then(function(){alert('HTML 복사됐습니다!');});
+}
+
+function dlCardTxt(){
+  var el=document.getElementById('biz-card-render');
+  var txt=el.innerText;
+  var blob=new Blob([txt],{type:'text/plain;charset=utf-8'});
+  var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='송도제일_디지털명함.txt';a.click();URL.revokeObjectURL(a.href);
+}
+
+// ─ TAB6 콘텐츠 캘린더
+function addToCalendar(type){
+  var now=new Date(),ds=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0');
+  var typeMap={blog:{channel:'blog',title:document.getElementById('blog-keyword')?document.getElementById('blog-keyword').value.trim()||'블로그 글':'블로그 글'},yt:{channel:'yt',title:document.getElementById('yt-topic')?document.getElementById('yt-topic').value.trim()||'유튜브 스크립트':'유튜브 스크립트'},sns:{channel:'sns',title:document.getElementById('sns-keyword')?document.getElementById('sns-keyword').value.trim()||'SNS 문구':'SNS 문구'}};
+  var info=typeMap[type]||{channel:'blog',title:'콘텐츠'};
+  calPosts.unshift({id:Date.now(),date:ds,channel:info.channel,title:info.title,status:'작성중',memo:'',createdAt:ds});
+  toStoreCal();
+  alert('📅 콘텐츠 캘린더에 추가됐습니다!');
+  refreshHub();
+}
+
+async function addCalPost(){
+  var title=document.getElementById('cal-title').value.trim();
+  if(!title){alert('제목을 입력해 주세요.');return;}
+  var now=new Date(),ds=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0');
+  calPosts.unshift({id:Date.now(),date:document.getElementById('cal-date').value,channel:document.getElementById('cal-channel').value,title:title,status:document.getElementById('cal-status').value,memo:document.getElementById('cal-memo').value.trim(),createdAt:ds});
+  await toStoreCal();renderCal();refreshHub();
+  document.getElementById('cal-title').value='';document.getElementById('cal-memo').value='';
+}
+
+async function renderCal(){
+  await fromStoreCal();
+  var cf=document.getElementById('cal-filter-channel').value;
+  var sf=document.getElementById('cal-filter-status').value;
+  var f=calPosts.filter(function(p){return(!cf||p.channel===cf)&&(!sf||p.status===sf);}).sort(function(a,b){return(b.date||'').localeCompare(a.date||'');});
+  document.getElementById('cal-cnt').textContent=f.length+'건';
+  var chIcon={blog:'✍️',yt:'🎬',sns:'📱',kakao:'💬',cafe:'☕'};
+  var stBg={예정:'#f5f5f3',작성중:'#fff8e1',완료:'#e8f5e9'};
+  var stColor={예정:'#888',작성중:'#f57f17',완료:'#2e7d32'};
+  document.getElementById('cal-list').innerHTML=f.length?f.map(function(p){
+    return'<div style="display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border:0.5px solid #e0e0e0;border-radius:10px;margin-bottom:6px;background:#fff">'
+      +'<div style="width:70px;font-size:11px;color:#888;flex-shrink:0;padding-top:2px">'+(p.date||'날짜 없음')+'</div>'
+      +'<div style="flex:1">'
+      +'<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">'
+      +'<span style="font-size:16px">'+(chIcon[p.channel]||'📌')+'</span>'
+      +'<span style="font-size:13px;font-weight:500">'+p.title+'</span>'
+      +'<select onchange="updateCalStatus('+p.id+',this.value)" style="font-size:11px;padding:2px 6px;border:0.5px solid #e0e0e0;border-radius:6px;background:'+stBg[p.status]+';color:'+stColor[p.status]+';font-family:inherit;cursor:pointer">'
+      +'<option'+(p.status==='예정'?' selected':'')+' value="예정">📌 예정</option>'
+      +'<option'+(p.status==='작성중'?' selected':'')+' value="작성중">✏️ 작성중</option>'
+      +'<option'+(p.status==='완료'?' selected':'')+' value="완료">✅ 완료</option>'
+      +'</select></div>'
+      +(p.memo?'<p style="font-size:11px;color:#888;margin:3px 0 0">'+p.memo+'</p>':'')
+      +'</div>'
+      +'<button onclick="delCalPost('+p.id+')" class="btn-d" style="font-size:10px;padding:2px 6px">삭제</button>'
+      +'</div>';
+  }).join(''):'<p style="text-align:center;color:#aaa;padding:2rem;font-size:13px">콘텐츠 계획을 추가해 보세요 📅</p>';
+}
+
+function updateCalStatus(id,status){
+  var p=calPosts.find(function(x){return x.id===id;});
+  if(p){p.status=status;toStoreCal();refreshHub();}
+}
+
+function delCalPost(id){
+  calPosts=calPosts.filter(function(x){return x.id!==id;});
+  toStoreCal();renderCal();refreshHub();
+}
+
+function exportCalXL(){
+  if(!window.XLSX){alert('엑셀 라이브러리 준비 중입니다.');return;}
+  var chMap={blog:'블로그',yt:'유튜브',sns:'인스타',kakao:'카카오',cafe:'카페'};
+  var data=calPosts.map(function(p,i){return{'번호':i+1,'날짜':p.date||'','채널':chMap[p.channel]||p.channel,'제목':p.title,'상태':p.status,'메모':p.memo||''};});
+  if(!data.length){alert('데이터가 없습니다.');return;}
+  var ws=XLSX.utils.json_to_sheet(data);
+  ws['!cols']=[{wch:5},{wch:12},{wch:10},{wch:40},{wch:10},{wch:30}];
+  var wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'콘텐츠캘린더');
+  var now=new Date();
+  XLSX.writeFile(wb,'송도제일_콘텐츠캘린더_'+now.getFullYear()+String(now.getMonth()+1).padStart(2,'0')+String(now.getDate()).padStart(2,'0')+'.xlsx');
+}
+
+// ─ 초기화
+async function initAll(){
+  await fromStoreNews();
+  await fromStoreCal();
+  refreshHub();
+  setSNSType('네이버블로그');
+  renderCard();
+}
+initAll();
+</script>
+</body>
+</html>
