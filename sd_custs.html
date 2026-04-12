@@ -1,0 +1,1590 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>송도제일 고객관리 시스템</title>
+<style>
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+*{box-sizing:border-box}
+body{margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f8f8f6;color:#1a1a1a}
+.tnb{padding:10px 14px;border:none;border-bottom:2px solid transparent;background:transparent;color:#666;font-size:13px;cursor:pointer;margin-bottom:-1px;white-space:nowrap}
+.tnb.on{color:#1a1a1a;border-bottom-color:#1a1a1a;font-weight:500}
+.tc{display:none}.tc.on{display:block;animation:fadeIn .2s ease}
+.fl{font-size:12px;color:#666;display:block;margin-bottom:5px}
+.fi{width:100%;padding:8px 10px;border:0.5px solid #ccc;border-radius:8px;background:#fff;color:#1a1a1a;font-size:13px}
+.fi:focus{outline:none;border-color:#888}
+.card{background:#fff;border:0.5px solid #e0e0e0;border-radius:12px;padding:1.25rem;margin-bottom:1rem}
+.sec{font-size:12px;font-weight:500;color:#666;margin:0 0 10px;letter-spacing:.04em}
+.btn-p{padding:10px 18px;background:#1a1a1a;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer}
+.btn-s{padding:7px 12px;border:0.5px solid #ccc;border-radius:8px;background:#fff;color:#666;font-size:12px;cursor:pointer}
+.btn-d{padding:5px 9px;border:0.5px solid #ffaaaa;border-radius:8px;background:transparent;color:#cc3333;font-size:11px;cursor:pointer}
+.tbl{width:100%;border-collapse:collapse;font-size:12px}
+.tbl th{padding:8px 10px;background:#f5f5f3;color:#666;text-align:left;border-bottom:0.5px solid #e0e0e0;white-space:nowrap;font-weight:500}
+.tbl td{padding:7px 10px;border-bottom:0.5px solid #e0e0e0;color:#1a1a1a;vertical-align:middle}
+.tbl tr:last-child td{border-bottom:none}
+.tbl tr:hover td{background:#fafafa}
+.bdg{display:inline-block;padding:2px 8px;border-radius:8px;font-size:11px;font-weight:500;white-space:nowrap}
+.bdg-1{background:#e3f2fd;color:#1565c0}.bdg-2{background:#fff8e1;color:#f57f17}
+.bdg-3{background:#fce4ec;color:#c62828}.bdg-4{background:#e8f5e9;color:#2e7d32}
+.spin-el{width:26px;height:26px;border:2px solid #e0e0e0;border-top-color:#1a1a1a;border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 12px}
+.rbox{width:100%;padding:1rem;border:none;background:#fff;color:#1a1a1a;font-size:13px;line-height:1.8;resize:vertical;font-family:inherit}
+.rbox:focus{outline:none}
+.pipe-row{display:flex;border-radius:10px;overflow:hidden;border:0.5px solid #e0e0e0;margin-bottom:1.25rem}
+.pipe-step{flex:1;padding:10px 8px;text-align:center;font-size:11px;font-weight:500;cursor:pointer;background:#f5f5f3;color:#aaa;border-right:0.5px solid #e0e0e0;transition:all .15s}
+.pipe-step:last-child{border-right:none}
+.pipe-step.s1.on{background:#e3f2fd;color:#1565c0}.pipe-step.s2.on{background:#fff8e1;color:#f57f17}
+.pipe-step.s3.on{background:#fce4ec;color:#c62828}.pipe-step.s4.on{background:#e8f5e9;color:#2e7d32}
+/* 고객 유형 태그 */
+.tag-ga{background:#e3f2fd;color:#1565c0;display:inline-block;padding:2px 8px;border-radius:8px;font-size:11px;font-weight:600}
+.tag-mul{background:#fff3e0;color:#e65100;display:inline-block;padding:2px 8px;border-radius:8px;font-size:11px;font-weight:600}
+.tag-ct{background:#e8f5e9;color:#2e7d32;display:inline-block;padding:2px 8px;border-radius:8px;font-size:11px;font-weight:600}
+.tag-ex{background:#f0f0f0;color:#555;display:inline-block;padding:2px 8px;border-radius:8px;font-size:11px;font-weight:600}
+.tag-chk{display:flex;align-items:center;gap:6px;padding:8px 12px;border:0.5px solid #e0e0e0;border-radius:10px;cursor:pointer;font-size:13px;transition:all .15s}
+.tag-chk:hover{background:#f5f5f3}
+.tag-chk input[type=checkbox]{width:16px;height:16px;cursor:pointer}
+.stat-box{background:#fff;border:0.5px solid #e0e0e0;border-radius:10px;padding:10px;text-align:center}
+.stat-n{font-size:22px;font-weight:500;line-height:1}.stat-l{font-size:11px;color:#aaa;margin-top:3px}
+.alert-row{display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:8px;font-size:12px;margin-bottom:6px}
+.alert-hot{background:#fff3e0;color:#e65100;border:0.5px solid #ffcc80}
+.alert-warm{background:#fffde7;color:#f57f17;border:0.5px solid #fff176}
+</style>
+  <!-- ═══ Firebase SDK (compat v9) ═══ -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+  <!-- ═══ Firebase Storage 어댑터 (window.storage 호환) ═══ -->
+  <script src="firebase-storage.js"></script>
+</head>
+<body>
+
+<div id="root" style="max-width:1020px;margin:0 auto;padding:1.5rem 1rem">
+<div style="margin-bottom:1.25rem">
+  <p style="font-size:13px;color:#666;margin:0 0 3px">송도제일공인중개사사무소</p>
+  <h1 style="font-size:20px;font-weight:500;margin:0">고객 관리 시스템</h1>
+  <p style="font-size:13px;color:#666;margin:5px 0 0">신규 고객 등록 · 상담 관리 · 파이프라인 · AI 매칭 · 맞춤 제안서</p>
+</div>
+<div style="background:#f8f8f6;border-bottom:0.5px solid #e0e0e0;padding:8px 16px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+    <a href="sd_hub.html" style="padding:5px 10px;background:#1a1a1a;color:#fff;border-radius:20px;font-size:11px;text-decoration:none">🏠 허브</a>
+    <a href="sd_props.html" style="padding:5px 10px;background:#e8f5e9;color:#1a7f3c;border:0.5px solid #a5d6a7;border-radius:20px;font-size:11px;text-decoration:none">🏢 매물</a>
+    <a href="sd_custs.html" style="padding:5px 10px;background:#1565c0;color:#fff;border-radius:20px;font-size:11px;text-decoration:none;font-weight:600">👥 고객</a>
+    <a href="sd_contracts.html" style="padding:5px 10px;background:#fce4ec;color:#c62828;border:0.5px solid #f48fb1;border-radius:20px;font-size:11px;text-decoration:none">📑 계약</a>
+    <a href="sd_schedule.html" style="padding:5px 10px;background:#fff3e0;color:#e65100;border:0.5px solid #ffcc80;border-radius:20px;font-size:11px;text-decoration:none">📅 일정</a>
+    <a href="sd_marketing.html" style="padding:5px 10px;background:#f3e5f5;color:#7b1fa2;border:0.5px solid #ce93d8;border-radius:20px;font-size:11px;text-decoration:none">📢 마케팅</a>
+  </div>
+<div style="display:flex;border-bottom:0.5px solid #e0e0e0;margin-bottom:1.5rem;overflow-x:auto">
+  <button onclick="sw(0)" id="tn0" class="tnb on">🏠 홈</button>
+  <button onclick="sw(1)" id="tn1" class="tnb">👤 고객 등록</button>
+  <button onclick="sw(2)" id="tn2" class="tnb">📋 고객 관리</button>
+  <button onclick="sw(3)" id="tn3" class="tnb">🔔 팔로업</button>
+  <button onclick="sw(4)" id="tn4" class="tnb">🤖 AI 매칭</button>
+  <button onclick="sw(5)" id="tn5" class="tnb">📄 맞춤 제안서</button>
+  <button onclick="sw(6)" id="tn6" class="tnb">💌 메시지 발송</button>
+  <button onclick="sw(7)" id="tn7" class="tnb">📅 약속·할일</button>
+  <button onclick="sw(8)" id="tn8" class="tnb">🎂 기념일 관리</button>
+  <button onclick="sw(9)" id="tn9" class="tnb">📞 통화 분석</button>
+</div>
+
+<!-- TAB0 홈 -->
+<div id="tc0" class="tc on">
+  <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:1.25rem;flex-wrap:wrap;gap:8px">
+    <div><p id="hub-date" style="font-size:13px;color:#aaa;margin:0 0 3px"></p><p id="hub-greet" style="font-size:16px;font-weight:500;margin:0"></p></div>
+    <button onclick="refreshHub()" class="btn-s" style="font-size:11px">↺ 새로고침</button>
+  </div>
+  <div class="card"><p class="sec" style="margin-bottom:10px">👥 고객 유형 현황</p>
+    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:10px">
+      <div style="background:#fff;border:0.5px solid #e0e0e0;border-radius:10px;padding:10px;text-align:center"><div class="stat-n" style="color:#1a1a1a" id="hc-total">0</div><div class="stat-l">전체</div></div>
+      <div style="background:#e3f2fd;border:0.5px solid #90caf9;border-radius:10px;padding:10px;text-align:center"><div class="stat-n" style="color:#1565c0" id="hc-ga">0</div><div class="stat-l">가망고객</div></div>
+      <div style="background:#fff3e0;border:0.5px solid #ffcc80;border-radius:10px;padding:10px;text-align:center"><div class="stat-n" style="color:#e65100" id="hc-mul">0</div><div class="stat-l">물건고객</div></div>
+      <div style="background:#e8f5e9;border:0.5px solid #a5d6a7;border-radius:10px;padding:10px;text-align:center"><div class="stat-n" style="color:#2e7d32" id="hc-ct">0</div><div class="stat-l">계약고객</div></div>
+      <div style="background:#f0f0f0;border:0.5px solid #ddd;border-radius:10px;padding:10px;text-align:center"><div class="stat-n" style="color:#555" id="hc-ex">0</div><div class="stat-l">기존고객</div></div>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <span style="font-size:11px;color:#aaa">💡 복수 태그 가능 — 합계가 전체보다 클 수 있습니다</span>
+    </div>
+  </div>
+  <div class="card"><p class="sec" style="margin-bottom:10px">🏢 매물 현황 <span style="font-size:11px;color:#aaa;font-weight:400">(매물관리 시스템 연동)</span></p>
+    <div id="hub-props" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px"></div>
+  </div>
+  <div class="card"><p class="sec" style="margin-bottom:10px">📑 계약 만기 현황 <span style="font-size:11px;color:#aaa;font-weight:400">(계약관리 시스템 연동)</span></p>
+    <div id="hub-contracts" style="display:grid;grid-template-columns:repeat(8,1fr);gap:8px"></div>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1rem">
+    <div class="card" style="margin-bottom:0"><p class="sec" style="margin-bottom:8px">🔔 팔로업 필요</p><div id="hub-fu"></div></div>
+    <div class="card" style="margin-bottom:0"><p class="sec" style="margin-bottom:8px">🆕 최근 등록 고객</p><div id="hub-recent"></div></div>
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(8,1fr);gap:8px">
+    <button onclick="sw(1)" style="padding:12px 8px;background:#fff;border:0.5px solid #e0e0e0;border-radius:12px;cursor:pointer;font-size:12px;color:#1a1a1a"><div style="font-size:18px;margin-bottom:3px">👤</div>고객 등록</button>
+    <button onclick="sw(2)" style="padding:12px 8px;background:#fff;border:0.5px solid #e0e0e0;border-radius:12px;cursor:pointer;font-size:12px;color:#1a1a1a"><div style="font-size:18px;margin-bottom:3px">📋</div>고객 관리</button>
+    <button onclick="sw(3)" style="padding:12px 8px;background:#fff;border:0.5px solid #e0e0e0;border-radius:12px;cursor:pointer;font-size:12px;color:#1a1a1a"><div style="font-size:18px;margin-bottom:3px">🔔</div>팔로업</button>
+    <button onclick="sw(4)" style="padding:12px 8px;background:#fff;border:0.5px solid #e0e0e0;border-radius:12px;cursor:pointer;font-size:12px;color:#1a1a1a"><div style="font-size:18px;margin-bottom:3px">🤖</div>AI 매칭</button>
+    <button onclick="sw(5)" style="padding:12px 8px;background:#fff;border:0.5px solid #e0e0e0;border-radius:12px;cursor:pointer;font-size:12px;color:#1a1a1a"><div style="font-size:18px;margin-bottom:3px">📄</div>맞춤 제안서</button>
+    <button onclick="sw(6)" style="padding:12px 8px;background:#fff;border:0.5px solid #e0e0e0;border-radius:12px;cursor:pointer;font-size:12px;color:#1a1a1a"><div style="font-size:18px;margin-bottom:3px">💌</div>메시지</button>
+    <button onclick="sw(7)" style="padding:12px 8px;background:#fff;border:0.5px solid #e0e0e0;border-radius:12px;cursor:pointer;font-size:12px;color:#1a1a1a"><div style="font-size:18px;margin-bottom:3px">📅</div>약속·할일</button>
+    <button onclick="sw(8)" style="padding:12px 8px;background:#fff;border:0.5px solid #e0e0e0;border-radius:12px;cursor:pointer;font-size:12px;color:#1a1a1a"><div style="font-size:18px;margin-bottom:3px">🎂</div>기념일</button>
+    <button onclick="sw(9)" style="padding:12px 8px;background:#e3f2fd;border:0.5px solid #90caf9;border-radius:12px;cursor:pointer;font-size:12px;color:#1565c0;font-weight:500"><div style="font-size:18px;margin-bottom:3px">📞</div>통화 분석</button>
+  </div>
+</div>
+
+<!-- TAB1 고객 등록 -->
+<div id="tc1" class="tc">
+  <!-- 고객 유형 태그 선택 -->
+  <div class="card">
+    <p class="sec" style="margin-bottom:10px">고객 유형 <span style="font-size:11px;color:#aaa;font-weight:400">(복수 선택 가능)</span></p>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:6px">
+      <label class="tag-chk" id="chk-ga-box">
+        <input type="checkbox" id="f-tag-ga" onchange="onTagChange()">
+        <span class="tag-ga">🎯 가망고객</span>
+        <span style="font-size:11px;color:#666">매수·임차 희망 — 클로징 작업</span>
+      </label>
+      <label class="tag-chk" id="chk-mul-box">
+        <input type="checkbox" id="f-tag-mul" onchange="onTagChange()">
+        <span class="tag-mul">🏠 물건고객</span>
+        <span style="font-size:11px;color:#666">매도·임대 의뢰인</span>
+      </label>
+      <label class="tag-chk" id="chk-ct-box">
+        <input type="checkbox" id="f-tag-ct" onchange="onTagChange()">
+        <span class="tag-ct">📑 계약고객</span>
+        <span style="font-size:11px;color:#666">기존 계약 완료 고객</span>
+      </label>
+      <label class="tag-chk" id="chk-ex-box">
+        <input type="checkbox" id="f-tag-ex" onchange="onTagChange()">
+        <span class="tag-ex">⭐ 기존고객</span>
+        <span style="font-size:11px;color:#666">지인·예전 고객</span>
+      </label>
+    </div>
+    <div id="tag-warn" style="display:none;font-size:12px;color:#c62828;padding:6px 10px;background:#fce4ec;border-radius:6px">⚠️ 고객 유형을 하나 이상 선택해 주세요.</div>
+  </div>
+
+  <!-- 기본 정보 (공통) -->
+  <div class="card">
+    <p class="sec">기본 정보</p>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+      <div><label class="fl">고객 등록일</label><input id="f-rdate" type="date" class="fi"></div>
+      <div><label class="fl">접수 경로</label>
+        <select id="f-route" class="fi"><option value="">선택</option><option>내방</option><option>전화</option><option>문자</option><option>카톡</option><option>지인소개</option><option>기존고객</option><option>네이버부동산</option><option>유튜브</option><option>홈페이지</option><option>타업소</option></select>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+      <div><label class="fl">고객 성명 / 호칭</label><input id="f-name" type="text" class="fi" placeholder="예: 김철수 고객님"></div>
+      <div><label class="fl">연락처1</label><input id="f-tel1" type="text" class="fi" placeholder="예: 010-1234-5678"></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div><label class="fl">연락처2 <span style="font-size:11px;color:#aaa">(선택)</span></label><input id="f-tel2" type="text" class="fi" placeholder="예: 010-9876-5432"></div>
+      <div><label class="fl">최종 연락일</label><input id="f-lastdate" type="date" class="fi"></div>
+    </div>
+  </div>
+
+  <!-- 가망고객 섹션 -->
+  <div id="sec-ga" style="display:none">
+    <div class="card" style="border-color:#90caf9;background:#fafcff">
+      <p class="sec" style="color:#1565c0">🎯 가망고객 — 클로징 단계</p>
+      <div class="pipe-row" id="pipe-sel">
+        <div class="pipe-step s1 on" onclick="selPipe(1)">📞 상담접수</div>
+        <div class="pipe-step s2" onclick="selPipe(2)">🏠 물건확인</div>
+        <div class="pipe-step s3" onclick="selPipe(3)">📝 계약협의</div>
+      </div>
+      <input type="hidden" id="f-pipe" value="1">
+    </div>
+    <div class="card" style="border-color:#90caf9;background:#fafcff">
+      <p class="sec" style="color:#1565c0">🎯 가망고객 — 매수·임차 니즈</p>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+        <div><label class="fl">거래 방식</label>
+          <select id="f-deal" class="fi"><option value="">선택</option><option>매매</option><option>전세</option><option>월세</option><option>분양권 매매</option></select>
+        </div>
+        <div><label class="fl">물건 종류</label>
+          <select id="f-ptype" class="fi"><option value="">선택</option><option>아파트</option><option>오피스텔</option><option>생활형숙박시설</option><option>상가</option><option>사무실</option><option>토지</option></select>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:12px">
+        <div><label class="fl">희망 지역</label>
+          <select id="f-area" class="fi"><option value="">선택/무관</option><option>1공구</option><option>2공구</option><option>3공구</option><option>4공구</option><option>5공구</option><option>6공구</option><option>7공구</option><option>랜드마크시티</option><option>송도 전체</option></select>
+        </div>
+        <div><label class="fl">희망 평형</label>
+          <select id="f-size" class="fi"><option value="">선택/무관</option><option>20평대 이하</option><option>30평대</option><option>40평대</option><option>50평대</option><option>60평대 이상</option><option>평형 무관</option></select>
+        </div>
+        <div><label class="fl">예산 상한</label><input id="f-budget" type="text" class="fi" placeholder="예: 10억 이내"></div>
+      </div>
+      <div style="margin-bottom:12px"><label class="fl">희망 단지명</label><input id="f-cx" type="text" class="fi" placeholder="예: 더샵 퍼스트파크"></div>
+      <div style="margin-bottom:12px"><label class="fl">기타 조건</label><input id="f-cond" type="text" class="fi" placeholder="예: 학군 중요, 남향 선호, 즉시입주 필수"></div>
+      <div><label class="fl">추천 매물 메모 <span style="font-size:11px;color:#aaa">(자사·네이버 추천 내역)</span></label>
+        <textarea id="f-propmemo" rows="2" class="fi" style="resize:vertical" placeholder="예: 더샵퍼스트파크 87㎡ 7.8억 안내, 에스파이브시티 상가 검토 중"></textarea>
+      </div>
+    </div>
+  </div>
+
+  <!-- 물건고객 섹션 -->
+  <div id="sec-mul" style="display:none">
+    <div class="card" style="border-color:#ffcc80;background:#fffdf8">
+      <p class="sec" style="color:#e65100">🏠 물건고객 — 의뢰 물건 정보</p>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+        <div><label class="fl">거래 구분</label>
+          <select id="f-prop-deal" class="fi"><option value="">선택</option><option>매도</option><option>임대</option></select>
+        </div>
+        <div><label class="fl">물건 종류</label>
+          <select id="f-prop-ptype" class="fi"><option value="">선택</option><option>아파트</option><option>오피스텔</option><option>생활형숙박시설</option><option>상가</option><option>사무실</option><option>토지</option></select>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+        <div><label class="fl">단지명 / 건물명</label><input id="f-prop-cx" type="text" class="fi" placeholder="예: 더샵센트럴파크3"></div>
+        <div><label class="fl">동/호수</label><input id="f-prop-dong" type="text" class="fi" placeholder="예: 102동 1504호"></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+        <div><label class="fl">전용면적</label><input id="f-prop-area" type="text" class="fi" placeholder="예: 84.99㎡"></div>
+        <div><label class="fl">희망 가격</label><input id="f-prop-price" type="text" class="fi" placeholder="예: 11억 / 보증금 3억 월세 80"></div>
+      </div>
+      <div><label class="fl">물건 특이사항</label>
+        <textarea id="f-prop-memo" rows="2" class="fi" style="resize:vertical" placeholder="예: 세입자 있음(만기 2026-08), 융자 없음, 급매 가능"></textarea>
+      </div>
+    </div>
+  </div>
+
+  <!-- 계약고객 섹션 -->
+  <div id="sec-ct" style="display:none">
+    <div class="card" style="border-color:#a5d6a7;background:#f9fdf9">
+      <p class="sec" style="color:#2e7d32">📑 계약고객 — 계약 정보</p>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+        <div><label class="fl">계약 단지명</label><input id="f-ct-cx" type="text" class="fi" placeholder="예: 더샵하버뷰14단지"></div>
+        <div><label class="fl">계약 만기일</label><input id="f-ct-expiry" type="date" class="fi"></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div><label class="fl">재계약 의향</label>
+          <select id="f-ct-renew" class="fi"><option value="">미확인</option><option>재계약 희망</option><option>이사 예정</option><option>매수 전환 검토</option><option>확인 필요</option></select>
+        </div>
+        <div><label class="fl">소개 가능성</label>
+          <select id="f-ct-intro" class="fi"><option value="">미확인</option><option>높음</option><option>보통</option><option>낮음</option></select>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 기존고객 섹션 -->
+  <div id="sec-ex" style="display:none">
+    <div class="card" style="border-color:#ddd;background:#fafafa">
+      <p class="sec" style="color:#555">⭐ 기존고객 — 관계 정보</p>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div><label class="fl">관계 유형</label>
+          <select id="f-ex-rel" class="fi"><option value="">선택</option><option>과거 계약고객</option><option>지인·친인척</option><option>소개받은 지인</option><option>동호회·모임</option><option>기타</option></select>
+        </div>
+        <div><label class="fl">소개 가능성</label>
+          <select id="f-ex-intro" class="fi"><option value="">미확인</option><option>높음</option><option>보통</option><option>낮음</option></select>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 공통 메모 -->
+  <div class="card">
+    <p class="sec">상담 내용 및 메모</p>
+    <div style="margin-bottom:12px"><label class="fl">상담 내용</label><textarea id="f-consult" rows="3" class="fi" style="resize:vertical" placeholder="예: 1공구 30평대 매수 희망, 예산 8~10억, 채드윅 학군 중요"></textarea></div>
+    <div><label class="fl">최종 작업 메모 <span style="font-size:11px;color:#aaa">(50자)</span></label><input id="f-lastmemo" type="text" class="fi" maxlength="50" placeholder="예: 더샵1차 매물 안내 완료, 다음주 현장 동행"></div>
+  </div>
+  <div style="display:flex;gap:10px">
+    <button onclick="saveCust()" class="btn-p" style="flex:1" id="save-btn">💾 고객 저장</button>
+    <button onclick="clearF()" class="btn-s">초기화</button>
+  </div>
+  <div id="save-ok" style="display:none;margin-top:10px;padding:10px 14px;background:#e8f5e9;border-radius:8px;font-size:13px;color:#2e7d32"></div>
+</div>
+
+<!-- TAB2 고객 관리 -->
+<div id="tc2" class="tc">
+  <div id="stat-row" style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:1.25rem"></div>
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <select id="ft-tag" class="fi" style="width:auto;font-size:12px" onchange="rtbl()">
+        <option value="">전체 고객</option>
+        <option value="가망고객">🎯 가망고객</option>
+        <option value="물건고객">🏠 물건고객</option>
+        <option value="계약고객">📑 계약고객</option>
+        <option value="기존고객">⭐ 기존고객</option>
+      </select>
+      <select id="ft-deal" class="fi" style="width:auto;font-size:12px" onchange="rtbl()"><option value="">전체 거래방식</option><option>매매</option><option>전세</option><option>월세</option><option>분양권 매매</option></select>
+      <select id="ft-area" class="fi" style="width:auto;font-size:12px" onchange="rtbl()"><option value="">전체 공구</option><option>1공구</option><option>2공구</option><option>3공구</option><option>4공구</option><option>5공구</option><option>6공구</option><option>7공구</option><option>랜드마크시티</option></select>
+      <input id="ft-name" type="text" class="fi" style="width:110px;font-size:12px" placeholder="이름 검색" oninput="rtbl()">
+    </div>
+    <div style="display:flex;gap:8px;align-items:center"><span id="tbl-cnt" style="font-size:12px;color:#666"></span><button onclick="exportXL()" class="btn-s">📥 엑셀</button></div>
+  </div>
+  <div style="overflow-x:auto;border:0.5px solid #e0e0e0;border-radius:12px">
+    <table class="tbl"><thead><tr><th>#</th><th>유형</th><th>성명</th><th>연락처1</th><th>거래·단지</th><th>지역·예산</th><th>물건정보</th><th>등록일</th><th>경로</th><th>최종연락</th><th>최종메모</th><th style="min-width:110px">액션</th></tr></thead>
+    <tbody id="tbdy"></tbody></table>
+  </div>
+  <div id="no-cust" style="display:none;text-align:center;padding:3rem;color:#aaa;font-size:14px">등록된 고객이 없습니다.</div>
+  <div id="detail-panel" style="display:none;margin-top:1rem;border:0.5px solid #e0e0e0;border-radius:12px;overflow:hidden">
+    <div style="padding:10px 14px;background:#f5f5f3;border-bottom:0.5px solid #e0e0e0;display:flex;justify-content:space-between;align-items:center">
+      <span id="dp-title" style="font-size:13px;font-weight:500"></span>
+      <button onclick="document.getElementById('detail-panel').style.display='none'" class="btn-s" style="font-size:11px;padding:4px 8px">닫기</button>
+    </div>
+    <div id="dp-body" style="padding:1rem;font-size:13px;line-height:1.9;white-space:pre-wrap;color:#444"></div>
+  </div>
+</div>
+
+<!-- TAB3 팔로업 -->
+<div id="tc3" class="tc">
+  <div class="card" style="margin-bottom:1rem">
+    <p class="sec">🔴 즉시 팔로업 필요 <span id="fu-hot-cnt" style="font-size:11px;color:#aaa;font-weight:400"></span></p>
+    <div id="fu-hot"></div>
+  </div>
+  <div class="card">
+    <p class="sec">🟡 이번 주 팔로업 <span id="fu-warm-cnt" style="font-size:11px;color:#aaa;font-weight:400"></span></p>
+    <div id="fu-warm"></div>
+  </div>
+  <p style="font-size:11px;color:#aaa;margin-top:8px">최종 연락일 기준 — 🔴 7일 초과 / 🟡 4~7일 이내 (계약완료 제외)</p>
+</div>
+
+<!-- TAB4 AI 매칭 -->
+<div id="tc4" class="tc">
+  <div class="card">
+    <p class="sec">고객 선택</p>
+    <div style="display:grid;grid-template-columns:1fr auto;gap:12px;align-items:end;margin-bottom:12px">
+      <div><label class="fl">고객을 선택하세요</label><select id="ai-sel" class="fi"><option value="">— 고객을 선택하세요 —</option></select></div>
+      <button onclick="genMatch()" class="btn-p" style="white-space:nowrap">🤖 매칭 분석</button>
+    </div>
+    <div><label class="fl">추가 참고사항</label><textarea id="ai-ext" rows="2" class="fi" style="resize:vertical" placeholder="예: 오늘 통화 — 예산 1천 더 올릴 수 있다고 함"></textarea></div>
+  </div>
+  <div id="ai-load" style="display:none;text-align:center;padding:2rem"><div class="spin-el"></div><p id="ai-ltxt" style="font-size:13px;color:#666;margin:0"></p></div>
+  <div id="ai-res" style="display:none">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+      <span style="font-size:13px;font-weight:500">AI 매칭 분석 완료</span>
+      <div style="display:flex;gap:8px"><button onclick="cpTxt(event,'ai-txt')" class="btn-s">📋 복사</button><button onclick="reMatch()" class="btn-s">↺ 다시</button></div>
+    </div>
+    <div style="border:0.5px solid #e0e0e0;border-radius:12px;overflow:hidden">
+      <div style="padding:8px 14px;background:#f5f5f3;border-bottom:0.5px solid #e0e0e0"><span style="font-size:12px;font-weight:500">🤖 AI 매칭 & 상담 전략</span></div>
+      <textarea id="ai-txt" rows="20" class="rbox" style="padding:1rem"></textarea>
+    </div>
+  </div>
+</div>
+
+<!-- TAB5 맞춤 제안서 -->
+<div id="tc5" class="tc">
+  <div class="card">
+    <p class="sec">고객 &amp; 추천 단지 정보</p>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+      <div><label class="fl">고객 선택 <span style="font-size:11px;color:#aaa">(선택)</span></label><select id="pr-cust" class="fi"><option value="">— 선택 안 함 —</option></select></div>
+      <div><label class="fl">추천 단지명 <span style="font-size:11px;color:#cc3333">*필수</span></label><input id="pr-cx" type="text" class="fi" placeholder="예: 송도더샵퍼스트파크(F14BL)"></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:12px">
+      <div><label class="fl">면적 구분</label>
+        <select id="pr-atype" class="fi"><option value="전용">전용면적(㎡)</option><option value="분양">분양평형(평)</option></select>
+      </div>
+      <div><label class="fl">면적 값</label><input id="pr-area" type="text" class="fi" placeholder="예: 84 또는 34"></div>
+      <div><label class="fl">거래방식</label>
+        <select id="pr-deal" class="fi"><option value="매매">매매</option><option value="전세">전세</option><option value="월세">월세</option></select>
+      </div>
+    </div>
+    <div><label class="fl">추가 조건 / 고객 특이사항 <span style="font-size:11px;color:#aaa">(선택)</span></label><textarea id="pr-extra" rows="2" class="fi" style="resize:vertical" placeholder="예: 고층 선호, 남향, 채드윅 학군, 즉시입주 희망, GTX 호재 투자 목적 등"></textarea></div>
+  </div>
+  <div class="card">
+    <p class="sec">데이터 업로드</p>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+      <div>
+        <label class="fl">📊 네이버 매물 엑셀 <span style="font-size:11px;color:#aaa">(단일/복수 단지 자동 감지)</span></label>
+        <input type="file" id="pr-naver-file" accept=".xlsx,.xls" class="fi" style="padding:6px" onchange="onNaverUpload(event)">
+        <div id="naver-status" style="font-size:11px;color:#aaa;margin-top:5px;padding:4px 8px;background:#f5f5f3;border-radius:6px">파일을 업로드하세요</div>
+      </div>
+      <div>
+        <label class="fl">📈 실거래가 엑셀 <span style="font-size:11px;color:#aaa">(없으면 웹검색 활용)</span></label>
+        <div style="display:flex;gap:8px;margin-bottom:6px">
+          <select id="pr-months" class="fi" style="width:auto"><option value="3">최근 3개월</option><option value="6">최근 6개월</option><option value="12">최근 12개월</option></select>
+        </div>
+        <input type="file" id="pr-jg-file" accept=".xlsx,.xls" class="fi" style="padding:6px" onchange="onJeongeoUpload(event)">
+        <div id="jg-status" style="font-size:11px;color:#aaa;margin-top:5px;padding:4px 8px;background:#f5f5f3;border-radius:6px">파일을 업로드하세요 (선택)</div>
+      </div>
+    </div>
+  </div>
+  <div style="display:flex;gap:10px;margin-bottom:1rem">
+    <button onclick="genProposal()" class="btn-p" style="flex:1;padding:12px">📄 맞춤 제안서 생성</button>
+    <button onclick="clearProposal()" class="btn-s">초기화</button>
+  </div>
+  <div id="pr-load" style="display:none;text-align:center;padding:2rem"><div class="spin-el"></div><p id="pr-ltxt" style="font-size:13px;color:#666;margin:0"></p></div>
+  <div id="pr-res" style="display:none">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+      <span style="font-size:13px;font-weight:500">📄 맞춤 제안서 생성 완료</span>
+      <div style="display:flex;gap:8px">
+        <button onclick="printProposal()" class="btn-s">🖨️ 인쇄 / PDF 저장</button>
+        <button onclick="cpTxt(event,'pr-output')" class="btn-s">📋 텍스트 복사</button>
+        <button onclick="genProposal()" class="btn-s">↺ 다시 생성</button>
+      </div>
+    </div>
+    <div style="border:0.5px solid #e0e0e0;border-radius:12px;overflow:hidden">
+      <div style="padding:8px 14px;background:#f5f5f3;border-bottom:0.5px solid #e0e0e0;display:flex;justify-content:space-between;align-items:center">
+        <span style="font-size:12px;font-weight:500">📄 고객 맞춤 제안서</span>
+        <span style="font-size:11px;color:#aaa">내용 직접 편집 가능</span>
+      </div>
+      <textarea id="pr-output" rows="32" class="rbox" style="padding:1rem;line-height:2"></textarea>
+    </div>
+  </div>
+</div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<!-- TAB6 메시지 발송 -->
+<div id="tc6" class="tc">
+  <div class="card">
+    <p class="sec">메시지 유형 선택</p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+      <button onclick="setMsgType('명절')" id="mtype-명절" class="btn-s" style="font-size:12px;background:#fff8e1;border-color:#ffe082;color:#f57f17">🎊 명절 인사</button>
+      <button onclick="setMsgType('급매')" id="mtype-급매" class="btn-s" style="font-size:12px">🔥 급매 알림</button>
+      <button onclick="setMsgType('시세')" id="mtype-시세" class="btn-s" style="font-size:12px">📊 시세 변동</button>
+      <button onclick="setMsgType('신규')" id="mtype-신규" class="btn-s" style="font-size:12px">🆕 신규 매물</button>
+      <button onclick="setMsgType('안부')" id="mtype-안부" class="btn-s" style="font-size:12px">👋 안부 인사</button>
+      <button onclick="setMsgType('기타')" id="mtype-기타" class="btn-s" style="font-size:12px">✉️ 기타</button>
+    </div>
+    <div style="margin-bottom:10px">
+      <label class="fl">전달 내용 / 강조 포인트 <span style="font-size:11px;color:#aaa">(선택)</span></label>
+      <textarea id="msg-content" rows="3" class="fi" style="resize:vertical" placeholder="예: 설날 연휴 잘 보내세요, 감사한 마음 전합니다 / 더샵하버뷰 84㎡ 9억 급매 — 이번주 마감"></textarea>
+    </div>
+  </div>
+  <div class="card">
+    <p class="sec">발송 대상 고객 선택</p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+      <select id="msg-filter-tag" class="fi" style="width:auto;font-size:12px" onchange="filterMsgTargets()">
+        <option value="">전체 고객</option>
+        <option value="가망고객">🎯 가망고객</option>
+        <option value="물건고객">🏠 물건고객</option>
+        <option value="계약고객">📑 계약고객</option>
+        <option value="기존고객">⭐ 기존고객</option>
+      </select>
+      <select id="msg-filter-deal" class="fi" style="width:auto;font-size:12px" onchange="filterMsgTargets()">
+        <option value="">전체 거래</option>
+        <option>매매</option><option>전세</option><option>월세</option><option>임대</option>
+      </select>
+      <select id="msg-filter-grade" class="fi" style="width:auto;font-size:12px" onchange="filterMsgTargets()">
+        <option value="">전체 등급</option>
+        <option value="VIP">⭐ VIP</option>
+        <option value="일반">일반</option>
+        <option value="잠재">잠재</option>
+      </select>
+      <button onclick="selAllMsg(1)" class="btn-s" style="font-size:11px">전체선택</button>
+      <button onclick="selAllMsg(0)" class="btn-s" style="font-size:11px">전체해제</button>
+    </div>
+    <div style="max-height:200px;overflow-y:auto;border:0.5px solid #e0e0e0;border-radius:10px" id="msg-target-list"></div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px">
+      <span id="msg-sel-cnt" style="font-size:12px;color:#666"></span>
+      <button onclick="genMsgText()" class="btn-p" style="padding:8px 18px">✨ 문구 생성</button>
+    </div>
+  </div>
+  <div id="msg-load" style="display:none;text-align:center;padding:1.5rem"><div class="spin-el"></div></div>
+  <div id="msg-res" style="display:none">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:8px">
+      <span style="font-size:13px;font-weight:500">💌 메시지 문구 생성 완료</span>
+      <div style="display:flex;gap:6px">
+        <button onclick="cpMsgTxt()" style="padding:7px 14px;background:#fee500;color:#1a1a1a;border:none;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer" id="msg-copy-btn">📋 복사</button>
+        <button onclick="genMsgText()" class="btn-s" style="font-size:11px">↺ 다시</button>
+      </div>
+    </div>
+    <div style="border:0.5px solid #e0e0e0;border-radius:12px;overflow:hidden">
+      <div style="padding:8px 14px;background:#fffde7;border-bottom:0.5px solid #ffe082"><span style="font-size:12px;font-weight:500">💌 발송 문구</span></div>
+      <textarea id="msg-txt" rows="14" class="rbox" style="padding:1rem;font-size:13px;line-height:1.9"></textarea>
+    </div>
+    <div id="msg-send-list" style="margin-top:10px;padding:10px 14px;background:#f5f5f3;border-radius:10px">
+      <p style="font-size:12px;font-weight:500;margin:0 0 6px">📋 발송 대상 리스트 <span id="msg-send-cnt" style="color:#aaa;font-weight:400"></span></p>
+      <div id="msg-send-names" style="font-size:12px;color:#555;line-height:1.9"></div>
+    </div>
+  </div>
+</div>
+
+<!-- TAB7 약속·할일 -->
+<div id="tc7" class="tc">
+  <div class="card">
+    <p class="sec">새 약속·할일 추가</p>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+      <div>
+        <label class="fl">고객 연결 <span style="font-size:11px;color:#aaa">(선택)</span></label>
+        <select id="todo-cust" class="fi"><option value="">— 고객 없음 (일반 할일) —</option></select>
+      </div>
+      <div>
+        <label class="fl">유형</label>
+        <select id="todo-type" class="fi">
+          <option>📞 전화</option><option>🏠 현장 동행</option><option>📝 계약</option>
+          <option>📨 서류</option><option>💬 상담</option><option>✅ 기타 할일</option>
+        </select>
+      </div>
+    </div>
+    <div style="margin-bottom:10px"><label class="fl">내용</label><input id="todo-title" type="text" class="fi" placeholder="예: 더샵하버뷰 현장 방문 동행, 계약서 검토"></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+      <div><label class="fl">날짜·시간</label><input id="todo-date" type="datetime-local" class="fi"></div>
+      <div>
+        <label class="fl">우선순위</label>
+        <select id="todo-priority" class="fi">
+          <option value="high">🔴 긴급</option>
+          <option value="mid" selected>🟡 보통</option>
+          <option value="low">🟢 여유</option>
+        </select>
+      </div>
+    </div>
+    <div style="margin-bottom:12px"><label class="fl">메모</label><input id="todo-memo" type="text" class="fi" placeholder="추가 메모"></div>
+    <button onclick="addTodo()" class="btn-p" style="width:100%">📅 추가</button>
+  </div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+    <select id="todo-filter" class="fi" style="width:auto;font-size:12px" onchange="renderTodo()">
+      <option value="all">전체</option>
+      <option value="today">오늘</option>
+      <option value="week">이번 주</option>
+      <option value="pending">미완료</option>
+      <option value="done">완료</option>
+    </select>
+    <span id="todo-cnt" style="font-size:12px;color:#666;align-self:center"></span>
+  </div>
+  <div id="todo-list"></div>
+</div>
+
+<!-- TAB8 기념일 관리 -->
+<div id="tc8" class="tc">
+  <div class="card">
+    <p class="sec">고객 등급 관리</p>
+    <p style="font-size:12px;color:#888;margin:0 0 10px">고객 등급을 설정하면 메시지 발송 탭에서 등급별 타겟팅이 가능합니다.</p>
+    <div style="overflow-x:auto;border:0.5px solid #e0e0e0;border-radius:10px;max-height:220px;overflow-y:auto">
+      <table class="tbl"><thead><tr><th>고객명</th><th>연락처</th><th>단계</th><th>등급</th><th>생일</th><th>계약기념일</th><th>저장</th></tr></thead>
+      <tbody id="grade-tbody"></tbody></table>
+    </div>
+  </div>
+  <div class="card">
+    <p class="sec">🎂 이번 달 / 7일 이내 기념일</p>
+    <div id="anni-list"></div>
+  </div>
+  <div class="card">
+    <p class="sec">📅 전체 기념일 목록</p>
+    <div id="anni-all-list"></div>
+  </div>
+</div>
+
+<!-- TAB9 통화 분석 -->
+<div id="tc9" class="tc">
+  <div class="card" style="border-color:#90caf9;background:#fafcff">
+    <p class="sec" style="color:#1565c0">📞 통화 녹음 분석 <span style="font-size:11px;font-weight:400;color:#888">— 갤럭시 통화 텍스트 파일 업로드</span></p>
+    <p style="font-size:12px;color:#666;margin:0 0 12px">갤럭시 통화 녹음 앱에서 자동 생성된 <strong>.txt 파일</strong>을 업로드하면 AI가 상담 내용을 분석하여 고객 정보를 자동으로 정리합니다.</p>
+    <div style="margin-bottom:12px">
+      <label class="fl">통화 텍스트 파일 선택 <span style="color:#aaa;font-weight:400">(.txt)</span></label>
+      <input type="file" id="call-file" accept=".txt" class="fi" style="padding:6px" onchange="onCallFile(event)">
+    </div>
+    <div id="call-file-info" style="display:none;margin-bottom:12px;padding:8px 12px;background:#e3f2fd;border:0.5px solid #90caf9;border-radius:8px;font-size:12px;color:#1565c0"></div>
+    <div style="margin-bottom:12px">
+      <label class="fl">통화 상대방 전화번호 <span style="color:#aaa;font-weight:400">(파일에서 자동 감지되면 생략 가능)</span></label>
+      <input type="text" id="call-phone" class="fi" placeholder="예: 010-1234-5678">
+    </div>
+    <div style="margin-bottom:12px">
+      <label class="fl">연결할 기존 고객 <span style="color:#aaa;font-weight:400">(선택 — 기존 고객카드에 추가할 경우)</span></label>
+      <select id="call-cust-sel" class="fi">
+        <option value="">신규 고객으로 등록</option>
+      </select>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button onclick="doCallAnalysis()" class="btn-p" id="call-analyze-btn" style="flex:1;background:#1565c0" disabled>📞 AI 통화 분석 시작</button>
+      <button onclick="resetCallTab()" class="btn-s">초기화</button>
+    </div>
+  </div>
+
+  <div id="call-loading" style="display:none;text-align:center;padding:2rem">
+    <div class="spin-el"></div>
+    <p id="call-load-txt" style="font-size:13px;color:#666;margin:8px 0 0">통화 내용 분석 중...</p>
+  </div>
+
+  <div id="call-result" style="display:none">
+    <!-- 분석 결과 요약 -->
+    <div class="card" style="border-color:#a5d6a7;background:#f9fdf9">
+      <p class="sec" style="color:#2e7d32;margin-bottom:10px">✅ 분석 완료 — 고객 정보 자동 추출</p>
+      <div id="call-summary" style="font-size:13px;line-height:1.9;white-space:pre-wrap;background:#fff;border:0.5px solid #e0e0e0;border-radius:8px;padding:12px;margin-bottom:12px"></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button onclick="applyCallResult()" class="btn-p" style="background:#2e7d32;flex:1">✅ 고객 카드에 적용</button>
+        <button onclick="doCallAnalysis()" class="btn-s">↺ 다시 분석</button>
+      </div>
+    </div>
+
+    <!-- 대화 원문 -->
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <p class="sec" style="margin:0">📄 통화 원문</p>
+        <button onclick="togCallRaw()" class="btn-s" style="font-size:11px" id="call-raw-btn">펼치기 ▼</button>
+      </div>
+      <div id="call-raw" style="display:none;max-height:300px;overflow-y:auto;font-size:12px;line-height:1.8;background:#f8f8f6;border-radius:8px;padding:12px;white-space:pre-wrap"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+var custs=[], editId=null;
+var PIPE_LABEL=['','📞 상담접수','🏠 물건확인','📝 계약협의','✅ 계약완료'];
+var PIPE_CLS=['','bdg-1','bdg-2','bdg-3','bdg-4'];
+
+// ── 태그 정의
+var TAG_INFO={
+  '가망고객':{cls:'tag-ga',icon:'🎯'},
+  '물건고객':{cls:'tag-mul',icon:'🏠'},
+  '계약고객':{cls:'tag-ct',icon:'📑'},
+  '기존고객':{cls:'tag-ex',icon:'⭐'}
+};
+
+function tagBadges(tags){
+  if(!tags||!tags.length)return'<span style="font-size:11px;color:#aaa">—</span>';
+  return tags.map(function(t){var ti=TAG_INFO[t]||{cls:'tag-ex',icon:''};return'<span class="'+ti.cls+'" style="margin-right:2px">'+ti.icon+' '+t+'</span>';}).join('');
+}
+
+// 기존 pipe 기반 고객 → tags 자동 마이그레이션
+function migrateTags(c){
+  if(c.tags&&c.tags.length)return c.tags;
+  if(c.pipe>=1&&c.pipe<=3)return['가망고객'];
+  if(c.pipe===4)return['계약고객'];
+  return['기존고객'];
+}
+
+async function toStore(){try{await window.storage.set('sd_custs',JSON.stringify(custs));}catch(e){}}
+async function fromStore(){try{var r=await window.storage.get('sd_custs');if(r&&r.value)custs=JSON.parse(r.value);}catch(e){custs=[];}}
+async function initAll(){await fromStore();await fromStoreTodo();sw(0);}
+fromStore().then(function(){sw(0);setToday();});
+
+function setToday(){var t=new Date(),ds=t.getFullYear()+'-'+String(t.getMonth()+1).padStart(2,'0')+'-'+String(t.getDate()).padStart(2,'0');document.getElementById('f-rdate').value=ds;document.getElementById('f-lastdate').value=ds;}
+
+function sw(n){
+  for(var i=0;i<=9;i++){
+    var tc=document.getElementById('tc'+i),tn=document.getElementById('tn'+i);
+    if(tc)tc.className='tc'+(i===n?' on':'');
+    if(tn){tn.style.borderBottomColor=i===n?'#1a1a1a':'transparent';tn.style.color=i===n?'#1a1a1a':'#666';tn.style.fontWeight=i===n?'500':'400';}
+  }
+  if(n===0)refreshHub();
+  if(n===2){rtbl();popStat();}
+  if(n===3)setFollowUp();
+  if(n===4)popAISel();
+  if(n===5)popPropoSel();
+  if(n===6)initMsg();
+  if(n===7)renderTodo();
+  if(n===8)renderAnni();
+  if(n===9)initCallTab();
+}
+
+function refreshHub(){
+  var now=new Date(),days=['일','월','화','수','목','금','토'];
+  document.getElementById('hub-date').textContent=now.getFullYear()+'년 '+(now.getMonth()+1)+'월 '+now.getDate()+'일 ('+days[now.getDay()]+'요일)';
+  var h=now.getHours();
+  document.getElementById('hub-greet').textContent=h<11?'☀️ 좋은 아침입니다, 소장님!':h<18?'🌇 오후도 화이팅입니다!':'🌆 오늘 하루도 수고 많으셨습니다!';
+  var cnt={total:0,가망고객:0,물건고객:0,계약고객:0,기존고객:0};
+  custs.forEach(function(c){
+    cnt.total++;
+    var tags=migrateTags(c);
+    tags.forEach(function(t){if(cnt[t]!==undefined)cnt[t]++;});
+  });
+  ['total','가망고객','물건고객','계약고객','기존고객'].forEach(function(k){
+    var el=document.getElementById('hc-'+{total:'total',가망고객:'ga',물건고객:'mul',계약고객:'ct',기존고객:'ex'}[k]);
+    if(el)el.textContent=cnt[k];
+  });
+  window.storage.get('sd_props').then(function(r){
+    var props=r&&r.value?JSON.parse(r.value):[];
+    var act=props.filter(function(p){return p.status==='활성';});
+    var done=props.filter(function(p){return p.status==='거래완료';});
+    var tm={};act.forEach(function(p){var k=p.propertyType.includes('아파트')?'아파트':p.propertyType.includes('오피스텔')?'오피스텔':p.propertyType.includes('상가')?'상가':'기타';tm[k]=(tm[k]||0)+1;});
+    var typeStr=Object.keys(tm).map(function(k){return k+' '+tm[k];}).join(' · ')||'—';
+    document.getElementById('hub-props').innerHTML=
+      '<div style="background:#f0f7ff;border:0.5px solid #bbdefb;border-radius:10px;padding:10px;text-align:center"><div class="stat-n" style="color:#1565c0">'+act.length+'</div><div class="stat-l">활성 매물</div></div>'+
+      '<div style="background:#f9f9f9;border:0.5px solid #e0e0e0;border-radius:10px;padding:10px;text-align:center"><div class="stat-n" style="color:#aaa">'+done.length+'</div><div class="stat-l">거래완료</div></div>'+
+      '<div style="background:#f9f9f9;border:0.5px solid #e0e0e0;border-radius:10px;padding:12px;text-align:center"><div style="font-size:12px;font-weight:500;color:#444;line-height:1.6">'+typeStr+'</div><div class="stat-l">활성 매물 종류</div></div>';
+  }).catch(function(){document.getElementById('hub-props').innerHTML='<div style="grid-column:span 3;font-size:12px;color:#aaa;padding:6px">매물관리 시스템 연동 없음</div>';});
+  window.storage.get('sd_contracts').then(function(r){
+    var cts=r&&r.value?JSON.parse(r.value):[];
+    var today=new Date();today.setHours(0,0,0,0);
+    var ov=0,d30=0,d60=0,d90=0;
+    cts.forEach(function(c){if(!c.expiry||['매매','분양권','권리'].includes(c.deal))return;var exp=new Date(c.expiry);exp.setHours(0,0,0,0);var diff=Math.floor((exp-today)/86400000);if(diff<-180)return;if(diff<0)ov++;else if(diff<=30)d30++;else if(diff<=60)d60++;else if(diff<=90)d90++;});
+    document.getElementById('hub-contracts').innerHTML=[{n:ov,l:'🔴 만기초과',c:'#c62828',bg:'#fce4ec'},{n:d30,l:'🔴 D-30 이내',c:'#e65100',bg:'#fff3e0'},{n:d60,l:'🟡 D-31~60',c:'#f57f17',bg:'#fffde7'},{n:d90,l:'🟢 D-61~90',c:'#2e7d32',bg:'#e8f5e9'}].map(function(s){return'<div style="background:'+s.bg+';border:0.5px solid #e0e0e0;border-radius:10px;padding:10px;text-align:center"><div class="stat-n" style="color:'+s.c+'">'+s.n+'</div><div class="stat-l">'+s.l+'</div></div>';}).join('');
+  }).catch(function(){document.getElementById('hub-contracts').innerHTML='<div style="grid-column:span 4;font-size:12px;color:#aaa;padding:6px">계약관리 시스템 연동 없음</div>';});
+  var today2=new Date();today2.setHours(0,0,0,0);
+  var fuList=custs.filter(function(c){
+    var tags=migrateTags(c);
+    var isActive=tags.indexOf('가망고객')>=0||tags.indexOf('물건고객')>=0;
+    if(!isActive||!c.lastdate)return false;
+    var d=new Date(c.lastdate);d.setHours(0,0,0,0);
+    return Math.floor((today2-d)/86400000)>3;
+  }).sort(function(a,b){return new Date(a.lastdate)-new Date(b.lastdate);}).slice(0,5);
+  document.getElementById('hub-fu').innerHTML=fuList.length?fuList.map(function(c){var diff=Math.floor((today2-new Date(c.lastdate))/86400000);return'<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:0.5px solid #f0f0f0"><div><span style="font-size:12px;font-weight:500">'+c.name+'</span><span style="font-size:10px;color:#aaa;margin-left:5px">'+(c.deal||'')+(c.area?' '+c.area:'')+'</span></div><span style="font-size:11px;font-weight:500;color:'+(diff>7?'#cc3333':'#f57f17')+'">'+diff+'일 전</span></div>';}).join('')+'<button onclick="sw(3)" style="margin-top:8px;width:100%;padding:7px;background:transparent;border:0.5px solid #e0e0e0;border-radius:8px;font-size:11px;color:#666;cursor:pointer">전체 보기 →</button>':'<p style="font-size:12px;color:#aaa;margin:4px 0">팔로업 필요 고객 없음 👍</p>';
+  document.getElementById('hub-recent').innerHTML=custs.slice(0,5).map(function(c){
+    var tags=migrateTags(c);
+    return'<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:0.5px solid #f0f0f0"><div><span style="font-size:12px;font-weight:500">'+c.name+'</span><span style="margin-left:5px">'+tagBadges(tags)+'</span></div><span style="font-size:10px;color:#aaa">'+(c.rdate||'')+'</span></div>';
+  }).join('')||'<p style="font-size:12px;color:#aaa;margin:4px 0">등록된 고객이 없습니다.</p>';
+}
+
+function selPipe(n){document.getElementById('f-pipe').value=n;var steps=document.getElementById('pipe-sel').children;for(var i=0;i<steps.length;i++)steps[i].className='pipe-step s'+(i+1)+(i+1===n?' on':'');}
+
+function onTagChange(){
+  var ga=document.getElementById('f-tag-ga').checked;
+  var mul=document.getElementById('f-tag-mul').checked;
+  var ct=document.getElementById('f-tag-ct').checked;
+  var ex=document.getElementById('f-tag-ex').checked;
+  document.getElementById('sec-ga').style.display=ga?'block':'none';
+  document.getElementById('sec-mul').style.display=mul?'block':'none';
+  document.getElementById('sec-ct').style.display=ct?'block':'none';
+  document.getElementById('sec-ex').style.display=ex?'block':'none';
+  document.getElementById('tag-warn').style.display=(!ga&&!mul&&!ct&&!ex)?'block':'none';
+}
+
+function getTags(){
+  var tags=[];
+  if(document.getElementById('f-tag-ga').checked)tags.push('가망고객');
+  if(document.getElementById('f-tag-mul').checked)tags.push('물건고객');
+  if(document.getElementById('f-tag-ct').checked)tags.push('계약고객');
+  if(document.getElementById('f-tag-ex').checked)tags.push('기존고객');
+  return tags;
+}
+
+function setTags(tags){
+  ['ga','mul','ct','ex'].forEach(function(k){document.getElementById('f-tag-'+k).checked=false;});
+  if(!tags)return;
+  if(tags.indexOf('가망고객')>=0)document.getElementById('f-tag-ga').checked=true;
+  if(tags.indexOf('물건고객')>=0)document.getElementById('f-tag-mul').checked=true;
+  if(tags.indexOf('계약고객')>=0)document.getElementById('f-tag-ct').checked=true;
+  if(tags.indexOf('기존고객')>=0)document.getElementById('f-tag-ex').checked=true;
+  onTagChange();
+}
+
+function saveCust(){
+  var nm=document.getElementById('f-name').value.trim();if(!nm){alert('고객 성명을 입력해 주세요.');return;}
+  var tags=getTags();
+  if(!tags.length){document.getElementById('tag-warn').style.display='block';alert('고객 유형을 하나 이상 선택해 주세요.');return;}
+  var now=new Date(),ds=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0');
+  var obj={
+    id:editId||Date.now(),
+    tags:tags,
+    pipe:tags.indexOf('가망고객')>=0?(parseInt(document.getElementById('f-pipe').value)||1):0,
+    name:nm,tel1:document.getElementById('f-tel1').value.trim(),tel2:document.getElementById('f-tel2').value.trim(),
+    rdate:document.getElementById('f-rdate').value,route:document.getElementById('f-route').value,
+    lastdate:document.getElementById('f-lastdate').value,lastmemo:document.getElementById('f-lastmemo').value.trim(),
+    consult:document.getElementById('f-consult').value.trim(),
+    regAt:editId?(custs.find(function(x){return x.id===editId;})||{}).regAt||ds:ds,
+    // 가망고객 필드
+    deal:document.getElementById('f-deal').value,ptype:document.getElementById('f-ptype').value,
+    area:document.getElementById('f-area').value,size:document.getElementById('f-size').value,
+    budget:document.getElementById('f-budget').value.trim(),cx:document.getElementById('f-cx').value.trim(),
+    cond:document.getElementById('f-cond').value.trim(),propmemo:document.getElementById('f-propmemo').value.trim(),
+    // 물건고객 필드
+    propDeal:document.getElementById('f-prop-deal').value,propPtype:document.getElementById('f-prop-ptype').value,
+    propCx:document.getElementById('f-prop-cx').value.trim(),propDong:document.getElementById('f-prop-dong').value.trim(),
+    propArea:document.getElementById('f-prop-area').value.trim(),propPrice:document.getElementById('f-prop-price').value.trim(),
+    propMemo:document.getElementById('f-prop-memo').value.trim(),
+    // 계약고객 필드
+    ctCx:document.getElementById('f-ct-cx').value.trim(),ctExpiry:document.getElementById('f-ct-expiry').value,
+    ctRenew:document.getElementById('f-ct-renew').value,ctIntro:document.getElementById('f-ct-intro').value,
+    // 기존고객 필드
+    exRel:document.getElementById('f-ex-rel').value,exIntro:document.getElementById('f-ex-intro').value
+  };
+  if(editId){var idx=custs.findIndex(function(x){return x.id===editId;});if(idx>=0)custs[idx]=obj;editId=null;document.getElementById('save-btn').textContent='💾 고객 저장';}
+  else custs.unshift(obj);
+  toStore();rtbl();popStat();popAISel();setFollowUp();refreshHub();
+  var ok=document.getElementById('save-ok');ok.textContent='고객 정보가 저장되었습니다! 👤';ok.style.display='block';setTimeout(function(){ok.style.display='none';},3000);clearF();
+}
+
+function clearF(){
+  ['f-name','f-tel1','f-tel2','f-budget','f-cx','f-cond','f-consult','f-lastmemo','f-propmemo',
+   'f-prop-cx','f-prop-dong','f-prop-area','f-prop-price','f-prop-memo','f-ct-cx','f-ct-expiry'].forEach(function(id){var el=document.getElementById(id);if(el)el.value='';});
+  ['f-route','f-deal','f-ptype','f-area','f-size','f-prop-deal','f-prop-ptype','f-ct-renew','f-ct-intro','f-ex-rel','f-ex-intro'].forEach(function(id){var el=document.getElementById(id);if(el)el.value='';});
+  ['f-tag-ga','f-tag-mul','f-tag-ct','f-tag-ex'].forEach(function(id){document.getElementById(id).checked=false;});
+  onTagChange();selPipe(1);setToday();editId=null;document.getElementById('save-btn').textContent='💾 고객 저장';
+}
+
+function rtbl(){
+  var tf=document.getElementById('ft-tag').value;
+  var df=document.getElementById('ft-deal').value;
+  var af=document.getElementById('ft-area').value;
+  var nf=(document.getElementById('ft-name')||{}).value||'';
+  var f=custs.filter(function(c){
+    var tags=migrateTags(c);
+    if(tf&&tags.indexOf(tf)<0)return false;
+    if(df&&c.deal!==df)return false;
+    if(af&&c.area!==af)return false;
+    if(nf&&c.name.indexOf(nf)<0)return false;
+    return true;
+  });
+  document.getElementById('tbl-cnt').textContent=f.length+'명';
+  var np=document.getElementById('no-cust'),tb=document.getElementById('tbdy');
+  if(!f.length){tb.innerHTML='';np.style.display='block';return;}
+  np.style.display='none';
+  tb.innerHTML=f.map(function(c,i){
+    var tags=migrateTags(c);
+    var daysAgo=c.lastdate?Math.floor((new Date()-new Date(c.lastdate))/86400000):-1;
+    var dTag=daysAgo>=0?'<span style="font-size:10px;color:'+(daysAgo>7?'#cc3333':daysAgo>3?'#f57f17':'#aaa')+'">'+(daysAgo===0?'오늘':daysAgo+'일 전')+'</span>':'';
+    // 거래·단지 정보
+    var dealInfo=[];
+    if(tags.indexOf('가망고객')>=0&&c.deal)dealInfo.push(c.deal+(c.ptype?' '+c.ptype:'')+(c.cx?' | '+c.cx:''));
+    if(tags.indexOf('물건고객')>=0&&c.propCx)dealInfo.push('의뢰: '+c.propCx+(c.propDeal?' '+c.propDeal:''));
+    if(tags.indexOf('계약고객')>=0&&c.ctCx)dealInfo.push('계약: '+c.ctCx);
+    var dealStr=dealInfo.join(' / ')||'—';
+    // 지역·예산
+    var locInfo=[(c.area||''),(c.budget||'')].filter(Boolean).join(' / ')||'—';
+    // 물건정보
+    var propStr=tags.indexOf('물건고객')>=0&&c.propCx?c.propCx+(c.propArea?' '+c.propArea:'')+(c.propPrice?' '+c.propPrice:''):'—';
+    return'<tr><td style="color:#aaa">'+(f.length-i)+'</td>'
+      +'<td>'+tagBadges(tags)+'</td>'
+      +'<td style="font-weight:500;white-space:nowrap">'+c.name+'</td>'
+      +'<td style="font-size:11px">'+(c.tel1||'—')+'</td>'
+      +'<td style="font-size:11px;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+dealStr+'</td>'
+      +'<td style="font-size:11px">'+locInfo+'</td>'
+      +'<td style="font-size:11px;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+propStr+'</td>'
+      +'<td style="font-size:11px">'+(c.rdate||'—')+'</td>'
+      +'<td style="font-size:11px">'+(c.route||'—')+'</td>'
+      +'<td style="font-size:11px;white-space:nowrap">'+(c.lastdate||'—')+' '+dTag+'</td>'
+      +'<td style="font-size:11px;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(c.lastmemo||'—')+'</td>'
+      +'<td style="white-space:nowrap"><button onclick="showDetail('+c.id+')" class="btn-s" style="font-size:11px;padding:4px 7px;margin-right:2px">상세</button><button onclick="editC('+c.id+')" class="btn-s" style="font-size:11px;padding:4px 7px;margin-right:2px">수정</button><button onclick="delC('+c.id+')" class="btn-d">삭제</button></td></tr>';
+  }).join('');
+}
+
+function popStat(){
+  var cnt={total:0,가망고객:0,물건고객:0,계약고객:0,기존고객:0};
+  custs.forEach(function(c){cnt.total++;migrateTags(c).forEach(function(t){if(cnt[t]!==undefined)cnt[t]++;});});
+  var labels=['전체','🎯 가망고객','🏠 물건고객','📑 계약고객','⭐ 기존고객'];
+  var colors=['#1a1a1a','#1565c0','#e65100','#2e7d32','#555'];
+  var keys=['total','가망고객','물건고객','계약고객','기존고객'];
+  document.getElementById('stat-row').innerHTML=keys.map(function(k,i){return'<div class="stat-box"><div class="stat-n" style="color:'+colors[i]+'">'+cnt[k]+'</div><div class="stat-l">'+labels[i]+'</div></div>';}).join('');
+}
+
+function popAISel(){
+  var act=custs.filter(function(c){var tags=migrateTags(c);return tags.indexOf('가망고객')>=0;});
+  document.getElementById('ai-sel').innerHTML='<option value="">— 가망고객을 선택하세요 —</option>'+act.map(function(c){return'<option value="'+c.id+'">🎯 '+c.name+' ('+(c.deal||'')+(c.ptype?' '+c.ptype:'')+' '+(c.area||'')+')</option>';}).join('');
+}
+
+function setFollowUp(){
+  var now=new Date();now.setHours(0,0,0,0);
+  var hot=[],warm=[];
+  custs.filter(function(c){
+    var tags=migrateTags(c);
+    return tags.indexOf('가망고객')>=0||tags.indexOf('물건고객')>=0;
+  }).forEach(function(c){
+    if(!c.lastdate)return;
+    var d=new Date(c.lastdate);d.setHours(0,0,0,0);
+    var diff=Math.floor((now-d)/86400000);
+    if(diff>7)hot.push({c:c,diff:diff});else if(diff>=4)warm.push({c:c,diff:diff});
+  });
+  hot.sort(function(a,b){return b.diff-a.diff;});warm.sort(function(a,b){return b.diff-a.diff;});
+  document.getElementById('fu-hot-cnt').textContent='('+hot.length+'명)';
+  document.getElementById('fu-warm-cnt').textContent='('+warm.length+'명)';
+  document.getElementById('fu-hot').innerHTML=hot.length?hot.map(function(x){return alertRow(x.c,x.diff,'hot');}).join(''):'<p style="font-size:13px;color:#aaa;margin:4px 0">없습니다 👍</p>';
+  document.getElementById('fu-warm').innerHTML=warm.length?warm.map(function(x){return alertRow(x.c,x.diff,'warm');}).join(''):'<p style="font-size:13px;color:#aaa;margin:4px 0">없습니다 👍</p>';
+}
+
+function alertRow(c,diff,type){
+  var tags=migrateTags(c);
+  return'<div class="alert-row alert-'+type+'"><span style="font-size:15px">'+(type==='hot'?'🔴':'🟡')+'</span><div style="flex:1"><span style="font-weight:500">'+c.name+'</span><span style="margin-left:6px">'+tagBadges(tags)+'</span><span style="margin-left:8px;font-size:11px;color:#aaa">'+(c.deal||'')+(c.area?' · '+c.area:'')+(c.propCx?' | '+c.propCx:'')+'</span></div><span style="font-size:11px;font-weight:500">'+diff+'일째 미연락</span><button onclick="editC('+c.id+');sw(1)" class="btn-s" style="font-size:11px;padding:4px 8px">수정</button></div>';
+}
+
+function showDetail(id){
+  var c=custs.find(function(x){return x.id===id;});if(!c)return;
+  var tags=migrateTags(c);
+  var lines=['[ 고객유형 ] '+tags.join(' + '),'[ 등록일 ] '+(c.rdate||'—')+'  |  접수경로: '+(c.route||'—'),'[ 연락처1 ] '+(c.tel1||'—')+(c.tel2?'  |  연락처2: '+c.tel2:''),''];
+  if(tags.indexOf('가망고객')>=0){
+    lines.push('── 가망고객 ──');
+    lines.push('[ 클로징단계 ] '+PIPE_LABEL[c.pipe||1]);
+    lines.push('[ 거래방식 ] '+(c.deal||'—')+'  |  물건종류: '+(c.ptype||'—'));
+    lines.push('[ 희망지역 ] '+(c.area||'—')+'  |  평형: '+(c.size||'—')+'  |  예산: '+(c.budget||'—'));
+    lines.push('[ 희망단지 ] '+(c.cx||'—'));
+    lines.push('[ 기타조건 ] '+(c.cond||'—'));
+    if(c.propmemo)lines.push('[ 추천매물 ] '+c.propmemo);
+    lines.push('');
+  }
+  if(tags.indexOf('물건고객')>=0){
+    lines.push('── 물건고객 ──');
+    lines.push('[ 물건 ] '+(c.propCx||'—')+(c.propDong?' '+c.propDong:'')+(c.propArea?' '+c.propArea:''));
+    lines.push('[ 거래구분 ] '+(c.propDeal||'—')+'  |  희망가: '+(c.propPrice||'—'));
+    if(c.propMemo)lines.push('[ 특이사항 ] '+c.propMemo);
+    lines.push('');
+  }
+  if(tags.indexOf('계약고객')>=0){
+    lines.push('── 계약고객 ──');
+    lines.push('[ 계약단지 ] '+(c.ctCx||'—')+'  |  만기일: '+(c.ctExpiry||'—'));
+    lines.push('[ 재계약 ] '+(c.ctRenew||'미확인')+'  |  소개가능성: '+(c.ctIntro||'미확인'));
+    lines.push('');
+  }
+  if(tags.indexOf('기존고객')>=0){
+    lines.push('── 기존고객 ──');
+    lines.push('[ 관계 ] '+(c.exRel||'—')+'  |  소개가능성: '+(c.exIntro||'미확인'));
+    lines.push('');
+  }
+  lines.push('[ 상담내용 ]');lines.push(c.consult||'(없음)');
+  lines.push('');lines.push('[ 최종연락 ] '+(c.lastdate||'—')+'  |  메모: '+(c.lastmemo||'—'));
+  document.getElementById('dp-title').textContent='👤 '+c.name+' 고객 상세';
+  document.getElementById('dp-body').textContent=lines.join('\n');
+  document.getElementById('detail-panel').style.display='block';
+}
+
+function editC(id){
+  var c=custs.find(function(x){return x.id===id;});if(!c)return;
+  editId=id;sw(1);
+  var tags=migrateTags(c);setTags(tags);
+  selPipe(c.pipe||1);
+  ['name','tel1','tel2','budget','cx','cond','consult','lastmemo','propmemo'].forEach(function(k){var el=document.getElementById('f-'+k);if(el)el.value=c[k]||'';});
+  ['rdate','route','deal','ptype','area','size','lastdate'].forEach(function(k){var el=document.getElementById('f-'+k);if(el)el.value=c[k]||'';});
+  var propMap={propDeal:'f-prop-deal',propPtype:'f-prop-ptype',propCx:'f-prop-cx',propDong:'f-prop-dong',propArea:'f-prop-area',propPrice:'f-prop-price',propMemo:'f-prop-memo',ctCx:'f-ct-cx',ctExpiry:'f-ct-expiry',ctRenew:'f-ct-renew',ctIntro:'f-ct-intro',exRel:'f-ex-rel',exIntro:'f-ex-intro'};
+  Object.keys(propMap).forEach(function(k){var el=document.getElementById(propMap[k]);if(el)el.value=c[k]||'';});
+  document.getElementById('save-btn').textContent='💾 수정 저장';
+}
+
+function advPipe(id){var c=custs.find(function(x){return x.id===id;});if(!c)return;if(c.pipe>=3){alert('이미 최종 클로징 단계입니다.');return;}c.pipe++;toStore();rtbl();popStat();}
+function delC(id){if(!confirm('이 고객을 삭제하시겠습니까?'))return;custs=custs.filter(function(c){return c.id!==id;});toStore();rtbl();popStat();popAISel();setFollowUp();}
+
+function exportXL(){
+  if(!window.XLSX){alert('엑셀 라이브러리 준비 중입니다.');return;}
+  var tf=document.getElementById('ft-tag').value,df=document.getElementById('ft-deal').value,af=document.getElementById('ft-area').value;
+  var f=custs.filter(function(c){
+    var tags=migrateTags(c);
+    return(!tf||tags.indexOf(tf)>=0)&&(!df||c.deal===df)&&(!af||c.area===af);
+  });
+  if(!f.length){alert('내보낼 고객이 없습니다.');return;}
+  var data=f.map(function(c,i){
+    var tags=migrateTags(c);
+    return{'번호':f.length-i,'고객유형':tags.join('+'),'클로징단계':tags.indexOf('가망고객')>=0?(PIPE_LABEL[c.pipe||1].replace(/[📞🏠📝✅]\s*/g,'')):'—','성명':c.name,'연락처1':c.tel1||'','거래방식':c.deal||'','물건종류':c.ptype||'','희망지역':c.area||'','예산':c.budget||'','희망단지':c.cx||'','물건단지':c.propCx||'','물건가격':c.propPrice||'','계약단지':c.ctCx||'','만기일':c.ctExpiry||'','상담내용':c.consult||'','등록일':c.rdate||'','최종연락':c.lastdate||'','최종메모':c.lastmemo||''};
+  });
+  var ws=XLSX.utils.json_to_sheet(data);ws['!cols']=[4,14,10,12,14,8,8,8,10,16,16,12,16,10,40,10,10,25].map(function(w){return{wch:w};});
+  var wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'고객목록');
+  XLSX.writeFile(wb,'송도제일_고객목록_'+new Date().getFullYear()+String(new Date().getMonth()+1).padStart(2,'0')+String(new Date().getDate()).padStart(2,'0')+'.xlsx');
+}
+
+function genMatch(){
+  var id=document.getElementById('ai-sel').value;if(!id){alert('고객을 선택해 주세요.');return;}
+  var c=custs.find(function(x){return String(x.id)===String(id);});if(!c)return;
+  var ext=document.getElementById('ai-ext').value.trim();
+  document.getElementById('ai-res').style.display='none';document.getElementById('ai-load').style.display='block';document.getElementById('ai-ltxt').textContent='고객 니즈 분석 중...';
+  var propsStr='(매물관리 시스템 연동 없음)';
+  window.storage.get('sd_props').then(function(r){
+    var props=r&&r.value?JSON.parse(r.value):[];
+    var active=props.filter(function(p){return p.status==='활성';}).slice(0,15);
+    if(active.length)propsStr='활성 매물 ('+active.length+'건):\n'+active.map(function(p,i){return(i+1)+'. ['+p.propertyType+'] '+p.complexName+(p.unitInfo?' '+p.unitInfo:'')+' | '+(p.areaInfo||'?')+' | '+(p.pm||p.tot||'?')+(p.ps?' / 보증금:'+p.ps:'')+' | 입주:'+(p.moveIn||'협의')+(p.memo?' | '+p.memo:'');}).join('\n');
+    callMatchAPI(c,ext,propsStr);
+  }).catch(function(){callMatchAPI(c,ext,propsStr);});
+}
+
+function callMatchAPI(c,ext,propsStr){
+  var tags=migrateTags(c);
+  var now=new Date(),ds=now.getFullYear()+'년 '+(now.getMonth()+1)+'월 '+now.getDate()+'일';
+  var custInfo='성명: '+c.name+' | 유형: '+tags.join('+')+'\n';
+  if(tags.indexOf('가망고객')>=0){
+    custInfo+='[ 가망고객 ] 거래: '+(c.deal||'—')+' | 종류: '+(c.ptype||'—')+' | 지역: '+(c.area||'—')+'\n';
+    custInfo+='평형: '+(c.size||'—')+' | 예산: '+(c.budget||'—')+' | 희망단지: '+(c.cx||'없음')+'\n';
+    custInfo+='기타조건: '+(c.cond||'없음')+'\n';
+    if(c.propmemo)custInfo+='추천매물 이력: '+c.propmemo+'\n';
+  }
+  if(tags.indexOf('물건고객')>=0){
+    custInfo+='[ 물건고객 ] 단지: '+(c.propCx||'—')+' | 거래: '+(c.propDeal||'—')+' | 가격: '+(c.propPrice||'—')+'\n';
+  }
+  custInfo+='상담내용: '+(c.consult||'없음')+'\n최종메모: '+(c.lastmemo||'없음')+(ext?'\n추가사항: '+ext:'');
+  var prompt='당신은 인천 연수구 송도국제도시 전문 공인중개사(송도제일공인중개사사무소)입니다.\n\n[고객 정보]\n'+custInfo+'\n\n[보유 매물]\n'+propsStr+'\n\n■ 1. 고객 니즈 요약 (핵심 3줄)\n■ 2. 추천 매물 (상위 3건) — 추천 이유 / 예상 반응 / 어필 포인트\n■ 3. 상담 전략 2~3가지\n■ 4. 다음 연락 문자/카톡 템플릿 (30~50자)\n\n실무에 바로 쓸 수 있게. 600~900자. 작성일: '+ds;
+  fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:2000,tools:[{type:'web_search_20250305',name:'web_search'}],messages:[{role:'user',content:prompt}]})})
+  .then(function(r){document.getElementById('ai-ltxt').textContent='분석 결과를 작성하고 있습니다...';return r.json();})
+  .then(function(d){document.getElementById('ai-load').style.display='none';var txt=d.content.filter(function(b){return b.type==='text';}).map(function(b){return b.text;}).join('\n').trim();document.getElementById('ai-txt').value=txt;document.getElementById('ai-res').style.display='block';})
+  .catch(function(e){document.getElementById('ai-load').style.display='none';alert('오류: '+e.message);});
+}
+
+function reMatch(){document.getElementById('ai-res').style.display='none';genMatch();}
+function cpTxt(e,id){navigator.clipboard.writeText(document.getElementById(id).value).then(function(){var b=e.target,o=b.textContent;b.textContent='복사됨!';b.style.color='#2e7d32';setTimeout(function(){b.textContent=o;b.style.color='';},2000);});}
+
+// ───── 탭5: 맞춤 제안서 ─────
+var propo_naverData=[], propo_jgData=[];
+
+function popPropoSel(){
+  document.getElementById('pr-cust').innerHTML='<option value="">— 선택 안 함 —</option>'+custs.map(function(c){return'<option value="'+c.id+'">'+c.name+(c.deal?' ('+c.deal+')':'')+'</option>';}).join('');
+}
+
+function readXLFile(file,cb){
+  var reader=new FileReader();
+  reader.onload=function(e){cb(XLSX.read(new Uint8Array(e.target.result),{type:'array'}));};
+  reader.readAsArrayBuffer(file);
+}
+
+function parseNaverXL(wb,complexName,dealType){
+  var results=[],cnLow=complexName.toLowerCase().replace(/\s/g,'').replace(/[()(）（)\[\]]/g,'');
+  var DEAL_SHEETS=['매매','전세','월세'];
+  wb.SheetNames.forEach(function(sh){
+    var rows=XLSX.utils.sheet_to_json(wb.Sheets[sh],{header:1,defval:''});
+    if(rows.length<2)return;
+    var isSingle=DEAL_SHEETS.includes(sh);
+    if(isSingle){
+      if(dealType&&sh!==dealType)return;
+      rows.slice(1).forEach(function(r){
+        var rc=String(r[0]||'').toLowerCase().replace(/\s/g,'').replace(/[()(）（)\[\]]/g,'');
+        if(!rc.includes(cnLow)&&!cnLow.includes(rc))return;
+        results.push({단지명:r[0],거래구분:r[1]||sh,타입:r[2],가격:r[3],동:r[4],층총층:r[5],방향:r[6],주요정보:r[7],중개업소:r[8],확인날짜:r[9],중복수:r[10],자사:r[11]});
+      });
+    } else {
+      var shLow=sh.toLowerCase().replace(/\s/g,'').replace(/[()(）（)\[\]]/g,'');
+      if(!shLow.includes(cnLow)&&!cnLow.includes(shLow))return;
+      rows.slice(1).forEach(function(r){
+        if(dealType&&String(r[1]||'')!==dealType)return;
+        results.push({단지명:r[0]||sh,거래구분:r[1],타입:r[2],가격:r[3],동:r[4],층총층:r[5],방향:r[6],주요정보:r[7],중개업소:r[8],확인날짜:r[9],중복수:r[10],자사:r[11]});
+      });
+    }
+  });
+  return results;
+}
+
+function parseJeongeoXL(wb,complexName,months){
+  var results=[],cnLow=complexName.toLowerCase().replace(/\s/g,'');
+  var cut=new Date();cut.setMonth(cut.getMonth()-months);
+  var cutYM=cut.getFullYear()*100+(cut.getMonth()+1);
+  wb.SheetNames.forEach(function(sh){
+    if(!/^매매\d{4}D$/.test(sh))return;
+    var rows=XLSX.utils.sheet_to_json(wb.Sheets[sh],{header:1,defval:''});
+    rows.slice(1).forEach(function(r){
+      var rc=String(r[5]||'').toLowerCase().replace(/\s/g,'');
+      if(!rc.includes(cnLow)&&!cnLow.includes(rc))return;
+      var ym=parseInt(r[10])||0;
+      if(ym<cutYM)return;
+      results.push({단지명:r[5],공구:r[4],전용:r[6],분양:r[7],분양평형:r[8],면적구분:r[9],계약년월:r[10],계약일:r[11],거래금액:r[12],평당가:r[13],동:r[14],층:r[15],건축년도:r[16]});
+    });
+  });
+  return results.sort(function(a,b){return b.계약년월-a.계약년월;});
+}
+
+function onNaverUpload(e){
+  var file=e.target.files[0];if(!file)return;
+  var cx=document.getElementById('pr-cx').value.trim();
+  var deal=document.getElementById('pr-deal').value;
+  var st=document.getElementById('naver-status');
+  st.textContent='파싱 중...';st.style.color='#f57f17';
+  readXLFile(file,function(wb){
+    propo_naverData=parseNaverXL(wb,cx,deal);
+    var own=propo_naverData.filter(function(r){return r.자사&&String(r.자사).trim()!==''&&String(r.자사).trim()!=='NaN';}).length;
+    st.textContent='✅ '+propo_naverData.length+'건 파싱 완료'+(own?' (자사매물 '+own+'건)':'');
+    st.style.color='#2e7d32';
+  });
+}
+
+function onJeongeoUpload(e){
+  var file=e.target.files[0];if(!file)return;
+  var cx=document.getElementById('pr-cx').value.trim();
+  var months=parseInt(document.getElementById('pr-months').value)||3;
+  var st=document.getElementById('jg-status');
+  st.textContent='파싱 중...';st.style.color='#f57f17';
+  readXLFile(file,function(wb){
+    propo_jgData=parseJeongeoXL(wb,cx,months);
+    st.textContent='✅ '+propo_jgData.length+'건 파싱 완료 (최근 '+months+'개월)';
+    st.style.color='#2e7d32';
+  });
+}
+
+function genProposal(){
+  var cx=document.getElementById('pr-cx').value.trim();
+  if(!cx){alert('추천 단지명을 입력해 주세요.');return;}
+  var custId=document.getElementById('pr-cust').value;
+  var cust=custId?custs.find(function(c){return String(c.id)===String(custId);}):null;
+  var area=document.getElementById('pr-area').value.trim();
+  var atype=document.getElementById('pr-atype').value;
+  var deal=document.getElementById('pr-deal').value;
+  var months=document.getElementById('pr-months').value;
+  var extra=document.getElementById('pr-extra').value.trim();
+  var now=new Date(),ds=now.getFullYear()+'년 '+(now.getMonth()+1)+'월 '+now.getDate()+'일';
+
+  var naverTxt=propo_naverData.length>0
+    ?propo_naverData.slice(0,25).map(function(r,i){
+        var isOwn=r.자사&&String(r.자사).trim()!==''&&String(r.자사).trim()!=='NaN';
+        return(isOwn?'★자사 ':'      ')+(i+1)+'. ['+r.타입+'] '+r.가격+' | '+r.동+' '+r.층총층+' '+r.방향+' | '+r.중개업소+(r.주요정보?' | '+String(r.주요정보).slice(0,45):'');
+      }).join('\n')
+    :'(업로드 없음 — 웹검색으로 네이버 매물 정보 수집)';
+
+  var jgTxt=propo_jgData.length>0
+    ?propo_jgData.slice(0,20).map(function(r){
+        return r.계약년월+'  전용'+r.전용+'㎡('+r.분양평형+'평)  '+Number(r.거래금액).toLocaleString()+'만원  '+r.층+'층  평당'+r.평당가+'만원';
+      }).join('\n')
+    :'(업로드 없음 — 웹검색으로 최근 실거래가 수집)';
+
+  var custInfo=cust
+    ?'고객명: '+cust.name+' | 거래방식: '+(cust.deal||'미입력')+' | 평형희망: '+(cust.size||'미입력')+' | 예산: '+(cust.budget||'미입력')+'\n희망단지: '+(cust.cx||'미입력')+' | 기타조건: '+(cust.cond||'없음')+'\n상담내용: '+(cust.consult||'없음')
+    :'(고객 미선택)';
+
+  var prompt='당신은 인천 연수구 송도국제도시 송도제일공인중개사사무소의 부동산 전문가입니다.\n'
+    +'웹검색으로 ['+cx+'] 단지의 실제 정보(세대수, 준공년도, 구조, 교통, 학군, 생활인프라, 조망)를 수집한 뒤, 아래 정보를 종합하여 고객 맞춤형 매물 제안서를 작성하세요.\n\n'
+    +'[작성일] '+ds+'\n'
+    +'[추천 단지] '+cx+'\n'
+    +'[분석 면적형] '+(area?area+(atype==='전용'?'㎡(전용)':'평(분양)'):'미입력')+' | [거래방식] '+deal+' | [분석 기간] 최근 '+months+'개월\n\n'
+    +'[고객 정보]\n'+custInfo+(extra?'\n추가사항: '+extra:'')+' \n\n'
+    +'[네이버 현재 매물 (★=자사매물 우선 추천)]\n'+naverTxt+'\n\n'
+    +'[최근 실거래가 데이터]\n'+jgTxt+'\n\n'
+    +'━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n'
+    +'아래 형식으로 A4 1~3장 분량의 전문 제안서를 작성하세요:\n\n'
+    +'      고객 맞춤 매물 제안서\n'
+    +'━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n'
+    +'작성일: '+ds+'\n'
+    +'담당: 송도제일공인중개사사무소  문형은 대표  ☎ 010-6401-9345\n\n'
+    +'■ 1. 추천 단지 개요\n'
+    +'   1-1. 기본 정보 — 단지명·위치(공구)·세대수·준공·시공사·구조·주차·난방\n'
+    +'   1-2. 고객 조건 매칭 — ✅부합 / ⚠️주의 / ℹ️참고 항목 나열\n\n'
+    +'■ 2. 최근 실거래가 요약 (최근 '+months+'개월)\n'
+    +'   거래 건수·가격 범위(최저~최고)·평균가·평균 평당가·거래 동향 코멘트\n'
+    +'   표 형식으로 정리 (계약년월 / 거래금액 / 층 / 평당가)\n\n'
+    +'■ 3. 현재 추천 매물 리스트\n'
+    +'   ★ 자사 매물 최우선 표기 후 네이버 매물 정리\n'
+    +'   가격 / 타입 / 동 / 층·향 / 중개업소 / 핵심 특징\n'
+    +'   실거래가 대비 호가 갭 한 줄 분석\n\n'
+    +'■ 4. 전문가 종합 의견\n'
+    +'   현재 시장 진단 (매수자/매도자 우위) + 적정가 범위 제안\n'
+    +'   고객 맞춤 핵심 조언 2~3줄\n\n'
+    +'━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n'
+    +'※ 본 제안서는 공공데이터 및 네이버 매물 정보를 기반으로 작성되었으며,\n'
+    +'   투자 판단의 참고 자료로만 활용하시기 바랍니다.\n'
+    +'   송도제일공인중개사사무소  ☎ 010-6401-9345 / 032-851-6688\n'
+    +'   📍 연수구 해돋이로 168, 1층 103호(혜인프라자)\n'
+    +'━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n'
+    +'[금액 표기] 1억 이상: X억 Y만원 / 평당가: 만원/평 단위\n'
+    +'아파트 평당가: 분양면적 기준 / 오피스텔: 전용면적 기준\n'
+    +'추정 정보는 반드시 "약" 또는 "(추정)" 표기. 객관적·전문적 톤 유지.';
+
+  document.getElementById('pr-load').style.display='block';
+  document.getElementById('pr-ltxt').textContent='단지 정보를 검색하고 있습니다...';
+  document.getElementById('pr-res').style.display='none';
+
+  fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:4000,
+      tools:[{type:'web_search_20250305',name:'web_search'}],
+      messages:[{role:'user',content:prompt}]})
+  })
+  .then(function(r){document.getElementById('pr-ltxt').textContent='제안서를 작성하고 있습니다...';return r.json();})
+  .then(function(d){
+    document.getElementById('pr-load').style.display='none';
+    var txt=d.content.filter(function(b){return b.type==='text';}).map(function(b){return b.text;}).join('\n').trim();
+    document.getElementById('pr-output').value=txt;
+    document.getElementById('pr-res').style.display='block';
+  })
+  .catch(function(e){document.getElementById('pr-load').style.display='none';alert('오류: '+e.message);});
+}
+
+function printProposal(){
+  var txt=document.getElementById('pr-output').value;
+  var w=window.open('','_blank');
+  w.document.write('<html><head><meta charset="UTF-8"><title>맞춤 제안서</title>'
+    +'<style>body{font-family:"Malgun Gothic",AppleGothic,sans-serif;font-size:13px;line-height:2;padding:2cm;max-width:21cm;margin:0 auto;color:#1a1a1a}'
+    +'pre{white-space:pre-wrap;word-break:break-all;font-family:inherit}'
+    +'@media print{@page{margin:1.5cm 2cm}body{padding:0}}</style>'
+    +'</head><body><pre>'+txt.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')+'</pre>'
+    +'<script>window.onload=function(){window.print();}<\/script>'
+    +'</body></html>');
+  w.document.close();
+}
+
+function clearProposal(){
+  document.getElementById('pr-cust').value='';
+  document.getElementById('pr-cx').value='';
+  document.getElementById('pr-area').value='';
+  document.getElementById('pr-atype').value='전용';
+  document.getElementById('pr-deal').value='매매';
+  document.getElementById('pr-months').value='3';
+  document.getElementById('pr-extra').value='';
+  document.getElementById('pr-naver-file').value='';
+  document.getElementById('pr-jg-file').value='';
+  document.getElementById('naver-status').textContent='파일을 업로드하세요';
+  document.getElementById('naver-status').style.color='#aaa';
+  document.getElementById('jg-status').textContent='파일을 업로드하세요 (선택)';
+  document.getElementById('jg-status').style.color='#aaa';
+  document.getElementById('pr-res').style.display='none';
+  propo_naverData=[];propo_jgData=[];
+}
+
+// ═══════════════════════════════════════════════
+// TAB6 — 메시지 발송
+// ═══════════════════════════════════════════════
+var msgType='명절';
+var msgTargets=[];
+
+function setMsgType(t){
+  msgType=t;
+  var btns=['명절','급매','시세','신규','안부','기타'];
+  var colors={'명절':'#fff8e1','급매':'#fce4ec','시세':'#e3f2fd','신규':'#e8f5e9','안부':'#f3e5f5','기타':'#f5f5f3'};
+  var bcolors={'명절':'#ffe082','급매':'#f48fb1','시세':'#90caf9','신규':'#a5d6a7','안부':'#ce93d8','기타':'#e0e0e0'};
+  var tcolors={'명절':'#f57f17','급매':'#c62828','시세':'#1565c0','신규':'#2e7d32','안부':'#7b1fa2','기타':'#555'};
+  btns.forEach(function(b){
+    var el=document.getElementById('mtype-'+b);if(!el)return;
+    if(b===t){el.style.background=colors[b];el.style.borderColor=bcolors[b];el.style.color=tcolors[b];}
+    else{el.style.background='#fff';el.style.borderColor='#e0e0e0';el.style.color='#555';}
+  });
+}
+
+function initMsg(){filterMsgTargets();}
+
+function filterMsgTargets(){
+  var tf=document.getElementById('msg-filter-tag').value;
+  var df=document.getElementById('msg-filter-deal').value;
+  var gf=document.getElementById('msg-filter-grade').value;
+  msgTargets=custs.filter(function(c){
+    var tags=migrateTags(c);
+    return(!tf||tags.indexOf(tf)>=0)&&(!df||c.deal===df)&&(!gf||c.grade===gf)&&c.tel1;
+  });
+  var el=document.getElementById('msg-target-list');
+  el.innerHTML='<table class="tbl"><tbody>'+msgTargets.map(function(c,i){
+    var tags=migrateTags(c);
+    return'<tr><td style="width:36px;text-align:center"><input type="checkbox" class="mchk" data-i="'+i+'" checked></td>'
+      +'<td style="font-size:12px;font-weight:500">'+c.name+'</td>'
+      +'<td style="font-size:11px;color:#666">'+(c.tel1||'')+'</td>'
+      +'<td>'+tagBadges(tags)+'</td>'
+      +'<td style="font-size:11px">'+(c.deal||'—')+'</td></tr>';
+  }).join('')+'</tbody></table>';
+  document.getElementById('msg-sel-cnt').textContent=msgTargets.length+'명';
+}
+
+function selAllMsg(v){document.querySelectorAll('.mchk').forEach(function(c){c.checked=!!v;});}
+
+function genMsgText(){
+  var selected=[].slice.call(document.querySelectorAll('.mchk:checked')).map(function(c){return msgTargets[parseInt(c.getAttribute('data-i'))];}).filter(Boolean);
+  if(!selected.length){alert('발송 대상 고객을 선택해 주세요.');return;}
+  var content=document.getElementById('msg-content').value.trim();
+  var typeMap={'명절':'명절 인사 (설날/추석 등 따뜻한 안부)','급매':'급매 물건 알림 (긴박감, 빠른 결정 유도)','시세':'시세 변동 정보 전달 (전문성 강조)','신규':'신규 매물 소개 (선점 기회 강조)','안부':'안부 인사 (자연스럽게 관계 유지)','기타':'일반 안내 문자'};
+  var names=selected.map(function(c){return c.name;}).join(', ');
+  var prompt='당신은 송도제일공인중개사사무소 문형은 대표입니다. 고객에게 보낼 카카오톡/문자 메시지를 작성해주세요.\n\n[메시지 유형] '+msgType+' — '+typeMap[msgType]+'\n[발송 대상] '+selected.length+'명 ('+names+')\n'+(content?'[전달 내용] '+content+'\n':'')+'\n[작성 규칙]\n- 길이: 200~350자\n- 어투: 따뜻하고 친근하게, 존댓말\n- 이모지 적절히 사용\n- 개인 이름 대신 고객님으로 통일\n- 마지막: 📌 송도제일공인중개사사무소 / 📞 010-6401-9345 / 🌐 www.songdojeil.com\n메시지 본문만 출력하세요.';
+  document.getElementById('msg-load').style.display='block';
+  document.getElementById('msg-res').style.display='none';
+  fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:800,messages:[{role:'user',content:prompt}]})
+  }).then(function(r){return r.json();}).then(function(d){
+    document.getElementById('msg-load').style.display='none';
+    var txt=d.content.filter(function(b){return b.type==='text';}).map(function(b){return b.text;}).join('').trim();
+    document.getElementById('msg-txt').value=txt;
+    document.getElementById('msg-res').style.display='block';
+    document.getElementById('msg-send-cnt').textContent=selected.length+'명';
+    document.getElementById('msg-send-names').innerHTML=selected.map(function(c){
+      return'<span style="display:inline-block;padding:2px 8px;background:#fff;border:0.5px solid #e0e0e0;border-radius:6px;margin:2px">'+c.name+' '+c.tel1+'</span>';
+    }).join('');
+  }).catch(function(e){document.getElementById('msg-load').style.display='none';alert('오류: '+e.message);});
+}
+
+function cpMsgTxt(){
+  navigator.clipboard.writeText(document.getElementById('msg-txt').value).then(function(){
+    var b=document.getElementById('msg-copy-btn'),o=b.textContent;
+    b.textContent='✅ 복사됨!';b.style.background='#2e7d32';b.style.color='#fff';
+    setTimeout(function(){b.textContent=o;b.style.background='#fee500';b.style.color='#1a1a1a';},2500);
+  });
+}
+
+// ═══════════════════════════════════════════════
+// TAB7 — 약속·할일
+// ═══════════════════════════════════════════════
+var todos=[];
+
+async function toStoreTodo(){try{await window.storage.set('sd_todos',JSON.stringify(todos));}catch(e){}}
+async function fromStoreTodo(){try{var r=await window.storage.get('sd_todos');if(r&&r.value)todos=JSON.parse(r.value);}catch(e){todos=[];}}
+
+function popTodoCusts(){
+  var sel=document.getElementById('todo-cust');if(!sel)return;
+  sel.innerHTML='<option value="">— 고객 없음 (일반 할일) —</option>'
+    +custs.map(function(c){return'<option value="'+c.id+'">'+c.name+(c.tel1?' ('+c.tel1+')':'')+'</option>';}).join('');
+}
+
+function addTodo(){
+  var title=document.getElementById('todo-title').value.trim();
+  if(!title){alert('내용을 입력해 주세요.');return;}
+  var now=new Date(),ds=now.toISOString();
+  var todo={
+    id:Date.now(),
+    custId:document.getElementById('todo-cust').value||'',
+    custName:'',
+    type:document.getElementById('todo-type').value,
+    title:title,
+    date:document.getElementById('todo-date').value,
+    priority:document.getElementById('todo-priority').value,
+    memo:document.getElementById('todo-memo').value.trim(),
+    done:false,
+    createdAt:ds
+  };
+  var cust=custs.find(function(c){return String(c.id)===String(todo.custId);});
+  if(cust)todo.custName=cust.name;
+  todos.unshift(todo);
+  toStoreTodo();renderTodo();
+  document.getElementById('todo-title').value='';
+  document.getElementById('todo-memo').value='';
+  document.getElementById('todo-date').value='';
+}
+
+function renderTodo(){
+  popTodoCusts();
+  var f=document.getElementById('todo-filter').value;
+  var today=new Date();today.setHours(0,0,0,0);
+  var week=new Date(today);week.setDate(week.getDate()+7);
+  var filtered=todos.filter(function(t){
+    if(f==='today'){if(!t.date)return false;var d=new Date(t.date);d.setHours(0,0,0,0);return d.getTime()===today.getTime();}
+    if(f==='week'){if(!t.date)return false;var d=new Date(t.date);return d>=today&&d<=week;}
+    if(f==='pending')return!t.done;
+    if(f==='done')return t.done;
+    return true;
+  });
+  document.getElementById('todo-cnt').textContent=filtered.length+'건';
+  var pColor={'high':'#fce4ec','mid':'#fff8e1','low':'#e8f5e9'};
+  var pBorder={'high':'#f48fb1','mid':'#ffe082','low':'#a5d6a7'};
+  var pLabel={'high':'🔴 긴급','mid':'🟡 보통','low':'🟢 여유'};
+  document.getElementById('todo-list').innerHTML=filtered.length?filtered.map(function(t){
+    var dateStr=t.date?new Date(t.date).toLocaleString('ko-KR',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}):'날짜 미설정';
+    var isOver=t.date&&!t.done&&new Date(t.date)<new Date();
+    return'<div style="display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border:0.5px solid '+(isOver?'#f48fb1':pBorder[t.priority||'mid'])+';border-radius:10px;margin-bottom:6px;background:'+(t.done?'#f9f9f9':pColor[t.priority||'mid'])+(isOver?';border-left:3px solid #c62828':'')+'">'
+      +'<input type="checkbox" '+(t.done?'checked':'')+' onclick="togTodo('+t.id+')" style="margin-top:3px;cursor:pointer">'
+      +'<div style="flex:1">'
+      +'<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:4px">'
+      +'<span style="font-size:13px;font-weight:500;'+(t.done?'text-decoration:line-through;color:#aaa':'')+'">'+(t.type||'')+" "+t.title+'</span>'
+      +'<span style="font-size:11px;color:'+(isOver?'#c62828':'#888')+'">'+dateStr+(isOver?' ⚠️ 지남':'')+'</span></div>'
+      +(t.custName?'<span style="font-size:11px;color:#1565c0;background:#e3f2fd;padding:1px 7px;border-radius:6px">👤 '+t.custName+'</span>':'')
+      +(t.memo?'<p style="font-size:11px;color:#888;margin:3px 0 0">'+t.memo+'</p>':'')
+      +'</div>'
+      +'<button onclick="delTodo('+t.id+')" class="btn-d" style="font-size:10px;padding:2px 6px">삭제</button>'
+      +'</div>';
+  }).join(''):'<p style="text-align:center;color:#aaa;padding:2rem;font-size:13px">할일이 없습니다 👍</p>';
+}
+
+function togTodo(id){
+  var t=todos.find(function(x){return x.id===id;});
+  if(t){t.done=!t.done;toStoreTodo();renderTodo();}
+}
+function delTodo(id){
+  todos=todos.filter(function(x){return x.id!==id;});
+  toStoreTodo();renderTodo();
+}
+
+// ═══════════════════════════════════════════════
+// TAB8 — 기념일 관리 & 등급
+// ═══════════════════════════════════════════════
+function saveGrade(id){
+  var c=custs.find(function(x){return String(x.id)===String(id);});if(!c)return;
+  c.grade=document.getElementById('grade-'+id).value;
+  c.birthday=document.getElementById('bday-'+id).value;
+  c.contractAnni=document.getElementById('canni-'+id).value;
+  toStore();
+  var b=document.getElementById('gbtn-'+id);
+  b.textContent='✅';b.style.color='#2e7d32';
+  setTimeout(function(){b.textContent='저장';b.style.color='';},1500);
+  renderAnni();
+}
+
+function renderAnni(){
+  // 등급 테이블
+  var tbody=document.getElementById('grade-tbody');
+  tbody.innerHTML=custs.map(function(c){
+    return'<tr>'
+      +'<td style="font-weight:500;font-size:12px">'+c.name+'</td>'
+      +'<td style="font-size:11px;color:#666">'+(c.tel1||'—')+'</td>'
+      +'<td style="font-size:11px">'+tagBadges(migrateTags(c))+'</td>'
+      +'<td><select id="grade-'+c.id+'" class="fi" style="font-size:11px;padding:3px 6px">'
+      +'<option'+(c.grade==='VIP'?' selected':'')+'  value="VIP">⭐ VIP</option>'
+      +'<option'+((!c.grade||c.grade==='일반')?' selected':'')+' value="일반">일반</option>'
+      +'<option'+(c.grade==='잠재'?' selected':'')+' value="잠재">잠재</option>'
+      +'</select></td>'
+      +'<td><input id="bday-'+c.id+'" type="date" value="'+(c.birthday||'')+'" class="fi" style="font-size:11px;padding:3px 6px"></td>'
+      +'<td><input id="canni-'+c.id+'" type="date" value="'+(c.contractAnni||'')+'" class="fi" style="font-size:11px;padding:3px 6px"></td>'
+      +'<td><button id="gbtn-'+c.id+'" onclick="saveGrade('+c.id+')" class="btn-s" style="font-size:11px;padding:3px 8px">저장</button></td>'
+      +'</tr>';
+  }).join('');
+
+  // 기념일 알림 (7일 이내)
+  var today=new Date();today.setHours(0,0,0,0);
+  var upcoming=[];
+  custs.forEach(function(c){
+    ['birthday','contractAnni'].forEach(function(field){
+      if(!c[field])return;
+      var d=new Date(c[field]);
+      // 올해 기준으로 날짜 변환
+      d.setFullYear(today.getFullYear());
+      var diff=Math.floor((d-today)/86400000);
+      if(diff<0){d.setFullYear(today.getFullYear()+1);diff=Math.floor((d-today)/86400000);}
+      if(diff<=30){
+        upcoming.push({name:c.name,type:field==='birthday'?'🎂 생일':'💝 계약기념일',date:c[field],diff:diff,tel:c.tel1||''});
+      }
+    });
+  });
+  upcoming.sort(function(a,b){return a.diff-b.diff;});
+
+  var el=document.getElementById('anni-list');
+  el.innerHTML=upcoming.filter(function(x){return x.diff<=7;}).length?
+    upcoming.filter(function(x){return x.diff<=7;}).map(function(x){
+      return'<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;border:0.5px solid '+(x.diff<=3?'#f48fb1':'#ffe082')+';border-radius:10px;margin-bottom:6px;background:'+(x.diff<=3?'#fff5f7':'#fffde7')+'">'
+        +'<div><span style="font-size:13px;font-weight:500">'+x.type+' '+x.name+'</span><span style="font-size:11px;color:#888;margin-left:8px">'+x.tel+'</span></div>'
+        +'<span style="font-size:12px;font-weight:600;color:'+(x.diff<=3?'#c62828':'#f57f17')+'">D-'+x.diff+'</span>'
+        +'</div>';
+    }).join('')
+    :'<p style="font-size:12px;color:#aaa;padding:8px 0">7일 이내 기념일 없음 👍</p>';
+
+  // 전체 30일 이내
+  document.getElementById('anni-all-list').innerHTML=upcoming.length?
+    upcoming.map(function(x){
+      return'<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:0.5px solid #f0f0f0">'
+        +'<span style="font-size:12px">'+x.type+' <strong>'+x.name+'</strong></span>'
+        +'<span style="font-size:11px;color:#888">D-'+x.diff+'</span>'
+        +'</div>';
+    }).join('')
+    :'<p style="font-size:12px;color:#aaa">30일 이내 기념일 없음</p>';
+}
+
+// ═══════════════════════════════════════
+// 📞 통화 분석 탭
+// ═══════════════════════════════════════
+var callFileText='';
+var callAnalysisResult=null;
+
+function initCallTab(){
+  // 고객 셀렉트 채우기
+  var sel=document.getElementById('call-cust-sel');
+  sel.innerHTML='<option value="">신규 고객으로 등록</option>'
+    +custs.map(function(c){
+      var tags=migrateTags(c);
+      return'<option value="'+c.id+'">'+tagBadges(tags).replace(/<[^>]+>/g,'')+''+c.name+' '+(c.tel1||'')+'</option>';
+    }).join('');
+}
+
+function onCallFile(e){
+  var file=e.target.files[0];if(!file)return;
+  var reader=new FileReader();
+  reader.onload=function(ev){
+    // 여러 인코딩 시도 (갤럭시는 EUC-KR 또는 UTF-8)
+    var text=ev.target.result;
+    callFileText=text;
+
+    // 전화번호 자동 감지
+    var phoneMatch=text.match(/\b(01[0-9]-?[0-9]{3,4}-?[0-9]{4}|0[2-9][0-9]-?[0-9]{3,4}-?[0-9]{4})\b/);
+    if(phoneMatch){
+      document.getElementById('call-phone').value=phoneMatch[0];
+    }
+
+    // 대화 라인 수 카운트
+    var lines=text.split('\n').filter(function(l){return l.trim().length>5;});
+    document.getElementById('call-file-info').style.display='block';
+    document.getElementById('call-file-info').textContent=
+      '📄 '+file.name+' | 대화 '+lines.length+'줄 감지'+(phoneMatch?' | 전화번호: '+phoneMatch[0]:'');
+    document.getElementById('call-analyze-btn').disabled=false;
+  };
+  // EUC-KR로 먼저 시도
+  reader.readAsText(file,'EUC-KR');
+}
+
+function doCallAnalysis(){
+  if(!callFileText){alert('파일을 먼저 선택해주세요.');return;}
+  document.getElementById('call-loading').style.display='block';
+  document.getElementById('call-result').style.display='none';
+  document.getElementById('call-load-txt').textContent='통화 내용 분석 중...';
+
+  var selId=document.getElementById('call-cust-sel').value;
+  var existingCust=selId?custs.find(function(c){return String(c.id)===String(selId);}):null;
+
+  var prompt='당신은 송도제일공인중개사사무소 문형은 대표 보조 AI입니다.\n'
+    +'아래는 갤럭시 통화 녹음에서 자동 생성된 텍스트입니다.\n'
+    +'두 화자 중 "상담자" 또는 "나"는 문형은 대표이고, 전화번호 화자는 고객입니다.\n\n'
+    +'[통화 원문]\n'+callFileText.slice(0,3000)+'\n\n'
+    +(existingCust?'[기존 고객 정보]\n이름: '+existingCust.name+'\n태그: '+migrateTags(existingCust).join('+')+'\n\n':'')
+    +'아래 형식으로 JSON만 출력하세요 (다른 텍스트 없이):\n'
+    +'{\n'
+    +'  "고객명": "성명 또는 호칭",\n'
+    +'  "전화번호": "010-xxxx-xxxx",\n'
+    +'  "고객유형": ["가망고객","물건고객","계약고객","기존고객"] 중 해당하는 것 (복수 가능),\n'
+    +'  "거래방식": "매매/전세/월세/임대 중 하나 또는 빈 문자열",\n'
+    +'  "물건종류": "아파트/오피스텔/상가 등 또는 빈 문자열",\n'
+    +'  "희망지역": "송도 공구 또는 빈 문자열",\n'
+    +'  "예산": "예산 언급 내용 또는 빈 문자열",\n'
+    +'  "희망단지": "단지명 또는 빈 문자열",\n'
+    +'  "물건단지": "의뢰 물건 단지명 또는 빈 문자열",\n'
+    +'  "물건가격": "의뢰 가격 또는 빈 문자열",\n'
+    +'  "상담내용요약": "3~5줄 핵심 요약",\n'
+    +'  "최종메모": "50자 이내 핵심 한 줄",\n'
+    +'  "클로징단계": 1~3 숫자 (1=상담접수, 2=물건확인, 3=계약협의),\n'
+    +'  "추천매물메모": "통화에서 언급된 매물 또는 빈 문자열"\n'
+    +'}';
+
+  fetch('https://api.anthropic.com/v1/messages',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({
+      model:'claude-sonnet-4-20250514',
+      max_tokens:1500,
+      messages:[{role:'user',content:prompt}]
+    })
+  })
+  .then(function(r){return r.json();})
+  .then(function(d){
+    document.getElementById('call-loading').style.display='none';
+    var txt=d.content.filter(function(b){return b.type==='text';}).map(function(b){return b.text;}).join('').trim();
+    // JSON 추출
+    var jsonMatch=txt.match(/\{[\s\S]*\}/);
+    if(!jsonMatch){throw new Error('JSON 파싱 실패');}
+    callAnalysisResult=JSON.parse(jsonMatch[0]);
+
+    // 요약 표시
+    var r=callAnalysisResult;
+    var summary=[];
+    summary.push('👤 고객명: '+(r['고객명']||'미확인')+'  📞 '+(r['전화번호']||'미확인'));
+    summary.push('🏷️ 유형: '+(r['고객유형']||[]).join(' + ')||'미확인');
+    if(r['거래방식']||r['물건종류'])summary.push('💼 거래: '+(r['거래방식']||'')+(r['물건종류']?' '+r['물건종류']:''));
+    if(r['희망지역']||r['예산'])summary.push('📍 지역: '+(r['희망지역']||'—')+'  💰 예산: '+(r['예산']||'—'));
+    if(r['희망단지'])summary.push('🏠 희망단지: '+r['희망단지']);
+    if(r['물건단지'])summary.push('🏢 의뢰물건: '+r['물건단지']+(r['물건가격']?' — '+r['물건가격']:''));
+    summary.push('');
+    summary.push('📝 상담내용:\n'+r['상담내용요약']);
+    summary.push('');
+    summary.push('⚡ 최종메모: '+r['최종메모']);
+    document.getElementById('call-summary').textContent=summary.join('\n');
+
+    // 원문 표시
+    document.getElementById('call-raw').textContent=callFileText;
+    document.getElementById('call-result').style.display='block';
+  })
+  .catch(function(e){
+    document.getElementById('call-loading').style.display='none';
+    alert('분석 오류: '+e.message+'\n파일 인코딩을 확인해주세요.');
+  });
+}
+
+function applyCallResult(){
+  if(!callAnalysisResult){return;}
+  var r=callAnalysisResult;
+  var selId=document.getElementById('call-cust-sel').value;
+  var now=new Date(),ds=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0');
+
+  if(selId){
+    // 기존 고객 업데이트
+    var c=custs.find(function(x){return String(x.id)===String(selId);});
+    if(c){
+      if(r['상담내용요약'])c.consult=(c.consult?c.consult+'\n\n['+ds+' 통화]\n':'')+r['상담내용요약'];
+      if(r['최종메모'])c.lastmemo=r['최종메모'].slice(0,50);
+      c.lastdate=ds;
+      if(r['고객유형']&&r['고객유형'].length)c.tags=r['고객유형'];
+      if(r['거래방식']&&!c.deal)c.deal=r['거래방식'];
+      if(r['물건종류']&&!c.ptype)c.ptype=r['물건종류'];
+      if(r['희망지역']&&!c.area)c.area=r['희망지역'];
+      if(r['예산']&&!c.budget)c.budget=r['예산'];
+      if(r['희망단지']&&!c.cx)c.cx=r['희망단지'];
+      if(r['추천매물메모']&&!c.propmemo)c.propmemo=r['추천매물메모'];
+      if(r['물건단지']&&!c.propCx)c.propCx=r['물건단지'];
+      if(r['물건가격']&&!c.propPrice)c.propPrice=r['물건가격'];
+      if(r['클로징단계']&&migrateTags(c).indexOf('가망고객')>=0)c.pipe=parseInt(r['클로징단계'])||1;
+      toStore();
+      alert('✅ 기존 고객 카드에 통화 내용이 추가됐습니다!\n\n'+c.name+' 고객 카드를 확인해주세요.');
+    }
+  }else{
+    // 신규 고객 등록 폼에 자동 채우기
+    sw(1);
+    setTimeout(function(){
+      // 태그 설정
+      setTags(r['고객유형']||['가망고객']);
+      // 기본 정보
+      if(r['고객명'])document.getElementById('f-name').value=r['고객명'];
+      if(r['전화번호'])document.getElementById('f-tel1').value=r['전화번호'];
+      document.getElementById('f-rdate').value=ds;
+      document.getElementById('f-lastdate').value=ds;
+      // 가망고객 정보
+      if(r['거래방식'])document.getElementById('f-deal').value=r['거래방식'];
+      if(r['물건종류'])document.getElementById('f-ptype').value=r['물건종류'];
+      if(r['희망지역'])document.getElementById('f-area').value=r['희망지역'];
+      if(r['예산'])document.getElementById('f-budget').value=r['예산'];
+      if(r['희망단지'])document.getElementById('f-cx').value=r['희망단지'];
+      if(r['추천매물메모'])document.getElementById('f-propmemo').value=r['추천매물메모'];
+      if(r['클로징단계'])selPipe(parseInt(r['클로징단계'])||1);
+      // 물건고객 정보
+      if(r['물건단지']){
+        document.getElementById('f-prop-cx').value=r['물건단지'];
+        if(r['물건가격'])document.getElementById('f-prop-price').value=r['물건가격'];
+      }
+      // 상담내용
+      if(r['상담내용요약'])document.getElementById('f-consult').value=r['상담내용요약'];
+      if(r['최종메모'])document.getElementById('f-lastmemo').value=r['최종메모'].slice(0,50);
+      alert('✅ 고객 등록 폼에 통화 내용이 자동으로 채워졌습니다!\n내용 확인 후 저장 버튼을 눌러주세요.');
+    },300);
+  }
+}
+
+function togCallRaw(){
+  var el=document.getElementById('call-raw'),btn=document.getElementById('call-raw-btn');
+  if(el.style.display==='none'){el.style.display='block';btn.textContent='접기 ▲';}
+  else{el.style.display='none';btn.textContent='펼치기 ▼';}
+}
+
+function resetCallTab(){
+  callFileText='';callAnalysisResult=null;
+  document.getElementById('call-file').value='';
+  document.getElementById('call-phone').value='';
+  document.getElementById('call-file-info').style.display='none';
+  document.getElementById('call-result').style.display='none';
+  document.getElementById('call-analyze-btn').disabled=true;
+}
+</script>
+</body>
+</html>
