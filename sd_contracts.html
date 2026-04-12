@@ -1,0 +1,1610 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>송도제일 계약관리 시스템</title>
+<style>
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+*{box-sizing:border-box}
+body{margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f8f8f6;color:#1a1a1a}
+.tnb{padding:10px 14px;border:none;border-bottom:2px solid transparent;background:transparent;color:#666;font-size:13px;cursor:pointer;margin-bottom:-1px;white-space:nowrap}
+.tnb.on{color:#1a1a1a;border-bottom-color:#1a1a1a;font-weight:500}
+.tc{display:none}.tc.on{display:block;animation:fadeIn .2s ease}
+.fl{font-size:12px;color:#666;display:block;margin-bottom:5px}
+.fi{width:100%;padding:8px 10px;border:0.5px solid #ccc;border-radius:8px;background:#fff;color:#1a1a1a;font-size:13px}
+.fi:focus{outline:none;border-color:#888}
+.card{background:#fff;border:0.5px solid #e0e0e0;border-radius:12px;padding:1.25rem;margin-bottom:1rem}
+.sec{font-size:12px;font-weight:500;color:#666;margin:0 0 10px;letter-spacing:.04em}
+.btn-p{padding:10px 18px;background:#1a1a1a;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer}
+.btn-s{padding:7px 12px;border:0.5px solid #ccc;border-radius:8px;background:#fff;color:#666;font-size:12px;cursor:pointer}
+.btn-d{padding:5px 9px;border:0.5px solid #ffaaaa;border-radius:8px;background:transparent;color:#cc3333;font-size:11px;cursor:pointer}
+.btn-link{padding:6px 10px;border:0.5px solid #90caf9;border-radius:8px;background:#e3f2fd;color:#1565c0;font-size:11px;cursor:pointer}
+.tbl{width:100%;border-collapse:collapse;font-size:12px}
+.tbl th{padding:8px 10px;background:#f5f5f3;color:#666;text-align:left;border-bottom:0.5px solid #e0e0e0;white-space:nowrap;font-weight:500}
+.tbl td{padding:7px 10px;border-bottom:0.5px solid #e0e0e0;color:#1a1a1a;vertical-align:middle}
+.tbl tr:last-child td{border-bottom:none}
+.tbl tr:hover td{background:#fafafa}
+.bdg{display:inline-block;padding:2px 7px;border-radius:8px;font-size:11px;font-weight:500}
+.stat-box{background:#fff;border:0.5px solid #e0e0e0;border-radius:10px;padding:10px;text-align:center}
+.stat-n{font-size:22px;font-weight:500;line-height:1}.stat-l{font-size:11px;color:#aaa;margin-top:3px}
+.alert-row{display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:8px;font-size:12px;margin-bottom:6px}
+.a-red{background:#fff3e0;color:#e65100;border:0.5px solid #ffcc80}
+.a-yel{background:#fffde7;color:#f57f17;border:0.5px solid #fff176}
+.a-grn{background:#e8f5e9;color:#2e7d32;border:0.5px solid #a5d6a7}
+.a-gray{background:#fce4ec;color:#c62828;border:0.5px solid #f48fb1}
+.link-sel{display:none;background:#f0f7ff;border:0.5px solid #bbdefb;border-radius:8px;padding:10px;margin-top:8px}
+.modal-bg{display:none;position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,.45);z-index:1000;align-items:flex-start;justify-content:center;overflow-y:auto;padding:24px 12px}
+.modal-bg.open{display:flex}
+.modal-box{background:#fff;border-radius:16px;padding:1.5rem;width:min(780px,100%);margin:auto}
+.sdj-btn{padding:5px 10px;border:0.5px solid #1a7f3c;border-radius:6px;background:#e8f5e9;color:#1a7f3c;font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap}
+.sdj-btn.active{background:#1a7f3c;color:#fff}
+.row-click{cursor:pointer}
+</style>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+  <!-- Firebase Storage 어댑터 (window.storage 호환) -->
+  <script src="firebase-storage.js"></script>
+</head>
+<body>
+<div id="root" style="max-width:1020px;margin:0 auto;padding:1.5rem 1rem">
+<div style="margin-bottom:1.25rem">
+  <p style="font-size:13px;color:#666;margin:0 0 3px">송도제일공인중개사사무소</p>
+  <h1 style="font-size:20px;font-weight:500;margin:0">계약 관리 시스템</h1>
+  <p style="font-size:13px;color:#666;margin:5px 0 8px">계약 등록 · 만기 관리 · 매물/고객 연동 · 데이터 가져오기</p>
+  <div style="display:flex;gap:6px;flex-wrap:wrap">
+    <a href="sd_hub.html"      style="padding:5px 10px;background:#1a1a1a;color:#fff;border-radius:20px;font-size:11px;text-decoration:none;font-weight:500">🏠 허브</a>
+    <a href="sd_props.html"    style="padding:5px 10px;background:#e8f5e9;color:#1a7f3c;border:0.5px solid #a5d6a7;border-radius:20px;font-size:11px;text-decoration:none">🏢 매물</a>
+    <a href="sd_custs.html"    style="padding:5px 10px;background:#e3f2fd;color:#1565c0;border:0.5px solid #90caf9;border-radius:20px;font-size:11px;text-decoration:none">👥 고객</a>
+    <a href="sd_schedule.html" style="padding:5px 10px;background:#fff3e0;color:#e65100;border:0.5px solid #ffcc80;border-radius:20px;font-size:11px;text-decoration:none">📅 일정</a>
+    <a href="sd_marketing.html"style="padding:5px 10px;background:#f3e5f5;color:#7b1fa2;border:0.5px solid #ce93d8;border-radius:20px;font-size:11px;text-decoration:none">📢 마케팅</a>
+  </div>
+</div>
+<div style="display:flex;border-bottom:0.5px solid #e0e0e0;margin-bottom:1.5rem;overflow-x:auto">
+  <button onclick="sw(0)" id="tn0" class="tnb on">🏠 홈</button>
+  <button onclick="sw(1)" id="tn1" class="tnb">📑 계약 등록</button>
+  <button onclick="sw(2)" id="tn2" class="tnb">📋 계약 목록</button>
+  <button onclick="sw(3)" id="tn3" class="tnb">⏰ 만기 알림</button>
+  <button onclick="sw(4)" id="tn4" class="tnb">📥 가져오기</button>
+</div>
+
+<!-- TAB0 홈 -->
+<div id="tc0" class="tc on">
+  <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:1.25rem;flex-wrap:wrap;gap:8px">
+    <div><p id="hub-date" style="font-size:13px;color:#aaa;margin:0 0 3px"></p><p id="hub-greet" style="font-size:16px;font-weight:500;margin:0"></p></div>
+    <button onclick="refreshHub()" class="btn-s" style="font-size:11px">↺ 새로고침</button>
+  </div>
+  <div class="card"><p class="sec" style="margin-bottom:10px">📑 계약 현황</p>
+    <div id="hub-stat" style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px"></div>
+  </div>
+  <div class="card"><p class="sec" style="margin-bottom:10px">⏰ 만기 알림 현황</p>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px">
+      <div style="background:#fce4ec;border:0.5px solid #f48fb1;border-radius:10px;padding:10px;text-align:center"><div id="h-exp0" class="stat-n" style="color:#c62828">0</div><div class="stat-l">🔴 만기 초과</div></div>
+      <div style="background:#fff3e0;border:0.5px solid #ffcc80;border-radius:10px;padding:10px;text-align:center"><div id="h-exp30" class="stat-n" style="color:#e65100">0</div><div class="stat-l">🔴 D-30 이내</div></div>
+      <div style="background:#fffde7;border:0.5px solid #fff176;border-radius:10px;padding:10px;text-align:center"><div id="h-exp60" class="stat-n" style="color:#f57f17">0</div><div class="stat-l">🟡 D-31~60</div></div>
+      <div style="background:#e8f5e9;border:0.5px solid #a5d6a7;border-radius:10px;padding:10px;text-align:center"><div id="h-exp90" class="stat-n" style="color:#2e7d32">0</div><div class="stat-l">🟢 D-61~90</div></div>
+    </div>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1rem">
+    <div class="card" style="margin-bottom:0"><p class="sec" style="margin-bottom:8px">🏢 매물관리 연동</p><div id="hub-props"></div></div>
+    <div class="card" style="margin-bottom:0"><p class="sec" style="margin-bottom:8px">👥 고객관리 연동</p><div id="hub-custs"></div></div>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1rem">
+    <div class="card" style="margin-bottom:0"><p class="sec" style="margin-bottom:8px">🆕 최근 계약</p><div id="hub-recent"></div></div>
+    <div class="card" style="margin-bottom:0"><p class="sec" style="margin-bottom:8px">⚠️ 만기 임박 (D-90 이내)</p><div id="hub-expiring"></div></div>
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px">
+    <button onclick="sw(1)" style="padding:12px 8px;background:#fff;border:0.5px solid #e0e0e0;border-radius:12px;cursor:pointer;font-size:12px;color:#1a1a1a"><div style="font-size:18px;margin-bottom:3px">📑</div>계약 등록</button>
+    <button onclick="sw(2)" style="padding:12px 8px;background:#fff;border:0.5px solid #e0e0e0;border-radius:12px;cursor:pointer;font-size:12px;color:#1a1a1a"><div style="font-size:18px;margin-bottom:3px">📋</div>계약 목록</button>
+    <button onclick="sw(3)" style="padding:12px 8px;background:#fff;border:0.5px solid #e0e0e0;border-radius:12px;cursor:pointer;font-size:12px;color:#1a1a1a"><div style="font-size:18px;margin-bottom:3px">⏰</div>만기 알림</button>
+    <button onclick="sw(4)" style="padding:12px 8px;background:#fff;border:0.5px solid #e0e0e0;border-radius:12px;cursor:pointer;font-size:12px;color:#1a1a1a"><div style="font-size:18px;margin-bottom:3px">📥</div>가져오기</button>
+  </div>
+</div>
+
+<!-- TAB1 계약 등록 -->
+<div id="tc1" class="tc">
+  <div class="card">
+    <p class="sec">🔗 연동 불러오기</p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+      <button onclick="openPropSel()" class="btn-link">📋 매물에서 불러오기</button>
+      <button onclick="openCustSel()" class="btn-link">👤 고객에서 불러오기</button>
+    </div>
+    <div id="prop-sel-wrap" class="link-sel">
+      <label class="fl" style="color:#1565c0">활성 매물 선택</label>
+      <div style="display:flex;gap:8px">
+        <select id="prop-sel" class="fi" style="flex:1"></select>
+        <button onclick="fillFromProp()" class="btn-link">적용</button>
+        <button onclick="document.getElementById('prop-sel-wrap').style.display='none'" class="btn-s" style="font-size:11px">닫기</button>
+      </div>
+    </div>
+    <div id="cust-sel-wrap" class="link-sel">
+      <label class="fl" style="color:#1565c0">고객 선택 (임차인/매수인 자동 입력)</label>
+      <div style="display:flex;gap:8px">
+        <select id="cust-sel" class="fi" style="flex:1"></select>
+        <button onclick="fillFromCust()" class="btn-link">적용</button>
+        <button onclick="document.getElementById('cust-sel-wrap').style.display='none'" class="btn-s" style="font-size:11px">닫기</button>
+      </div>
+    </div>
+    <input type="hidden" id="fc-propid" value="">
+    <input type="hidden" id="fc-custid" value="">
+    <div id="fc-link-info" style="display:none;font-size:11px;color:#1565c0;margin-top:6px;padding:6px 10px;background:#e3f2fd;border-radius:6px"></div>
+  </div>
+  <div class="card">
+    <p class="sec" id="fc-form-title">계약 등록</p>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1fr;gap:10px;margin-bottom:10px">
+      <div><label class="fl">물건종류</label>
+        <select id="fc-type" class="fi" onchange="onCDeal()"><option>아파트</option><option>상가</option><option>오피스텔</option><option>사무실</option><option>토지</option><option>분양권</option><option>권리</option><option>생활숙박시설</option></select>
+      </div>
+      <div><label class="fl">계약구분</label>
+        <select id="fc-deal" class="fi" onchange="onCDeal()"><option>전세</option><option>임대차</option><option>매매</option><option>월세</option><option>임대</option><option>분양권매매</option></select>
+      </div>
+      <div><label class="fl">신규/갱신</label>
+        <select id="fc-newrenewal" class="fi" onchange="onCDeal()"><option value="신규">신규</option><option value="갱신재계약">갱신재계약</option></select>
+      </div>
+      <div id="fc-renewal-right-wrap" style="display:none"><label class="fl">갱신청구권 사용</label>
+        <select id="fc-renewal-right" class="fi"><option value="">미선택</option><option value="사용">사용</option><option value="미사용">미사용</option></select>
+      </div>
+      <div><label class="fl">건물명</label><input id="fc-bldg" type="text" class="fi" placeholder="예: 송도더샵하버뷰13단지"></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 2fr;gap:10px;margin-bottom:10px">
+      <div><label class="fl">동</label><input id="fc-dong" type="text" class="fi"></div>
+      <div><label class="fl">호수</label><input id="fc-ho" type="text" class="fi"></div>
+      <div><label class="fl">주소</label><input id="fc-addr" type="text" class="fi"></div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:10px">
+      <div><label class="fl">계약일</label><input id="fc-cdate" type="date" class="fi"></div>
+      <div><label class="fl">중도금(1)</label><input id="fc-mid1" type="date" class="fi"></div>
+      <div><label class="fl">중도금(2)</label><input id="fc-mid2" type="date" class="fi"></div>
+      <div><label class="fl">잔금일</label><input id="fc-fdate" type="date" class="fi" onchange="autoExpiry()"></div>
+      <div><label class="fl">만기일 <span style="font-size:10px;color:#aaa">(자동계산)</span></label><input id="fc-expiry" type="date" class="fi"></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;margin-bottom:10px">
+      <div><label class="fl">매도/임대인</label><input id="fc-seller" type="text" class="fi"></div>
+      <div><label class="fl">연락처</label><input id="fc-stl" type="text" class="fi"></div>
+      <div><label class="fl">매수/임차인</label><input id="fc-buyer" type="text" class="fi"></div>
+      <div><label class="fl">연락처</label><input id="fc-btl" type="text" class="fi"></div>
+    </div>
+    <!-- 상가 임대인 (권리계약) -->
+    <div id="fc-landlord-wrap" style="display:none;margin-bottom:10px;padding:10px;background:#fff8e1;border:0.5px solid #ffe082;border-radius:8px">
+      <p class="sec" style="color:#f57f17;margin-bottom:8px">🏪 상가 임대인 정보 (권리계약)</p>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
+        <div><label class="fl">상가 임대인 성명</label><input id="fc-landlord" type="text" class="fi"></div>
+        <div><label class="fl">연락처</label><input id="fc-landlordtel" type="text" class="fi"></div>
+        <div><label class="fl">임대차 만기일</label><input id="fc-landlordexp" type="date" class="fi"></div>
+      </div>
+    </div>
+    <!-- 가격 -->
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:10px">
+      <div id="fc-p1w"><label class="fl" id="fc-p1l">전세금</label><input id="fc-price" type="text" class="fi" placeholder="예: 4억 5,000만원"></div>
+      <div id="fc-p2w" style="display:none"><label class="fl">보증금</label><input id="fc-deposit" type="text" class="fi"></div>
+      <div id="fc-p3w" style="display:none"><label class="fl">월세</label><input id="fc-monthly" type="text" class="fi"></div>
+      <div><label class="fl">수수료</label><input id="fc-fee" type="text" class="fi"></div>
+      <div id="fc-period-wrap"><label class="fl">임대차 기간</label>
+        <select id="fc-period" class="fi" onchange="autoExpiry()"><option value="">선택</option><option value="0.5">6개월</option><option value="1">1년</option><option value="2">2년</option><option value="3">3년</option></select>
+      </div>
+    </div>
+    <!-- 분양권 가격 -->
+    <div id="fc-punyang-wrap" style="display:none;margin-bottom:10px;padding:10px;background:#f3e5f5;border:0.5px solid #ce93d8;border-radius:8px">
+      <p class="sec" style="color:#7b1fa2;margin-bottom:8px">🏗️ 분양권 가격 상세</p>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px">
+        <div><label class="fl">분양가</label><input id="fc-pbase" type="text" class="fi" oninput="calcPTotal()"></div>
+        <div><label class="fl">옵션가</label><input id="fc-popt" type="text" class="fi" oninput="calcPTotal()"></div>
+        <div><label class="fl">P(프리미엄)</label><input id="fc-pprem" type="text" class="fi" oninput="calcPTotal()"></div>
+        <div><label class="fl">매매가(자동)</label><input id="fc-ptotal" type="text" class="fi" readonly style="background:#f5f5f3"></div>
+      </div>
+    </div>
+    <!-- 중개업소·담당자 -->
+    <div style="border-top:0.5px solid #f0f0f0;padding-top:12px;margin-bottom:10px">
+      <p class="sec" style="margin-bottom:8px">🏢 중개업소 · 담당자</p>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
+        <div><label class="fl">임대인측 중개업소</label>
+          <div style="display:flex;gap:6px">
+            <button type="button" onclick="setSdj('seller')" id="btn-sdj-seller" class="sdj-btn">송도제일공인</button>
+            <input id="fc-agency-seller" type="text" class="fi" style="flex:1;font-size:12px" placeholder="타 중개업소 입력">
+          </div>
+        </div>
+        <div><label class="fl">임차인측 중개업소</label>
+          <div style="display:flex;gap:6px">
+            <button type="button" onclick="setSdj('buyer')" id="btn-sdj-buyer" class="sdj-btn">송도제일공인</button>
+            <input id="fc-agency-buyer" type="text" class="fi" style="flex:1;font-size:12px" placeholder="타 중개업소 입력">
+          </div>
+        </div>
+        <div><label class="fl">송도제일 담당자</label>
+          <select id="fc-manager" class="fi">
+            <option value="">선택</option>
+            <option value="문형은대표">문형은 대표</option>
+            <option value="최지훈부장">최지훈 부장</option>
+            <option value="이서정실장">이서정 실장</option>
+          </select>
+        </div>
+      </div>
+    </div>
+    <!-- 계약 주요 조건 -->
+    <div style="margin-bottom:10px">
+      <label class="fl">📋 계약 주요 조건</label>
+      <textarea id="fc-conditions" rows="3" class="fi" style="resize:vertical" placeholder="특약사항, 입주 조건, 수리 항목 등"></textarea>
+    </div>
+    <div style="margin-bottom:12px"><label class="fl">메모</label><input id="fc-memo" type="text" class="fi"></div>
+    <div style="display:flex;gap:10px">
+      <button onclick="saveContract()" class="btn-p" style="flex:1" id="csave-btn">💾 계약 저장</button>
+      <button onclick="clearCF()" class="btn-s">초기화</button>
+    </div>
+    <div id="csave-ok" style="display:none;margin-top:10px;padding:10px 14px;background:#e8f5e9;border-radius:8px;font-size:13px;color:#2e7d32"></div>
+  </div>
+</div>
+
+<!-- TAB2 계약 목록 -->
+<div id="tc2" class="tc">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <select id="cft-type" class="fi" style="width:auto;font-size:12px" onchange="renderCT()"><option value="">전체 종류</option><option>아파트</option><option>상가</option><option>오피스텔</option><option>사무실</option><option>토지</option><option>분양권</option></select>
+      <select id="cft-deal" class="fi" style="width:auto;font-size:12px" onchange="renderCT()"><option value="">전체 구분</option><option>전세</option><option>임대차</option><option>매매</option><option>월세</option><option>임대</option></select>
+      <select id="cft-manager" class="fi" style="width:auto;font-size:12px" onchange="renderCT()"><option value="">전체 담당</option><option value="문형은대표">문형은</option><option value="최지훈부장">최지훈</option><option value="이서정실장">이서정</option></select>
+      <input id="cft-q" type="text" class="fi" style="width:140px;font-size:12px" placeholder="건물명/인명 검색" oninput="renderCT()">
+    </div>
+    <div style="display:flex;gap:8px;align-items:center">
+      <span id="ct-cnt" style="font-size:12px;color:#666"></span>
+      <button onclick="importBatch2()" class="btn-s" id="import-btn" style="background:#e3f2fd;border-color:#90caf9;color:#1565c0;font-size:11px">📥 21-40p 추가</button>
+      <button onclick="exportCtXL()" class="btn-s">📥 엑셀</button>
+    </div>
+  </div>
+  <div style="overflow-x:auto;border:0.5px solid #e0e0e0;border-radius:12px">
+    <table class="tbl">
+      <thead><tr><th>#</th><th>신규/갱신</th><th>종류</th><th>구분</th><th>건물명</th><th>동/호</th><th>계약일</th><th>중도금</th><th>잔금일</th><th>임대인</th><th>임차인</th><th>가격</th><th>만기일</th><th>D-day</th><th>담당</th><th style="min-width:80px;position:sticky;right:0;background:#f5f5f3;z-index:2">액션</th></tr></thead>
+      <tbody id="ctbdy"></tbody>
+    </table>
+  </div>
+  <div id="no-ct" style="display:none;text-align:center;padding:2rem;color:#aaa;font-size:14px">등록된 계약이 없습니다.</div>
+</div>
+
+<!-- TAB3 만기 알림 -->
+<div id="tc3" class="tc">
+  <div class="card" style="margin-bottom:1rem"><p class="sec">🔴 만기 초과 <span id="exp-ov-cnt" style="font-size:11px;color:#aaa;font-weight:400"></span></p><div id="exp-over"></div></div>
+  <div class="card" style="margin-bottom:1rem"><p class="sec">🔴 D-30 이내 <span id="exp30-cnt" style="font-size:11px;color:#aaa;font-weight:400"></span></p><div id="exp-30"></div></div>
+  <div class="card" style="margin-bottom:1rem"><p class="sec">🟡 D-31~60 <span id="exp60-cnt" style="font-size:11px;color:#aaa;font-weight:400"></span></p><div id="exp-60"></div></div>
+  <div class="card"><p class="sec">🟢 D-61~90 <span id="exp90-cnt" style="font-size:11px;color:#aaa;font-weight:400"></span></p><div id="exp-90"></div></div>
+  <p style="font-size:11px;color:#aaa">만기일 입력된 임대차/전세 계약 기준 · 매매/분양권 제외 · 만기 6개월 초과 자동 해제 · ✕ 해제 버튼으로 개별 알림 제거 가능</p>
+</div>
+
+<!-- TAB4 가져오기 -->
+<div id="tc4" class="tc">
+  <div class="card">
+    <p class="sec" style="color:#2e7d32">📂 파일 가져오기 (텍스트/엑셀)</p>
+    <p style="font-size:12px;color:#666;margin:0 0 10px">
+      <strong>계약서리스트_파싱_N.txt</strong> 또는 <strong>송도제일_계약목록.xlsx</strong> 파일을 선택하세요.<br>
+      여러 파일을 한번에 선택할 수 있습니다. 중복(건물명+계약일+호수)은 자동 제외됩니다.
+    </p>
+    <div style="margin-bottom:10px">
+      <label class="fl">파일 선택 (.txt 또는 .xlsx — 여러 파일 동시 선택 가능)</label>
+      <input type="file" id="file-import-input" accept=".txt,.xlsx,.xls" class="fi" style="padding:6px" multiple onchange="onFileImport(event)">
+    </div>
+    <div id="file-import-preview" style="display:none;margin-bottom:10px;padding:10px;background:#f5f5f3;border-radius:8px;font-size:12px"></div>
+    <div style="display:flex;gap:8px">
+      <button onclick="doFileImport()" class="btn-p" style="background:#2e7d32" id="file-import-btn" disabled>📂 가져오기 실행</button>
+      <button onclick="resetFileImport()" class="btn-s">초기화</button>
+    </div>
+    <div id="file-import-result" style="display:none;margin-top:10px;padding:10px 14px;border-radius:8px;font-size:13px"></div>
+  </div>
+  <div class="card">
+    <p class="sec">📥 새 대화창 파싱 결과 붙여넣기</p>
+    <div style="background:#e3f2fd;border-radius:8px;padding:12px;margin-bottom:12px;font-size:12px;color:#1565c0;line-height:1.9">
+      <strong>사용법</strong><br>
+      1. 새 대화창 열기 → PDF 업로드<br>
+      2. 아래 요청 템플릿 복사 후 붙여넣기<br>
+      3. 파싱 결과 전체 복사<br>
+      4. 아래 텍스트 영역에 붙여넣기 → 가져오기 클릭
+    </div>
+    <div style="margin-bottom:10px">
+      <label class="fl">파싱 결과 붙여넣기 (한 줄 = 1건, 탭 구분)</label>
+      <textarea id="paste-area" rows="12" class="fi" style="resize:vertical;font-size:11px;font-family:monospace" placeholder="파싱 결과를 여기에 붙여넣으세요"></textarea>
+    </div>
+    <div style="display:flex;gap:10px">
+      <button onclick="pasteImport()" class="btn-p" style="flex:1">📥 가져오기</button>
+      <button onclick="document.getElementById('paste-area').value=''" class="btn-s">지우기</button>
+    </div>
+    <div id="paste-ok" style="display:none;margin-top:10px;padding:10px 14px;background:#e8f5e9;border-radius:8px;font-size:13px;color:#2e7d32"></div>
+    <div id="paste-err" style="display:none;margin-top:10px;padding:10px 14px;background:#fff3e0;border-radius:8px;font-size:13px;color:#e65100"></div>
+  </div>
+  <div class="card">
+    <p class="sec">🔄 만기일 일괄 재계산</p>
+    <div style="background:#fff8e1;border:0.5px solid #ffe082;border-radius:8px;padding:12px;margin-bottom:12px;font-size:12px;color:#f57f17;line-height:1.8">
+      <strong>주의</strong> — 전세·임대차·월세·임대 계약의 만기일을 <strong>잔금일 기준 +2년</strong>으로 일괄 덮어씁니다.<br>
+      수동 입력된 만기일도 재계산됩니다. 개별 수정이 필요한 건은 이후 직접 수정해 주세요.
+    </div>
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <button onclick="bulkRecalcExpiry()" style="padding:10px 18px;background:#f57f17;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer">🔄 만기일 일괄 재계산 실행</button>
+      <span id="recalc-result" style="font-size:12px;color:#2e7d32;font-weight:500"></span>
+    </div>
+  </div>
+  <div class="card">
+    <p class="sec" style="margin-bottom:8px">📋 새 대화창 요청 템플릿</p>
+    <div style="background:#f5f5f3;border-radius:8px;padding:12px;font-size:12px;color:#555;line-height:2;position:relative">
+      <button onclick="copyTmpl()" class="btn-s" style="position:absolute;top:10px;right:10px;font-size:11px">📋 복사</button>
+      <div id="tmpl-body">이 PDF의 계약 데이터를 탭 구분 텍스트로 파싱해줘. 한 줄에 한 건씩 출력해줘.<br>순서: 종류 / 구분 / 건물명 / 동 / 호 / 계약일 / 잔금일 / 매도임대인 / 전화 / 매수임차인 / 전화 / 주소<br>날짜는 YYYY-MM-DD 형식, 없는 값은 빈칸, 종류: 아파트/상가/오피스텔/사무실/토지/분양권/권리/생활숙박시설</div>
+    </div>
+  </div>
+</div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js">
+
+var fileImportItems=[];
+
+function resetFileImport(){
+  fileImportItems=[];
+  document.getElementById('file-import-input').value='';
+  document.getElementById('file-import-preview').style.display='none';
+  document.getElementById('file-import-result').style.display='none';
+  document.getElementById('file-import-btn').disabled=true;
+}
+
+function fmtDate(v){
+  if(!v)return'';
+  if(v instanceof Date){
+    var y=v.getFullYear(),m=String(v.getMonth()+1).padStart(2,'0'),d=String(v.getDate()).padStart(2,'0');
+    return isNaN(y)?'':y+'-'+m+'-'+d;
+  }
+  var s=String(v).trim();
+  if(s.match(/^\d{4}-\d{2}-\d{2}$/))return s;
+  if(s.match(/^\d{4}\.\d{2}\.\d{2}$/))return s.replace(/\./g,'-');
+  return s;
+}
+
+function parseTxtLines(lines){
+  var items=[];
+  if(!lines.length)return items;
+  var headers=lines[0].split('\t').map(function(h){return h.trim();});
+  // 헤더 인덱스 (파일2 헤더 차이 대응)
+  var hi={};
+  var hmap={
+    '종류':['종류'],'구분':['구분'],'건물명':['건물명'],
+    '동':['동'],'호':['호','호수'],
+    '계약일':['계약일'],'잔금일':['잔금일'],
+    'seller':['매도(임대)인','매도인','매도임대인'],
+    'sellerTel':['매도인전화','매도전화','연락처'],
+    'buyer':['매수(임차)인','매수인','매수임차인'],
+    'buyerTel':['매수인전화','매수전화','연락처2'],
+    '주소':['주소']
+  };
+  Object.keys(hmap).forEach(function(k){
+    hmap[k].forEach(function(alias){
+      if(hi[k]===undefined){var idx=headers.indexOf(alias);if(idx>=0)hi[k]=idx;}
+    });
+  });
+  lines.slice(1).forEach(function(line,i){
+    if(!line.trim())return;
+    var f=line.split('\t');
+    var bldg=String(f[hi['건물명']]||'').trim();
+    if(!bldg)return;
+    var deal=String(f[hi['구분']]||'').trim();
+    var type=String(f[hi['종류']]||'아파트').trim();
+    // 만기일 자동 계산
+    var fdate=fmtDate(f[hi['잔금일']]);
+    var expiry='';
+    if(fdate&&['전세','임대차','월세','임대'].includes(deal)){
+      var d=new Date(fdate);d.setFullYear(d.getFullYear()+2);
+      expiry=d.toISOString().split('T')[0];
+    }
+    items.push({
+      id:Date.now()+i+Math.floor(Math.random()*9999),
+      type:type,deal:deal,bldg:bldg,
+      dong:String(f[hi['동']]||'').trim(),
+      ho:String(f[hi['호']]||'').trim(),
+      addr:String(f[hi['주소']]||'').trim(),
+      cdate:fmtDate(f[hi['계약일']]),
+      mid1:'',mid2:'',
+      fdate:fdate,
+      seller:String(f[hi['seller']]||'').trim(),
+      sellerTel:String(f[hi['sellerTel']]||'').trim(),
+      buyer:String(f[hi['buyer']]||'').trim(),
+      buyerTel:String(f[hi['buyerTel']]||'').trim(),
+      price:'',deposit:'',monthly:'',period:'',expiry:expiry,
+      fee:'',memo:'',conditions:'',
+      agencySeller:'',agencyBuyer:'',manager:'',
+      renewalType:'신규',renewalRight:'',
+      landlord:'',landlordTel:'',landlordExp:'',
+      pbase:'',popt:'',pprem:'',
+      propId:'',custId:'',seeded:false
+    });
+  });
+  return items;
+}
+
+function parseXlSheet(ws){
+  var rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:'',raw:false});
+  if(rows.length<2)return[];
+  var headers=rows[0].map(function(h){return String(h||'').trim();});
+  var hi={};
+  ['번호','물건종류','계약구분','건물명','동','호수','주소','계약일','잔금일',
+   '매도임대인','연락처','매수임차인','연락처2','가격','만기일','수수료','메모'].forEach(function(h){
+    var idx=headers.indexOf(h);if(idx>=0)hi[h]=idx;
+  });
+  var items=[];
+  rows.slice(1).forEach(function(r,i){
+    var bldg=String(r[hi['건물명']]||'').trim();
+    if(!bldg||bldg==='건물명')return;
+    var price=String(r[hi['가격']]||'').trim();
+    if(price==='—'||price==='NaN')price='';
+    items.push({
+      id:Date.now()+i+Math.floor(Math.random()*9999),
+      type:String(r[hi['물건종류']]||'아파트').trim(),
+      deal:String(r[hi['계약구분']]||'전세').trim(),
+      bldg:bldg,
+      dong:String(r[hi['동']]||'').trim(),
+      ho:String(r[hi['호수']]||'').trim(),
+      addr:String(r[hi['주소']]||'').trim(),
+      cdate:fmtDate(r[hi['계약일']]),
+      mid1:'',mid2:'',
+      fdate:fmtDate(r[hi['잔금일']]),
+      seller:String(r[hi['매도임대인']]||'').trim(),
+      sellerTel:String(r[hi['연락처']]||'').trim(),
+      buyer:String(r[hi['매수임차인']]||'').trim(),
+      buyerTel:String(r[hi['연락처2']]||'').trim(),
+      price:price,deposit:'',monthly:'',period:'',
+      expiry:fmtDate(r[hi['만기일']]),
+      fee:String(r[hi['수수료']]||'').trim(),
+      memo:String(r[hi['메모']]||'').trim(),
+      conditions:'',agencySeller:'',agencyBuyer:'',manager:'',
+      renewalType:'신규',renewalRight:'',
+      landlord:'',landlordTel:'',landlordExp:'',
+      pbase:'',popt:'',pprem:'',
+      propId:'',custId:'',seeded:false
+    });
+  });
+  return items;
+}
+
+function onFileImport(e){
+  var files=Array.from(e.target.files);
+  if(!files.length)return;
+  fileImportItems=[];
+  var pending=files.length,processed=0;
+
+  files.forEach(function(file){
+    if(file.name.endsWith('.txt')){
+      var reader=new FileReader();
+      reader.onload=function(ev){
+        var lines=ev.target.result.split('\n').filter(function(l){return l.trim();});
+        var items=parseTxtLines(lines);
+        fileImportItems=fileImportItems.concat(items);
+        processed++;
+        if(processed===pending)showImportPreview();
+      };
+      reader.readAsText(file,'UTF-8');
+    } else if(file.name.match(/\.xlsx?$/i)){
+      var reader=new FileReader();
+      reader.onload=function(ev){
+        try{
+          var wb=XLSX.read(ev.target.result,{type:'binary'});
+          var ws=wb.Sheets[wb.SheetNames[0]];
+          var items=parseXlSheet(ws);
+          fileImportItems=fileImportItems.concat(items);
+        }catch(ex){console.error('xlsx 읽기 오류:',ex);}
+        processed++;
+        if(processed===pending)showImportPreview();
+      };
+      reader.readAsBinaryString(file);
+    } else {
+      processed++;
+      if(processed===pending)showImportPreview();
+    }
+  });
+}
+
+function showImportPreview(){
+  var dupCnt=0,newCnt=0;
+  fileImportItems.forEach(function(p){
+    var dup=contracts.some(function(x){return x.bldg===p.bldg&&x.cdate===p.cdate&&x.ho===p.ho;});
+    if(dup)dupCnt++;else newCnt++;
+  });
+  var prev=document.getElementById('file-import-preview');
+  prev.style.display='block';
+  prev.innerHTML='📂 파싱: <strong>'+fileImportItems.length+'건</strong> &nbsp;|&nbsp; '
+    +'<span style="color:#2e7d32;font-weight:500">신규 +'+newCnt+'건</span> &nbsp;|&nbsp; '
+    +'<span style="color:#aaa">중복 제외 '+dupCnt+'건</span>';
+  document.getElementById('file-import-btn').disabled=(newCnt===0);
+}
+
+function doFileImport(){
+  if(!fileImportItems.length)return;
+  var btn=document.getElementById('file-import-btn');
+  btn.disabled=true;btn.textContent='저장 중...';
+  var added=0,skip=0;
+  fileImportItems.forEach(function(p){
+    var dup=contracts.some(function(x){return x.bldg===p.bldg&&x.cdate===p.cdate&&x.ho===p.ho;});
+    if(dup){skip++;return;}
+    p.id=Date.now()+added+Math.floor(Math.random()*9999);
+    contracts.push(p);added++;
+  });
+  // 계약일 역순 정렬
+  contracts.sort(function(a,b){return(b.cdate||'').localeCompare(a.cdate||'');});
+  toCStore().then(function(){
+    renderCT();renderExpiry();refreshHub();
+    var res=document.getElementById('file-import-result');
+    res.innerHTML='✅ <strong>'+added+'건</strong> 가져오기 완료! (중복 제외: '+skip+'건) — 전체 '+contracts.length+'건';
+    res.style.background='#e8f5e9';res.style.color='#2e7d32';res.style.display='block';
+    btn.textContent='✅ 완료 '+added+'건';btn.style.background='#2e7d32';
+    fileImportItems=[];
+  }).catch(function(e){
+    var res=document.getElementById('file-import-result');
+    res.innerHTML='⚠️ Firebase 저장 오류: '+e.message;
+    res.style.background='#fff3e0';res.style.color='#e65100';res.style.display='block';
+    btn.disabled=false;btn.textContent='📂 가져오기 실행';
+  });
+}
+
+var detailId=null;
+
+function setSdj(side){
+  var btn=document.getElementById('btn-sdj-'+side);
+  var isActive=btn.classList.contains('active');
+  if(isActive)btn.classList.remove('active');
+  else{btn.classList.add('active');document.getElementById('fc-agency-'+side).value='';}
+}
+
+function openDetail(id){
+  var c=contracts.find(function(x){return x.id===id;});if(!c)return;
+  detailId=id;
+  document.getElementById('detail-title').textContent='📑 '+c.bldg+(c.ho?' '+c.ho:'')+'  '+c.deal;
+  var isKwon=c.deal==='권리'||c.type==='권리';
+  var isWol=c.deal==='월세'||c.deal==='임대';
+  var isMae=['매매','분양권매매','권리'].includes(c.deal);
+  var isPunyang=c.deal==='분양권매매';
+  var isRenewal=c.renewalType==='갱신재계약';
+  var isApt=['아파트','오피스텔'].includes(c.type);
+  var showRR=isRenewal&&isApt&&!isMae;
+  var sdjSel=c.agencySeller==='송도제일공인';
+  var sdjBuy=c.agencyBuyer==='송도제일공인';
+  var fi=function(id,val,type){return'<input id="d-'+id+'" type="'+(type||'text')+'" class="fi" value="'+(val||'')+'" style="font-size:12px">';};
+  var fsel=function(id,opts,val){return'<select id="d-'+id+'" class="fi" style="font-size:12px">'+opts.map(function(o){var v=typeof o==='object'?o.v:o,l=typeof o==='object'?o.l:o;return'<option value="'+v+'"'+(val===v?' selected':'')+'>'+l+'</option>';}).join('')+'</select>';};
+  var row=function(lbl,inp){return'<div><label class="fl">'+lbl+'</label>'+inp+'</div>';};
+
+  var html='<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;margin-bottom:12px">'
+    +row('물건종류',fsel('type',['아파트','상가','오피스텔','사무실','토지','분양권','권리','생활숙박시설'],c.type))
+    +row('계약구분',fsel('deal',['전세','임대차','매매','월세','임대','분양권매매'],c.deal))
+    +row('신규/갱신',fsel('newrenewal',[{v:'신규',l:'신규'},{v:'갱신재계약',l:'갱신재계약'}],c.renewalType||'신규'))
+    +(showRR?row('갱신청구권',fsel('renewalright',[{v:'',l:'미선택'},{v:'사용',l:'사용'},{v:'미사용',l:'미사용'}],c.renewalRight||'')):'<div></div>')
+    +'</div>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;margin-bottom:12px">'
+    +row('건물명',fi('bldg',c.bldg))+row('동',fi('dong',c.dong))+row('호수',fi('ho',c.ho))+row('주소',fi('addr',c.addr))
+    +'</div>'
+    +'<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:12px">'
+    +row('계약일',fi('cdate',c.cdate,'date'))+row('중도금(1)',fi('mid1',c.mid1,'date'))+row('중도금(2)',fi('mid2',c.mid2,'date'))+row('잔금일',fi('fdate',c.fdate,'date'))+row('만기일',fi('expiry',c.expiry,'date'))
+    +'</div>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;margin-bottom:12px">'
+    +row(isKwon?'양도인':'매도/임대인',fi('seller',c.seller))+row('연락처',fi('stl',c.sellerTel))
+    +row(isKwon?'양수인':'매수/임차인',fi('buyer',c.buyer))+row('연락처',fi('btl',c.buyerTel))
+    +'</div>';
+  if(isKwon){
+    html+='<div style="padding:10px;background:#fff8e1;border:0.5px solid #ffe082;border-radius:8px;margin-bottom:12px">'
+      +'<p class="sec" style="color:#f57f17;margin-bottom:8px">🏪 상가 임대인 정보</p>'
+      +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">'
+      +row('상가 임대인',fi('landlord',c.landlord))+row('연락처',fi('landlordtel',c.landlordTel))+row('임대차 만기',fi('landlordexp',c.landlordExp,'date'))
+      +'</div></div>';
+  }
+  html+='<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:12px">';
+  if(isPunyang){
+    html+=row('분양가',fi('pbase',c.pbase))+row('옵션가',fi('popt',c.popt))+row('P(프리미엄)',fi('pprem',c.pprem))+row('매매가',fi('price',c.price));
+  } else {
+    html+=row(isKwon?'권리금':c.deal==='전세'?'전세금':isMae?'매매가':'임대가',fi('price',c.price));
+    if(isWol||isKwon)html+=row('보증금',fi('deposit',c.deposit))+row('월세',fi('monthly',c.monthly));
+  }
+  html+=row('수수료',fi('fee',c.fee))+'</div>';
+  html+='<div style="border-top:0.5px solid #f0f0f0;padding-top:10px;margin-bottom:12px">'
+    +'<p class="sec" style="margin-bottom:8px">🏢 중개업소 · 담당자</p>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">'
+    +'<div><label class="fl">임대인측 중개업소</label><div style="display:flex;gap:6px">'
+    +'<button type="button" onclick="dSetSdj(&quot;seller&quot;)" id="d-sdj-seller" class="sdj-btn'+(sdjSel?' active':'')+'">송도제일공인</button>'
+    +'<input id="d-agency-seller" type="text" class="fi" style="flex:1;font-size:12px" value="'+(sdjSel?'':c.agencySeller||'')+'" placeholder="타 중개업소"></div></div>'
+    +'<div><label class="fl">임차인측 중개업소</label><div style="display:flex;gap:6px">'
+    +'<button type="button" onclick="dSetSdj(&quot;buyer&quot;)" id="d-sdj-buyer" class="sdj-btn'+(sdjBuy?' active':'')+'">송도제일공인</button>'
+    +'<input id="d-agency-buyer" type="text" class="fi" style="flex:1;font-size:12px" value="'+(sdjBuy?'':c.agencyBuyer||'')+'" placeholder="타 중개업소"></div></div>'
+    +row('송도제일 담당자',fsel('manager',[{v:'',l:'선택'},{v:'문형은대표',l:'문형은 대표'},{v:'최지훈부장',l:'최지훈 부장'},{v:'이서정실장',l:'이서정 실장'}],c.manager||''))
+    +'</div></div>'
+    +'<div style="margin-bottom:10px"><label class="fl">📋 계약 주요 조건</label>'
+    +'<textarea id="d-conditions" rows="3" class="fi" style="resize:vertical;font-size:12px">'+(c.conditions||'')+'</textarea></div>'
+    +'<div><label class="fl">메모</label>'+fi('memo',c.memo)+'</div>';
+
+  document.getElementById('detail-body').innerHTML=html;
+  document.getElementById('detail-modal').classList.add('open');
+  document.getElementById('detail-msg').style.display='none';
+}
+
+function dSetSdj(side){
+  var btn=document.getElementById('d-sdj-'+side);
+  var isActive=btn.classList.contains('active');
+  if(isActive)btn.classList.remove('active');
+  else{btn.classList.add('active');document.getElementById('d-agency-'+side).value='';}
+}
+function gdv(id){var el=document.getElementById('d-'+id);return el?el.value:'';}
+
+function saveDetail(){
+  var c=contracts.find(function(x){return x.id===detailId;});if(!c)return;
+  var sdjSel=document.getElementById('d-sdj-seller').classList.contains('active')?'송도제일공인':gdv('agency-seller');
+  var sdjBuy=document.getElementById('d-sdj-buyer').classList.contains('active')?'송도제일공인':gdv('agency-buyer');
+  c.type=gdv('type');c.deal=gdv('deal');c.renewalType=gdv('newrenewal');c.renewalRight=gdv('renewalright')||'';
+  c.bldg=gdv('bldg');c.dong=gdv('dong');c.ho=gdv('ho');c.addr=gdv('addr');
+  c.cdate=gdv('cdate');c.mid1=gdv('mid1');c.mid2=gdv('mid2');c.fdate=gdv('fdate');c.expiry=gdv('expiry');
+  c.seller=gdv('seller');c.sellerTel=gdv('stl');c.buyer=gdv('buyer');c.buyerTel=gdv('btl');
+  c.price=gdv('price');c.deposit=gdv('deposit')||'';c.monthly=gdv('monthly')||'';
+  c.pbase=gdv('pbase')||'';c.popt=gdv('popt')||'';c.pprem=gdv('pprem')||'';
+  c.fee=gdv('fee');c.memo=gdv('memo');c.conditions=gdv('conditions');
+  c.agencySeller=sdjSel;c.agencyBuyer=sdjBuy;c.manager=gdv('manager');
+  c.landlord=gdv('landlord')||'';c.landlordTel=gdv('landlordtel')||'';c.landlordExp=gdv('landlordexp')||'';
+  toCStore();syncMidToSchedule(c);renderCT();
+  var msg=document.getElementById('detail-msg');
+  msg.textContent='✅ 저장됐습니다!';msg.style.background='#e8f5e9';msg.style.color='#2e7d32';msg.style.display='block';
+  setTimeout(function(){msg.style.display='none';},2500);
+}
+function closeDetail(){document.getElementById('detail-modal').classList.remove('open');detailId=null;}
+function delDetail(){contracts=contracts.filter(function(c){return c.id!==detailId;});toCStore();renderCT();closeDetail();}
+
+function doRenewal(){
+  var c=contracts.find(function(x){return x.id===detailId;});if(!c)return;
+  closeDetail();sw(1);
+  setTimeout(function(){
+    document.getElementById('fc-type').value=c.type||'아파트';
+    document.getElementById('fc-deal').value=c.deal||'전세';
+    if(document.getElementById('fc-newrenewal'))document.getElementById('fc-newrenewal').value='갱신재계약';
+    document.getElementById('fc-bldg').value=c.bldg||'';
+    document.getElementById('fc-dong').value=c.dong||'';
+    document.getElementById('fc-ho').value=c.ho||'';
+    document.getElementById('fc-addr').value=c.addr||'';
+    document.getElementById('fc-seller').value=c.seller||'';
+    document.getElementById('fc-stl').value=c.sellerTel||'';
+    document.getElementById('fc-buyer').value=c.buyer||'';
+    document.getElementById('fc-btl').value=c.buyerTel||'';
+    document.getElementById('fc-price').value=c.price||'';
+    if(document.getElementById('fc-deposit'))document.getElementById('fc-deposit').value=c.deposit||'';
+    if(document.getElementById('fc-monthly'))document.getElementById('fc-monthly').value=c.monthly||'';
+    document.getElementById('fc-fee').value=c.fee||'';
+    if(document.getElementById('fc-manager'))document.getElementById('fc-manager').value=c.manager||'';
+    if(c.agencySeller==='송도제일공인'){document.getElementById('btn-sdj-seller').classList.add('active');}
+    else if(document.getElementById('fc-agency-seller'))document.getElementById('fc-agency-seller').value=c.agencySeller||'';
+    if(c.agencyBuyer==='송도제일공인'){document.getElementById('btn-sdj-buyer').classList.add('active');}
+    else if(document.getElementById('fc-agency-buyer'))document.getElementById('fc-agency-buyer').value=c.agencyBuyer||'';
+    if(c.expiry)document.getElementById('fc-cdate').value=c.expiry;
+    onCDeal();
+    document.getElementById('fc-form-title').textContent='🔄 재계약 — '+c.bldg+(c.ho?' '+c.ho:'');
+    document.getElementById('fc-link-info').textContent='🔄 기존 정보 복사됨 — 날짜·가격 확인 후 저장하세요';
+    document.getElementById('fc-link-info').style.display='block';
+  },100);
+}
+
+function regCust(side){
+  var c=contracts.find(function(x){return x.id===detailId;});if(!c)return;
+  var isSdj=side==='seller'?
+    (document.getElementById('d-sdj-seller')&&document.getElementById('d-sdj-seller').classList.contains('active'))||(c.agencySeller==='송도제일공인'):
+    (document.getElementById('d-sdj-buyer')&&document.getElementById('d-sdj-buyer').classList.contains('active'))||(c.agencyBuyer==='송도제일공인');
+  if(!isSdj){alert('송도제일공인이 담당하는 쪽만 등록할 수 있습니다.');return;}
+  var name=side==='seller'?c.seller:c.buyer;
+  var tel=side==='seller'?c.sellerTel:c.buyerTel;
+  if(!name&&!tel){alert('성명 또는 연락처가 없습니다.');return;}
+  var msg=document.getElementById('detail-msg');
+  window.storage.get('sd_custs').then(function(r){
+    var custs=r&&r.value?JSON.parse(r.value):[];
+    var cleanTel=(tel||'').replace(/[^0-9]/g,'');
+    var dup=cleanTel?custs.find(function(x){return(x.tel1||'').replace(/[^0-9]/g,'')===cleanTel;}):null;
+    var now=new Date(),ds=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0');
+    if(dup){
+      if(!dup.tags)dup.tags=[];
+      if(dup.tags.indexOf('계약고객')<0)dup.tags.push('계약고객');
+      dup.lastdate=ds;
+    } else {
+      custs.unshift({id:Date.now()+Math.random(),name:name||'이름없음',tel1:tel||'',tags:['계약고객'],pipe:4,
+        rdate:ds,lastdate:ds,consult:'계약관리 자동등록 ('+c.bldg+(c.ho?' '+c.ho:'')+' '+c.deal+')'});
+    }
+    window.storage.set('sd_custs',JSON.stringify(custs)).then(function(){
+      msg.textContent=dup?'✅ '+(dup.name||name)+'님 계약고객 태그 추가됨':'✅ '+(name||'고객')+'님 계약고객으로 등록됨';
+      msg.style.background='#e8f5e9';msg.style.color='#2e7d32';msg.style.display='block';
+      setTimeout(function(){msg.style.display='none';},3000);
+    });
+  });
+}
+
+function syncMidToSchedule(c){
+  if(!c.mid1&&!c.mid2)return;
+  window.storage.get('sd_schedule').then(function(r){
+    var evts=r&&r.value?JSON.parse(r.value):[];
+    var title=c.bldg+(c.ho?' '+c.ho:'')+' '+c.deal;
+    ['mid1','mid2'].forEach(function(k,ki){
+      if(!c[k])return;
+      var eid='CT_MID_'+c.id+'_'+k;
+      var idx=evts.findIndex(function(e){return e.id===eid;});
+      var evt={id:eid,date:c[k],title:'💰 중도금'+(ki+1)+' — '+title,type:'계약',color:'#e65100',source:'contract'};
+      if(idx>=0)evts[idx]=evt;else evts.push(evt);
+    });
+    window.storage.set('sd_schedule',JSON.stringify(evts));
+  }).catch(function(){});
+}
+
+function calcPTotal(){
+  var toN=function(s){return parseFloat((s||'').replace(/[^0-9.]/g,''))||0;};
+  var t=toN(document.getElementById('fc-pbase')?document.getElementById('fc-pbase').value:'')+
+        toN(document.getElementById('fc-popt')?document.getElementById('fc-popt').value:'')+
+        toN(document.getElementById('fc-pprem')?document.getElementById('fc-pprem').value:'');
+  if(t>0&&document.getElementById('fc-ptotal'))document.getElementById('fc-ptotal').value=t.toLocaleString()+'만원';
+}
+
+</script>
+<script>
+var contracts=[], cEditId=null;
+
+async function toCStore(){try{await window.storage.set('sd_contracts',JSON.stringify(contracts));}catch(e){}}
+async function fromCStore(retry){
+  retry=retry||0;
+  try{
+    var r=await window.storage.get('sd_contracts');
+    if(r&&r.value){
+      var parsed=JSON.parse(r.value);
+      if(parsed&&parsed.length>0){contracts=parsed;return;}
+    }
+    // seed는 Firebase에 저장하지 않음 - 표시용으로만 사용
+    if(contracts.length===0&&retry===0){seedContracts();}
+  }catch(e){
+    console.error('fromCStore 오류('+retry+'회):', e);
+    if(retry<5){
+      setTimeout(function(){fromCStore(retry+1);},(retry+1)*1000);
+    } else {
+      var w=document.createElement('div');
+      w.style.cssText='position:fixed;top:10px;left:50%;transform:translateX(-50%);z-index:9999;background:#fff3e0;border:1px solid #ffcc80;border-radius:10px;padding:12px 20px;font-size:13px;color:#e65100;text-align:center;box-shadow:0 2px 12px rgba(0,0,0,.15)';
+      w.innerHTML='⚠️ Firebase 연결 오류<br><span style="font-size:11px">잠시 후 새로고침 해주세요</span><br><button onclick="location.reload()" style="margin-top:8px;padding:5px 14px;background:#e65100;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px">🔄 새로고침</button>';
+      document.body.appendChild(w);
+    }
+  }
+}
+
+var SEED_RAW=[
+'아파트\t전세\t부평제일아파트\t101\t1001\t2026-04-06\t2026-06-30\t김임대\t010-1000-2000\t이전세\t010-3000-4000\t인천광역시 연수구 부평동 1',
+'아파트\t매매\t송도더샵하버뷰13단지\t1302\t1304\t2026-03-21\t2026-05-26\t장성욱\t010-6345-6741\t전현주\t010-7742-9199\t인천광역시 연수구 송도동 17-5',
+'아파트\t전세\t송도더샵그린스퀘어\t104\t1201\t2026-03-21\t2026-05-29\t박상덕\t010-4019-0156\t최대환\t010-8654-5722\t인천광역시 연수구 송도동 192-1',
+'아파트\t임대차\t송도더샵센트럴파크3차\t102\t602\t2026-03-09\t2026-03-18\t한동현\t010-2229-1009\t이현주\t010-2208-4569\t인천광역시 연수구 송도동 92',
+'아파트\t임대차\t풍림아이원1단지\t101\t1101\t2026-03-07\t2026-03-18\t이한영\t010-9065-9433\t장근수\t010-5391-8207\t인천광역시 연수구 송도동 2-7',
+'아파트\t임대차\t더퍼스트시티송도\t101\t804\t2026-03-03\t2026-03-31\t김형민\t010-5610-1976\t최병일\t010-5547-9295\t인천광역시 연수구 송도동 21-28',
+'아파트\t임대차\t호반써밋송도\t108\t3606\t2026-02-24\t2026-03-27\t김성준\t010-9912-1484\t정치인\t010-9926-6231\t인천광역시 연수구 송도동 312-1',
+'아파트\t전세\t송도더샵하버뷰2\t1502\t203\t2026-02-01\t2026-03-09\t추대원\t010-8874-3017\t문영기\t010-3114-8778\t인천광역시 연수구 송도동 18-7',
+'아파트\t전세\t송도더샵하버뷰14단지\t1401\t603\t2026-01-31\t2026-02-23\t이장근\t010-8313-8308\t유기황\t010-7600-1663\t인천광역시 연수구 송도동 18-10',
+'아파트\t매매\t송도더샵하버뷰13단지\t1302\t504\t2026-01-29\t2026-05-29\t김명철\t010-5246-1932\t오병훈\t010-6252-0543\t인천광역시 연수구 송도동 17-5',
+'아파트\t전세\t송도SK뷰센트럴\t103\t2903\t2026-01-10\t2026-02-09\t양주령\t010-9244-1225\t정종혁\t010-2387-3496\t인천광역시 연수구 송도동 10-30',
+'아파트\t매매\t송도더샵하버뷰14단지\t1402\t701\t2026-01-09\t2026-03-25\t김병수\t010-4665-4911\t김학진\t010-9931-9383\t인천광역시 연수구 송도동 18-10',
+'아파트\t전세\t송도자이하버뷰2단지\t202\t2601\t2025-12-26\t2026-01-21\t김해영\t010-2876-6771\t삼성바이오로직스\t010-4185-0292\t인천광역시 연수구 송도동 19-7',
+'아파트\t전세\t송도더샵8단지그린애비뉴\t811\t302\t2025-12-23\t2026-03-20\t이만숙\t010-5058-9629\t정진경\t010-9387-1890\t인천광역시 연수구 송도동 16-7',
+'아파트\t전세\t송도더샵하버뷰\t1302\t2001\t2025-12-15\t2026-01-05\t황정근\t010-4705-6374\t고근나\t010-4499-6569\t인천광역시 연수구 송도동 17-5',
+'아파트\t임대차\t더퍼스트시티송도\t102\t901\t2025-12-11\t2026-01-30\t송문선\t010-3339-7043\t기은영\t010-6389-4127\t인천광역시 연수구 송도동 21-28',
+'아파트\t매매\t랜드마크시티센트럴더샵\t106\t4006\t2025-12-07\t2026-03-31\t이동섭\t\t김성우\t\t인천광역시 연수구 송도동 311,311-1',
+'아파트\t전세\t인천송도SK뷰\t108\t2405\t2025-11-11\t2026-01-30\t최은정\t010-2702-7639\t김태현\t010-8581-3132\t인천광역시 연수구 송도동 315-1',
+'아파트\t매매\t송도글로벌파크베르디움\t206\t1704\t2025-11-10\t2026-03-27\t윤수석\t010-6522-3078\t이현우\t010-4221-5666\t인천광역시 연수구 송도동 191-2',
+'아파트\t전세\t인천송도힐스테이트\t601\t1802\t2025-11-01\t2026-02-27\t김성태\t010-3892-3118\t오영철\t010-3237-3882\t인천광역시 연수구 송도동 21-65',
+'아파트\t매매\t송도더샵하버뷰14단지\t1401\t2302\t2025-10-25\t2026-02-20\t민병문\t010-2623-3229\t김효원\t010-2895-0119\t인천광역시 연수구 송도동 18-10',
+'아파트\t전세\t송도더샵하버뷰II\t1506\t1401\t2025-10-18\t2025-12-30\t최필호\t010-9121-3787\t박아름\t010-4599-9841\t인천광역시 연수구 송도동 18-7',
+'아파트\t임대차\t더퍼스트시티송도\t101\t1003\t2025-10-14\t2025-12-10\t정연수\t010-8866-8310\t김정화\t010-3324-3048\t인천광역시 연수구 송도동 21-28',
+'아파트\t전세\t글로벌캠퍼스푸르지오\t103\t1503\t2025-06-24\t2025-07-25\t손형운\t010-3895-5757\t김창수\t010-3787-2833\t인천광역시 연수구 송도동 190-2',
+'아파트\t전세\t송도더샵그린워크3차\t1701\t2201\t2025-05-25\t2025-07-30\t박창수\t010-4721-9331\t강나루\t010-8304-2595\t인천광역시 연수구 송도동 18-5',
+'아파트\t전세\t현대2차\t216\t103\t2025-05-07\t2025-06-26\t이경민\t010-4929-2231\t고은경\t010-5323-3877\t인천광역시 연수구 연수동 924',
+'아파트\t임대차\t송도자이하버뷰1단지\t105\t302\t2025-04-28\t2025-07-17\t한정화\t010-6860-3352\t천송이\t010-3879-4454\t인천광역시 연수구 송도동 19-6',
+'아파트\t매매\t송도아트윈푸르지오\t101\t3701\t2025-04-23\t2025-06-04\t임양주\t010-5249-6542\t이관홍\t010-9652-2121\t인천광역시 연수구 송도동 33-1',
+'아파트\t전세\t연수주공3차아파트\t302\t1502\t2025-03-17\t2025-04-30\t윤태형\t010-9470-0595\t심현희\t010-9173-0358\t인천광역시 연수구 연수동 578-2',
+'아파트\t전세\t베르디움더퍼스트\t112\t1501\t2025-03-01\t2025-05-14\t김두근\t010-3316-3873\t이상엽\t010-3799-0816\t인천광역시 연수구 송도동 192-8',
+'아파트\t임대차\t송도대경스위트리아파크뷰\t1\t401\t2025-01-22\t2025-04-07\t이상호\t010-9088-5296\t김은지\t010-9848-1287\t인천광역시 연수구 송도동 21-34',
+'아파트\t매매\t인천송도힐스테이트\t602\t602\t2024-12-17\t2025-02-25\t박명자\t780-974-6862\t이지은\t010-4153-4183\t인천광역시 연수구 송도동 21-65',
+'아파트\t전세\t송도더샵센트럴시티\t211\t4103\t2024-12-06\t2025-01-24\t배성윤\t010-9232-3686\t류혜린\t010-5680-3845\t인천광역시 연수구 송도동 190-4',
+'아파트\t매매\t더샵그린워크2차\t1103\t1002\t2024-12-02\t2025-01-16\t이상종\t010-3329-7747\t정하상\t010-3283-0731\t인천광역시 연수구 송도동 17-3',
+'아파트\t매매\t송도더샵센트럴파크Ⅱ\t202\t2501\t2024-11-09\t2025-02-21\t전호준\t010-3588-0781\t최규창\t010-5040-9105\t인천광역시 연수구 송도동 23-4',
+'아파트\t전세\t인천송도힐스테이트\t302\t1401\t2024-11-07\t2025-01-14\t이정남\t010-6375-9807\t문현\t010-9935-5597\t인천광역시 연수구 송도동 21-59',
+'아파트\t전세\t풍림아이원6단지\t610\t501\t2024-10-14\t2025-01-15\t조회연\t010-5794-8270\t양태용\t010-3717-5198\t인천광역시 연수구 송도동 3-40',
+'아파트\t임대차\t송도더샵그린워크3차\t1803\t2302\t2024-10-01\t2025-01-27\t박수지\t010-8829-5811\t이원경\t010-3181-9494\t인천광역시 연수구 송도동 19-3',
+'아파트\t매매\t송도더샵퍼스트월드\t4\t4801\t2024-09-10\t2025-02-21\t양태용\t010-3717-5198\t김종성\t010-9670-9375\t인천광역시 연수구 송도동 4-1',
+'아파트\t전세\t송도더샵하버뷰14단지\t1403\t601\t2024-08-14\t2024-09-30\t장지연\t010-3311-0080\t이범용\t010-5231-6329\t인천광역시 연수구 송도동 18-10',
+'오피스텔\t전세\t랜드마크시티센트럴더샵\t203\t1901\t2024-08-05\t2024-09-10\t정복순\t010-7285-3663\t유병찬\t010-4691-3479\t인천광역시 연수구 송도동 311,311-1',
+'아파트\t전세\t송도해모로\t103\t1103\t2024-07-27\t2024-09-20\t유희정\t010-2670-0788\t조범상\t010-7906-1450\t인천광역시 연수구 송도동 3-44',
+'아파트\t전세\t송도더샵그린스퀘어\t104\t1201\t2024-04-06\t2026-05-29\t박상덕\t010-4019-0156\t최대환\t010-8654-5722\t인천광역시 연수구 송도동 192-1'
+];
+
+var SEED_RAW2=[
+'아파트\t전세\t송도더샵하버뷰14단지\t1401\t704\t2024-03-16\t2024-04-13\t한지희\t010-8904-3027\t조기형\t010-3738-3895\t인천광역시 연수구 송도동 18-10',
+'아파트\t임대차\t풍림아이원1단지\t101\t1101\t2024-03-09\t2024-03-18\t이한영\t010-9065-9433\t장근수\t010-5391-8207\t인천광역시 연수구 송도동 2-7',
+'아파트\t매매\t송도더샵센트럴시티\t211\t302\t2024-02-24\t2024-04-30\t최주용\t010-5022-9105\t정의찬\t010-5474-1028\t인천광역시 연수구 송도동 190-4',
+'아파트\t매매\t송도더샵그린워크3차\t1804\t2704\t2024-02-23\t2024-05-31\t한승희\t010-9122-7459\t하동원\t010-5307-8166\t인천광역시 연수구 송도동 19-3',
+'아파트\t전세\t인천송도SK뷰\t108\t2405\t2024-02-17\t2024-02-28\t최은정\t010-2702-7639\t김경애\t010-3314-0514\t인천광역시 연수구 송도동 315-1',
+'아파트\t전세\t송도더샵센트럴파크Ⅱ\t202\t2501\t2024-02-06\t2024-03-11\t전호준\t010-3588-0781\t윤정미\t010-2114-1031\t인천광역시 연수구 송도동 23-4',
+'아파트\t전세\t송도더샵하버뷰14단지\t1401\t603\t2024-01-22\t2024-02-23\t이장근\t010-8313-8308\t유기황\t010-7600-1663\t인천광역시 연수구 송도동 18-10',
+'아파트\t매매\t힐스테이트레이크송도3차\t301\t2501\t2023-12-17\t2023-12-26\t이윤주\t010-2013-3138\t강택문\t010-7172-2021\t인천광역시 연수구 송도동 397-5',
+'아파트\t매매\t송도더샵하버뷰14단지\t1401\t503\t2023-12-15\t2024-02-28\t전효신\t010-3134-0285\t김용일\t010-4814-0144\t인천광역시 연수구 송도동 18-10',
+'아파트\t전세\t송도더샵하버뷰14단지\t1401\t2205\t2023-11-04\t2024-01-20\t임지원\t010-5311-3824\t김태훈\t010-4783-8316\t인천광역시 연수구 송도동 18-10',
+'아파트\t임대차\t더퍼스트시티송도\t101\t1003\t2023-09-23\t2023-11-12\t정연수\t010-8866-8310\t김혜자\t010-6276-4113\t인천광역시 연수구 송도동 21-28',
+'아파트\t전세\t글로벌캠퍼스푸르지오\t103\t1503\t2023-09-20\t2023-10-27\t손형운\t010-3895-5757\t김정훈\t010-8899-4978\t인천광역시 연수구 송도동 190-2',
+'아파트\t매매\t힐스테이트송도더스카이\t101\t2903\t2023-09-01\t2023-10-17\t김부영\t010-8961-2006\t노영식\t010-8921-7103\t인천광역시 연수구 송도동 30-2',
+'아파트\t전세\t송도자이하버뷰\t206\t602\t2023-07-14\t2023-09-20\t이준석\t1865-324-1920\t유성민\t010-8413-3213\t인천시 연수구 송도동 19-7',
+'아파트\t전세\t랜드마크시티센트럴더샵\t105\t902\t2023-07-03\t2023-08-30\t백미경\t010-4765-6046\t고범준\t010-9003-2524\t인천광역시 연수구 송도동 311,311-1',
+'아파트\t전세\t송도아트윈푸르지오\t101\t1207\t2023-07-01\t2023-09-05\t김광환\t010-9645-2435\t허성문\t010-5855-4890\t인천광역시 연수구 송도동 33-1',
+'아파트\t전세\t송도더샵그린스퀘어\t104\t1201\t2023-05-26\t2023-07-10\t박상덕\t010-4019-0156\t고성주\t010-2458-1118\t인천광역시 연수구 송도동 192-1',
+'아파트\t매매\t송도더샵하버뷰14단지\t1402\t701\t2023-05-18\t2023-05-25\t김순복\t010-9078-6041\t김병수\t010-4665-4911\t인천광역시 연수구 송도동 18-10',
+'아파트\t전세\t송도더샵센트럴파크3차\t102\t1002\t2023-05-13\t2023-06-30\t유영주\t010-8968-9386\t정종혁\t010-2387-3496\t인천광역시 연수구 송도동 92',
+'아파트\t전세\t푸르지오하버뷰\t105\t2404\t2023-03-18\t2023-04-27\t남형식\t010-5188-1952\t강성철\t010-8933-8362\t인천광역시 연수구 송도동 19-5',
+'아파트\t전세\t더샵엑스포10단지\t1001\t801\t2023-02-10\t2023-02-28\t배경일\t010-4783-2048\t박재현\t010-8831-7938\t인천광역시 연수구 송도동 16-4',
+'아파트\t매매\t호반써밋송도\t109\t2304\t2023-02-04\t2023-04-06\t윤연중\t010-2441-1278\t차재성\t010-5505-0806\t인천광역시 연수구 송도동 312-1,4',
+'아파트\t전세\t송도더샵마리나베이\t111\t2503\t2022-12-29\t2023-02-20\t김관호\t010-8857-8447\t이서하\t010-7574-8982\t인천광역시 연수구 송도동 308-1',
+'아파트\t전세\t더샵그린워크2차\t1103\t2903\t2022-11-27\t2023-02-28\t김대해\t010-7149-8764\t한들녘\t010-3290-0625\t인천광역시 연수구 송도동 17-3',
+'아파트\t임대차\t송도더샵하버뷰14단지\t1402\t804\t2022-11-02\t2023-02-15\t곽진석\t010-5521-6680\t윤항섭\t010-3947-6811\t인천광역시 연수구 송도동 18-10',
+'아파트\t임대차\t송도힐스테이트3단지\t301\t903\t2022-10-11\t2023-01-17\t김성욱\t010-2896-2124\t최민규\t010-5502-9000\t인천광역시 연수구 송도동 21-59',
+'아파트\t전세\t송도더샵그린스퀘어\t106\t3603\t2022-09-16\t2023-01-06\t정애련\t010-6591-6689\t김순복\t010-9078-6041\t인천광역시 연수구 송도동 192-1',
+'아파트\t전세\t이편한세상송도\t106\t3603\t2022-04-21\t2022-06-24\t정웅\t010-3869-2902\t복정화\t010-9012-0607\t인천광역시 연수구 송도동 319-1',
+'아파트\t매매\t이편한세상송도\t106\t3603\t2022-04-09\t2022-06-30\t정순봉\t010-8746-0665\t정웅\t010-3869-2902\t인천광역시 연수구 송도동 319-1',
+'아파트\t매매\t송도더샵하버뷰\t1305\t501\t2022-04-02\t2022-05-16\t장혜원\t010-7123-8731\t조현용\t010-9183-3400\t인천광역시 연수구 송도동 17-5',
+'아파트\t임대차\t풍림아이원1단지\t101\t1101\t2022-02-15\t2022-03-18\t이한영\t010-9065-9433\t장근수\t010-5391-8207\t인천광역시 연수구 송도동 2-7',
+'아파트\t전세\t인천송도SK뷰\t108\t2405\t2021-12-16\t2022-02-28\t최은정\t010-2702-7639\t김경애\t010-3314-0514\t인천광역시 연수구 송도동 315-1',
+'아파트\t전세\t글로벌캠퍼스푸르지오\t103\t1503\t2021-06-21\t2021-08-10\t손형운\t010-3895-5757\t신승철\t010-2885-3384\t인천광역시 연수구 송도동 190-2',
+'아파트\t매매\t베르디움더퍼스트\t102\t2505\t2021-05-01\t2021-07-30\t주식회사행복윤승\t010-9000-7523\t박영철\t010-3268-0159\t인천광역시 연수구 송도동 192-8'
+];
+
+function calcDefaultExpiry(deal,fdate){
+  if(!fdate)return'';var d=new Date(fdate);if(isNaN(d))return'';
+  if(deal==='전세')d.setFullYear(d.getFullYear()+2);
+  else if(deal==='임대차'||deal==='월세'||deal==='임대')d.setFullYear(d.getFullYear()+2);
+  else return'';
+  return d.toISOString().split('T')[0];
+}
+function makeRecord(f,baseId,i){
+  return{id:baseId+i,type:f[0]||'',deal:f[1]||'',bldg:f[2]||'',dong:f[3]||'',ho:f[4]||'',
+    cdate:f[5]||'',mid1:'',mid2:'',fdate:f[6]||'',
+    seller:f[7]||'',sellerTel:f[8]||'',buyer:f[9]||'',buyerTel:f[10]||'',addr:f[11]||'',
+    price:'',deposit:'',monthly:'',period:'',expiry:calcDefaultExpiry(f[1],f[6]),
+    fee:'',memo:'',conditions:'',agencySeller:'',agencyBuyer:'',manager:'',
+    renewalType:'신규',renewalRight:'',landlord:'',landlordTel:'',landlordExp:'',
+    pbase:'',popt:'',pprem:'',propId:'',custId:'',seeded:true};
+}
+function seedContracts(){contracts=SEED_RAW.map(function(s,i){return makeRecord(s.split('\t'),2000,i);});}
+
+fromCStore().then(function(){sw(0);setTodayCF();loadDismissed();});
+
+function sw(n){
+  for(var i=0;i<=4;i++){
+    var tc=document.getElementById('tc'+i),tn=document.getElementById('tn'+i);
+    if(tc)tc.className='tc'+(i===n?' on':'');
+    if(tn){tn.style.borderBottomColor=i===n?'#1a1a1a':'transparent';tn.style.color=i===n?'#1a1a1a':'#666';tn.style.fontWeight=i===n?'500':'400';}
+  }
+  if(n===0)refreshHub();if(n===2)renderCT();if(n===3)renderExpiry();
+}
+
+function refreshHub(){
+  var now=new Date(),days=['일','월','화','수','목','금','토'];
+  document.getElementById('hub-date').textContent=now.getFullYear()+'년 '+(now.getMonth()+1)+'월 '+now.getDate()+'일 ('+days[now.getDay()]+'요일)';
+  var h=now.getHours();
+  document.getElementById('hub-greet').textContent=h<11?'☀️ 좋은 아침입니다, 소장님!':h<18?'🌇 오후도 화이팅입니다!':'🌆 오늘 하루도 수고 많으셨습니다!';
+  var total=contracts.length,jeon=contracts.filter(function(c){return c.deal==='전세';}).length;
+  var imde=contracts.filter(function(c){return c.deal==='임대차'||c.deal==='월세'||c.deal==='임대';}).length;
+  var mae=contracts.filter(function(c){return c.deal==='매매';}).length;
+  document.getElementById('hub-stat').innerHTML=[{n:total,l:'전체',c:'#1a1a1a',bg:'#fff'},{n:jeon,l:'전세',c:'#1565c0',bg:'#e3f2fd'},{n:imde,l:'임대차/월세',c:'#f57f17',bg:'#fff8e1'},{n:mae,l:'매매',c:'#2e7d32',bg:'#e8f5e9'}].map(function(s){return'<div style="background:'+s.bg+';border:0.5px solid #e0e0e0;border-radius:10px;padding:10px;text-align:center"><div class="stat-n" style="color:'+s.c+'">'+s.n+'</div><div class="stat-l">'+s.l+'</div></div>';}).join('');
+  var today=new Date();today.setHours(0,0,0,0);
+  var ov=0,d30=0,d60=0,d90=0;
+  contracts.forEach(function(c){if(!c.expiry||['매매','분양권','권리'].includes(c.deal))return;if(dismissedAlerts[c.id])return;var exp=new Date(c.expiry);exp.setHours(0,0,0,0);var diff=Math.floor((exp-today)/86400000);if(diff<-180)return;if(diff<0)ov++;else if(diff<=30)d30++;else if(diff<=60)d60++;else if(diff<=90)d90++;});
+  document.getElementById('h-exp0').textContent=ov;document.getElementById('h-exp30').textContent=d30;document.getElementById('h-exp60').textContent=d60;document.getElementById('h-exp90').textContent=d90;
+  window.storage.get('sd_props').then(function(r){
+    var props=r&&r.value?JSON.parse(r.value):[];
+    var act=props.filter(function(p){return p.status==='활성';}).length;
+    var done=props.filter(function(p){return p.status==='거래완료';}).length;
+    document.getElementById('hub-props').innerHTML='<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:6px"><div class="stat-box"><div class="stat-n" style="color:#1565c0">'+act+'</div><div class="stat-l">활성 매물</div></div><div class="stat-box"><div class="stat-n" style="color:#aaa">'+done+'</div><div class="stat-l">거래완료</div></div></div><p style="font-size:11px;color:#aaa;margin:0">총 '+props.length+'건 연동됨</p>';
+  }).catch(function(){document.getElementById('hub-props').innerHTML='<p style="font-size:12px;color:#aaa">매물관리 시스템 연동 없음</p>';});
+  window.storage.get('sd_custs').then(function(r){
+    var custs=r&&r.value?JSON.parse(r.value):[];
+    var cnt=[0,0,0,0];custs.forEach(function(c){if(c.pipe>=1&&c.pipe<=4)cnt[c.pipe-1]++;});
+    var labels=['상담','물건','협의','완료'],colors=['#1565c0','#f57f17','#c62828','#2e7d32'];
+    document.getElementById('hub-custs').innerHTML='<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:6px">'+cnt.map(function(n,i){return'<div class="stat-box"><div class="stat-n" style="color:'+colors[i]+';font-size:18px">'+n+'</div><div class="stat-l">'+labels[i]+'</div></div>';}).join('')+'</div><p style="font-size:11px;color:#aaa;margin:0">총 '+custs.length+'명 연동됨</p>';
+  }).catch(function(){document.getElementById('hub-custs').innerHTML='<p style="font-size:12px;color:#aaa">고객관리 시스템 연동 없음</p>';});
+  document.getElementById('hub-recent').innerHTML=contracts.slice(0,5).map(function(c){return'<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:0.5px solid #f0f0f0"><span style="font-size:12px;font-weight:500">'+c.bldg+(c.ho?' '+c.ho:'')+'</span><span style="font-size:11px;color:#aaa">'+c.deal+' · '+(c.cdate||'')+'</span></div>';}).join('')||'<p style="font-size:12px;color:#aaa">없음</p>';
+  var today2=new Date();today2.setHours(0,0,0,0);
+  var ex=contracts.filter(function(c){if(!c.expiry||['매매','분양권','권리'].includes(c.deal))return false;if(dismissedAlerts[c.id])return false;var d=new Date(c.expiry);d.setHours(0,0,0,0);var diff=Math.floor((d-today2)/86400000);if(diff<-365)return false;return diff<=90;}).sort(function(a,b){return new Date(a.expiry)-new Date(b.expiry);}).slice(0,5);
+  document.getElementById('hub-expiring').innerHTML=ex.length?ex.map(function(c){var d=new Date(c.expiry);d.setHours(0,0,0,0);var diff=Math.floor((d-today2)/86400000);var clr=diff<0?'#c62828':diff<=30?'#e65100':diff<=60?'#f57f17':'#2e7d32';return'<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:0.5px solid #f0f0f0"><span style="font-size:12px;font-weight:500">'+c.bldg+(c.ho?' '+c.ho:'')+'</span><span style="font-size:11px;font-weight:500;color:'+clr+'">'+(diff<0?'만기초과':'D-'+diff)+'</span></div>';}).join(''):'<p style="font-size:12px;color:#aaa;margin:4px 0">만기 임박 계약 없음 👍</p>';
+}
+
+function setTodayCF(){var t=new Date(),ds=t.getFullYear()+'-'+String(t.getMonth()+1).padStart(2,'0')+'-'+String(t.getDate()).padStart(2,'0');document.getElementById('fc-cdate').value=ds;}
+function onCDeal(){
+  var d=document.getElementById('fc-deal').value;
+  var t=document.getElementById('fc-type').value;
+  var nr=document.getElementById('fc-newrenewal')?document.getElementById('fc-newrenewal').value:'신규';
+  var isMae=['매매','분양권매매','권리'].includes(d);
+  var isWol=d==='월세'||d==='임대';
+  var isKwon=d==='권리'||t==='권리';
+  var isPunyang=d==='분양권매매';
+  var isRenewal=nr==='갱신재계약';
+  var isApt=['아파트','오피스텔'].includes(t);
+  // 가격 레이블
+  if(!isPunyang){
+    var lbl=d==='전세'?'전세금':isMae&&!isKwon?'매매가':isKwon?'권리금':'임대가';
+    document.getElementById('fc-p1l').textContent=lbl;
+  }
+  document.getElementById('fc-p1w').style.display=isPunyang?'none':'block';
+  document.getElementById('fc-p2w').style.display=(isWol||isKwon)?'block':'none';
+  document.getElementById('fc-p3w').style.display=(isWol||isKwon)?'block':'none';
+  document.getElementById('fc-period-wrap').style.display=isMae?'none':'block';
+  // 분양권/권리/상가임대인
+  var puWrap=document.getElementById('fc-punyang-wrap');
+  if(puWrap)puWrap.style.display=isPunyang?'block':'none';
+  var llWrap=document.getElementById('fc-landlord-wrap');
+  if(llWrap)llWrap.style.display=isKwon?'block':'none';
+  // 갱신청구권
+  var rrWrap=document.getElementById('fc-renewal-right-wrap');
+  if(rrWrap)rrWrap.style.display=(isRenewal&&isApt&&!isMae)?'block':'none';
+}
+function autoExpiry(){var fd=document.getElementById('fc-fdate').value,deal=document.getElementById('fc-deal').value,period=document.getElementById('fc-period').value;if(!fd)return;var d=new Date(fd);if(period)d.setMonth(d.getMonth()+Math.round(parseFloat(period)*12));else if(deal==='전세'||deal==='임대차'||deal==='월세'||deal==='임대')d.setFullYear(d.getFullYear()+2);else return;document.getElementById('fc-expiry').value=d.toISOString().split('T')[0];}
+
+function openPropSel(){
+  window.storage.get('sd_props').then(function(r){
+    var props=r&&r.value?JSON.parse(r.value):[];var act=props.filter(function(p){return p.status==='활성';});
+    if(!act.length){alert('활성 매물이 없습니다.');return;}
+    document.getElementById('prop-sel').innerHTML='<option value="">-- 선택 --</option>'+act.map(function(p){return'<option value="'+p.id+'">'+p.propertyType+' | '+p.complexName+(p.unitInfo?' '+p.unitInfo:'')+'</option>';}).join('');
+    document.getElementById('prop-sel-wrap').style.display='block';document.getElementById('cust-sel-wrap').style.display='none';
+  }).catch(function(){alert('매물관리 시스템 연동 불가');});
+}
+function fillFromProp(){
+  var id=document.getElementById('prop-sel').value;if(!id)return;
+  window.storage.get('sd_props').then(function(r){
+    var props=r&&r.value?JSON.parse(r.value):[];var p=props.find(function(x){return String(x.id)===String(id);});if(!p)return;
+    var tm={'아파트 매매':'아파트','아파트 전세':'아파트','아파트 월세':'아파트','오피스텔 전세':'오피스텔','오피스텔 월세':'오피스텔','상가 임대':'상가','사무실 임대':'사무실'};
+    var dm={'아파트 매매':'매매','아파트 전세':'전세','아파트 월세':'월세','오피스텔 전세':'전세','오피스텔 월세':'월세','상가 임대':'임대','사무실 임대':'임대'};
+    document.getElementById('fc-type').value=tm[p.propertyType]||'아파트';document.getElementById('fc-deal').value=dm[p.propertyType]||'전세';document.getElementById('fc-bldg').value=p.complexName||'';
+    if(p.unitInfo){var pts=p.unitInfo.split(' ');if(pts.length>=2){document.getElementById('fc-dong').value=pts[0];document.getElementById('fc-ho').value=pts[1];}}
+    if(p.pm)document.getElementById('fc-price').value=p.pm;document.getElementById('fc-propid').value=id;
+    var info=document.getElementById('fc-link-info');info.textContent='🔗 매물 연동: '+p.complexName+(p.unitInfo?' '+p.unitInfo:'');info.style.display='block';
+    document.getElementById('prop-sel-wrap').style.display='none';onCDeal();
+  });
+}
+function openCustSel(){
+  window.storage.get('sd_custs').then(function(r){
+    var custs=r&&r.value?JSON.parse(r.value):[];if(!custs.length){alert('등록된 고객이 없습니다.');return;}
+    document.getElementById('cust-sel').innerHTML='<option value="">-- 선택 --</option>'+custs.map(function(c){return'<option value="'+c.id+'">'+c.name+(c.tel1?' ('+c.tel1+')':'')+'</option>';}).join('');
+    document.getElementById('cust-sel-wrap').style.display='block';document.getElementById('prop-sel-wrap').style.display='none';
+  }).catch(function(){alert('고객관리 시스템 연동 불가');});
+}
+function fillFromCust(){
+  var id=document.getElementById('cust-sel').value;if(!id)return;
+  window.storage.get('sd_custs').then(function(r){
+    var custs=r&&r.value?JSON.parse(r.value):[];var c=custs.find(function(x){return String(x.id)===String(id);});if(!c)return;
+    document.getElementById('fc-buyer').value=c.name||'';document.getElementById('fc-btl').value=c.tel1||'';document.getElementById('fc-custid').value=id;
+    var info=document.getElementById('fc-link-info');info.textContent=(info.textContent&&info.textContent.indexOf('매물')>=0?info.textContent+' · ':'')+'👤 고객 연동: '+c.name;info.style.display='block';
+    document.getElementById('cust-sel-wrap').style.display='none';
+  });
+}
+
+function saveContract(){
+  var bldg=document.getElementById('fc-bldg').value.trim();if(!bldg){alert('건물명을 입력해 주세요.');return;}
+  var now=new Date(),ds=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0');
+  var propId=document.getElementById('fc-propid').value;
+  var sdjSeller=document.getElementById('btn-sdj-seller')&&document.getElementById('btn-sdj-seller').classList.contains('active')?'송도제일공인':document.getElementById('fc-agency-seller').value.trim();
+  var sdjBuyer=document.getElementById('btn-sdj-buyer')&&document.getElementById('btn-sdj-buyer').classList.contains('active')?'송도제일공인':document.getElementById('fc-agency-buyer').value.trim();
+  var obj={id:cEditId||Date.now(),type:document.getElementById('fc-type').value,deal:document.getElementById('fc-deal').value,
+    renewalType:document.getElementById('fc-newrenewal')?document.getElementById('fc-newrenewal').value:'신규',
+    renewalRight:document.getElementById('fc-renewal-right')?document.getElementById('fc-renewal-right').value:'',
+    bldg:bldg,dong:document.getElementById('fc-dong').value.trim(),ho:document.getElementById('fc-ho').value.trim(),addr:document.getElementById('fc-addr').value.trim(),
+    cdate:document.getElementById('fc-cdate').value,mid1:document.getElementById('fc-mid1').value,mid2:document.getElementById('fc-mid2').value,fdate:document.getElementById('fc-fdate').value,
+    seller:document.getElementById('fc-seller').value.trim(),sellerTel:document.getElementById('fc-stl').value.trim(),
+    buyer:document.getElementById('fc-buyer').value.trim(),buyerTel:document.getElementById('fc-btl').value.trim(),
+    price:document.getElementById('fc-price').value.trim(),deposit:document.getElementById('fc-deposit').value.trim(),monthly:document.getElementById('fc-monthly').value.trim(),
+    pbase:document.getElementById('fc-pbase')?document.getElementById('fc-pbase').value:'',
+    popt:document.getElementById('fc-popt')?document.getElementById('fc-popt').value:'',
+    pprem:document.getElementById('fc-pprem')?document.getElementById('fc-pprem').value:'',
+    period:document.getElementById('fc-period').value,expiry:document.getElementById('fc-expiry').value,
+    fee:document.getElementById('fc-fee').value.trim(),memo:document.getElementById('fc-memo').value.trim(),
+    conditions:document.getElementById('fc-conditions')?document.getElementById('fc-conditions').value.trim():'',
+    agencySeller:sdjSeller,agencyBuyer:sdjBuyer,manager:document.getElementById('fc-manager')?document.getElementById('fc-manager').value:'',
+    landlord:document.getElementById('fc-landlord')?document.getElementById('fc-landlord').value.trim():'',
+    landlordTel:document.getElementById('fc-landlordtel')?document.getElementById('fc-landlordtel').value.trim():'',
+    landlordExp:document.getElementById('fc-landlordexp')?document.getElementById('fc-landlordexp').value:'',
+    propId:propId,custId:document.getElementById('fc-custid').value,seeded:false};
+  if(cEditId){var idx=contracts.findIndex(function(x){return x.id===cEditId;});if(idx>=0)contracts[idx]=obj;cEditId=null;document.getElementById('csave-btn').textContent='💾 계약 저장';}else contracts.unshift(obj);
+  toCStore();
+  if(!cEditId&&propId&&confirm('연결된 매물을 "거래완료"로 변경할까요?')){window.storage.get('sd_props').then(function(r){var props=r&&r.value?JSON.parse(r.value):[];var p=props.find(function(x){return String(x.id)===String(propId);});if(p){p.status='거래완료';window.storage.set('sd_props',JSON.stringify(props));}});}
+  syncMidToSchedule(obj);var ok=document.getElementById('csave-ok');ok.textContent='계약이 저장되었습니다! 📑';ok.style.display='block';setTimeout(function(){ok.style.display='none';},3000);clearCF();
+}
+
+function clearCF(){
+  ['fc-bldg','fc-dong','fc-ho','fc-addr','fc-cdate','fc-mid1','fc-mid2','fc-fdate','fc-seller','fc-stl','fc-buyer','fc-btl','fc-price','fc-deposit','fc-monthly','fc-fee','fc-memo','fc-expiry'].forEach(function(id){var el=document.getElementById(id);if(el)el.value='';});
+  document.getElementById('fc-type').value='아파트';document.getElementById('fc-deal').value='전세';document.getElementById('fc-period').value='';
+  document.getElementById('fc-propid').value='';document.getElementById('fc-custid').value='';
+  document.getElementById('fc-link-info').style.display='none';document.getElementById('prop-sel-wrap').style.display='none';document.getElementById('cust-sel-wrap').style.display='none';
+  ['fc-conditions','fc-landlord','fc-landlordtel','fc-landlordexp','fc-agency-seller','fc-agency-buyer'].forEach(function(id){var el=document.getElementById(id);if(el)el.value='';});
+  ['fc-pbase','fc-popt','fc-pprem'].forEach(function(id){var el=document.getElementById(id);if(el)el.value='';});
+  var sm=document.getElementById('fc-manager');if(sm)sm.value='';
+  var nr=document.getElementById('fc-newrenewal');if(nr)nr.value='신규';
+  var rr=document.getElementById('fc-renewal-right');if(rr)rr.value='';
+  var bs=document.getElementById('btn-sdj-seller');if(bs)bs.classList.remove('active');
+  var bb=document.getElementById('btn-sdj-buyer');if(bb)bb.classList.remove('active');
+  cEditId=null;document.getElementById('csave-btn').textContent='💾 계약 저장';document.getElementById('fc-form-title').textContent='계약 등록';
+  setTodayCF();onCDeal();
+}
+
+function priceTxt(c){var d=c.deal;if(d==='전세')return c.price?'전세 '+c.price:'—';if(d==='매매')return c.price?'매매 '+c.price:'—';var parts=[];if(c.deposit)parts.push('보증 '+c.deposit);if(c.monthly)parts.push('월세 '+c.monthly);if(c.price)parts.push(c.price);return parts.join(' / ')||'—';}
+function ddayTxt(expiry){if(!expiry)return'—';var today=new Date();today.setHours(0,0,0,0);var exp=new Date(expiry);exp.setHours(0,0,0,0);var diff=Math.floor((exp-today)/86400000);if(diff<0)return'<span style="color:#cc3333;font-weight:500">만기초과 '+Math.abs(diff)+'일</span>';if(diff<=30)return'<span style="color:#e65100;font-weight:500">D-'+diff+'</span>';if(diff<=60)return'<span style="color:#f57f17;font-weight:500">D-'+diff+'</span>';if(diff<=90)return'<span style="color:#2e7d32;font-weight:500">D-'+diff+'</span>';return'<span style="color:#aaa">D-'+diff+'</span>';}
+
+function mgrShort(m){if(!m)return'';if(m.includes('문형은'))return'문';if(m.includes('최지훈'))return'최';if(m.includes('이서정'))return'이';return m.slice(0,1);}
+function renderCT(){
+  var tf=document.getElementById('cft-type').value,df=document.getElementById('cft-deal').value,q=document.getElementById('cft-q').value.trim().toLowerCase();
+  var mf=document.getElementById('cft-manager')?document.getElementById('cft-manager').value:'';
+  var f=contracts.filter(function(c){return(!tf||c.type===tf)&&(!df||c.deal===df)&&(!mf||c.manager===mf)&&(!q||c.bldg.toLowerCase().includes(q)||(c.seller||'').toLowerCase().includes(q)||(c.buyer||'').toLowerCase().includes(q));});
+  document.getElementById('ct-cnt').textContent=f.length+'건';
+  var tb=document.getElementById('ctbdy'),no=document.getElementById('no-ct');
+  if(!f.length){tb.innerHTML='';no.style.display='block';return;}
+  no.style.display='none';
+  tb.innerHTML=f.map(function(c,i){
+    var dealBg=c.deal==='전세'?'#e3f2fd':['매매','분양권매매'].includes(c.deal)?'#e8f5e9':'#fff8e1';
+    var dealClr=c.deal==='전세'?'#1565c0':['매매','분양권매매'].includes(c.deal)?'#2e7d32':'#f57f17';
+    var midTxt=(c.mid1||c.mid2)?[c.mid1,c.mid2].filter(Boolean).join('<br>'):'—';
+    var rnBdg=(c.renewalType==='갱신재계약')?'<span style="font-size:9px;background:#fff3e0;color:#e65100;padding:1px 4px;border-radius:3px">갱신</span>':'신규';
+    var mgrBdg=c.manager?'<span style="font-size:10px;background:#e8f5e9;color:#1a7f3c;padding:1px 5px;border-radius:4px">'+mgrShort(c.manager)+'</span>':'';
+    return'<tr class="row-click" onclick="openDetail('+c.id+')">'
+      +'<td style="color:#aaa">'+(f.length-i)+'</td>'
+      +'<td style="font-size:11px">'+rnBdg+'</td>'
+      +'<td style="font-size:11px">'+c.type+'</td>'
+      +'<td><span class="bdg" style="background:'+dealBg+';color:'+dealClr+'">'+c.deal+'</span></td>'
+      +'<td style="font-weight:500;white-space:nowrap">'+c.bldg+'</td>'
+      +'<td style="font-size:11px;white-space:nowrap">'+[(c.dong||''),(c.ho||'')].filter(Boolean).join(' ')+'</td>'
+      +'<td style="font-size:11px">'+(c.cdate||'—')+'</td>'
+      +'<td style="font-size:11px">'+midTxt+'</td>'
+      +'<td style="font-size:11px">'+(c.fdate||'—')+'</td>'
+      +'<td style="font-size:11px;white-space:nowrap">'+(c.seller||'—')+'</td>'
+      +'<td style="font-size:11px;white-space:nowrap">'+(c.buyer||'—')+'</td>'
+      +'<td style="font-size:11px;white-space:nowrap">'+priceTxt(c)+'</td>'
+      +'<td style="font-size:11px">'+(c.expiry||'—')+'</td>'
+      +'<td style="font-size:11px">'+(['매매','분양권매매','권리'].includes(c.deal)?'<span style="color:#aaa">—</span>':ddayTxt(c.expiry))+'</td>'
+      +'<td>'+mgrBdg+'</td>'
+      +'<td style="white-space:nowrap;position:sticky;right:0;background:#fff;z-index:1" onclick="event.stopPropagation()">'
+      +'<button onclick="openDetail('+c.id+')" class="btn-s" style="font-size:11px;padding:4px 7px;margin-right:2px">상세</button>'
+      +'<button onclick="delCT('+c.id+')" class="btn-d">삭제</button>'
+      +'</td></tr>';
+  }).join('');
+}
+
+function editCT(id){
+  var c=contracts.find(function(x){return x.id===id;});if(!c)return;
+  cEditId=id;sw(1);document.getElementById('fc-type').value=c.type||'아파트';document.getElementById('fc-deal').value=c.deal||'전세';
+  ['bldg','dong','ho','addr','cdate','mid1','mid2','fdate','seller','stl','buyer','btl','price','deposit','monthly','fee','memo','expiry'].forEach(function(k){var el=document.getElementById('fc-'+k);if(el)el.value=c[k==='stl'?'sellerTel':k==='btl'?'buyerTel':k]||'';});
+  document.getElementById('fc-period').value=c.period||'';document.getElementById('fc-propid').value=c.propId||'';document.getElementById('fc-custid').value=c.custId||'';
+  var links=[];if(c.propId)links.push('🔗 매물 연동됨');if(c.custId)links.push('👤 고객 연동됨');
+  if(links.length){document.getElementById('fc-link-info').textContent=links.join(' · ');document.getElementById('fc-link-info').style.display='block';}
+  document.getElementById('csave-btn').textContent='💾 수정 저장';document.getElementById('fc-form-title').textContent='계약 수정';onCDeal();
+}
+function delCT(id){if(!confirm('이 계약을 삭제하시겠습니까?'))return;contracts=contracts.filter(function(c){return c.id!==id;});toCStore();renderCT();}
+
+var dismissedAlerts={};
+function dismissAlert(id){
+  dismissedAlerts[id]=true;
+  try{window.storage.set('sd_dismissed',JSON.stringify(dismissedAlerts));}catch(e){}
+  renderExpiry();
+}
+function loadDismissed(){
+  try{window.storage.get('sd_dismissed').then(function(r){if(r&&r.value)dismissedAlerts=JSON.parse(r.value);renderExpiry();}).catch(function(){renderExpiry();});}catch(e){renderExpiry();}
+}
+
+function renderExpiry(){
+  var today=new Date();today.setHours(0,0,0,0);
+  var ov=[],d30=[],d60=[],d90=[];
+  contracts.filter(function(c){
+    if(!c.expiry||['매매','분양권','권리'].includes(c.deal))return false;
+    if(dismissedAlerts[c.id])return false;
+    var exp=new Date(c.expiry);exp.setHours(0,0,0,0);
+    var diff=Math.floor((exp-today)/86400000);
+    // 만기 6개월(180일) 초과된 계약은 자동 제외 — 이전 계약 자료로만 활용
+    if(diff<-365)return false;
+    return true;
+  }).forEach(function(c){
+    var exp=new Date(c.expiry);exp.setHours(0,0,0,0);
+    var diff=Math.floor((exp-today)/86400000);
+    if(diff<0)ov.push({c:c,diff:diff});
+    else if(diff<=30)d30.push({c:c,diff:diff});
+    else if(diff<=60)d60.push({c:c,diff:diff});
+    else if(diff<=90)d90.push({c:c,diff:diff});
+  });
+  [ov,d30,d60,d90].forEach(function(arr){arr.sort(function(a,b){return new Date(a.c.expiry)-new Date(b.c.expiry);});});
+  document.getElementById('exp-ov-cnt').textContent='('+ov.length+'건)';
+  document.getElementById('exp30-cnt').textContent='('+d30.length+'건)';
+  document.getElementById('exp60-cnt').textContent='('+d60.length+'건)';
+  document.getElementById('exp90-cnt').textContent='('+d90.length+'건)';
+  var render=function(arr,el,cls){
+    document.getElementById(el).innerHTML=arr.length?arr.map(function(x){
+      return'<div class="alert-row '+cls+'" id="arow-'+x.c.id+'"><div style="flex:1"><span style="font-weight:500">'+x.c.bldg+(x.c.dong?' '+x.c.dong:'')+(x.c.ho?' '+x.c.ho:'')+'</span>'
+      +'<span style="margin-left:8px;font-size:11px;color:#888">'+x.c.deal+' · '+x.c.buyer+'</span></div>'
+      +'<span style="font-size:12px;font-weight:500;margin-right:8px">만기 '+x.c.expiry+' ('+Math.abs(x.diff)+'일'+(x.diff<0?' 초과':' 남음')+')</span>'
+      +'<button onclick="editCT('+x.c.id+');sw(1)" class="btn-s" style="font-size:11px;padding:4px 8px;margin-right:4px">수정</button>'
+      +'<button onclick="dismissAlert('+x.c.id+')" class="btn-s" style="font-size:11px;padding:4px 8px;color:#aaa;border-color:#ddd" title="알림 해제">✕ 해제</button>'
+      +'</div>';
+    }).join(''):'<p style="font-size:13px;color:#aaa;margin:4px 0">없습니다 👍</p>';
+  };
+  render(ov,'exp-over','a-gray');render(d30,'exp-30','a-red');render(d60,'exp-60','a-yel');render(d90,'exp-90','a-grn');
+}
+
+function importBatch2(){
+  var btn=document.getElementById('import-btn');if(btn&&btn.disabled)return;
+  if(!confirm('PDF 21~40페이지 데이터 '+SEED_RAW2.length+'건을 추가할까요?\n중복 계약은 자동 제외됩니다.'))return;
+  var added=0,skip=0;
+  SEED_RAW2.forEach(function(s,i){
+    var f=s.split('\t'),cdate=f[5],bldg=f[2],ho=f[4];
+    var dup=contracts.some(function(c){return c.cdate===cdate&&c.bldg===bldg&&c.ho===ho;});
+    if(!dup){contracts.push(makeRecord(f,3000,Date.now()+i));added++;}else skip++;
+  });
+  toCStore();renderCT();renderExpiry();
+  if(btn){btn.textContent='✅ 추가완료 '+added+'건';btn.disabled=true;btn.style.background='#e8f5e9';btn.style.color='#2e7d32';}
+  alert('✅ '+added+'건 추가! (중복 제외: '+skip+'건)\n전체: '+contracts.length+'건');
+}
+
+function pasteImport(){
+  var raw=document.getElementById('paste-area').value.trim();
+  var ok=document.getElementById('paste-ok'),err=document.getElementById('paste-err');
+  ok.style.display='none';err.style.display='none';
+  if(!raw){err.textContent='붙여넣기 내용이 없습니다.';err.style.display='block';return;}
+  var lines=raw.split('\n').filter(function(l){return l.trim();});
+  var added=0,skip=0,bad=0;
+  lines.forEach(function(line,i){
+    var f=line.split('\t');if(f.length<7){bad++;return;}
+    var cdate=f[5]||'',bldg=f[2]||'',ho=f[4]||'';
+    var dup=contracts.some(function(c){return c.cdate===cdate&&c.bldg===bldg&&c.ho===ho;});
+    if(dup){skip++;return;}
+    contracts.push(makeRecord(f,4000,Date.now()+i));added++;
+  });
+  toCStore();renderCT();renderExpiry();
+  if(added>0)document.getElementById('paste-area').value='';
+  ok.textContent='✅ '+added+'건 추가! (중복 '+skip+'건 제외 / 형식오류 '+bad+'건) — 전체 '+contracts.length+'건';
+  ok.style.display='block';
+}
+
+function bulkRecalcExpiry(){
+  var RENT_DEALS=['전세','임대차','월세','임대'];
+  var updated=0, skipped=0;
+  contracts.forEach(function(c){
+    if(!RENT_DEALS.includes(c.deal)){skipped++;return;}
+    var base=c.fdate||c.cdate;
+    if(!base){skipped++;return;}
+    var d=new Date(base);
+    if(isNaN(d)){skipped++;return;}
+    d.setFullYear(d.getFullYear()+2);
+    c.expiry=d.toISOString().split('T')[0];
+    updated++;
+  });
+  toCStore();
+  // 해제 목록 초기화 (재계산 후 다시 알림 노출)
+  dismissedAlerts={};
+  try{window.storage.set('sd_dismissed',JSON.stringify({}));}catch(e){}
+  renderCT();renderExpiry();
+  var el=document.getElementById('recalc-result');
+  el.textContent='완료! '+updated+'건 재계산, '+skipped+'건 제외(매매 등)';
+  setTimeout(function(){el.textContent='';},5000);
+}
+
+function copyTmpl(){
+  var t=document.getElementById('tmpl-body').innerText;
+  navigator.clipboard.writeText(t).then(function(){alert('복사됐습니다! 새 대화창에 붙여넣어 사용하세요.');});
+}
+
+function exportCtXL(){
+  if(!window.XLSX){alert('엑셀 라이브러리 준비 중입니다.');return;}
+  var tf=document.getElementById('cft-type').value,df=document.getElementById('cft-deal').value;
+  var f=contracts.filter(function(c){return(!tf||c.type===tf)&&(!df||c.deal===df);});
+  if(!f.length){alert('내보낼 계약이 없습니다.');return;}
+  var data=f.map(function(c,i){return{'번호':f.length-i,'물건종류':c.type,'계약구분':c.deal,'건물명':c.bldg,'동':c.dong||'','호수':c.ho||'','주소':c.addr||'','계약일':c.cdate||'','잔금일':c.fdate||'','매도임대인':c.seller||'','연락처':c.sellerTel||'','매수임차인':c.buyer||'','연락처2':c.buyerTel||'','가격':priceTxt(c),'만기일':c.expiry||'','수수료':c.fee||'','메모':c.memo||''};});
+  var ws=XLSX.utils.json_to_sheet(data);ws['!cols']=[4,8,8,22,6,8,30,10,10,14,14,14,14,18,10,10,20].map(function(w){return{wch:w};});
+  var wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'계약목록');
+  XLSX.writeFile(wb,'송도제일_계약목록_'+new Date().getFullYear()+String(new Date().getMonth()+1).padStart(2,'0')+String(new Date().getDate()).padStart(2,'0')+'.xlsx');
+}
+
+
+var fileImportItems=[];
+
+function resetFileImport(){
+  fileImportItems=[];
+  document.getElementById('file-import-input').value='';
+  document.getElementById('file-import-preview').style.display='none';
+  document.getElementById('file-import-result').style.display='none';
+  document.getElementById('file-import-btn').disabled=true;
+}
+
+function fmtDate(v){
+  if(!v)return'';
+  if(v instanceof Date){
+    var y=v.getFullYear(),m=String(v.getMonth()+1).padStart(2,'0'),d=String(v.getDate()).padStart(2,'0');
+    return isNaN(y)?'':y+'-'+m+'-'+d;
+  }
+  var s=String(v).trim();
+  if(s.match(/^\d{4}-\d{2}-\d{2}$/))return s;
+  if(s.match(/^\d{4}\.\d{2}\.\d{2}$/))return s.replace(/\./g,'-');
+  return s;
+}
+
+function parseTxtLines(lines){
+  var items=[];
+  if(!lines.length)return items;
+  var headers=lines[0].split('\t').map(function(h){return h.trim();});
+  // 헤더 인덱스 (파일2 헤더 차이 대응)
+  var hi={};
+  var hmap={
+    '종류':['종류'],'구분':['구분'],'건물명':['건물명'],
+    '동':['동'],'호':['호','호수'],
+    '계약일':['계약일'],'잔금일':['잔금일'],
+    'seller':['매도(임대)인','매도인','매도임대인'],
+    'sellerTel':['매도인전화','매도전화','연락처'],
+    'buyer':['매수(임차)인','매수인','매수임차인'],
+    'buyerTel':['매수인전화','매수전화','연락처2'],
+    '주소':['주소']
+  };
+  Object.keys(hmap).forEach(function(k){
+    hmap[k].forEach(function(alias){
+      if(hi[k]===undefined){var idx=headers.indexOf(alias);if(idx>=0)hi[k]=idx;}
+    });
+  });
+  lines.slice(1).forEach(function(line,i){
+    if(!line.trim())return;
+    var f=line.split('\t');
+    var bldg=String(f[hi['건물명']]||'').trim();
+    if(!bldg)return;
+    var deal=String(f[hi['구분']]||'').trim();
+    var type=String(f[hi['종류']]||'아파트').trim();
+    // 만기일 자동 계산
+    var fdate=fmtDate(f[hi['잔금일']]);
+    var expiry='';
+    if(fdate&&['전세','임대차','월세','임대'].includes(deal)){
+      var d=new Date(fdate);d.setFullYear(d.getFullYear()+2);
+      expiry=d.toISOString().split('T')[0];
+    }
+    items.push({
+      id:Date.now()+i+Math.floor(Math.random()*9999),
+      type:type,deal:deal,bldg:bldg,
+      dong:String(f[hi['동']]||'').trim(),
+      ho:String(f[hi['호']]||'').trim(),
+      addr:String(f[hi['주소']]||'').trim(),
+      cdate:fmtDate(f[hi['계약일']]),
+      mid1:'',mid2:'',
+      fdate:fdate,
+      seller:String(f[hi['seller']]||'').trim(),
+      sellerTel:String(f[hi['sellerTel']]||'').trim(),
+      buyer:String(f[hi['buyer']]||'').trim(),
+      buyerTel:String(f[hi['buyerTel']]||'').trim(),
+      price:'',deposit:'',monthly:'',period:'',expiry:expiry,
+      fee:'',memo:'',conditions:'',
+      agencySeller:'',agencyBuyer:'',manager:'',
+      renewalType:'신규',renewalRight:'',
+      landlord:'',landlordTel:'',landlordExp:'',
+      pbase:'',popt:'',pprem:'',
+      propId:'',custId:'',seeded:false
+    });
+  });
+  return items;
+}
+
+function parseXlSheet(ws){
+  var rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:'',raw:false});
+  if(rows.length<2)return[];
+  var headers=rows[0].map(function(h){return String(h||'').trim();});
+  var hi={};
+  ['번호','물건종류','계약구분','건물명','동','호수','주소','계약일','잔금일',
+   '매도임대인','연락처','매수임차인','연락처2','가격','만기일','수수료','메모'].forEach(function(h){
+    var idx=headers.indexOf(h);if(idx>=0)hi[h]=idx;
+  });
+  var items=[];
+  rows.slice(1).forEach(function(r,i){
+    var bldg=String(r[hi['건물명']]||'').trim();
+    if(!bldg||bldg==='건물명')return;
+    var price=String(r[hi['가격']]||'').trim();
+    if(price==='—'||price==='NaN')price='';
+    items.push({
+      id:Date.now()+i+Math.floor(Math.random()*9999),
+      type:String(r[hi['물건종류']]||'아파트').trim(),
+      deal:String(r[hi['계약구분']]||'전세').trim(),
+      bldg:bldg,
+      dong:String(r[hi['동']]||'').trim(),
+      ho:String(r[hi['호수']]||'').trim(),
+      addr:String(r[hi['주소']]||'').trim(),
+      cdate:fmtDate(r[hi['계약일']]),
+      mid1:'',mid2:'',
+      fdate:fmtDate(r[hi['잔금일']]),
+      seller:String(r[hi['매도임대인']]||'').trim(),
+      sellerTel:String(r[hi['연락처']]||'').trim(),
+      buyer:String(r[hi['매수임차인']]||'').trim(),
+      buyerTel:String(r[hi['연락처2']]||'').trim(),
+      price:price,deposit:'',monthly:'',period:'',
+      expiry:fmtDate(r[hi['만기일']]),
+      fee:String(r[hi['수수료']]||'').trim(),
+      memo:String(r[hi['메모']]||'').trim(),
+      conditions:'',agencySeller:'',agencyBuyer:'',manager:'',
+      renewalType:'신규',renewalRight:'',
+      landlord:'',landlordTel:'',landlordExp:'',
+      pbase:'',popt:'',pprem:'',
+      propId:'',custId:'',seeded:false
+    });
+  });
+  return items;
+}
+
+function onFileImport(e){
+  var files=Array.from(e.target.files);
+  if(!files.length)return;
+  fileImportItems=[];
+  var pending=files.length,processed=0;
+
+  files.forEach(function(file){
+    if(file.name.endsWith('.txt')){
+      var reader=new FileReader();
+      reader.onload=function(ev){
+        var lines=ev.target.result.split('\n').filter(function(l){return l.trim();});
+        var items=parseTxtLines(lines);
+        fileImportItems=fileImportItems.concat(items);
+        processed++;
+        if(processed===pending)showImportPreview();
+      };
+      reader.readAsText(file,'UTF-8');
+    } else if(file.name.match(/\.xlsx?$/i)){
+      var reader=new FileReader();
+      reader.onload=function(ev){
+        try{
+          var wb=XLSX.read(ev.target.result,{type:'binary'});
+          var ws=wb.Sheets[wb.SheetNames[0]];
+          var items=parseXlSheet(ws);
+          fileImportItems=fileImportItems.concat(items);
+        }catch(ex){console.error('xlsx 읽기 오류:',ex);}
+        processed++;
+        if(processed===pending)showImportPreview();
+      };
+      reader.readAsBinaryString(file);
+    } else {
+      processed++;
+      if(processed===pending)showImportPreview();
+    }
+  });
+}
+
+function showImportPreview(){
+  var dupCnt=0,newCnt=0;
+  fileImportItems.forEach(function(p){
+    var dup=contracts.some(function(x){return x.bldg===p.bldg&&x.cdate===p.cdate&&x.ho===p.ho;});
+    if(dup)dupCnt++;else newCnt++;
+  });
+  var prev=document.getElementById('file-import-preview');
+  prev.style.display='block';
+  prev.innerHTML='📂 파싱: <strong>'+fileImportItems.length+'건</strong> &nbsp;|&nbsp; '
+    +'<span style="color:#2e7d32;font-weight:500">신규 +'+newCnt+'건</span> &nbsp;|&nbsp; '
+    +'<span style="color:#aaa">중복 제외 '+dupCnt+'건</span>';
+  document.getElementById('file-import-btn').disabled=(newCnt===0);
+}
+
+function doFileImport(){
+  if(!fileImportItems.length)return;
+  var btn=document.getElementById('file-import-btn');
+  btn.disabled=true;btn.textContent='저장 중...';
+  var added=0,skip=0;
+  fileImportItems.forEach(function(p){
+    var dup=contracts.some(function(x){return x.bldg===p.bldg&&x.cdate===p.cdate&&x.ho===p.ho;});
+    if(dup){skip++;return;}
+    p.id=Date.now()+added+Math.floor(Math.random()*9999);
+    contracts.push(p);added++;
+  });
+  // 계약일 역순 정렬
+  contracts.sort(function(a,b){return(b.cdate||'').localeCompare(a.cdate||'');});
+  toCStore().then(function(){
+    renderCT();renderExpiry();refreshHub();
+    var res=document.getElementById('file-import-result');
+    res.innerHTML='✅ <strong>'+added+'건</strong> 가져오기 완료! (중복 제외: '+skip+'건) — 전체 '+contracts.length+'건';
+    res.style.background='#e8f5e9';res.style.color='#2e7d32';res.style.display='block';
+    btn.textContent='✅ 완료 '+added+'건';btn.style.background='#2e7d32';
+    fileImportItems=[];
+  }).catch(function(e){
+    var res=document.getElementById('file-import-result');
+    res.innerHTML='⚠️ Firebase 저장 오류: '+e.message;
+    res.style.background='#fff3e0';res.style.color='#e65100';res.style.display='block';
+    btn.disabled=false;btn.textContent='📂 가져오기 실행';
+  });
+}
+
+var detailId=null;
+
+function setSdj(side){
+  var btn=document.getElementById('btn-sdj-'+side);
+  var isActive=btn.classList.contains('active');
+  if(isActive)btn.classList.remove('active');
+  else{btn.classList.add('active');document.getElementById('fc-agency-'+side).value='';}
+}
+
+function openDetail(id){
+  var c=contracts.find(function(x){return x.id===id;});if(!c)return;
+  detailId=id;
+  document.getElementById('detail-title').textContent='📑 '+c.bldg+(c.ho?' '+c.ho:'')+'  '+c.deal;
+  var isKwon=c.deal==='권리'||c.type==='권리';
+  var isWol=c.deal==='월세'||c.deal==='임대';
+  var isMae=['매매','분양권매매','권리'].includes(c.deal);
+  var isPunyang=c.deal==='분양권매매';
+  var isRenewal=c.renewalType==='갱신재계약';
+  var isApt=['아파트','오피스텔'].includes(c.type);
+  var showRR=isRenewal&&isApt&&!isMae;
+  var sdjSel=c.agencySeller==='송도제일공인';
+  var sdjBuy=c.agencyBuyer==='송도제일공인';
+  var fi=function(id,val,type){return'<input id="d-'+id+'" type="'+(type||'text')+'" class="fi" value="'+(val||'')+'" style="font-size:12px">';};
+  var fsel=function(id,opts,val){return'<select id="d-'+id+'" class="fi" style="font-size:12px">'+opts.map(function(o){var v=typeof o==='object'?o.v:o,l=typeof o==='object'?o.l:o;return'<option value="'+v+'"'+(val===v?' selected':'')+'>'+l+'</option>';}).join('')+'</select>';};
+  var row=function(lbl,inp){return'<div><label class="fl">'+lbl+'</label>'+inp+'</div>';};
+
+  var html='<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;margin-bottom:12px">'
+    +row('물건종류',fsel('type',['아파트','상가','오피스텔','사무실','토지','분양권','권리','생활숙박시설'],c.type))
+    +row('계약구분',fsel('deal',['전세','임대차','매매','월세','임대','분양권매매'],c.deal))
+    +row('신규/갱신',fsel('newrenewal',[{v:'신규',l:'신규'},{v:'갱신재계약',l:'갱신재계약'}],c.renewalType||'신규'))
+    +(showRR?row('갱신청구권',fsel('renewalright',[{v:'',l:'미선택'},{v:'사용',l:'사용'},{v:'미사용',l:'미사용'}],c.renewalRight||'')):'<div></div>')
+    +'</div>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;margin-bottom:12px">'
+    +row('건물명',fi('bldg',c.bldg))+row('동',fi('dong',c.dong))+row('호수',fi('ho',c.ho))+row('주소',fi('addr',c.addr))
+    +'</div>'
+    +'<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:12px">'
+    +row('계약일',fi('cdate',c.cdate,'date'))+row('중도금(1)',fi('mid1',c.mid1,'date'))+row('중도금(2)',fi('mid2',c.mid2,'date'))+row('잔금일',fi('fdate',c.fdate,'date'))+row('만기일',fi('expiry',c.expiry,'date'))
+    +'</div>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;margin-bottom:12px">'
+    +row(isKwon?'양도인':'매도/임대인',fi('seller',c.seller))+row('연락처',fi('stl',c.sellerTel))
+    +row(isKwon?'양수인':'매수/임차인',fi('buyer',c.buyer))+row('연락처',fi('btl',c.buyerTel))
+    +'</div>';
+  if(isKwon){
+    html+='<div style="padding:10px;background:#fff8e1;border:0.5px solid #ffe082;border-radius:8px;margin-bottom:12px">'
+      +'<p class="sec" style="color:#f57f17;margin-bottom:8px">🏪 상가 임대인 정보</p>'
+      +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">'
+      +row('상가 임대인',fi('landlord',c.landlord))+row('연락처',fi('landlordtel',c.landlordTel))+row('임대차 만기',fi('landlordexp',c.landlordExp,'date'))
+      +'</div></div>';
+  }
+  html+='<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:12px">';
+  if(isPunyang){
+    html+=row('분양가',fi('pbase',c.pbase))+row('옵션가',fi('popt',c.popt))+row('P(프리미엄)',fi('pprem',c.pprem))+row('매매가',fi('price',c.price));
+  } else {
+    html+=row(isKwon?'권리금':c.deal==='전세'?'전세금':isMae?'매매가':'임대가',fi('price',c.price));
+    if(isWol||isKwon)html+=row('보증금',fi('deposit',c.deposit))+row('월세',fi('monthly',c.monthly));
+  }
+  html+=row('수수료',fi('fee',c.fee))+'</div>';
+  html+='<div style="border-top:0.5px solid #f0f0f0;padding-top:10px;margin-bottom:12px">'
+    +'<p class="sec" style="margin-bottom:8px">🏢 중개업소 · 담당자</p>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">'
+    +'<div><label class="fl">임대인측 중개업소</label><div style="display:flex;gap:6px">'
+    +'<button type="button" onclick="dSetSdj(&quot;seller&quot;)" id="d-sdj-seller" class="sdj-btn'+(sdjSel?' active':'')+'">송도제일공인</button>'
+    +'<input id="d-agency-seller" type="text" class="fi" style="flex:1;font-size:12px" value="'+(sdjSel?'':c.agencySeller||'')+'" placeholder="타 중개업소"></div></div>'
+    +'<div><label class="fl">임차인측 중개업소</label><div style="display:flex;gap:6px">'
+    +'<button type="button" onclick="dSetSdj(&quot;buyer&quot;)" id="d-sdj-buyer" class="sdj-btn'+(sdjBuy?' active':'')+'">송도제일공인</button>'
+    +'<input id="d-agency-buyer" type="text" class="fi" style="flex:1;font-size:12px" value="'+(sdjBuy?'':c.agencyBuyer||'')+'" placeholder="타 중개업소"></div></div>'
+    +row('송도제일 담당자',fsel('manager',[{v:'',l:'선택'},{v:'문형은대표',l:'문형은 대표'},{v:'최지훈부장',l:'최지훈 부장'},{v:'이서정실장',l:'이서정 실장'}],c.manager||''))
+    +'</div></div>'
+    +'<div style="margin-bottom:10px"><label class="fl">📋 계약 주요 조건</label>'
+    +'<textarea id="d-conditions" rows="3" class="fi" style="resize:vertical;font-size:12px">'+(c.conditions||'')+'</textarea></div>'
+    +'<div><label class="fl">메모</label>'+fi('memo',c.memo)+'</div>';
+
+  document.getElementById('detail-body').innerHTML=html;
+  document.getElementById('detail-modal').classList.add('open');
+  document.getElementById('detail-msg').style.display='none';
+}
+
+function dSetSdj(side){
+  var btn=document.getElementById('d-sdj-'+side);
+  var isActive=btn.classList.contains('active');
+  if(isActive)btn.classList.remove('active');
+  else{btn.classList.add('active');document.getElementById('d-agency-'+side).value='';}
+}
+function gdv(id){var el=document.getElementById('d-'+id);return el?el.value:'';}
+
+function saveDetail(){
+  var c=contracts.find(function(x){return x.id===detailId;});if(!c)return;
+  var sdjSel=document.getElementById('d-sdj-seller').classList.contains('active')?'송도제일공인':gdv('agency-seller');
+  var sdjBuy=document.getElementById('d-sdj-buyer').classList.contains('active')?'송도제일공인':gdv('agency-buyer');
+  c.type=gdv('type');c.deal=gdv('deal');c.renewalType=gdv('newrenewal');c.renewalRight=gdv('renewalright')||'';
+  c.bldg=gdv('bldg');c.dong=gdv('dong');c.ho=gdv('ho');c.addr=gdv('addr');
+  c.cdate=gdv('cdate');c.mid1=gdv('mid1');c.mid2=gdv('mid2');c.fdate=gdv('fdate');c.expiry=gdv('expiry');
+  c.seller=gdv('seller');c.sellerTel=gdv('stl');c.buyer=gdv('buyer');c.buyerTel=gdv('btl');
+  c.price=gdv('price');c.deposit=gdv('deposit')||'';c.monthly=gdv('monthly')||'';
+  c.pbase=gdv('pbase')||'';c.popt=gdv('popt')||'';c.pprem=gdv('pprem')||'';
+  c.fee=gdv('fee');c.memo=gdv('memo');c.conditions=gdv('conditions');
+  c.agencySeller=sdjSel;c.agencyBuyer=sdjBuy;c.manager=gdv('manager');
+  c.landlord=gdv('landlord')||'';c.landlordTel=gdv('landlordtel')||'';c.landlordExp=gdv('landlordexp')||'';
+  toCStore();syncMidToSchedule(c);renderCT();
+  var msg=document.getElementById('detail-msg');
+  msg.textContent='✅ 저장됐습니다!';msg.style.background='#e8f5e9';msg.style.color='#2e7d32';msg.style.display='block';
+  setTimeout(function(){msg.style.display='none';},2500);
+}
+function closeDetail(){document.getElementById('detail-modal').classList.remove('open');detailId=null;}
+function delDetail(){contracts=contracts.filter(function(c){return c.id!==detailId;});toCStore();renderCT();closeDetail();}
+
+function doRenewal(){
+  var c=contracts.find(function(x){return x.id===detailId;});if(!c)return;
+  closeDetail();sw(1);
+  setTimeout(function(){
+    document.getElementById('fc-type').value=c.type||'아파트';
+    document.getElementById('fc-deal').value=c.deal||'전세';
+    if(document.getElementById('fc-newrenewal'))document.getElementById('fc-newrenewal').value='갱신재계약';
+    document.getElementById('fc-bldg').value=c.bldg||'';
+    document.getElementById('fc-dong').value=c.dong||'';
+    document.getElementById('fc-ho').value=c.ho||'';
+    document.getElementById('fc-addr').value=c.addr||'';
+    document.getElementById('fc-seller').value=c.seller||'';
+    document.getElementById('fc-stl').value=c.sellerTel||'';
+    document.getElementById('fc-buyer').value=c.buyer||'';
+    document.getElementById('fc-btl').value=c.buyerTel||'';
+    document.getElementById('fc-price').value=c.price||'';
+    if(document.getElementById('fc-deposit'))document.getElementById('fc-deposit').value=c.deposit||'';
+    if(document.getElementById('fc-monthly'))document.getElementById('fc-monthly').value=c.monthly||'';
+    document.getElementById('fc-fee').value=c.fee||'';
+    if(document.getElementById('fc-manager'))document.getElementById('fc-manager').value=c.manager||'';
+    if(c.agencySeller==='송도제일공인'){document.getElementById('btn-sdj-seller').classList.add('active');}
+    else if(document.getElementById('fc-agency-seller'))document.getElementById('fc-agency-seller').value=c.agencySeller||'';
+    if(c.agencyBuyer==='송도제일공인'){document.getElementById('btn-sdj-buyer').classList.add('active');}
+    else if(document.getElementById('fc-agency-buyer'))document.getElementById('fc-agency-buyer').value=c.agencyBuyer||'';
+    if(c.expiry)document.getElementById('fc-cdate').value=c.expiry;
+    onCDeal();
+    document.getElementById('fc-form-title').textContent='🔄 재계약 — '+c.bldg+(c.ho?' '+c.ho:'');
+    document.getElementById('fc-link-info').textContent='🔄 기존 정보 복사됨 — 날짜·가격 확인 후 저장하세요';
+    document.getElementById('fc-link-info').style.display='block';
+  },100);
+}
+
+function regCust(side){
+  var c=contracts.find(function(x){return x.id===detailId;});if(!c)return;
+  var isSdj=side==='seller'?
+    (document.getElementById('d-sdj-seller')&&document.getElementById('d-sdj-seller').classList.contains('active'))||(c.agencySeller==='송도제일공인'):
+    (document.getElementById('d-sdj-buyer')&&document.getElementById('d-sdj-buyer').classList.contains('active'))||(c.agencyBuyer==='송도제일공인');
+  if(!isSdj){alert('송도제일공인이 담당하는 쪽만 등록할 수 있습니다.');return;}
+  var name=side==='seller'?c.seller:c.buyer;
+  var tel=side==='seller'?c.sellerTel:c.buyerTel;
+  if(!name&&!tel){alert('성명 또는 연락처가 없습니다.');return;}
+  var msg=document.getElementById('detail-msg');
+  window.storage.get('sd_custs').then(function(r){
+    var custs=r&&r.value?JSON.parse(r.value):[];
+    var cleanTel=(tel||'').replace(/[^0-9]/g,'');
+    var dup=cleanTel?custs.find(function(x){return(x.tel1||'').replace(/[^0-9]/g,'')===cleanTel;}):null;
+    var now=new Date(),ds=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0');
+    if(dup){
+      if(!dup.tags)dup.tags=[];
+      if(dup.tags.indexOf('계약고객')<0)dup.tags.push('계약고객');
+      dup.lastdate=ds;
+    } else {
+      custs.unshift({id:Date.now()+Math.random(),name:name||'이름없음',tel1:tel||'',tags:['계약고객'],pipe:4,
+        rdate:ds,lastdate:ds,consult:'계약관리 자동등록 ('+c.bldg+(c.ho?' '+c.ho:'')+' '+c.deal+')'});
+    }
+    window.storage.set('sd_custs',JSON.stringify(custs)).then(function(){
+      msg.textContent=dup?'✅ '+(dup.name||name)+'님 계약고객 태그 추가됨':'✅ '+(name||'고객')+'님 계약고객으로 등록됨';
+      msg.style.background='#e8f5e9';msg.style.color='#2e7d32';msg.style.display='block';
+      setTimeout(function(){msg.style.display='none';},3000);
+    });
+  });
+}
+
+function syncMidToSchedule(c){
+  if(!c.mid1&&!c.mid2)return;
+  window.storage.get('sd_schedule').then(function(r){
+    var evts=r&&r.value?JSON.parse(r.value):[];
+    var title=c.bldg+(c.ho?' '+c.ho:'')+' '+c.deal;
+    ['mid1','mid2'].forEach(function(k,ki){
+      if(!c[k])return;
+      var eid='CT_MID_'+c.id+'_'+k;
+      var idx=evts.findIndex(function(e){return e.id===eid;});
+      var evt={id:eid,date:c[k],title:'💰 중도금'+(ki+1)+' — '+title,type:'계약',color:'#e65100',source:'contract'};
+      if(idx>=0)evts[idx]=evt;else evts.push(evt);
+    });
+    window.storage.set('sd_schedule',JSON.stringify(evts));
+  }).catch(function(){});
+}
+
+function calcPTotal(){
+  var toN=function(s){return parseFloat((s||'').replace(/[^0-9.]/g,''))||0;};
+  var t=toN(document.getElementById('fc-pbase')?document.getElementById('fc-pbase').value:'')+
+        toN(document.getElementById('fc-popt')?document.getElementById('fc-popt').value:'')+
+        toN(document.getElementById('fc-pprem')?document.getElementById('fc-pprem').value:'');
+  if(t>0&&document.getElementById('fc-ptotal'))document.getElementById('fc-ptotal').value=t.toLocaleString()+'만원';
+}
+
+</script>
+
+<!-- 계약 상세 모달 -->
+<div id="detail-modal" class="modal-bg">
+  <div class="modal-box">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.25rem">
+      <h2 style="font-size:16px;font-weight:600;margin:0" id="detail-title">계약 상세</h2>
+      <button onclick="closeDetail()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#666">✕</button>
+    </div>
+    <div id="detail-body"></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:1.25rem;padding-top:1rem;border-top:0.5px solid #f0f0f0">
+      <button onclick="saveDetail()" class="btn-p">💾 저장</button>
+      <button onclick="doRenewal()" class="btn-s" style="color:#1565c0;border-color:#90caf9">🔄 재계약 작성</button>
+      <button onclick="regCust('seller')" class="btn-s" style="color:#2e7d32;border-color:#a5d6a7">👤 임대인 계약고객 등록</button>
+      <button onclick="regCust('buyer')" class="btn-s" style="color:#2e7d32;border-color:#a5d6a7">👤 임차인 계약고객 등록</button>
+      <button onclick="if(confirm('삭제하시겠습니까?'))delDetail()" class="btn-d" style="margin-left:auto">삭제</button>
+      <button onclick="closeDetail()" class="btn-s">닫기</button>
+    </div>
+    <div id="detail-msg" style="display:none;margin-top:10px;padding:8px 12px;border-radius:8px;font-size:12px"></div>
+  </div>
+</div>
+</body>
+</html>
