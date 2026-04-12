@@ -1,0 +1,775 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>송도제일 일정관리 시스템</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif;background:#f7f8fa;color:#1a1a1a;min-height:100vh}
+.hdr{background:#fff;border-bottom:0.5px solid #e0e0e0;padding:0 1rem;position:sticky;top:0;z-index:100}
+.hdr-inner{max-width:1000px;margin:0 auto;display:flex;align-items:center;gap:12px;padding:10px 0}
+.logo{font-size:14px;font-weight:700;color:#1a1a1a;white-space:nowrap}
+.logo span{color:#c62828}
+.tabs{display:flex;gap:2px;overflow-x:auto;flex:1;scrollbar-width:none}
+.tabs::-webkit-scrollbar{display:none}
+.tnb{padding:6px 10px;font-size:12px;font-weight:400;color:#666;border:none;background:none;cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap;transition:all .15s}
+.tnb.on{color:#1a1a1a;font-weight:500;border-bottom-color:#1a1a1a}
+.wrap{max-width:1000px;margin:0 auto;padding:1.25rem 1rem}
+.tc{display:none}.tc.on{display:block}
+.card{background:#fff;border:0.5px solid #e0e0e0;border-radius:14px;padding:1.25rem;margin-bottom:1rem}
+.sec{font-size:13px;font-weight:600;color:#1a1a1a;margin-bottom:10px}
+.fi{width:100%;padding:8px 12px;border:0.5px solid #e0e0e0;border-radius:8px;font-size:13px;font-family:inherit;background:#fff;outline:none;transition:border-color .15s}
+.fi:focus{border-color:#c62828}
+.fl{font-size:12px;color:#666;display:block;margin-bottom:5px}
+.btn-p{background:#1a1a1a;color:#fff;border:none;border-radius:8px;padding:9px 18px;font-size:13px;font-weight:500;cursor:pointer;font-family:inherit}
+.btn-p:hover{background:#333}
+.btn-s{background:#fff;color:#1a1a1a;border:0.5px solid #e0e0e0;border-radius:8px;padding:7px 12px;font-size:12px;cursor:pointer;font-family:inherit}
+.btn-s:hover{background:#f5f5f3}
+.btn-g{background:#1a73e8;color:#fff;border:none;border-radius:8px;padding:7px 14px;font-size:12px;font-weight:500;cursor:pointer;font-family:inherit}
+.btn-d{background:#fff;color:#cc3333;border:0.5px solid #f5c6c6;border-radius:8px;padding:5px 8px;font-size:11px;cursor:pointer;font-family:inherit}
+.stat-n{font-size:22px;font-weight:700;line-height:1}
+.stat-l{font-size:11px;color:#888;margin-top:2px}
+/* 캘린더 */
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:3px}
+.cal-head{font-size:11px;font-weight:500;text-align:center;padding:4px 0;color:#888}
+.cal-head:first-child{color:#c62828}
+.cal-head:last-child{color:#1565c0}
+.cal-cell{background:#fff;border:0.5px solid #e0e0e0;border-radius:8px;padding:6px;min-height:76px;cursor:pointer;transition:border-color .15s;position:relative}
+.cal-cell:hover{border-color:#c62828}
+.cal-cell.today{border-color:#c62828;border-width:1.5px;background:#fff9f9}
+.cal-cell.other-month{background:#f9f9f9;opacity:.5}
+.cal-cell.has-item{background:#f0f7ff;border-color:#90caf9}
+.cal-cell.today.has-item{background:#fff0f0;border-color:#c62828}
+.cal-date{font-size:12px;font-weight:500;margin-bottom:4px}
+.cal-dot{font-size:9px;line-height:1.4;overflow:hidden;max-height:40px}
+/* 우선순위 뱃지 */
+.pri-high{background:#fce4ec;color:#c62828;padding:1px 6px;border-radius:5px;font-size:10px;font-weight:500}
+.pri-mid{background:#fff8e1;color:#f57f17;padding:1px 6px;border-radius:5px;font-size:10px;font-weight:500}
+.pri-low{background:#e8f5e9;color:#2e7d32;padding:1px 6px;border-radius:5px;font-size:10px;font-weight:500}
+/* 구글 캘린더 버튼 */
+.gcal-btn{display:inline-flex;align-items:center;gap:5px;background:#fff;border:0.5px solid #dadce0;border-radius:6px;padding:5px 10px;font-size:11px;cursor:pointer;color:#3c4043;font-family:inherit}
+.gcal-btn:hover{background:#f8f9fa;box-shadow:0 1px 3px rgba(0,0,0,0.1)}
+/* 알림 뱃지 */
+.alert-card{border-left:3px solid;border-radius:10px;padding:10px 14px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px}
+</style>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+  <script src="firebase-storage.js"></script>
+</head>
+<body>
+<div class="hdr">
+  <div class="hdr-inner">
+    <div class="logo">송도제일 <span>일정관리</span></div>
+    <div class="tabs">
+      <button onclick="sw(0)" id="tn0" class="tnb on">🏠 오늘</button>
+      <button onclick="sw(1)" id="tn1" class="tnb">📅 월간 캘린더</button>
+      <button onclick="sw(2)" id="tn2" class="tnb">✅ 할일 전체</button>
+      <button onclick="sw(3)" id="tn3" class="tnb">🔔 알림 센터</button>
+      <button onclick="sw(4)" id="tn4" class="tnb">📋 일정 등록</button>
+      <button onclick="sw(5)" id="tn5" class="tnb">🔗 구글 캘린더</button>
+    </div>
+  </div>
+</div>
+
+<div class="wrap">
+
+<!-- TAB0 오늘 대시보드 -->
+<div id="tc0" class="tc on">
+  <div id="today-header" style="margin-bottom:12px"></div>
+  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:1rem">
+    <div style="background:#fce4ec;border:0.5px solid #f48fb1;border-radius:10px;padding:10px;text-align:center;cursor:pointer" onclick="sw(2)">
+      <div class="stat-n" style="color:#c62828" id="cnt-today">0</div><div class="stat-l">오늘 할일</div>
+    </div>
+    <div style="background:#fff8e1;border:0.5px solid #ffe082;border-radius:10px;padding:10px;text-align:center;cursor:pointer" onclick="sw(2)">
+      <div class="stat-n" style="color:#f57f17" id="cnt-week">0</div><div class="stat-l">이번 주</div>
+    </div>
+    <div style="background:#fce4ec;border:0.5px solid #f48fb1;border-radius:10px;padding:10px;text-align:center;cursor:pointer" onclick="sw(3)">
+      <div class="stat-n" style="color:#c62828" id="cnt-alert">0</div><div class="stat-l">긴급 알림</div>
+    </div>
+    <div style="background:#e8f5e9;border:0.5px solid #a5d6a7;border-radius:10px;padding:10px;text-align:center;cursor:pointer" onclick="sw(2)">
+      <div class="stat-n" style="color:#2e7d32" id="cnt-done-today">0</div><div class="stat-l">오늘 완료</div>
+    </div>
+  </div>
+
+  <!-- 오늘 할일 -->
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+      <p class="sec" style="margin:0">📌 오늘의 할일 & 약속</p>
+      <button onclick="sw(4)" class="btn-s" style="font-size:11px">+ 추가</button>
+    </div>
+    <div id="today-todos"></div>
+  </div>
+
+  <!-- 빠른 할일 추가 -->
+  <div class="card">
+    <p class="sec">⚡ 빠른 추가</p>
+    <div style="display:flex;gap:8px">
+      <input id="quick-title" type="text" class="fi" placeholder="할일 내용 입력 후 Enter" onkeydown="if(event.key==='Enter')quickAdd()">
+      <select id="quick-priority" class="fi" style="width:90px">
+        <option value="high">🔴 긴급</option>
+        <option value="mid" selected>🟡 보통</option>
+        <option value="low">🟢 여유</option>
+      </select>
+      <button onclick="quickAdd()" class="btn-p" style="white-space:nowrap">추가</button>
+    </div>
+  </div>
+
+  <!-- 연동 알림 (계약만기·매물확인·팔로업) -->
+  <div class="card">
+    <p class="sec">🔗 연동 시스템 알림</p>
+    <div id="linked-alerts"></div>
+  </div>
+</div>
+
+<!-- TAB1 월간 캘린더 -->
+<div id="tc1" class="tc">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+    <div style="display:flex;align-items:center;gap:10px">
+      <button onclick="changeMonth(-1)" class="btn-s" style="padding:6px 10px">◀</button>
+      <span id="cal-month-label" style="font-size:15px;font-weight:600"></span>
+      <button onclick="changeMonth(1)" class="btn-s" style="padding:6px 10px">▶</button>
+      <button onclick="goToday()" class="btn-s" style="font-size:11px">오늘</button>
+    </div>
+    <button onclick="sw(4)" class="btn-s" style="font-size:11px">+ 일정 추가</button>
+  </div>
+  <div class="card" style="padding:10px">
+    <div class="cal-grid" style="margin-bottom:4px">
+      <div class="cal-head">일</div><div class="cal-head">월</div><div class="cal-head">화</div>
+      <div class="cal-head">수</div><div class="cal-head">목</div><div class="cal-head">금</div>
+      <div class="cal-head">토</div>
+    </div>
+    <div class="cal-grid" id="cal-body"></div>
+  </div>
+  <!-- 선택된 날 상세 -->
+  <div id="day-detail" style="display:none" class="card">
+    <p id="day-detail-title" class="sec"></p>
+    <div id="day-detail-list"></div>
+  </div>
+</div>
+
+<!-- TAB2 할일 전체 -->
+<div id="tc2" class="tc">
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;align-items:center">
+    <select id="todo-filter-status" class="fi" style="width:auto;font-size:12px" onchange="renderAllTodos()">
+      <option value="all">전체</option>
+      <option value="today">오늘</option>
+      <option value="week">이번 주</option>
+      <option value="pending">미완료</option>
+      <option value="done">완료</option>
+      <option value="high">🔴 긴급</option>
+    </select>
+    <select id="todo-filter-type" class="fi" style="width:auto;font-size:12px" onchange="renderAllTodos()">
+      <option value="">전체 유형</option>
+      <option>📞 전화</option>
+      <option>🏠 현장 동행</option>
+      <option>📝 계약</option>
+      <option>📨 서류</option>
+      <option>💬 상담</option>
+      <option>📅 기타 일정</option>
+      <option>✅ 기타 할일</option>
+    </select>
+    <span id="all-todo-cnt" style="font-size:12px;color:#666"></span>
+    <button onclick="exportTodoXL()" class="btn-s" style="font-size:11px;margin-left:auto">📥 엑셀</button>
+    <button onclick="copyTodosForGCal()" class="btn-g" style="font-size:11px">📅 구글캘린더 복사</button>
+  </div>
+  <div id="all-todo-list"></div>
+</div>
+
+<!-- TAB3 알림 센터 -->
+<div id="tc3" class="tc">
+  <div class="card">
+    <p class="sec">🔔 알림 센터</p>
+    <p style="font-size:12px;color:#888;margin:0 0 12px">매물관리·계약관리·고객관리 시스템에서 자동으로 가져옵니다.</p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+      <button onclick="filterAlerts('all')" id="af-all" class="btn-s" style="font-size:11px;background:#f5f5f3">전체</button>
+      <button onclick="filterAlerts('contract')" id="af-contract" class="btn-s" style="font-size:11px">📑 계약 만기</button>
+      <button onclick="filterAlerts('prop')" id="af-prop" class="btn-s" style="font-size:11px">🏠 매물 확인</button>
+      <button onclick="filterAlerts('followup')" id="af-followup" class="btn-s" style="font-size:11px">👤 팔로업</button>
+      <button onclick="filterAlerts('anni')" id="af-anni" class="btn-s" style="font-size:11px">🎂 기념일</button>
+    </div>
+    <div id="alert-list"></div>
+  </div>
+</div>
+
+<!-- TAB4 일정 등록 -->
+<div id="tc4" class="tc">
+  <div class="card">
+    <p class="sec">📋 새 일정 / 할일 등록</p>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+      <div>
+        <label class="fl">유형</label>
+        <select id="sch-type" class="fi">
+          <option>📞 전화</option>
+          <option>🏠 현장 동행</option>
+          <option>📝 계약</option>
+          <option>📨 서류</option>
+          <option>💬 상담</option>
+          <option>📅 기타 일정</option>
+          <option>✅ 기타 할일</option>
+        </select>
+      </div>
+      <div>
+        <label class="fl">우선순위</label>
+        <select id="sch-priority" class="fi">
+          <option value="high">🔴 긴급</option>
+          <option value="mid" selected>🟡 보통</option>
+          <option value="low">🟢 여유</option>
+        </select>
+      </div>
+    </div>
+    <div style="margin-bottom:10px"><label class="fl">제목</label><input id="sch-title" type="text" class="fi" placeholder="예: 더샵하버뷰 현장 동행, 임대차 계약서 검토"></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+      <div><label class="fl">날짜·시간 (시작)</label><input id="sch-start" type="datetime-local" class="fi"></div>
+      <div><label class="fl">종료 시간 <span style="color:#aaa;font-weight:400">(선택)</span></label><input id="sch-end" type="datetime-local" class="fi"></div>
+    </div>
+    <div style="margin-bottom:10px"><label class="fl">고객 연결 <span style="color:#aaa;font-weight:400">(선택)</span></label>
+      <select id="sch-cust" class="fi"><option value="">— 고객 없음 —</option></select>
+    </div>
+    <div style="margin-bottom:10px"><label class="fl">장소</label><input id="sch-location" type="text" class="fi" placeholder="예: 더샵하버뷰 1동 로비, 사무소"></div>
+    <div style="margin-bottom:14px"><label class="fl">메모</label><textarea id="sch-memo" rows="2" class="fi" style="resize:vertical" placeholder="추가 메모"></textarea></div>
+
+    <!-- 구글 캘린더 내보내기 옵션 -->
+    <div style="padding:12px;background:#f0f7ff;border-radius:10px;margin-bottom:14px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+        <span style="font-size:20px">📅</span>
+        <span style="font-size:12px;font-weight:500;color:#1565c0">구글 캘린더 내보내기</span>
+      </div>
+      <p style="font-size:11px;color:#666;margin-bottom:8px">저장 후 아래 버튼으로 구글 캘린더 형식을 복사 → 코워크에서 자동 등록</p>
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer">
+        <input type="checkbox" id="sch-gcal" checked> 구글 캘린더에도 등록 (저장 후 복사 버튼 제공)
+      </label>
+    </div>
+    <button onclick="saveSchedule()" class="btn-p" style="width:100%;padding:12px">💾 저장</button>
+    <div id="sch-ok" style="display:none;margin-top:10px;padding:10px 14px;background:#e8f5e9;border-radius:8px;font-size:13px;color:#2e7d32"></div>
+  </div>
+
+  <!-- 저장 후 구글캘린더 복사 -->
+  <div id="gcal-export-box" style="display:none" class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+      <p class="sec" style="margin:0">📅 구글 캘린더 등록용 텍스트</p>
+      <button onclick="cpGCalText()" class="btn-g" style="font-size:12px">📋 복사 → 코워크에 붙여넣기</button>
+    </div>
+    <p style="font-size:11px;color:#888;margin-bottom:8px">아래 내용을 복사 후 코워크에서 "이 일정을 구글 캘린더에 등록해줘"와 함께 붙여넣으세요.</p>
+    <textarea id="gcal-text" rows="8" class="fi" style="background:#f9f9f9;font-size:12px;line-height:1.8" readonly></textarea>
+  </div>
+</div>
+
+<!-- TAB5 구글 캘린더 연동 가이드 -->
+<div id="tc5" class="tc">
+  <div class="card">
+    <p class="sec">📅 구글 캘린더 연동 방법</p>
+    <div style="background:#e8f5e9;border-radius:10px;padding:14px;margin-bottom:14px">
+      <p style="font-size:13px;font-weight:500;color:#2e7d32;margin-bottom:6px">✅ Google Calendar MCP 커넥터 연결 완료</p>
+      <p style="font-size:12px;color:#555">코워크에서 구글 캘린더를 직접 읽고 쓸 수 있습니다.</p>
+    </div>
+
+    <p class="sec">코워크 활용 방법</p>
+    <div style="display:flex;flex-direction:column;gap:10px">
+
+      <div style="padding:12px;border:0.5px solid #e0e0e0;border-radius:10px;background:#fff">
+        <p style="font-size:12px;font-weight:600;margin-bottom:6px">📌 방법 1 — 일정 직접 등록</p>
+        <p style="font-size:12px;color:#666;margin-bottom:8px">아래 텍스트를 복사 후 코워크 채팅창에 붙여넣기</p>
+        <button onclick="copyCoworkCmd1()" class="btn-g" style="font-size:11px;margin-bottom:8px">📋 코워크 명령어 복사</button>
+        <div style="background:#f5f5f3;border-radius:8px;padding:10px;font-size:12px;line-height:1.8;color:#555">
+          구글 캘린더에 아래 일정을 등록해줘:<br>
+          제목: [일정 제목]<br>
+          날짜: [YYYY-MM-DD HH:MM]<br>
+          설명: 송도제일공인중개사사무소 업무 일정
+        </div>
+      </div>
+
+      <div style="padding:12px;border:0.5px solid #e0e0e0;border-radius:10px;background:#fff">
+        <p style="font-size:12px;font-weight:600;margin-bottom:6px">📌 방법 2 — 오늘 일정 조회</p>
+        <button onclick="copyCoworkCmd2()" class="btn-g" style="font-size:11px;margin-bottom:8px">📋 명령어 복사</button>
+        <div style="background:#f5f5f3;border-radius:8px;padding:10px;font-size:12px;color:#555">
+          구글 캘린더에서 오늘 일정을 가져와서 보여줘
+        </div>
+      </div>
+
+      <div style="padding:12px;border:0.5px solid #e0e0e0;border-radius:10px;background:#fff">
+        <p style="font-size:12px;font-weight:600;margin-bottom:6px">📌 방법 3 — 이번 주 일정 + 할일 동기화</p>
+        <button onclick="copyCoworkCmd3()" class="btn-g" style="font-size:11px;margin-bottom:8px">📋 명령어 복사</button>
+        <div style="background:#f5f5f3;border-radius:8px;padding:10px;font-size:12px;color:#555">
+          구글 캘린더에서 이번 주 일정을 모두 가져와서 요약해줘.<br>
+          그리고 오늘 할 일 중 아직 구글 캘린더에 없는 항목이 있으면 추가해줘.
+        </div>
+      </div>
+
+      <div style="padding:12px;border:0.5px solid #e0e0e0;border-radius:10px;background:#fff">
+        <p style="font-size:12px;font-weight:600;margin-bottom:6px">📌 방법 4 — 미완료 할일 일괄 등록</p>
+        <button onclick="copyGCalBulk()" class="btn-g" style="font-size:11px;margin-bottom:8px">📋 미완료 할일 목록 + 명령어 복사</button>
+        <p style="font-size:11px;color:#888">미완료 할일 목록을 자동 수집해서 코워크 명령어와 함께 복사합니다.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <p class="sec">🔄 코워크 자동 동기화 태스크</p>
+    <p style="font-size:12px;color:#666;margin-bottom:12px">코워크에 아래 태스크를 등록하면 매일 자동으로 구글 캘린더와 동기화됩니다.</p>
+    <div style="background:#f5f5f3;border-radius:10px;padding:14px;font-size:12px;line-height:2;color:#555;white-space:pre-wrap" id="cowork-task-text">매일 오전 8시에 아래 작업을 실행해:
+
+1. 구글 캘린더에서 오늘과 내일 일정을 가져와
+2. 아래 파일을 읽어서 오늘 할일 목록을 확인해:
+   C:\Users\songd\OneDrive\문서\Data\코워크파이프라인\logs\처리이력.txt
+3. 구글 캘린더에 없는 중요 일정이 있으면 추가해줘
+4. 오늘의 업무 브리핑을 아래 파일로 저장해:
+   C:\Users\songd\OneDrive\문서\Data\코워크파이프라인\logs\오늘브리핑_[YYYYMMDD].txt
+   형식:
+   ═══════════════════════════
+   송도제일 오늘의 업무 브리핑
+   [날짜]
+   ═══════════════════════════
+   📅 구글 캘린더 일정
+   [일정 목록]
+
+   ✅ 주요 할일
+   [할일 목록]
+   ═══════════════════════════
+
+5. 윈도우 알림: "📅 오늘의 업무 브리핑 준비 완료 — logs 폴더 확인"</div>
+    <button onclick="cpCoworkTask()" class="btn-g" style="margin-top:10px;width:100%">📋 코워크 태스크 전체 복사</button>
+  </div>
+</div>
+
+</div><!-- /wrap -->
+
+<script>
+// ─────────────────────────────────────────
+// 전역 상태
+// ─────────────────────────────────────────
+var todos=[];
+var custs=[];
+var contracts=[];
+var props=[];
+var calYear=new Date().getFullYear();
+var calMonth=new Date().getMonth();
+var alertFilter='all';
+
+// ─ 스토리지 로드
+async function loadAll(){
+  try{var r=await window.storage.get('sd_todos');if(r&&r.value)todos=JSON.parse(r.value);}catch(e){todos=[];}
+  try{var r2=await window.storage.get('sd_custs');if(r2&&r2.value)custs=JSON.parse(r2.value);}catch(e){custs=[];}
+  try{var r3=await window.storage.get('sd_contracts');if(r3&&r3.value)contracts=JSON.parse(r3.value);}catch(e){contracts=[];}
+  try{var r4=await window.storage.get('sd_props');if(r4&&r4.value)props=JSON.parse(r4.value);}catch(e){props=[];}
+  popCusts();
+}
+async function saveTodos(){try{await window.storage.set('sd_todos',JSON.stringify(todos));}catch(e){}}
+
+// ─────────────────────────────────────────
+// sw()
+// ─────────────────────────────────────────
+function sw(n){
+  for(var i=0;i<=5;i++){
+    var tc=document.getElementById('tc'+i),tn=document.getElementById('tn'+i);
+    if(tc)tc.className='tc'+(i===n?' on':'');
+    if(tn){tn.style.borderBottomColor=i===n?'#1a1a1a':'transparent';tn.style.color=i===n?'#1a1a1a':'#666';tn.style.fontWeight=i===n?'500':'400';}
+  }
+  if(n===0)renderToday();
+  if(n===1)renderCal();
+  if(n===2)renderAllTodos();
+  if(n===3)renderAlerts('all');
+  if(n===4)initSchForm();
+  if(n===5){}
+}
+
+function popCusts(){
+  var sel=document.getElementById('sch-cust');if(!sel)return;
+  sel.innerHTML='<option value="">— 고객 없음 —</option>'+custs.map(function(c){return'<option value="'+c.id+'">'+c.name+(c.tel1?' ('+c.tel1+')':'')+'</option>';}).join('');
+}
+
+// ─────────────────────────────────────────
+// 날짜 유틸
+// ─────────────────────────────────────────
+function getDateStr(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+function today(){var d=new Date();d.setHours(0,0,0,0);return d;}
+function todayStr(){return getDateStr(today());}
+
+// ─────────────────────────────────────────
+// TAB0 오늘
+// ─────────────────────────────────────────
+function renderToday(){
+  var now=new Date();
+  var dow=['일','월','화','수','목','금','토'];
+  document.getElementById('today-header').innerHTML='<div style="font-size:20px;font-weight:700;margin-bottom:2px">'+now.getFullYear()+'년 '+(now.getMonth()+1)+'월 '+now.getDate()+'일 ('+dow[now.getDay()]+')</div><div style="font-size:13px;color:#888">'+String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0')+'</div>';
+  var todStr=todayStr();
+  var week=new Date(today());week.setDate(week.getDate()+7);
+  var todayItems=todos.filter(function(t){return t.date&&t.date.startsWith(todStr);}).sort(function(a,b){return a.date.localeCompare(b.date);});
+  document.getElementById('cnt-today').textContent=todayItems.filter(function(t){return!t.done;}).length;
+  document.getElementById('cnt-week').textContent=todos.filter(function(t){if(!t.date)return false;var d=new Date(t.date.slice(0,10));d.setHours(0,0,0,0);return d>=today()&&d<=week&&!t.done;}).length;
+  document.getElementById('cnt-done-today').textContent=todayItems.filter(function(t){return t.done;}).length;
+  // 긴급 알림 수
+  var alertCnt=getAlertItems().filter(function(a){return a.level==='urgent';}).length;
+  document.getElementById('cnt-alert').textContent=alertCnt;
+  // 오늘 할일 렌더링
+  var el=document.getElementById('today-todos');
+  el.innerHTML=todayItems.length?todayItems.map(function(t){
+    var timeStr=t.date&&t.date.length>10?t.date.slice(11,16):'';
+    return'<div style="display:flex;gap:10px;align-items:flex-start;padding:9px 0;border-bottom:0.5px solid #f0f0f0">'
+      +'<input type="checkbox" '+(t.done?'checked':'')+' onclick="togTodo('+t.id+')" style="margin-top:2px;cursor:pointer">'
+      +'<div style="flex:1">'
+      +'<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">'
+      +(timeStr?'<span style="font-size:12px;color:#1565c0;font-weight:500;min-width:36px">'+timeStr+'</span>':'')
+      +'<span style="font-size:13px;'+(t.done?'text-decoration:line-through;color:#aaa':'')+'">'+(t.type||'')+'  '+t.title+'</span>'
+      +'<span class="pri-'+(t.priority||'mid')+'">'+{high:'긴급',mid:'보통',low:'여유'}[t.priority||'mid']+'</span>'
+      +(t.custName?'<span style="font-size:10px;background:#e3f2fd;color:#1565c0;padding:1px 6px;border-radius:5px">'+t.custName+'</span>':'')
+      +'</div>'
+      +(t.memo?'<p style="font-size:11px;color:#888;margin:2px 0 0">'+t.memo+'</p>':'')
+      +'</div>'
+      +'<button onclick="delTodo('+t.id+')" class="btn-d" style="font-size:10px;padding:2px 5px">삭제</button>'
+      +'</div>';
+  }).join(''):'<p style="font-size:12px;color:#aaa;padding:8px 0">오늘 등록된 할일이 없습니다 👍</p>';
+  // 연동 알림
+  renderLinkedAlerts();
+}
+
+function renderLinkedAlerts(){
+  var items=getAlertItems().slice(0,6);
+  var el=document.getElementById('linked-alerts');
+  el.innerHTML=items.length?items.map(function(a){
+    return'<div class="alert-card" style="border-left-color:'+(a.level==='urgent'?'#c62828':a.level==='warn'?'#f57f17':'#1565c0')+';background:'+(a.level==='urgent'?'#fff9f9':a.level==='warn'?'#fffde7':'#f0f7ff')+'">'
+      +'<div><span style="font-size:12px;font-weight:500">'+a.icon+' '+a.title+'</span><span style="font-size:11px;color:#888;margin-left:6px">'+a.sub+'</span></div>'
+      +'<span style="font-size:11px;font-weight:600;color:'+(a.level==='urgent'?'#c62828':a.level==='warn'?'#f57f17':'#1565c0')+'">'+a.badge+'</span>'
+      +'</div>';
+  }).join('')+'<button onclick="sw(3)" style="margin-top:8px;width:100%;padding:7px;background:transparent;border:0.5px solid #e0e0e0;border-radius:8px;font-size:11px;color:#666;cursor:pointer">전체 알림 보기 →</button>'
+  :'<p style="font-size:12px;color:#aaa">긴급 알림 없음 👍</p>';
+}
+
+// ─────────────────────────────────────────
+// 연동 알림 생성
+// ─────────────────────────────────────────
+function getAlertItems(){
+  var items=[];
+  var tod=today();
+  // 계약 만기
+  contracts.forEach(function(c){
+    if(!c.expiry)return;
+    var exp=new Date(c.expiry);exp.setHours(0,0,0,0);
+    var diff=Math.floor((exp-tod)/86400000);
+    if(diff<-180||diff>90)return;
+    var level=diff<0?'urgent':diff<=30?'urgent':'warn';
+    items.push({icon:'📑',title:c.tenant||c.complex||'계약',sub:(c.deal||'')+(c.complex?' · '+c.complex:''),badge:diff<0?'만기 '+Math.abs(diff)+'일 초과':'D-'+diff,level:level,type:'contract'});
+  });
+  // 매물 6개월 경과
+  props.filter(function(p){return p.status==='활성';}).forEach(function(p){
+    if(!p.regAt)return;
+    var reg=new Date(p.regAt);reg.setHours(0,0,0,0);
+    var diff=Math.floor((tod-reg)/86400000);
+    if(diff<180)return;
+    items.push({icon:'🏠',title:p.complexName+(p.unitInfo?' '+p.unitInfo:''),sub:'매물확인 필요',badge:diff+'일 경과',level:'warn',type:'prop'});
+  });
+  // 고객 팔로업
+  custs.filter(function(c){return c.pipe<4&&c.lastdate;}).forEach(function(c){
+    var last=new Date(c.lastdate);last.setHours(0,0,0,0);
+    var diff=Math.floor((tod-last)/86400000);
+    if(diff<7)return;
+    items.push({icon:'👤',title:c.name,sub:'마지막 연락 '+diff+'일 전',badge:'팔로업',level:diff>14?'urgent':'warn',type:'followup'});
+  });
+  // 기념일
+  custs.forEach(function(c){
+    ['birthday','contractAnni'].forEach(function(field){
+      if(!c[field])return;
+      var d=new Date(c[field]);d.setFullYear(tod.getFullYear());
+      var diff=Math.floor((d-tod)/86400000);
+      if(diff<0){d.setFullYear(tod.getFullYear()+1);diff=Math.floor((d-tod)/86400000);}
+      if(diff>14)return;
+      items.push({icon:field==='birthday'?'🎂':'💝',title:c.name,sub:field==='birthday'?'생일':'계약기념일',badge:'D-'+diff,level:diff<=3?'urgent':'warn',type:'anni'});
+    });
+  });
+  items.sort(function(a,b){var p={'urgent':0,'warn':1,'info':2};return p[a.level]-p[b.level];});
+  return items;
+}
+
+// ─────────────────────────────────────────
+// TAB1 캘린더
+// ─────────────────────────────────────────
+function renderCal(){
+  var now=new Date(calYear,calMonth,1);
+  document.getElementById('cal-month-label').textContent=calYear+'년 '+(calMonth+1)+'월';
+  var first=now.getDay();
+  var days=new Date(calYear,calMonth+1,0).getDate();
+  var todStr=todayStr();
+  // 할일 날짜 인덱스
+  var tdIdx={};
+  todos.forEach(function(t){
+    if(!t.date)return;
+    var ds=t.date.slice(0,10);
+    if(!tdIdx[ds])tdIdx[ds]=[];
+    tdIdx[ds].push(t);
+  });
+  var html='';
+  var day=1;
+  var prevDays=new Date(calYear,calMonth,0).getDate();
+  for(var cell=0;cell<42;cell++){
+    if(cell<first){
+      var pd=prevDays-first+cell+1;
+      html+='<div class="cal-cell other-month"><div class="cal-date" style="color:#ccc">'+pd+'</div></div>';
+    } else if(day>days){
+      var nd=day-days;day++;
+      html+='<div class="cal-cell other-month"><div class="cal-date" style="color:#ccc">'+nd+'</div></div>';
+    } else {
+      var ds=calYear+'-'+String(calMonth+1).padStart(2,'0')+'-'+String(day).padStart(2,'0');
+      var isToday=ds===todStr;
+      var items=tdIdx[ds]||[];
+      var hasItem=items.length>0;
+      html+='<div class="cal-cell'+(isToday?' today':'')+(hasItem&&!isToday?' has-item':'')+(isToday&&hasItem?' today has-item':'')+'" onclick="showDay(\''+ds+'\')">'
+        +'<div class="cal-date" style="color:'+(isToday?'#c62828':cell%7===0?'#c62828':cell%7===6?'#1565c0':'#1a1a1a')+'">'+day+'</div>'
+        +'<div class="cal-dot">'+items.slice(0,3).map(function(t){return'<div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:'+(t.done?'#aaa':'#1a1a1a')+';font-size:9px">'+(t.type?t.type.split(' ')[0]:'•')+' '+t.title+'</div>';}).join('')+(items.length>3?'<div style="color:#aaa;font-size:9px">+'+(items.length-3)+'</div>':'')+'</div>'
+        +'</div>';
+      day++;
+    }
+  }
+  document.getElementById('cal-body').innerHTML=html;
+}
+
+function showDay(ds){
+  var items=todos.filter(function(t){return t.date&&t.date.startsWith(ds);}).sort(function(a,b){return a.date.localeCompare(b.date);});
+  var dd=document.getElementById('day-detail');
+  document.getElementById('day-detail-title').textContent=ds+' 일정 ('+items.length+'건)';
+  document.getElementById('day-detail-list').innerHTML=items.length?items.map(function(t){
+    var timeStr=t.date&&t.date.length>10?t.date.slice(11,16):'';
+    return'<div style="display:flex;gap:8px;align-items:center;padding:7px 0;border-bottom:0.5px solid #f0f0f0">'
+      +'<input type="checkbox" '+(t.done?'checked':'')+' onclick="togTodo('+t.id+');showDay(\''+ds+'\')" style="cursor:pointer">'
+      +(timeStr?'<span style="font-size:11px;color:#1565c0;min-width:32px">'+timeStr+'</span>':'')
+      +'<span style="flex:1;font-size:12px;'+(t.done?'text-decoration:line-through;color:#aaa':'')+'">'+t.title+'</span>'
+      +'<button onclick="delTodo('+t.id+');showDay(\''+ds+'\')" class="btn-d" style="font-size:10px;padding:2px 5px">삭제</button>'
+      +'</div>';
+  }).join(''):'<p style="font-size:12px;color:#aaa;padding:6px 0">일정 없음</p>';
+  dd.style.display='block';
+}
+
+function changeMonth(dir){calMonth+=dir;if(calMonth<0){calMonth=11;calYear--;}if(calMonth>11){calMonth=0;calYear++;}renderCal();}
+function goToday(){calYear=new Date().getFullYear();calMonth=new Date().getMonth();renderCal();}
+
+// ─────────────────────────────────────────
+// TAB2 할일 전체
+// ─────────────────────────────────────────
+function renderAllTodos(){
+  var sf=document.getElementById('todo-filter-status').value;
+  var tf=document.getElementById('todo-filter-type').value;
+  var tod=today();var week=new Date(tod);week.setDate(week.getDate()+7);
+  var f=todos.filter(function(t){
+    if(sf==='today'){if(!t.date)return false;return t.date.startsWith(todayStr());}
+    if(sf==='week'){if(!t.date)return false;var d=new Date(t.date.slice(0,10));d.setHours(0,0,0,0);return d>=tod&&d<=week;}
+    if(sf==='pending')return!t.done;
+    if(sf==='done')return t.done;
+    if(sf==='high')return t.priority==='high'&&!t.done;
+    return true;
+  }).filter(function(t){return!tf||t.type===tf;}).sort(function(a,b){
+    var p={'high':0,'mid':1,'low':2};return p[a.priority||'mid']-p[b.priority||'mid']||(a.date||'').localeCompare(b.date||'');
+  });
+  document.getElementById('all-todo-cnt').textContent=f.length+'건';
+  document.getElementById('all-todo-list').innerHTML=f.length?f.map(function(t){
+    var ds=t.date?t.date.slice(0,10):'';
+    var timeStr=t.date&&t.date.length>10?t.date.slice(11,16):'';
+    var isOver=t.date&&!t.done&&new Date(t.date)<new Date();
+    return'<div style="display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border:0.5px solid '+(isOver?'#f48fb1':'#e0e0e0')+';border-radius:10px;margin-bottom:6px;background:'+(t.done?'#f9f9f9':'#fff')+(isOver?';border-left:3px solid #c62828':'')+'">'
+      +'<input type="checkbox" '+(t.done?'checked':'')+' onclick="togTodo('+t.id+')" style="margin-top:3px;cursor:pointer">'
+      +'<div style="flex:1">'
+      +'<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">'
+      +'<span style="font-size:13px;font-weight:500;'+(t.done?'text-decoration:line-through;color:#aaa':'')+'">'+t.title+'</span>'
+      +'<span class="pri-'+(t.priority||'mid')+'">'+{high:'긴급',mid:'보통',low:'여유'}[t.priority||'mid']+'</span>'
+      +(t.type?'<span style="font-size:11px;color:#666">'+t.type+'</span>':'')
+      +(t.custName?'<span style="font-size:10px;background:#e3f2fd;color:#1565c0;padding:1px 6px;border-radius:5px">👤 '+t.custName+'</span>':'')
+      +'</div>'
+      +(ds||timeStr?'<p style="font-size:11px;color:'+(isOver?'#c62828':'#888')+';margin:2px 0 0">'+(ds?'📅 '+ds:'')+(timeStr?' '+timeStr:'')+(isOver?' ⚠️ 지남':'')+'</p>':'')
+      +(t.memo?'<p style="font-size:11px;color:#888;margin:2px 0 0">'+t.memo+'</p>':'')
+      +'</div>'
+      +'<button onclick="delTodo('+t.id+')" class="btn-d" style="font-size:10px;padding:2px 5px">삭제</button>'
+      +'</div>';
+  }).join(''):'<p style="text-align:center;color:#aaa;padding:2rem;font-size:13px">할일이 없습니다 👍</p>';
+}
+
+// ─────────────────────────────────────────
+// TAB3 알림 센터
+// ─────────────────────────────────────────
+function filterAlerts(type){
+  alertFilter=type;
+  ['all','contract','prop','followup','anni'].forEach(function(t){
+    var el=document.getElementById('af-'+t);
+    if(el){el.style.background=t===type?'#f5f5f3':'#fff';el.style.fontWeight=t===type?'500':'400';}
+  });
+  renderAlerts(type);
+}
+
+function renderAlerts(type){
+  var items=getAlertItems().filter(function(a){return type==='all'||a.type===type;});
+  var el=document.getElementById('alert-list');
+  el.innerHTML=items.length?items.map(function(a){
+    return'<div class="alert-card" style="border-left-color:'+(a.level==='urgent'?'#c62828':a.level==='warn'?'#f57f17':'#1565c0')+';background:'+(a.level==='urgent'?'#fff9f9':a.level==='warn'?'#fffde7':'#f0f7ff')+'">'
+      +'<div>'
+      +'<span style="font-size:13px;font-weight:500">'+a.icon+' '+a.title+'</span>'
+      +'<p style="font-size:11px;color:#888;margin:2px 0 0">'+a.sub+'</p>'
+      +'</div>'
+      +'<div style="display:flex;align-items:center;gap:8px">'
+      +'<span style="font-size:12px;font-weight:600;color:'+(a.level==='urgent'?'#c62828':a.level==='warn'?'#f57f17':'#1565c0')+'">'+a.badge+'</span>'
+      +'<button onclick="addAlertToTodo(this)" data-title="'+a.title+' ('+a.sub+')" class="btn-s" style="font-size:10px;padding:3px 7px">+ 할일 추가</button>'
+      +'</div>'
+      +'</div>';
+  }).join(''):'<p style="font-size:12px;color:#aaa;padding:1rem 0">알림 없음 👍</p>';
+}
+
+function addAlertToTodo(btn){
+  var title=btn.getAttribute('data-title');
+  var now=new Date(),ds=getDateStr(now);
+  todos.unshift({id:Date.now(),custId:'',custName:'',type:'✅ 기타 할일',title:title,date:ds,priority:'high',memo:'알림에서 추가',done:false,createdAt:now.toISOString()});
+  saveTodos();renderToday();
+  btn.textContent='✅ 추가됨';btn.style.color='#2e7d32';
+  setTimeout(function(){btn.textContent='+ 할일 추가';btn.style.color='';},2000);
+}
+
+// ─────────────────────────────────────────
+// TAB4 일정 등록
+// ─────────────────────────────────────────
+function initSchForm(){
+  popCusts();
+  var now=new Date();
+  var ds=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0');
+  var ts=String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0');
+  if(!document.getElementById('sch-start').value)document.getElementById('sch-start').value=ds+'T'+ts;
+}
+
+function saveSchedule(){
+  var title=document.getElementById('sch-title').value.trim();
+  if(!title){alert('제목을 입력해 주세요.');return;}
+  var start=document.getElementById('sch-start').value;
+  var end=document.getElementById('sch-end').value;
+  var custId=document.getElementById('sch-cust').value;
+  var cust=custs.find(function(c){return String(c.id)===String(custId);});
+  var now=new Date().toISOString();
+  var t={id:Date.now(),type:document.getElementById('sch-type').value,priority:document.getElementById('sch-priority').value,title:title,date:start,endDate:end,custId:custId,custName:cust?cust.name:'',location:document.getElementById('sch-location').value.trim(),memo:document.getElementById('sch-memo').value.trim(),done:false,createdAt:now};
+  todos.unshift(t);
+  saveTodos();
+  var ok=document.getElementById('sch-ok');ok.textContent='✅ 저장됐습니다! — '+title;ok.style.display='block';
+  setTimeout(function(){ok.style.display='none';},3000);
+  // 구글 캘린더 내보내기
+  if(document.getElementById('sch-gcal').checked){
+    var gcalTxt='제목: '+title
+      +'\n날짜: '+start+(end?'\n종료: '+end:'')
+      +(t.location?'\n장소: '+t.location:'')
+      +(t.custName?'\n고객: '+t.custName:'')
+      +(t.memo?'\n메모: '+t.memo:'')
+      +'\n설명: 송도제일공인중개사사무소 업무 일정\n출처: 일정관리 시스템 자동 생성';
+    document.getElementById('gcal-text').value=gcalTxt;
+    document.getElementById('gcal-export-box').style.display='block';
+  }
+  document.getElementById('sch-title').value='';document.getElementById('sch-memo').value='';document.getElementById('sch-location').value='';document.getElementById('sch-end').value='';
+}
+
+function cpGCalText(){
+  var cmd='구글 캘린더에 아래 일정을 등록해줘:\n\n'+document.getElementById('gcal-text').value;
+  showCopyModal('📅 구글 캘린더 등록 명령어', cmd);
+}
+
+// ─────────────────────────────────────────
+// 할일 공통
+// ─────────────────────────────────────────
+function togTodo(id){
+  var t=todos.find(function(x){return x.id===id;});
+  if(t){t.done=!t.done;saveTodos();renderToday();if(document.getElementById('tc2').classList.contains('on'))renderAllTodos();if(document.getElementById('tc1').classList.contains('on'))renderCal();}
+}
+function delTodo(id){
+  todos=todos.filter(function(x){return x.id!==id;});
+  saveTodos();renderToday();if(document.getElementById('tc2').classList.contains('on'))renderAllTodos();
+}
+
+function quickAdd(){
+  var title=document.getElementById('quick-title').value.trim();if(!title)return;
+  var now=new Date(),ds=getDateStr(now);
+  todos.unshift({id:Date.now(),type:'✅ 기타 할일',title:title,date:ds+'T00:00',priority:document.getElementById('quick-priority').value,custId:'',custName:'',memo:'',done:false,createdAt:now.toISOString()});
+  saveTodos();renderToday();document.getElementById('quick-title').value='';
+}
+
+// ─────────────────────────────────────────
+// 엑셀 다운로드
+// ─────────────────────────────────────────
+function exportTodoXL(){
+  if(!window.XLSX){alert('엑셀 라이브러리 준비 중입니다.');return;}
+  var data=todos.map(function(t,i){return{'번호':i+1,'유형':t.type||'','제목':t.title,'날짜':t.date?t.date.slice(0,16):'','우선순위':{high:'긴급',mid:'보통',low:'여유'}[t.priority||'mid'],'고객':t.custName||'','장소':t.location||'','메모':t.memo||'','완료':t.done?'O':'','등록일':t.createdAt?t.createdAt.slice(0,10):''};});
+  if(!data.length){alert('데이터가 없습니다.');return;}
+  var ws=window.XLSX.utils.json_to_sheet(data);
+  ws['!cols']=[4,10,36,16,8,10,16,24,5,10].map(function(w){return{wch:w};});
+  var wb=window.XLSX.utils.book_new();window.XLSX.utils.book_append_sheet(wb,ws,'할일');
+  var now=new Date();window.XLSX.writeFile(wb,'송도제일_일정관리_'+now.getFullYear()+String(now.getMonth()+1).padStart(2,'0')+String(now.getDate()).padStart(2,'0')+'.xlsx');
+}
+
+// ─────────────────────────────────────────
+// 구글 캘린더 명령어
+// ─────────────────────────────────────────
+function copyCoworkCmd1(){
+  showCopyModal('📌 방법 1 — 일정 직접 등록', '구글 캘린더에 아래 일정을 등록해줘:\n제목: [일정 제목]\n날짜: [YYYY-MM-DD HH:MM]\n설명: 송도제일공인중개사사무소 업무 일정');
+}
+function copyCoworkCmd2(){showCopyModal('📌 방법 2 — 오늘 일정 조회', '구글 캘린더에서 오늘 일정을 가져와서 보여줘');}
+function copyCoworkCmd3(){showCopyModal('📌 방법 3 — 이번 주 동기화', '구글 캘린더에서 이번 주 일정을 모두 가져와서 요약해줘.\n그리고 오늘 할 일 중 아직 구글 캘린더에 없는 항목이 있으면 추가해줘.');}
+
+function copyGCalBulk(){
+  var pending=todos.filter(function(t){return!t.done&&t.date;}).sort(function(a,b){return a.date.localeCompare(b.date);}).slice(0,20);
+  if(!pending.length){alert('미완료 할일이 없습니다.');return;}
+  var list=pending.map(function(t){return'- 제목: '+t.title+'\n  날짜: '+t.date.slice(0,16)+(t.custName?'\n  고객: '+t.custName:'')+(t.location?'\n  장소: '+t.location:'');}).join('\n');
+  var cmd='구글 캘린더에 아래 미완료 할일들을 등록해줘 (이미 등록된 것은 건너뛰어):\n\n'+list;
+  showCopyModal('📌 방법 4 — 미완료 할일 일괄 등록 ('+pending.length+'건)', cmd);
+}
+
+function cpCoworkTask(){
+  showCopyModal('🔄 코워크 자동 동기화 태스크', document.getElementById('cowork-task-text').textContent);
+}
+
+function copyTodosForGCal(){
+  var pending=todos.filter(function(t){return!t.done;}).sort(function(a,b){return(a.date||'').localeCompare(b.date||'');}).slice(0,15);
+  if(!pending.length){alert('할일이 없습니다.');return;}
+  var txt=pending.map(function(t){return'• '+(t.date?t.date.slice(0,16):'날짜미정')+' '+t.title+(t.custName?' ('+t.custName+')':'');}).join('\n');
+  showCopyModal('📅 구글 캘린더 일괄 등록 ('+pending.length+'건)', '구글 캘린더에 아래 일정들을 등록해줘:\n\n'+txt);
+}
+
+// ─────────────────────────────────────────
+// 초기화
+// ─────────────────────────────────────────
+
+// ─ 복사 모달 공통 함수
+function showCopyModal(title, text){
+  document.getElementById('copy-modal-title').textContent=title;
+  document.getElementById('copy-modal-text').value=text;
+  document.getElementById('copy-modal').style.display='flex';
+  setTimeout(function(){document.getElementById('copy-modal-text').select();},100);
+}
+function closeCopyModal(){document.getElementById('copy-modal').style.display='none';}
+function selectAllModalText(){document.getElementById('copy-modal-text').select();}
+
+// ─ clipboard 범용 복사 (fallback 포함)
+function safeCopy(text, successMsg){
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(text).then(function(){
+      if(successMsg)alert(successMsg);
+    }).catch(function(){
+      showCopyModal('📋 복사할 내용', text);
+    });
+  } else {
+    showCopyModal('📋 복사할 내용', text);
+  }
+}
+
+async function initAll(){
+  await loadAll();
+  renderToday();
+  renderCal();
+}
+initAll();
+</script>
+<!-- 복사 모달 -->
+<div id="copy-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:999;align-items:center;justify-content:center">
+  <div style="background:#fff;border-radius:16px;padding:1.5rem;max-width:520px;width:calc(100% - 2rem);box-shadow:0 8px 32px rgba(0,0,0,0.2)">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+      <p style="font-size:14px;font-weight:600;margin:0" id="copy-modal-title">📋 아래 내용을 복사하세요</p>
+      <button onclick="closeCopyModal()" style="background:none;border:none;font-size:18px;cursor:pointer;color:#888">✕</button>
+    </div>
+    <p style="font-size:12px;color:#888;margin:0 0 8px">전체 선택(Ctrl+A) 후 복사(Ctrl+C) → 코워크 채팅창에 붙여넣기(Ctrl+V)</p>
+    <textarea id="copy-modal-text" rows="10" style="width:100%;padding:10px 12px;border:0.5px solid #e0e0e0;border-radius:8px;font-size:12px;font-family:inherit;line-height:1.8;resize:vertical;background:#f9f9f9" onclick="this.select()" readonly></textarea>
+    <div style="display:flex;gap:8px;margin-top:10px">
+      <button onclick="selectAllModalText()" class="btn-p" style="flex:1;padding:10px">전체 선택 (Ctrl+A)</button>
+      <button onclick="closeCopyModal()" class="btn-s">닫기</button>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>
