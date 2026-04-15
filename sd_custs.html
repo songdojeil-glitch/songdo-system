@@ -69,23 +69,6 @@ body{margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',
   <script src="firebase-storage.js"></script>
 </head>
 <body>
-<!-- ═══ PIN 인증 체크 ═══ -->
-<script>
-(function(){
-  var PIN_SESSION_KEY='sd_pin_auth';
-  var PIN_SESSION_MIN=480;
-  try{
-    var saved=sessionStorage.getItem(PIN_SESSION_KEY);
-    if(saved){
-      var data=JSON.parse(saved);
-      var elapsed=(Date.now()-data.ts)/60000;
-      if(elapsed<PIN_SESSION_MIN)return;
-    }
-  }catch(e){}
-  window.location.href='sd_hub.html';
-})();
-</script>
-
 <!-- ═══ 시스템 네비게이션 바 ═══ -->
 <div style="background:#f5f5f3;border-bottom:1px solid #e0e0e0;padding:7px 16px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">
   <span style="font-size:11px;color:#bbb;margin-right:4px">바로가기:</span>
@@ -197,12 +180,14 @@ body{margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',
         <select id="f-route" class="fi"><option value="">선택</option><option>내방</option><option>전화</option><option>문자</option><option>카톡</option><option>지인소개</option><option>기존고객</option><option>네이버부동산</option><option>유튜브</option><option>홈페이지</option><option>타업소</option></select>
       </div>
     </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+    <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:12px;margin-bottom:12px;align-items:end">
       <div><label class="fl">고객 성명 / 호칭</label><input id="f-name" type="text" class="fi" placeholder="예: 김철수 고객님"></div>
       <div><label class="fl">연락처1</label><input id="f-tel1" type="text" class="fi" placeholder="예: 010-1234-5678"></div>
+      <div><label class="fl">통신사</label><select id="f-tel1carrier" class="fi" style="width:90px;font-size:12px;padding:6px 4px"><option value="">통신사</option><option>SKT</option><option>KT</option><option>LGU+</option><option>SKT알뜰</option><option>KT알뜰</option><option>LGU알뜰</option><option>기타</option></select></div>
     </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+    <div style="display:grid;grid-template-columns:1fr auto 1fr;gap:12px;align-items:end">
       <div><label class="fl">연락처2 <span style="font-size:11px;color:#aaa">(선택)</span></label><input id="f-tel2" type="text" class="fi" placeholder="예: 010-9876-5432"></div>
+      <div><label class="fl">통신사 <span style="font-size:11px;color:#aaa">(선택)</span></label><select id="f-tel2carrier" class="fi" style="width:90px;font-size:12px;padding:6px 4px"><option value="">통신사</option><option>SKT</option><option>KT</option><option>LGU+</option><option>SKT알뜰</option><option>KT알뜰</option><option>LGU알뜰</option><option>기타</option></select></div>
       <div><label class="fl">최종 연락일</label><input id="f-lastdate" type="date" class="fi"></div>
     </div>
   </div>
@@ -773,7 +758,7 @@ function saveCust(){
     id:editId||Date.now(),
     tags:tags,
     pipe:tags.indexOf('가망고객')>=0?(parseInt(document.getElementById('f-pipe').value)||1):0,
-    name:nm,tel1:document.getElementById('f-tel1').value.trim(),tel2:document.getElementById('f-tel2').value.trim(),
+    name:nm,tel1:document.getElementById('f-tel1').value.trim(),tel1carrier:document.getElementById('f-tel1carrier').value,tel2:document.getElementById('f-tel2').value.trim(),tel2carrier:document.getElementById('f-tel2carrier').value,
     rdate:document.getElementById('f-rdate').value,route:document.getElementById('f-route').value,
     lastdate:document.getElementById('f-lastdate').value,lastmemo:document.getElementById('f-lastmemo').value.trim(),
     consult:document.getElementById('f-consult').value.trim(),
@@ -842,7 +827,7 @@ function rtbl(){
     return'<tr><td style="color:#aaa">'+(f.length-i)+'</td>'
       +'<td>'+tagBadges(tags)+'</td>'
       +'<td style="font-weight:500;white-space:nowrap">'+c.name+'</td>'
-      +'<td style="font-size:11px">'+(c.tel1||'—')+'</td>'
+      +'<td style="font-size:11px">'+(c.tel1||'—')+(c.tel1carrier?' ('+c.tel1carrier+')':'')+'</td>'
       +'<td style="font-size:11px;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+dealStr+'</td>'
       +'<td style="font-size:11px">'+locInfo+'</td>'
       +'<td style="font-size:11px;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+propStr+'</td>'
@@ -937,6 +922,8 @@ function editC(id){
   var tags=migrateTags(c);setTags(tags);
   selPipe(c.pipe||1);
   ['name','tel1','tel2','budget','cx','cond','consult','lastmemo','propmemo'].forEach(function(k){var el=document.getElementById('f-'+k);if(el)el.value=c[k]||'';});
+  var tc1=document.getElementById('f-tel1carrier');if(tc1)tc1.value=c.tel1carrier||'';
+  var tc2=document.getElementById('f-tel2carrier');if(tc2)tc2.value=c.tel2carrier||'';
   ['rdate','route','deal','ptype','area','size','lastdate'].forEach(function(k){var el=document.getElementById('f-'+k);if(el)el.value=c[k]||'';});
   var propMap={propDeal:'f-prop-deal',propPtype:'f-prop-ptype',propCx:'f-prop-cx',propDong:'f-prop-dong',propArea:'f-prop-area',propPrice:'f-prop-price',propMemo:'f-prop-memo',ctCx:'f-ct-cx',ctExpiry:'f-ct-expiry',ctRenew:'f-ct-renew',ctIntro:'f-ct-intro',exRel:'f-ex-rel',exIntro:'f-ex-intro'};
   Object.keys(propMap).forEach(function(k){var el=document.getElementById(propMap[k]);if(el)el.value=c[k]||'';});
