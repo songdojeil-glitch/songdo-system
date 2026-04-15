@@ -61,6 +61,10 @@ body{font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif;background:#f7
 /* 알림 뱃지 */
 .alert-card{border-left:3px solid;border-radius:10px;padding:10px 14px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px}
 </style>
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+  <script src="firebase-storage.js"></script>
 </head>
 <body>
 <!-- ═══ PIN 인증 체크 ═══ -->
@@ -86,7 +90,7 @@ body{font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif;background:#f7
     <div class="tabs">
       <button onclick="sw(0)" id="tn0" class="tnb on">🏠 오늘</button>
       <button onclick="sw(1)" id="tn1" class="tnb">📅 월간 캘린더</button>
-      <button onclick="sw(2)" id="tn2" class="tnb">✅ 할일 전체</button>
+      <button onclick="sw(2)" id="tn2" class="tnb">📋 일정&amp;할일</button>
       <button onclick="sw(3)" id="tn3" class="tnb">🔔 알림 센터</button>
       <button onclick="sw(4)" id="tn4" class="tnb">📋 일정 등록</button>
       <button onclick="sw(5)" id="tn5" class="tnb">🔗 구글 캘린더</button>
@@ -188,30 +192,48 @@ body{font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif;background:#f7
   </div>
 </div>
 
-<!-- TAB2 할일 전체 -->
+<!-- TAB2 일정&할일 전체 -->
 <div id="tc2" class="tc">
-  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;align-items:center">
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;align-items:center">
+    <!-- 일정/할일 구분 토글 -->
+    <div style="display:flex;border:0.5px solid #e0e0e0;border-radius:8px;overflow:hidden;flex-shrink:0">
+      <button id="kf-all" onclick="setKindFilter('all')" style="padding:6px 12px;border:none;background:#1a1a1a;color:#fff;font-size:12px;font-weight:600;cursor:pointer">전체</button>
+      <button id="kf-schedule" onclick="setKindFilter('schedule')" style="padding:6px 12px;border:none;background:#fff;color:#888;font-size:12px;cursor:pointer">📅 일정</button>
+      <button id="kf-todo" onclick="setKindFilter('todo')" style="padding:6px 12px;border:none;background:#fff;color:#888;font-size:12px;cursor:pointer">✅ 할일</button>
+    </div>
+    <!-- 기간 필터 -->
     <select id="todo-filter-status" class="fi" style="width:auto;font-size:12px" onchange="renderAllTodos()">
-      <option value="all">전체</option>
+      <option value="all">전체 기간</option>
       <option value="today">오늘</option>
       <option value="week">이번 주</option>
       <option value="pending">미완료</option>
       <option value="done">완료</option>
-      <option value="high">🔴 긴급</option>
+      <option value="high">🔴 긴급/아주중요</option>
     </select>
+    <!-- 유형 필터 -->
     <select id="todo-filter-type" class="fi" style="width:auto;font-size:12px" onchange="renderAllTodos()">
       <option value="">전체 유형</option>
-      <option>📞 전화</option>
-      <option>🏠 현장 동행</option>
-      <option>📝 계약</option>
-      <option>📨 서류</option>
-      <option>💬 상담</option>
-      <option>📅 기타 일정</option>
-      <option>✅ 기타 할일</option>
+      <optgroup label="📅 일정">
+        <option>👤 고객상담</option><option>🏠 현장동행</option><option>📝 신규계약</option>
+        <option>🔄 재계약</option><option>🍽️ 식사약속</option><option>🤝 회의참석</option>
+        <option>🤝 미팅참석</option><option>📚 교육진행</option><option>📖 교육참석</option>
+        <option>✈️ 여행</option><option>🎉 모임참석</option><option>🥂 회식참석</option>
+        <option>👫 지인만남</option><option>👨‍👩‍👧 가족행사</option><option>⛪ 집회참석</option>
+        <option>🌿 야외봉사</option><option>🙏 형제교제</option><option>⛳ 골프라운딩</option><option>💰 잔금</option><option>💰 중도금</option><option>💳 카드결재</option><option>📥 보수입금</option><option>📥 기타입금</option>
+      </optgroup>
+      <optgroup label="✅ 할일">
+        <option>📞 고객연락</option><option>🔍 물건확인</option><option>🏃 운동</option>
+        <option>📖 스터디</option><option>💻 웹페이지관리</option><option>🎥 유튜브제작</option>
+        <option>🏠 물건등록관리</option><option>📄 자료작성</option><option>💻 바이브코딩</option>
+        <option>📚 독서</option><option>🎮 여가</option><option>😴 휴식</option>
+        <option>⛪ 집회준비</option><option>📖 개인성서연구</option><option>⛳ 골프연습</option><option>🏘️ 물건임장</option><option>🛍️ 야외쇼핑</option><option>🛒 온라인구매</option><option>🍳 요리</option><option>🏠 집안일</option><option>💵 급여지급</option><option>💸 대금지급</option><option>🧾 세금납부</option><option>💸 기타지급</option><option>🏦 은행업무</option><option>🏛️ 관공서업무</option><option>🔧 유지보수</option><option>💪 자기관리</option><option>🧹 청소정리</option>
+      </optgroup>
     </select>
     <span id="all-todo-cnt" style="font-size:12px;color:#666"></span>
-    <button onclick="exportTodoXL()" class="btn-s" style="font-size:11px;margin-left:auto">📥 엑셀</button>
-    <button onclick="copyTodosForGCal()" class="btn-g" style="font-size:11px">📅 구글캘린더 복사</button>
+    <div style="margin-left:auto;display:flex;gap:6px">
+      <button onclick="exportTodoXL()" class="btn-s" style="font-size:11px">📥 엑셀</button>
+      <button onclick="copyTodosForGCal()" class="btn-g" style="font-size:11px">📅 구글캘린더 복사</button>
+    </div>
   </div>
   <div id="all-todo-list"></div>
 </div>
@@ -260,29 +282,46 @@ body{font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif;background:#f7
 
     <div style="margin-bottom:10px"><label class="fl">제목</label><input id="sch-title" type="text" class="fi" placeholder="예: 더샵하버뷰 현장 동행, 임대차 계약서 검토"></div>
 
-    <!-- 시작 시간 + 소요시간/종료시간 -->
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
-      <div><label class="fl">날짜·시간 (시작)</label><input id="sch-start" type="datetime-local" class="fi" oninput="calcEndTime()"></div>
-      <div>
-        <label class="fl">소요 시간 <span style="color:#aaa;font-weight:400">(선택 → 자동 계산)</span></label>
-        <select id="sch-duration" class="fi" onchange="calcEndTime()">
-          <option value="">— 직접 입력 —</option>
-          <option value="30">30분</option>
-          <option value="60">1시간</option>
-          <option value="90">1시간 30분</option>
-          <option value="120">2시간</option>
-          <option value="150">2시간 30분</option>
-          <option value="180">3시간</option>
-          <option value="240">4시간</option>
-          <option value="300">5시간</option>
-          <option value="360">6시간</option>
-        </select>
+    <!-- 시작 날짜 + 시간 모드 -->
+    <div style="margin-bottom:8px">
+      <label class="fl">날짜</label>
+      <input id="sch-date" type="date" class="fi" oninput="onDateChange()">
+    </div>
+    <!-- 시간 모드 선택 -->
+    <div style="display:flex;gap:0;margin-bottom:10px;border:0.5px solid #e0e0e0;border-radius:8px;overflow:hidden">
+      <button id="tmode-time" onclick="setTimeMode('time')" style="flex:1;padding:7px;border:none;background:#1a1a1a;color:#fff;font-size:12px;font-weight:600;cursor:pointer">⏰ 시간 지정</button>
+      <button id="tmode-allday" onclick="setTimeMode('allday')" style="flex:1;padding:7px;border:none;background:#fff;color:#888;font-size:12px;cursor:pointer">🌅 종일</button>
+      <button id="tmode-unknown" onclick="setTimeMode('unknown')" style="flex:1;padding:7px;border:none;background:#fff;color:#888;font-size:12px;cursor:pointer">❓ 미정</button>
+    </div>
+    <input type="hidden" id="sch-timemode" value="time">
+    <!-- 시간 지정 영역 -->
+    <div id="sch-timebox" style="display:block">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+        <div><label class="fl">시작 시간</label><input id="sch-time" type="time" class="fi" oninput="buildStart();calcEndTime()"></div>
+        <div>
+          <label class="fl">소요 시간 <span style="color:#aaa;font-weight:400">(선택 → 자동 계산)</span></label>
+          <select id="sch-duration" class="fi" onchange="calcEndTime()">
+            <option value="">— 직접 입력 —</option>
+            <option value="30">30분</option>
+            <option value="60">1시간</option>
+            <option value="90">1시간 30분</option>
+            <option value="120">2시간</option>
+            <option value="150">2시간 30분</option>
+            <option value="180">3시간</option>
+            <option value="240">4시간</option>
+            <option value="300">5시간</option>
+            <option value="360">6시간</option>
+          </select>
+        </div>
+      </div>
+      <div style="margin-bottom:10px">
+        <label class="fl">종료 시간 <span style="color:#aaa;font-weight:400">(소요시간 선택 시 자동 입력)</span></label>
+        <input id="sch-end-time" type="time" class="fi">
       </div>
     </div>
-    <div style="margin-bottom:10px">
-      <label class="fl">종료 시간 <span style="color:#aaa;font-weight:400">(소요시간 선택 시 자동 입력)</span></label>
-      <input id="sch-end" type="datetime-local" class="fi">
-    </div>
+    <!-- hidden: 실제 저장값 -->
+    <input type="hidden" id="sch-start">
+    <input type="hidden" id="sch-end">
 
     <!-- 일정 With (연결 고객 대체) -->
     <div style="margin-bottom:10px;padding:12px;background:#f8f8f6;border-radius:10px">
@@ -530,6 +569,7 @@ function makeTodoRow(t, onDel){
     +(t.withName?'<span style="font-size:10px;background:#e3f2fd;color:#1565c0;padding:1px 6px;border-radius:5px">👥 '+t.withName+(t.withTel?' '+t.withTel:'')+'</span>':'')
     +(t.custName&&!t.withName?'<span style="font-size:10px;background:#e3f2fd;color:#1565c0;padding:1px 6px;border-radius:5px">'+t.custName+'</span>':'')
     +(t.repeatId?'<span style="font-size:9px;color:#7b1fa2;background:#ede7f6;padding:1px 5px;border-radius:4px">🔁</span>':'')
+    +(t.timemode==='allday'?'<span style="font-size:9px;color:#1565c0;background:#e3f2fd;padding:1px 5px;border-radius:4px">종일</span>':t.timemode==='unknown'?'<span style="font-size:9px;color:#f57f17;background:#fff8e1;padding:1px 5px;border-radius:4px">⏰미정</span>':'')
     +'</div>'
     +(t.memo?'<p style="font-size:11px;color:#888;margin:2px 0 0">'+t.memo+'</p>':'')
     +'</div>'
@@ -685,16 +725,31 @@ function goToday(){calYear=new Date().getFullYear();calMonth=new Date().getMonth
 // ─────────────────────────────────────────
 // TAB2 할일 전체
 // ─────────────────────────────────────────
+var kindFilter='all';
+function setKindFilter(k){
+  kindFilter=k;
+  ['all','schedule','todo'].forEach(function(v){
+    var btn=document.getElementById('kf-'+v);
+    if(!btn)return;
+    btn.style.background=v===k?'#1a1a1a':'#fff';
+    btn.style.color=v===k?'#fff':'#888';
+    btn.style.fontWeight=v===k?'600':'400';
+  });
+  renderAllTodos();
+}
 function renderAllTodos(){
   var sf=document.getElementById('todo-filter-status').value;
   var tf=document.getElementById('todo-filter-type').value;
   var tod=today();var week=new Date(tod);week.setDate(week.getDate()+7);
   var f=todos.filter(function(t){
+    // kind 필터
+    if(kindFilter==='schedule'&&t.kind!=='schedule')return false;
+    if(kindFilter==='todo'&&t.kind==='schedule')return false;
     if(sf==='today'){if(!t.date)return false;return t.date.startsWith(todayStr());}
     if(sf==='week'){if(!t.date)return false;var d=new Date(t.date.slice(0,10));d.setHours(0,0,0,0);return d>=tod&&d<=week;}
     if(sf==='pending')return!t.done;
     if(sf==='done')return t.done;
-    if(sf==='high')return t.priority==='high'&&!t.done;
+    if(sf==='high')return(t.priority==='high'||t.priority==='very')&&!t.done;
     return true;
   }).filter(function(t){return!tf||t.type===tf;}).sort(function(a,b){
     var p={'very':0,'imp':0,'high':0,'normal':2,'mid':1,'low':2};return (p[a.priority||'mid']||1)-(p[b.priority||'mid']||1)||(a.date||'').localeCompare(b.date||'');
@@ -708,6 +763,7 @@ function renderAllTodos(){
       +'<input type="checkbox" '+(t.done?'checked':'')+' onclick="togTodo('+t.id+')" style="margin-top:3px;cursor:pointer">'
       +'<div style="flex:1">'
       +'<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">'
+      +(t.kind==='schedule'?'<span style="font-size:10px;background:#e3f2fd;color:#1565c0;padding:1px 5px;border-radius:4px;margin-right:2px">📅</span>':'<span style="font-size:10px;background:#e8f5e9;color:#2e7d32;padding:1px 5px;border-radius:4px;margin-right:2px">✅</span>')
       +'<span style="font-size:13px;font-weight:500;'+(t.done?'text-decoration:line-through;color:#aaa':'')+'">'+t.title+'</span>'
       +'<span class="pri-'+(t.priority||'mid')+'">'+({very:'아주 중요',imp:'중요',normal:'일반',high:'긴급',mid:'보통',low:'여유'})[t.priority||'mid']||t.priority+'</span>'
       +(t.type?'<span style="font-size:11px;color:#666">'+t.type+'</span>':'')
@@ -764,8 +820,8 @@ function addAlertToTodo(btn){
 // ─────────────────────────────────────────
 // 일정 유형 목록
 var SCH_TYPES = {
-  schedule: ['👤 고객상담','🏠 현장동행','📝 신규계약','🔄 재계약','🍽️ 식사약속','🤝 회의참석','🤝 미팅참석','📚 교육진행','📖 교육참석','✈️ 여행','🎉 모임참석','🥂 회식참석','👫 지인만남','👨‍👩‍👧 가족행사','⛪ 집회참석','🌿 야외봉사','🙏 형제교제'],
-  todo: ['📞 고객연락','🔍 물건확인','🏃 운동','📖 스터디','💻 웹페이지관리','🎥 유튜브제작','🏠 물건등록관리','📄 자료작성','💻 바이브코딩','📚 독서','🎮 여가','😴 휴식','⛪ 집회준비','📖 개인성서연구']
+  schedule: ['👤 고객상담','🏠 현장동행','📝 신규계약','🔄 재계약','🍽️ 식사약속','🤝 회의참석','🤝 미팅참석','📚 교육진행','📖 교육참석','✈️ 여행','🎉 모임참석','🥂 회식참석','👫 지인만남','👨‍👩‍👧 가족행사','⛪ 집회참석','🌿 야외봉사','🙏 형제교제','⛳ 골프라운딩','💰 잔금','💰 중도금','💳 카드결재','📥 보수입금','📥 기타입금'],
+  todo: ['📞 고객연락','🔍 물건확인','🏃 운동','📖 스터디','💻 웹페이지관리','🎥 유튜브제작','🏠 물건등록관리','📄 자료작성','💻 바이브코딩','📚 독서','🎮 여가','😴 휴식','⛪ 집회준비','📖 개인성서연구','⛳ 골프연습','🏘️ 물건임장','🛍️ 야외쇼핑','🛒 온라인구매','🍳 요리','🏠 집안일','💵 급여지급','💸 대금지급','🧾 세금납부','💸 기타지급','🏦 은행업무','🏛️ 관공서업무','🔧 유지보수','💪 자기관리','🧹 청소정리']
 };
 var PRI_OPTS = {
   schedule: [
@@ -810,13 +866,18 @@ function onRepeatChange(){
 }
 function calcEndTime(){
   var dur=parseInt(document.getElementById('sch-duration').value);
-  var start=document.getElementById('sch-start').value;
-  if(!dur||!start)return;
-  var d=new Date(start);
+  var date=document.getElementById('sch-date').value;
+  var timeEl=document.getElementById('sch-time');
+  var t=timeEl?timeEl.value:'';
+  if(!dur||!date||!t)return;
+  var d=new Date(date+'T'+t);
   d.setMinutes(d.getMinutes()+dur);
-  var y=d.getFullYear(),mo=String(d.getMonth()+1).padStart(2,'0'),dy=String(d.getDate()).padStart(2,'0');
   var h=String(d.getHours()).padStart(2,'0'),mi=String(d.getMinutes()).padStart(2,'0');
-  document.getElementById('sch-end').value=y+'-'+mo+'-'+dy+'T'+h+':'+mi;
+  var endTimeEl=document.getElementById('sch-end-time');
+  if(endTimeEl)endTimeEl.value=h+':'+mi;
+  // sch-end hidden 업데이트
+  var dy=String(d.getDate()).padStart(2,'0'),mo=String(d.getMonth()+1).padStart(2,'0');
+  document.getElementById('sch-end').value=d.getFullYear()+'-'+mo+'-'+dy+'T'+h+':'+mi;
 }
 
 function initSchForm(){
@@ -824,7 +885,12 @@ function initSchForm(){
   var now=new Date();
   var ds=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0');
   var ts=String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0');
-  if(!document.getElementById('sch-start').value)document.getElementById('sch-start').value=ds+'T'+ts;
+  var dateEl=document.getElementById('sch-date');
+  var timeEl=document.getElementById('sch-time');
+  if(dateEl&&!dateEl.value)dateEl.value=ds;
+  if(timeEl&&!timeEl.value)timeEl.value=ts;
+  buildStart();
+  setTimeMode('time');
 }
 
 function saveSchedule(){
@@ -835,8 +901,9 @@ function saveSchedule(){
   var withName=(document.getElementById('sch-with-name')||{}).value||'';
   var withTel=(document.getElementById('sch-with-tel')||{}).value||'';
   var kind=(document.getElementById('sch-kind')||{}).value||'schedule';
+  var timemode=(document.getElementById('sch-timemode')||{}).value||'time';
   var now=new Date().toISOString();
-  var t={id:Date.now(),kind:kind,type:document.getElementById('sch-type').value,priority:document.getElementById('sch-priority').value,title:title,date:start,endDate:end,withName:withName.trim(),withTel:withTel.trim(),location:document.getElementById('sch-location').value.trim(),memo:document.getElementById('sch-memo').value.trim(),done:false,createdAt:now};
+  var t={id:Date.now(),kind:kind,type:document.getElementById('sch-type').value,priority:document.getElementById('sch-priority').value,title:title,date:start,endDate:end,withName:withName.trim(),withTel:withTel.trim(),timemode:timemode,location:document.getElementById('sch-location').value.trim(),memo:document.getElementById('sch-memo').value.trim(),done:false,createdAt:now};
   // 반복 처리
   var repeat=document.getElementById('sch-repeat').value;
   var repeatEnd=document.getElementById('sch-repeat-end').value;
