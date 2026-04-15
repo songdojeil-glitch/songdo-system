@@ -101,6 +101,24 @@ body{font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif;background:#f7
     <div id="today-todos"></div>
   </div>
 
+  <!-- 이번주 할일 & 약속 -->
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+      <p class="sec" style="margin:0">📆 이번주 할일 &amp; 약속</p>
+      <span id="week-cnt" style="font-size:12px;color:#888"></span>
+    </div>
+    <div id="week-todos"></div>
+  </div>
+
+  <!-- 이번달 할일 & 약속 -->
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+      <p class="sec" style="margin:0">🗓️ 이번달 할일 &amp; 약속</p>
+      <span id="month-cnt" style="font-size:12px;color:#888"></span>
+    </div>
+    <div id="month-todos"></div>
+  </div>
+
   <!-- 빠른 할일 추가 -->
   <div class="card">
     <p class="sec">⚡ 빠른 추가</p>
@@ -255,6 +273,31 @@ body{font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif;background:#f7
 
     <div style="margin-bottom:10px"><label class="fl">장소</label><input id="sch-location" type="text" class="fi" placeholder="예: 더샵하버뷰 1동 로비, 사무소"></div>
     <div style="margin-bottom:14px"><label class="fl">메모</label><textarea id="sch-memo" rows="2" class="fi" style="resize:vertical" placeholder="추가 메모"></textarea></div>
+
+    <!-- 반복 설정 -->
+    <div style="margin-bottom:14px;padding:12px;background:#f3e5f5;border-radius:10px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+        <span style="font-size:14px">🔁</span>
+        <span style="font-size:12px;font-weight:600;color:#6a1b9a">반복 설정</span>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <div>
+          <label class="fl">반복 주기</label>
+          <select id="sch-repeat" class="fi" onchange="onRepeatChange()">
+            <option value="">반복 없음</option>
+            <option value="daily">매일</option>
+            <option value="weekly">매주</option>
+            <option value="weekday">평일만 (월~금)</option>
+            <option value="monthly">매월</option>
+          </select>
+        </div>
+        <div id="repeat-end-box" style="display:none">
+          <label class="fl">반복 종료일</label>
+          <input id="sch-repeat-end" type="date" class="fi">
+        </div>
+      </div>
+      <div id="repeat-preview" style="display:none;margin-top:8px;font-size:11px;color:#7b1fa2;background:#ede7f6;border-radius:6px;padding:6px 10px"></div>
+    </div>
 
     <!-- 구글 캘린더 내보내기 옵션 -->
     <div style="padding:12px;background:#f0f7ff;border-radius:10px;margin-bottom:14px">
@@ -442,8 +485,61 @@ function renderToday(){
       +'<button onclick="delTodo('+t.id+')" class="btn-d" style="font-size:10px;padding:2px 5px">삭제</button>'
       +'</div>';
   }).join(''):'<p style="font-size:12px;color:#aaa;padding:8px 0">오늘 등록된 할일이 없습니다 👍</p>';
+  // 이번주 할일
+  renderWeekTodos();
+  // 이번달 할일
+  renderMonthTodos();
   // 연동 알림
   renderLinkedAlerts();
+}
+
+function makeTodoRow(t, onDel){
+  var timeStr=t.date&&t.date.length>10?t.date.slice(11,16):'';
+  var ds=t.date?t.date.slice(0,10):'';
+  var priLabels={very:'아주 중요',imp:'중요',normal:'일반',high:'긴급',mid:'보통',low:'여유'};
+  return '<div style="display:flex;gap:10px;align-items:flex-start;padding:9px 0;border-bottom:0.5px solid #f0f0f0">'
+    +'<input type="checkbox" '+(t.done?'checked':'')+' onclick="togTodo('+t.id+')" style="margin-top:2px;cursor:pointer">'
+    +'<div style="flex:1">'
+    +'<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">'
+    +(ds&&ds!==todayStr()?'<span style="font-size:10px;color:#888;background:#f5f5f3;padding:1px 5px;border-radius:4px">'+ds+'</span>':'')
+    +(timeStr?'<span style="font-size:12px;color:#1565c0;font-weight:500;min-width:36px">'+timeStr+'</span>':'')
+    +'<span style="font-size:13px;'+(t.done?'text-decoration:line-through;color:#aaa':'')+'">'+(t.type||'')+'  '+t.title+'</span>'
+    +'<span class="pri-'+(t.priority||'mid')+'">'+(priLabels[t.priority||'mid']||t.priority)+'</span>'
+    +(t.withName?'<span style="font-size:10px;background:#e3f2fd;color:#1565c0;padding:1px 6px;border-radius:5px">👥 '+t.withName+(t.withTel?' '+t.withTel:'')+'</span>':'')
+    +(t.custName&&!t.withName?'<span style="font-size:10px;background:#e3f2fd;color:#1565c0;padding:1px 6px;border-radius:5px">'+t.custName+'</span>':'')
+    +(t.repeatId?'<span style="font-size:9px;color:#7b1fa2;background:#ede7f6;padding:1px 5px;border-radius:4px">🔁</span>':'')
+    +'</div>'
+    +(t.memo?'<p style="font-size:11px;color:#888;margin:2px 0 0">'+t.memo+'</p>':'')
+    +'</div>'
+    +'<button onclick="'+onDel+'" class="btn-d" style="font-size:10px;padding:2px 5px">삭제</button>'
+    +'</div>';
+}
+
+function renderWeekTodos(){
+  var tod=today();var weekEnd=new Date(tod);weekEnd.setDate(weekEnd.getDate()+6);
+  var items=todos.filter(function(t){
+    if(!t.date)return false;
+    var d=new Date(t.date.slice(0,10));d.setHours(0,0,0,0);
+    return d>tod&&d<=weekEnd;  // 오늘 이후~6일 후
+  }).sort(function(a,b){return a.date.localeCompare(b.date);});
+  document.getElementById('week-cnt').textContent=items.filter(function(t){return!t.done;}).length+'건 남음';
+  document.getElementById('week-todos').innerHTML=items.length
+    ?items.map(function(t){return makeTodoRow(t,'delTodo('+t.id+')');}).join('')
+    :'<p style="font-size:12px;color:#aaa;padding:4px 0">이번주 남은 일정 없음 👍</p>';
+}
+
+function renderMonthTodos(){
+  var tod=today();
+  var monthEnd=new Date(tod.getFullYear(),tod.getMonth()+1,0);
+  var items=todos.filter(function(t){
+    if(!t.date)return false;
+    var d=new Date(t.date.slice(0,10));d.setHours(0,0,0,0);
+    return d>tod&&d<=monthEnd;
+  }).sort(function(a,b){return a.date.localeCompare(b.date);});
+  document.getElementById('month-cnt').textContent=items.filter(function(t){return!t.done;}).length+'건 남음';
+  document.getElementById('month-todos').innerHTML=items.length
+    ?items.map(function(t){return makeTodoRow(t,'delTodo('+t.id+')');}).join('')
+    :'<p style="font-size:12px;color:#aaa;padding:4px 0">이번달 남은 일정 없음 👍</p>';
 }
 
 function renderLinkedAlerts(){
@@ -647,7 +743,7 @@ function addAlertToTodo(btn){
 // 일정 유형 목록
 var SCH_TYPES = {
   schedule: ['👤 고객상담','🏠 현장동행','📝 신규계약','🔄 재계약','🍽️ 식사약속','🤝 회의참석','🤝 미팅참석','📚 교육진행','📖 교육참석','✈️ 여행','🎉 모임참석','🥂 회식참석','👫 지인만남','👨‍👩‍👧 가족행사','⛪ 집회참석','🌿 야외봉사','🙏 형제교제'],
-  todo: ['🏃 운동','📖 스터디','💻 웹페이지관리','🎥 유튜브제작','🏠 물건등록관리','📄 자료작성','💻 바이브코딩','📚 독서','🎮 여가','😴 휴식','⛪ 집회준비','📖 개인성서연구']
+  todo: ['📞 고객연락','🔍 물건확인','🏃 운동','📖 스터디','💻 웹페이지관리','🎥 유튜브제작','🏠 물건등록관리','📄 자료작성','💻 바이브코딩','📚 독서','🎮 여가','😴 휴식','⛪ 집회준비','📖 개인성서연구']
 };
 var PRI_OPTS = {
   schedule: [
@@ -677,6 +773,19 @@ function setKind(kind){
   priEl.innerHTML=PRI_OPTS[kind].map(function(p,i){return'<option value="'+p.v+'"'+(i===PRI_OPTS[kind].length-1?' selected':'')+'>'+p.label+'</option>';}).join('');
 }
 
+
+function onRepeatChange(){
+  var v=document.getElementById('sch-repeat').value;
+  document.getElementById('repeat-end-box').style.display=v?'block':'none';
+  var prev=document.getElementById('repeat-preview');
+  if(v){
+    var labels={daily:'매일',weekly:'매주',weekday:'평일(월~금)마다',monthly:'매월'};
+    prev.style.display='block';
+    prev.textContent='🔁 '+labels[v]+' 반복 — 종료일까지 자동 생성됩니다';
+  } else {
+    prev.style.display='none';
+  }
+}
 function calcEndTime(){
   var dur=parseInt(document.getElementById('sch-duration').value);
   var start=document.getElementById('sch-start').value;
@@ -705,7 +814,28 @@ function saveSchedule(){
   var cust=custs.find(function(c){return String(c.id)===String(custId);});
   var now=new Date().toISOString();
   var t={id:Date.now(),type:document.getElementById('sch-type').value,priority:document.getElementById('sch-priority').value,title:title,date:start,endDate:end,custId:custId,custName:cust?cust.name:'',location:document.getElementById('sch-location').value.trim(),memo:document.getElementById('sch-memo').value.trim(),done:false,createdAt:now};
-  todos.unshift(t);
+  // 반복 처리
+  var repeat=document.getElementById('sch-repeat').value;
+  var repeatEnd=document.getElementById('sch-repeat-end').value;
+  if(repeat&&repeatEnd&&start){
+    var repeatId='rep_'+Date.now();
+    t.repeatId=repeatId; t.repeatType=repeat;
+    var cur=new Date(start);
+    var endD=new Date(repeatEnd+'T23:59');
+    var added=0;
+    while(cur<=endD&&added<365){
+      var ds2=cur.getFullYear()+'-'+String(cur.getMonth()+1).padStart(2,'0')+'-'+String(cur.getDate()).padStart(2,'0');
+      var ts2=String(cur.getHours()).padStart(2,'0')+':'+String(cur.getMinutes()).padStart(2,'0');
+      todos.unshift(Object.assign({},t,{id:Date.now()+added,date:ds2+'T'+ts2}));
+      added++;
+      if(repeat==='daily')cur.setDate(cur.getDate()+1);
+      else if(repeat==='weekly')cur.setDate(cur.getDate()+7);
+      else if(repeat==='weekday'){cur.setDate(cur.getDate()+1);while(cur.getDay()===0||cur.getDay()===6)cur.setDate(cur.getDate()+1);}
+      else if(repeat==='monthly')cur.setMonth(cur.getMonth()+1);
+    }
+  } else {
+    todos.unshift(t);
+  }
   saveTodos();
   var ok=document.getElementById('sch-ok');ok.textContent='✅ 저장됐습니다! — '+title;ok.style.display='block';
   setTimeout(function(){ok.style.display='none';},3000);
