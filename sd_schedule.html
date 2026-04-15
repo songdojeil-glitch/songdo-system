@@ -533,7 +533,7 @@ function renderToday(){
   el.innerHTML=todayItems.length?todayItems.map(function(t){
     var timeStr=t.date&&t.date.length>10?t.date.slice(11,16):'';
     return'<div style="display:flex;gap:10px;align-items:flex-start;padding:9px 0;border-bottom:0.5px solid #f0f0f0">'
-      +'<input type="checkbox" '+(t.done?'checked':'')+' onclick="togTodo('+t.id+')" style="margin-top:2px;cursor:pointer">'
+      +'<input type="checkbox" '+(t.done?'checked':'')+' onclick="event.stopPropagation();togTodo('+t.id+')" style="margin-top:2px;cursor:pointer">'
       +'<div style="flex:1">'
       +'<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">'
       +(timeStr?'<span style="font-size:12px;color:#1565c0;font-weight:500;min-width:36px">'+timeStr+'</span>':'')
@@ -558,8 +558,8 @@ function makeTodoRow(t, onDel){
   var timeStr=t.date&&t.date.length>10?t.date.slice(11,16):'';
   var ds=t.date?t.date.slice(0,10):'';
   var priLabels={very:'아주 중요',imp:'중요',normal:'일반',high:'긴급',mid:'보통',low:'여유'};
-  return '<div style="display:flex;gap:10px;align-items:flex-start;padding:9px 0;border-bottom:0.5px solid #f0f0f0">'
-    +'<input type="checkbox" '+(t.done?'checked':'')+' onclick="togTodo('+t.id+')" style="margin-top:2px;cursor:pointer">'
+  return '<div style="display:flex;gap:10px;align-items:flex-start;padding:9px 0;border-bottom:0.5px solid #f0f0f0;cursor:pointer" onclick="openSchDetail('+t.id+')">'
+    +'<input type="checkbox" '+(t.done?'checked':'')+' onclick="event.stopPropagation();togTodo('+t.id+')" style="margin-top:2px;cursor:pointer">'
     +'<div style="flex:1">'
     +'<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">'
     +(ds&&ds!==todayStr()?'<span style="font-size:10px;color:#888;background:#f5f5f3;padding:1px 5px;border-radius:4px">'+ds+'</span>':'')
@@ -709,11 +709,15 @@ function showDay(ds){
   document.getElementById('day-detail-title').textContent=ds+' 일정 ('+items.length+'건)';
   document.getElementById('day-detail-list').innerHTML=items.length?items.map(function(t){
     var timeStr=t.date&&t.date.length>10?t.date.slice(11,16):'';
-    return'<div style="display:flex;gap:8px;align-items:center;padding:7px 0;border-bottom:0.5px solid #f0f0f0">'
-      +'<input type="checkbox" '+(t.done?'checked':'')+' onclick="togTodo('+t.id+');showDay(\''+ds+'\')" style="cursor:pointer">'
-      +(timeStr?'<span style="font-size:11px;color:#1565c0;min-width:32px">'+timeStr+'</span>':'')
+    var isSchedule=t.kind==='schedule';
+    var tmBadge=t.timemode==='allday'?'<span style="font-size:9px;background:#e3f2fd;color:#1565c0;padding:1px 4px;border-radius:4px;margin-left:3px">종일</span>':t.timemode==='unknown'?'<span style="font-size:9px;background:#fff8e1;color:#f57f17;padding:1px 4px;border-radius:4px;margin-left:3px">미정</span>':'';
+    return'<div style="display:flex;gap:8px;align-items:center;padding:8px 0;border-bottom:0.5px solid #f0f0f0;cursor:pointer" onclick="openSchDetail('+t.id+')">'
+      +'<input type="checkbox" '+(t.done?'checked':'')+' onclick="event.stopPropagation();togTodo('+t.id+');showDay(\''+ds+'\')" style="cursor:pointer">'
+      +'<span style="font-size:9px;padding:1px 5px;border-radius:4px;background:'+(isSchedule?'#e3f2fd':'#e8f5e9')+';color:'+(isSchedule?'#1565c0':'#2e7d32')+'">'+(isSchedule?'📅':'✅')+'</span>'
+      +(timeStr&&t.timemode!=='allday'&&t.timemode!=='unknown'?'<span style="font-size:11px;color:#1565c0;min-width:32px">'+timeStr+'</span>':'')
       +'<span style="flex:1;font-size:12px;'+(t.done?'text-decoration:line-through;color:#aaa':'')+'">'+t.title+'</span>'
-      +'<button onclick="delTodo('+t.id+');showDay(\''+ds+'\')" class="btn-d" style="font-size:10px;padding:2px 5px">삭제</button>'
+      +tmBadge
+      +'<button onclick="event.stopPropagation();delTodo('+t.id+');showDay(\''+ds+'\')" class="btn-d" style="font-size:10px;padding:2px 5px">삭제</button>'
       +'</div>';
   }).join(''):'<p style="font-size:12px;color:#aaa;padding:6px 0">일정 없음</p>';
   dd.style.display='block';
@@ -725,6 +729,114 @@ function goToday(){calYear=new Date().getFullYear();calMonth=new Date().getMonth
 // ─────────────────────────────────────────
 // TAB2 할일 전체
 // ─────────────────────────────────────────
+
+var schDetailId=null;
+
+function openSchDetail(id){
+  var t=todos.find(function(x){return x.id===id;});
+  if(!t)return;
+  schDetailId=id;
+  var priLabels={very:'🔴 아주 중요',imp:'🟠 중요',normal:'🟢 일반',high:'🔴 긴급',mid:'🟡 보통',low:'🟢 여유'};
+  var priColors={very:'#c62828',imp:'#e65100',normal:'#2e7d32',high:'#ff6f00',mid:'#f57f17',low:'#2e7d32'};
+  var priBg={very:'#fce4ec',imp:'#fff3e0',normal:'#e8f5e9',high:'#fff3e0',mid:'#fff8e1',low:'#e8f5e9'};
+  var isSchedule=t.kind==='schedule';
+  // 배지
+  var kb=document.getElementById('sdtl-kind-badge');
+  kb.textContent=isSchedule?'📅 일정':'✅ 할일';
+  kb.style.background=isSchedule?'#e3f2fd':'#e8f5e9';
+  kb.style.color=isSchedule?'#1565c0':'#2e7d32';
+  var pb=document.getElementById('sdtl-priority');
+  pb.textContent=priLabels[t.priority||'mid']||'';
+  pb.style.background=priBg[t.priority||'mid']||'#f5f5f3';
+  pb.style.color=priColors[t.priority||'mid']||'#666';
+  // 시간 모드 배지
+  var tm=document.getElementById('sdtl-timemode');
+  if(t.timemode==='allday'){tm.textContent='🌅 종일';tm.style.background='#e3f2fd';tm.style.color='#1565c0';}
+  else if(t.timemode==='unknown'){tm.textContent='⏰ 미정';tm.style.background='#fff8e1';tm.style.color='#f57f17';}
+  else{tm.textContent='';tm.style.background='transparent';}
+  document.getElementById('sdtl-title').textContent=t.title||'';
+  document.getElementById('sdtl-type').textContent=t.type||'';
+  // 날짜/시간
+  var dateStr='';
+  if(t.date){
+    var ds=t.date.slice(0,10);
+    var ts=t.date.length>10?t.date.slice(11,16):'';
+    if(t.timemode==='allday') dateStr=ds+' (종일)';
+    else if(t.timemode==='unknown') dateStr=ds+' (시간 미정)';
+    else dateStr=ds+(ts&&ts!=='00:00'?' '+ts:'');
+    if(t.endDate){
+      var es=t.endDate.length>10?t.endDate.slice(11,16):'';
+      if(es)dateStr+=' ~ '+es;
+    }
+  }
+  document.getElementById('sdtl-date').textContent=dateStr||'날짜 미설정';
+  // With
+  var wb=document.getElementById('sdtl-with-box');
+  if(t.withName||t.withTel){
+    wb.style.display='block';
+    document.getElementById('sdtl-with').textContent=[t.withName,t.withTel].filter(Boolean).join(' ');
+  } else wb.style.display='none';
+  // 장소
+  var lb=document.getElementById('sdtl-location-box');
+  if(t.location){lb.style.display='block';document.getElementById('sdtl-location').textContent=t.location;}
+  else lb.style.display='none';
+  // 메모
+  var mb=document.getElementById('sdtl-memo-box');
+  if(t.memo){mb.style.display='block';document.getElementById('sdtl-memo').textContent=t.memo;}
+  else mb.style.display='none';
+  // 완료
+  document.getElementById('sdtl-done-chk').checked=!!t.done;
+  document.getElementById('sch-detail-modal').style.display='flex';
+}
+
+function closeSchDetail(){
+  document.getElementById('sch-detail-modal').style.display='none';
+  schDetailId=null;
+}
+
+function toggleDoneFromDetail(){
+  if(!schDetailId)return;
+  var t=todos.find(function(x){return x.id===schDetailId;});
+  if(t){t.done=document.getElementById('sdtl-done-chk').checked;saveTodos();renderToday();if(document.getElementById('tc1').classList.contains('on'))renderCal();}
+}
+
+function editFromDetail(){
+  if(!schDetailId)return;
+  var t=todos.find(function(x){return x.id===schDetailId;});
+  if(!t)return;
+  closeSchDetail();
+  sw(4);
+  setTimeout(function(){
+    setKind(t.kind||'todo');
+    document.getElementById('sch-title').value=t.title||'';
+    document.getElementById('sch-date').value=t.date?t.date.slice(0,10):'';
+    if(document.getElementById('sch-time')&&t.date&&t.date.length>10) document.getElementById('sch-time').value=t.date.slice(11,16);
+    document.getElementById('sch-with-name').value=t.withName||'';
+    document.getElementById('sch-with-tel').value=t.withTel||'';
+    document.getElementById('sch-location').value=t.location||'';
+    document.getElementById('sch-memo').value=t.memo||'';
+    if(t.timemode)setTimeMode(t.timemode);
+    buildStart();
+    // 저장 시 기존 id로 업데이트
+    window._editingSchId=schDetailId;
+  },200);
+}
+
+function deleteFromDetail(){
+  if(!schDetailId)return;
+  if(!confirm('삭제하시겠습니까?'))return;
+  todos=todos.filter(function(x){return x.id!==schDetailId;});
+  saveTodos();closeSchDetail();renderToday();
+  if(document.getElementById('tc2').classList.contains('on'))renderAllTodos();
+  if(document.getElementById('tc1').classList.contains('on'))renderCal();
+}
+
+// 배경 클릭 닫기
+document.addEventListener('click',function(e){
+  var m=document.getElementById('sch-detail-modal');
+  if(m&&e.target===m)closeSchDetail();
+});
+
 var kindFilter='all';
 function setKindFilter(k){
   kindFilter=k;
@@ -742,9 +854,10 @@ function renderAllTodos(){
   var tf=document.getElementById('todo-filter-type').value;
   var tod=today();var week=new Date(tod);week.setDate(week.getDate()+7);
   var f=todos.filter(function(t){
-    // kind 필터
-    if(kindFilter==='schedule'&&t.kind!=='schedule')return false;
-    if(kindFilter==='todo'&&t.kind==='schedule')return false;
+    // kind 필터 (undefined → 할일로 간주)
+    var isSchedule=t.kind==='schedule';
+    if(kindFilter==='schedule'&&!isSchedule)return false;
+    if(kindFilter==='todo'&&isSchedule)return false;
     if(sf==='today'){if(!t.date)return false;return t.date.startsWith(todayStr());}
     if(sf==='week'){if(!t.date)return false;var d=new Date(t.date.slice(0,10));d.setHours(0,0,0,0);return d>=tod&&d<=week;}
     if(sf==='pending')return!t.done;
@@ -759,8 +872,8 @@ function renderAllTodos(){
     var ds=t.date?t.date.slice(0,10):'';
     var timeStr=t.date&&t.date.length>10?t.date.slice(11,16):'';
     var isOver=t.date&&!t.done&&new Date(t.date)<new Date();
-    return'<div style="display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border:0.5px solid '+(isOver?'#f48fb1':'#e0e0e0')+';border-radius:10px;margin-bottom:6px;background:'+(t.done?'#f9f9f9':'#fff')+(isOver?';border-left:3px solid #c62828':'')+'">'
-      +'<input type="checkbox" '+(t.done?'checked':'')+' onclick="togTodo('+t.id+')" style="margin-top:3px;cursor:pointer">'
+    return'<div style="display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border:0.5px solid '+(isOver?'#f48fb1':'#e0e0e0')+';border-radius:10px;margin-bottom:6px;background:'+(t.done?'#f9f9f9':'#fff')+(isOver?';border-left:3px solid #c62828':'')+';cursor:pointer" onclick="openSchDetail('+t.id+')">'
+      +'<input type="checkbox" '+(t.done?'checked':'')+' onclick="event.stopPropagation();togTodo('+t.id+')" style="margin-top:3px;cursor:pointer">'
       +'<div style="flex:1">'
       +'<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">'
       +(t.kind==='schedule'?'<span style="font-size:10px;background:#e3f2fd;color:#1565c0;padding:1px 5px;border-radius:4px;margin-right:2px">📅</span>':'<span style="font-size:10px;background:#e8f5e9;color:#2e7d32;padding:1px 5px;border-radius:4px;margin-right:2px">✅</span>')
@@ -1061,6 +1174,55 @@ async function initAll(){
 }
 initAll();
 </script>
+
+<!-- ══ 일정/할일 상세 모달 ══ -->
+<div id="sch-detail-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:9999;align-items:center;justify-content:center">
+  <div style="background:#fff;border-radius:16px;width:92%;max-width:480px;max-height:88vh;overflow-y:auto;box-shadow:0 8px 40px rgba(0,0,0,0.18)">
+    <!-- 헤더 -->
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:14px 18px 10px;border-bottom:0.5px solid #f0f0f0">
+      <div style="display:flex;gap:6px;align-items:center">
+        <span id="sdtl-kind-badge" style="font-size:11px;padding:2px 8px;border-radius:10px;font-weight:600"></span>
+        <span id="sdtl-priority" style="font-size:11px;padding:2px 8px;border-radius:10px;font-weight:600"></span>
+        <span id="sdtl-timemode" style="font-size:11px;padding:2px 7px;border-radius:8px"></span>
+      </div>
+      <button onclick="closeSchDetail()" style="width:28px;height:28px;border:none;background:transparent;font-size:18px;cursor:pointer;color:#aaa">✕</button>
+    </div>
+    <!-- 제목 -->
+    <div style="padding:14px 18px 8px">
+      <div id="sdtl-title" style="font-size:18px;font-weight:700;margin-bottom:4px"></div>
+      <div id="sdtl-type" style="font-size:12px;color:#888"></div>
+    </div>
+    <!-- 정보 그리드 -->
+    <div style="padding:0 18px 12px;display:flex;flex-direction:column;gap:8px">
+      <div style="background:#f8f8f6;border-radius:10px;padding:10px 14px">
+        <div style="font-size:10px;color:#aaa;margin-bottom:3px">날짜 / 시간</div>
+        <div id="sdtl-date" style="font-size:13px;font-weight:600"></div>
+      </div>
+      <div id="sdtl-with-box" style="background:#e3f2fd;border-radius:10px;padding:10px 14px;display:none">
+        <div style="font-size:10px;color:#aaa;margin-bottom:3px">👥 With</div>
+        <div id="sdtl-with" style="font-size:13px;font-weight:600;color:#1565c0"></div>
+      </div>
+      <div id="sdtl-location-box" style="background:#f8f8f6;border-radius:10px;padding:10px 14px;display:none">
+        <div style="font-size:10px;color:#aaa;margin-bottom:3px">📍 장소</div>
+        <div id="sdtl-location" style="font-size:13px"></div>
+      </div>
+      <div id="sdtl-memo-box" style="background:#f8f8f6;border-radius:10px;padding:10px 14px;display:none">
+        <div style="font-size:10px;color:#aaa;margin-bottom:3px">메모</div>
+        <div id="sdtl-memo" style="font-size:12px;line-height:1.6;white-space:pre-wrap"></div>
+      </div>
+    </div>
+    <!-- 완료 여부 -->
+    <div style="padding:0 18px 14px;display:flex;align-items:center;gap:8px">
+      <input type="checkbox" id="sdtl-done-chk" onchange="toggleDoneFromDetail()" style="width:16px;height:16px;cursor:pointer">
+      <label for="sdtl-done-chk" style="font-size:13px;cursor:pointer">완료 처리</label>
+    </div>
+    <!-- 액션 버튼 -->
+    <div style="padding:12px 18px;border-top:0.5px solid #f0f0f0;display:flex;gap:8px">
+      <button onclick="editFromDetail()" style="flex:1;padding:10px;border:0.5px solid #ddd;border-radius:10px;background:#fff;font-size:12px;font-weight:600;cursor:pointer">✏️ 수정</button>
+      <button onclick="deleteFromDetail()" style="padding:10px 16px;border:0.5px solid #ffaaaa;border-radius:10px;background:#fff5f5;color:#cc3333;font-size:12px;font-weight:600;cursor:pointer">🗑️ 삭제</button>
+    </div>
+  </div>
+</div>
 <!-- 복사 모달 -->
 <div id="copy-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:999;align-items:center;justify-content:center">
   <div style="background:#fff;border-radius:16px;padding:1.5rem;max-width:520px;width:calc(100% - 2rem);box-shadow:0 8px 32px rgba(0,0,0,0.2)">
