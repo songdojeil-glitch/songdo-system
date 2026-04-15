@@ -219,13 +219,21 @@ input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none}
       <label class="fl">입주 가능 시점</label>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
         <select id="f-mi" class="fi" style="width:auto" onchange="onMI()">
-          <option value="공실">공실 (즉시 입주)</option><option value="즉시">즉시 입주 가능</option><option value="날짜">특정 날짜</option><option value="협의">협의 가능</option>
+          <option value="공실">공실 (즉시 입주)</option>
+          <option value="즉시">즉시 입주 가능</option>
+          <option value="날짜">특정 날짜/기간</option>
+          <option value="협의">협의 가능</option>
         </select>
-        <div id="f-mid" style="display:none;gap:6px;align-items:center">
-          <input id="f-my" type="text" class="fi" style="width:78px" placeholder="년" maxlength="4">
+        <div id="f-mid" style="display:none;gap:6px;align-items:center;flex-wrap:wrap">
+          <input id="f-my" type="text" class="fi" style="width:72px" placeholder="년" maxlength="4" oninput="previewMI()">
           <span style="font-size:13px;color:#666">년</span>
-          <input id="f-mm" type="text" class="fi" style="width:50px" placeholder="월" maxlength="2">
+          <input id="f-mm" type="text" class="fi" style="width:44px" placeholder="월" maxlength="2" oninput="previewMI()">
           <span style="font-size:13px;color:#666">월</span>
+          <input id="f-md" type="text" class="fi" style="width:44px" placeholder="일" maxlength="2" oninput="previewMI()">
+          <span style="font-size:13px;color:#666">일</span>
+          <span style="font-size:12px;color:#aaa">또는</span>
+          <input id="f-mt" type="text" class="fi" style="width:100px" placeholder="초순/중순/말/협의" oninput="previewMI()">
+          <span id="f-mi-preview" style="font-size:12px;color:#1a7f3c;font-weight:500"></span>
         </div>
       </div>
     </div>
@@ -825,7 +833,30 @@ function onTC(){
 function onMI(){document.getElementById('f-mid').style.display=document.getElementById('f-mi').value==='날짜'?'flex':'none';}
 function fmw(v){v=Math.round(Number(v));if(!v)return null;var u=Math.floor(v/10000),r=v%10000;if(u>0&&r>0)return u+'억 '+r.toLocaleString()+'만원';if(u>0)return u+'억원';return v.toLocaleString()+'만원';}
 function calcB(){var b=parseFloat(document.getElementById('fp-b1').value)||0,o=parseFloat(document.getElementById('fp-b2').value)||0,p=parseFloat(document.getElementById('fp-b3').value)||0,t=b+o+p;var el=document.getElementById('fp-tot');el.textContent=t>0?fmw(t):'—';el.style.color=t>0?'#1a1a1a':'#aaa';}
-function getMI(){var v=document.getElementById('f-mi').value;if(v==='날짜'){var y=document.getElementById('f-my').value.trim(),m=document.getElementById('f-mm').value.trim();return(y&&m)?y+'년 '+m+'월':(y?y+'년':'날짜 미입력');}return{공실:'공실 (즉시 입주 가능)',즉시:'즉시 입주 가능',협의:'협의 가능'}[v]||v;}
+function getMI(){
+  var v=document.getElementById('f-mi').value;
+  if(v==='날짜'){
+    var y=document.getElementById('f-my').value.trim();
+    var m=document.getElementById('f-mm').value.trim();
+    var d=document.getElementById('f-md').value.trim();
+    var t=document.getElementById('f-mt').value.trim();
+    // 자유텍스트 우선 (초순/중순/말 등)
+    if(t){
+      var base=(y&&m)?y+'년 '+m+'월 ':((y)?y+'년 ':'');
+      return base+t;
+    }
+    // 날짜 조합
+    if(y&&m&&d) return y+'년 '+m+'월 '+d+'일';
+    if(y&&m) return y+'년 '+m+'월';
+    if(y) return y+'년';
+    return '날짜 미입력';
+  }
+  return {공실:'공실 (즉시 입주 가능)',즉시:'즉시 입주 가능',협의:'협의 가능'}[v]||v;
+}
+function previewMI(){
+  var prev=document.getElementById('f-mi-preview');
+  if(prev) prev.textContent='→ '+getMI();
+}
 function getPD(){var t=document.getElementById('f-type').value,d={};if(t==='아파트 분양권 매매'){d.bun=document.getElementById('fp-b1').value;d.opt=document.getElementById('fp-b2').value;d.pre=document.getElementById('fp-b3').value;var tot=(parseFloat(d.bun)||0)+(parseFloat(d.opt)||0)+(parseFloat(d.pre)||0);d.tot=tot>0?fmw(tot):'';}else{d.pm=document.getElementById('fp-ma').value.trim();if(document.getElementById('fp-sw').style.display!=='none')d.ps=document.getElementById('fp-su').value.trim();if(document.getElementById('fp-gw').style.display!=='none')d.gw=document.getElementById('fp-g').value.trim();}return d;}
 function priceTxt(p){var ls=[];if(p.propertyType==='아파트 분양권 매매'){if(p.bun)ls.push('분양가: '+fmw(p.bun));if(p.opt)ls.push('옵션비: '+fmw(p.opt));if(p.pre)ls.push('P: '+fmw(p.pre));if(p.tot)ls.push('합계: '+p.tot);}else{var t=p.propertyType||'';
 var isJeon=t.includes('전세');var isWol=t.includes('월세')||t.includes('임대차');var isImd=t.includes('임대')&&!t.includes('임대차');var isGwon=t.includes('권리');
@@ -1080,6 +1111,25 @@ function editP(id){
   document.getElementById('f-cx').value=p.complexName||'';document.getElementById('f-un').value=(p.naverDong&&p.unitInfo?p.naverDong+' '+p.unitInfo:p.naverDong||p.unitInfo||'');document.getElementById('f-ar').value=p.areaInfo||'';document.getElementById('f-fl').value=p.floorInfo||'';document.getElementById('f-di').value=p.direction||'';document.getElementById('f-mo').value=p.memo||'';document.getElementById('f-rdate').value=p.receiveDate||'';document.getElementById('f-route').value=p.route||'';document.getElementById('f-c1name').value=p.c1name||'';document.getElementById('f-c1tel').value=p.c1tel||'';document.getElementById('f-c2name').value=p.c2name||'';document.getElementById('f-c2tel').value=p.c2tel||'';document.getElementById('f-chkdate').value=p.checkDate||'';document.getElementById('f-lastmemo').value=p.lastMemo||'';document.getElementById('f-naver').checked=!!p.naver;
   if(p.propertyType==='아파트 분양권 매매'){document.getElementById('fp-b1').value=p.bun||'';document.getElementById('fp-b2').value=p.opt||'';document.getElementById('fp-b3').value=p.pre||'';calcB();}else{document.getElementById('fp-ma').value=p.pm||'';document.getElementById('fp-su').value=p.ps||'';document.getElementById('fp-g').value=p.gw||'';}
   var mi=p.moveIn||'';
+  // moveIn 복원
+  (function(){
+    var sel=document.getElementById('f-mi');
+    var midDiv=document.getElementById('f-mid');
+    if(!mi||mi==='협의 가능'){sel.value='협의';midDiv.style.display='none';return;}
+    if(mi.includes('즉시')){sel.value='즉시';midDiv.style.display='none';return;}
+    if(mi.includes('공실')){sel.value='공실';midDiv.style.display='none';return;}
+    // 날짜/기간 형식
+    sel.value='날짜';
+    midDiv.style.display='flex';
+    var ym=mi.match(/(\d{4})년\s*(\d{1,2})월\s*(\d{1,2})일/);
+    if(ym){document.getElementById('f-my').value=ym[1];document.getElementById('f-mm').value=ym[2];document.getElementById('f-md').value=ym[3];document.getElementById('f-mt').value='';return;}
+    var ym2=mi.match(/(\d{4})년\s*(\d{1,2})월\s*(.+)/);
+    if(ym2){document.getElementById('f-my').value=ym2[1];document.getElementById('f-mm').value=ym2[2];document.getElementById('f-md').value='';document.getElementById('f-mt').value=ym2[3].trim();return;}
+    var ym3=mi.match(/(\d{4})년\s*(\d{1,2})월/);
+    if(ym3){document.getElementById('f-my').value=ym3[1];document.getElementById('f-mm').value=ym3[2];document.getElementById('f-md').value='';document.getElementById('f-mt').value='';return;}
+    // 자유텍스트
+    document.getElementById('f-my').value='';document.getElementById('f-mm').value='';document.getElementById('f-md').value='';document.getElementById('f-mt').value=mi;
+  })();
   if(/\d{4}년/.test(mi)){document.getElementById('f-mi').value='날짜';var yr=mi.match(/(\d{4})년/),mo=mi.match(/(\d+)월/);if(yr)document.getElementById('f-my').value=yr[1];if(mo)document.getElementById('f-mm').value=mo[1];}
   else if(mi.includes('공실'))document.getElementById('f-mi').value='공실';
   else if(mi.includes('즉시'))document.getElementById('f-mi').value='즉시';
