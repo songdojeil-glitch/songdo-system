@@ -63,6 +63,23 @@ input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none}
   <script src="firebase-storage.js"></script>
 </head>
 <body>
+<!-- ═══ PIN 인증 체크 ═══ -->
+<script>
+(function(){
+  var PIN_SESSION_KEY='sd_pin_auth';
+  var PIN_SESSION_MIN=480;
+  try{
+    var saved=sessionStorage.getItem(PIN_SESSION_KEY);
+    if(saved){
+      var data=JSON.parse(saved);
+      var elapsed=(Date.now()-data.ts)/60000;
+      if(elapsed<PIN_SESSION_MIN)return;
+    }
+  }catch(e){}
+  window.location.href='sd_hub.html';
+})();
+</script>
+
 
 <div id="root" style="max-width:960px;margin:0 auto;padding:1.5rem 1rem">
 <div style="margin-bottom:1.25rem">
@@ -148,11 +165,7 @@ input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none}
           <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px"><input type="checkbox" id="f-naver" style="width:16px;height:16px;cursor:pointer"> <span style="font-weight:500;color:#1a7f3c">N 네이버</span> 등록 중</label>
         </div>
       </div>
-      <div><label class="fl">직방 등록 여부</label>
-        <div style="display:flex;gap:8px;align-items:center;padding:8px 0">
 
-        </div>
-      </div>
     </div>
   </div>
   <div class="card">
@@ -230,7 +243,7 @@ input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none}
 <!-- 일괄등록/동기화/중복 관리 패널 -->
 <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
   <button onclick="togPanel('bulk-panel')" class="btn-s" style="background:#f3e5f5;border-color:#ce93d8;color:#7b1fa2;font-size:12px">⭐ 자사 핵심매물 등록</button>
-  <button onclick="togPanel('sync-panel')" class="btn-s" style="background:#e8f5e9;border-color:#a5d6a7;color:#2e7d32;font-size:12px">🔄 N·G 자동 동기화</button>
+  <button onclick="togPanel('sync-panel')" class="btn-s" style="background:#e8f5e9;border-color:#a5d6a7;color:#2e7d32;font-size:12px">🔄 N 자동 동기화</button>
   <button onclick="togPanel('dup-panel')" class="btn-s" style="background:#fff8e1;border-color:#ffe082;color:#f57f17;font-size:12px">⚠️ 중복 매물 관리</button>
   <button onclick="togPanel('naver-import-panel')" class="btn-s" style="background:#e8f5e9;border-color:#66bb6a;color:#1a7f3c;font-size:12px;font-weight:600">🏠 네이버 매물 임포트</button>
 </div>
@@ -257,10 +270,10 @@ input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none}
   </div>
 </div>
 
-<!-- ② N·G 자동 동기화 -->
+<!-- ② N 자동 동기화 -->
 <div id="sync-panel" style="display:none;border:0.5px solid #a5d6a7;border-radius:12px;padding:1.25rem;background:#f9fdf9;margin-bottom:1rem">
-  <p class="sec" style="color:#2e7d32;margin-bottom:6px">🔄 N·G 자동 동기화</p>
-  <p style="font-size:12px;color:#666;margin:0 0 12px">최신 파일을 올리면, 기존 N·G 등록 매물 중 파일에 없는 매물을 자동 해제합니다. <span style="color:#c62828">(예: 네이버에서 내린 매물 → N 자동 해제)</span></p>
+  <p class="sec" style="color:#2e7d32;margin-bottom:6px">🔄 N 자동 동기화</p>
+  <p style="font-size:12px;color:#666;margin:0 0 12px">최신 파일을 올리면, 기존 N 등록 매물 중 파일에 없는 매물을 자동 해제합니다. <span style="color:#c62828">(예: 네이버에서 내린 매물 → N 자동 해제)</span></p>
   <div style="display:flex;gap:20px;margin-bottom:12px;flex-wrap:wrap;font-size:13px">
     <label style="cursor:pointer;display:flex;align-items:center;gap:6px"><input type="radio" name="ssrc" value="N" checked> <span style="color:#1a7f3c;font-weight:600">N 네이버</span> 동기화</label>
 
@@ -1200,7 +1213,7 @@ function doPrint(){
 function cpTxt(e,id){navigator.clipboard.writeText(document.getElementById(id).value).then(function(){var b=e.target,o=b.textContent;b.textContent='복사됨!';b.style.color='#2e7d32';setTimeout(function(){b.textContent=o;b.style.color='';},2000);});}
 
 // ─────────────────────────────────────────
-// 일괄 등록 / N·G 동기화 / 중복 관리
+// 일괄 등록 / N 동기화 / 중복 관리
 // ─────────────────────────────────────────
 var bulkItems=[];
 
@@ -1559,7 +1572,7 @@ function autoRegCustFromProps(newProps,ds,callback){
 }
 
 // ─────────────────────────────────────────
-// N·G 자동 동기화
+// N 자동 동기화
 // ─────────────────────────────────────────
 function normCX(s){return String(s||'').toLowerCase().replace(/\s/g,'').replace(/[()（）\[\]]/g,'');}
 
@@ -1597,7 +1610,7 @@ function onSyncFile(e){
   var field='naver';
   readXLBlob(file,function(wb){
     var fps=buildFileFPs(wb);
-    // 파일에 없는 N/G 등록 매물 찾기 (정밀+느슨 두 단계 매칭)
+    // 파일에 없는 N 등록 매물 찾기 (정밀+느슨 두 단계 매칭)
     var toOff=props.filter(function(p){
       if(!p[field])return false;
       return!fps[propFP(p)]&&!fps[propFPLoose(p)];
