@@ -1213,12 +1213,53 @@ function exportXL(){
   var wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'매물목록');
   XLSX.writeFile(wb,'송도제일_매물목록_'+new Date().getFullYear()+String(new Date().getMonth()+1).padStart(2,'0')+String(new Date().getDate()).padStart(2,'0')+'.xlsx');
 }
+function getApiKey(){
+  var k=localStorage.getItem('sd_api_key');
+  if(!k){
+    k=prompt('Anthropic API 키를 입력하세요:\n(한 번 입력하면 저장됩니다)','sk-ant-...');
+    if(!k)return null;
+    localStorage.setItem('sd_api_key',k.trim());
+  }
+  return k.trim();
+}
 function callAPI(prompt,loadEl,loadTxtEl,loadMsg,onDone){
+  var key=getApiKey();
+  if(!key){alert('API 키가 필요합니다.');return;}
   document.getElementById(loadEl).style.display='block';document.getElementById(loadTxtEl).textContent=loadMsg;
-  fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:3000,tools:[{type:'web_search_20250305',name:'web_search'}],messages:[{role:'user',content:prompt}]})})
-  .then(function(r){document.getElementById(loadTxtEl).textContent='내용을 작성하고 있습니다...';return r.json();})
-  .then(function(d){document.getElementById(loadEl).style.display='none';var txt=d.content.filter(function(b){return b.type==='text';}).map(function(b){return b.text;}).join('\n').trim();onDone(txt);})
-  .catch(function(e){document.getElementById(loadEl).style.display='none';alert('오류: '+e.message);});
+  fetch('https://api.anthropic.com/v1/messages',{
+    method:'POST',
+    headers:{
+      'Content-Type':'application/json',
+      'x-api-key':key,
+      'anthropic-version':'2023-06-01',
+      'anthropic-dangerous-direct-browser-access':'true'
+    },
+    body:JSON.stringify({
+      model:'claude-sonnet-4-20250514',
+      max_tokens:3000,
+      tools:[{type:'web_search_20250305',name:'web_search'}],
+      messages:[{role:'user',content:prompt}]
+    })
+  })
+  .then(function(r){
+    if(!r.ok){return r.json().then(function(e){throw new Error(e.error&&e.error.message||r.status);});}
+    document.getElementById(loadTxtEl).textContent='내용을 작성하고 있습니다...';
+    return r.json();
+  })
+  .then(function(d){
+    document.getElementById(loadEl).style.display='none';
+    var txt=d.content.filter(function(b){return b.type==='text';}).map(function(b){return b.text;}).join('\n').trim();
+    onDone(txt);
+  })
+  .catch(function(e){
+    document.getElementById(loadEl).style.display='none';
+    if(e.message&&e.message.includes('401')){
+      localStorage.removeItem('sd_api_key');
+      alert('API 키가 올바르지 않습니다. 다시 입력해 주세요.');
+    } else {
+      alert('오류: '+e.message);
+    }
+  });
 }
 function getProp(selId){var id=document.getElementById(selId).value;if(!id){alert('매물을 선택해 주세요.');return null;}return props.find(function(p){return String(p.id)===String(id);})||null;}
 function genListing(){
@@ -2228,7 +2269,7 @@ function genBlog(){
     messages[0].content.unshift({type:'image',source:{type:'base64',media_type:blogFileData.mediaType,data:blogFileData.b64}});
   }
 
-  fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},
+  fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':getApiKey()||'','anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
     body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:3000,
       tools:[{type:'web_search_20250305',name:'web_search'}],messages:messages})
   })
@@ -2337,7 +2378,7 @@ function genKakao(){
   document.getElementById('kk-ltxt').textContent='메시지를 작성하고 있습니다...';
   document.getElementById('kk-res').style.display='none';
 
-  fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},
+  fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':getApiKey()||'','anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
     body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:1200,
       messages:[{role:'user',content:prompt}]})
   })
