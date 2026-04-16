@@ -386,6 +386,7 @@ input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none}
     <div style="display:grid;grid-template-columns:1fr auto;gap:12px;align-items:end;margin-bottom:12px">
       <div><label class="fl">등록된 매물에서 선택</label><select id="ls-sel" class="fi"><option value="">— 매물을 선택하세요 —</option></select></div>
       <button onclick="genListing()" class="btn-p" style="white-space:nowrap">✨ 생성</button>
+      <button onclick="resetListing()" class="btn-s" style="white-space:nowrap;background:#fce4ec;border-color:#f48fb1;color:#c62828">🗑️ 초기화</button>
     </div>
     <div><label class="fl">추가 강조사항</label><textarea id="ls-ext" rows="2" class="fi" style="resize:vertical" placeholder="등록된 정보 외 추가로 강조할 사항 입력"></textarea></div>
     <!-- 저장/불러오기 -->
@@ -680,7 +681,7 @@ var props=[], editId=null;
 
 async function toStore(){try{await window.storage.set('sd_props',JSON.stringify(props));}catch(e){}}
 async function fromStore(){try{var r=await window.storage.get('sd_props');if(r&&r.value)props=JSON.parse(r.value);}catch(e){props=[];}}
-fromStore().then(function(){sw(0);});
+fromStore().then(function(){sw(0);loadListingsFromFirebase();});
 
 function sw(n){
   for(var i=0;i<=7;i++){
@@ -1273,18 +1274,25 @@ function callAPI(prompt,loadEl,loadTxtEl,loadMsg,onDone){
 }
 function getProp(selId){var id=document.getElementById(selId).value;if(!id){alert('매물을 선택해 주세요.');return null;}return props.find(function(p){return String(p.id)===String(id);})||null;}
 
-// ─── 상세페이지 저장/불러오기 ───────────────────────
-var LS_LISTING_KEY = 'sd_listings_saved';
+// ─── 상세페이지 저장/불러오기 (Firebase) ───────────
+var _listingsSaved = {};
 
-function getSavedListings(){
-  try{return JSON.parse(localStorage.getItem(LS_LISTING_KEY)||'{}');}catch(e){return{};}
+async function loadListingsFromFirebase(){
+  try{
+    var r=await window.storage.get('sd_listings_saved');
+    _listingsSaved=r&&r.value?JSON.parse(r.value):{};
+  }catch(e){_listingsSaved={};}
+  loadSavedListingSelect();
+}
+
+async function saveListingsToFirebase(){
+  try{await window.storage.set('sd_listings_saved',JSON.stringify(_listingsSaved));}catch(e){}
 }
 
 function loadSavedListingSelect(){
-  var saved=getSavedListings();
   var sel=document.getElementById('ls-saved-sel');
   if(!sel)return;
-  var keys=Object.keys(saved).sort();
+  var keys=Object.keys(_listingsSaved).sort();
   sel.innerHTML='<option value="">— 저장된 내용 불러오기 —</option>'
     +keys.map(function(k){return'<option value="'+k+'">'+k+'</option>';}).join('');
 }
@@ -1293,7 +1301,6 @@ function saveListing(){
   var txt=document.getElementById('ls-txt').value.trim();
   if(!txt){alert('먼저 상세페이지를 생성하세요.');return;}
   var p=getProp('ls-sel');
-  // 기본 이름: 단지명 + 거래방식
   var defName='';
   if(p){
     var deal=p.propertyType?p.propertyType.split(' ').pop():'';
@@ -1301,24 +1308,23 @@ function saveListing(){
   }
   var name=prompt('저장 이름을 입력하세요 (예: 송도더하이츠상가 임대):', defName.trim());
   if(!name)return;
-  var saved=getSavedListings();
-  saved[name.trim()]={
+  _listingsSaved[name.trim()]={
     lstxt:txt,
     agtxt:document.getElementById('ag-txt').value,
     savedAt:new Date().toLocaleDateString('ko-KR')
   };
-  localStorage.setItem(LS_LISTING_KEY, JSON.stringify(saved));
-  loadSavedListingSelect();
-  var sel=document.getElementById('ls-saved-sel');
-  if(sel)sel.value=name.trim();
-  alert('저장됐습니다!');
+  saveListingsToFirebase().then(function(){
+    loadSavedListingSelect();
+    var sel=document.getElementById('ls-saved-sel');
+    if(sel)sel.value=name.trim();
+    alert('Firebase에 저장됐습니다!');
+  });
 }
 
 function onLoadSavedListing(){
   var sel=document.getElementById('ls-saved-sel');
   if(!sel||!sel.value)return;
-  var saved=getSavedListings();
-  var item=saved[sel.value];
+  var item=_listingsSaved[sel.value];
   if(!item)return;
   document.getElementById('ls-txt').value=item.lstxt||'';
   document.getElementById('ag-txt').value=item.agtxt||'';
@@ -1331,13 +1337,22 @@ function deleteSavedListing(){
   var sel=document.getElementById('ls-saved-sel');
   if(!sel||!sel.value){alert('삭제할 항목을 선택하세요.');return;}
   if(!confirm('['+sel.value+'] 삭제하시겠습니까?'))return;
-  var saved=getSavedListings();
-  delete saved[sel.value];
-  localStorage.setItem(LS_LISTING_KEY, JSON.stringify(saved));
-  loadSavedListingSelect();
-  document.getElementById('ls-res').style.display='none';
+  delete _listingsSaved[sel.value];
+  saveListingsToFirebase().then(function(){
+    loadSavedListingSelect();
+    document.getElementById('ls-res').style.display='none';
+  });
 }
 
+
+function resetListing(){
+  if(!confirm('작성 내용을 모두 초기화하시겠습니까?'))return;
+  document.getElementById('ls-ext').value='';
+  document.getElementById('ls-txt').value='';
+  document.getElementById('ag-txt').value='';
+  document.getElementById('ls-res').style.display='none';
+  document.getElementById('ls-saved-sel').value='';
+}
 function genListing(){
   var p=getProp('ls-sel');if(!p)return;
   var ext=document.getElementById('ls-ext').value.trim();
