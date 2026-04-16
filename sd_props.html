@@ -388,6 +388,15 @@ input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none}
       <button onclick="genListing()" class="btn-p" style="white-space:nowrap">✨ 생성</button>
     </div>
     <div><label class="fl">추가 강조사항</label><textarea id="ls-ext" rows="2" class="fi" style="resize:vertical" placeholder="등록된 정보 외 추가로 강조할 사항 입력"></textarea></div>
+    <!-- 저장/불러오기 -->
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px;padding:10px 14px;background:#f8f8f6;border-radius:10px;border:0.5px solid #e0e0e0">
+      <span style="font-size:12px;color:#666;font-weight:500">📂 저장/불러오기</span>
+      <select id="ls-saved-sel" class="fi" style="width:auto;font-size:12px;flex:1;min-width:160px" onchange="onLoadSavedListing()">
+        <option value="">— 저장된 내용 불러오기 —</option>
+      </select>
+      <button onclick="saveListing()" class="btn-s" style="font-size:11px;background:#e8f5e9;border-color:#a5d6a7;color:#2e7d32">💾 저장</button>
+      <button onclick="deleteSavedListing()" class="btn-s" style="font-size:11px;background:#fce4ec;border-color:#f48fb1;color:#c62828">🗑️ 삭제</button>
+    </div>
   </div>
   <div id="ls-load" style="display:none;text-align:center;padding:2rem"><div class="spin-el"></div><p id="ls-ltxt" style="font-size:13px;color:#666;margin:0"></p></div>
   <div id="ls-res" style="display:none">
@@ -1028,6 +1037,7 @@ function popSels(){
     return'<option value="'+p.id+'">'+label+'</option>';
   }).join('');
   document.getElementById('ls-sel').innerHTML=opts;
+  loadSavedListingSelect();
   document.getElementById('br-sel').innerHTML=opts;
   var bl=document.getElementById('bl-sel');if(bl)bl.innerHTML=opts;
   var kk=document.getElementById('kk-sel');if(kk)kk.innerHTML=opts;
@@ -1262,6 +1272,72 @@ function callAPI(prompt,loadEl,loadTxtEl,loadMsg,onDone){
   });
 }
 function getProp(selId){var id=document.getElementById(selId).value;if(!id){alert('매물을 선택해 주세요.');return null;}return props.find(function(p){return String(p.id)===String(id);})||null;}
+
+// ─── 상세페이지 저장/불러오기 ───────────────────────
+var LS_LISTING_KEY = 'sd_listings_saved';
+
+function getSavedListings(){
+  try{return JSON.parse(localStorage.getItem(LS_LISTING_KEY)||'{}');}catch(e){return{};}
+}
+
+function loadSavedListingSelect(){
+  var saved=getSavedListings();
+  var sel=document.getElementById('ls-saved-sel');
+  if(!sel)return;
+  var keys=Object.keys(saved).sort();
+  sel.innerHTML='<option value="">— 저장된 내용 불러오기 —</option>'
+    +keys.map(function(k){return'<option value="'+k+'">'+k+'</option>';}).join('');
+}
+
+function saveListing(){
+  var txt=document.getElementById('ls-txt').value.trim();
+  if(!txt){alert('먼저 상세페이지를 생성하세요.');return;}
+  var p=getProp('ls-sel');
+  // 기본 이름: 단지명 + 거래방식
+  var defName='';
+  if(p){
+    var deal=p.propertyType?p.propertyType.split(' ').pop():'';
+    defName=(p.complexName||'')+' '+(deal||'');
+  }
+  var name=prompt('저장 이름을 입력하세요 (예: 송도더하이츠상가 임대):', defName.trim());
+  if(!name)return;
+  var saved=getSavedListings();
+  saved[name.trim()]={
+    lstxt:txt,
+    agtxt:document.getElementById('ag-txt').value,
+    savedAt:new Date().toLocaleDateString('ko-KR')
+  };
+  localStorage.setItem(LS_LISTING_KEY, JSON.stringify(saved));
+  loadSavedListingSelect();
+  var sel=document.getElementById('ls-saved-sel');
+  if(sel)sel.value=name.trim();
+  alert('저장됐습니다!');
+}
+
+function onLoadSavedListing(){
+  var sel=document.getElementById('ls-saved-sel');
+  if(!sel||!sel.value)return;
+  var saved=getSavedListings();
+  var item=saved[sel.value];
+  if(!item)return;
+  document.getElementById('ls-txt').value=item.lstxt||'';
+  document.getElementById('ag-txt').value=item.agtxt||'';
+  document.getElementById('ls-cb').textContent=(item.lstxt||'').length+'자';
+  document.getElementById('ls-res').style.display='block';
+  document.getElementById('ls-cc').textContent='📂 '+sel.value+' ('+item.savedAt+')';
+}
+
+function deleteSavedListing(){
+  var sel=document.getElementById('ls-saved-sel');
+  if(!sel||!sel.value){alert('삭제할 항목을 선택하세요.');return;}
+  if(!confirm('['+sel.value+'] 삭제하시겠습니까?'))return;
+  var saved=getSavedListings();
+  delete saved[sel.value];
+  localStorage.setItem(LS_LISTING_KEY, JSON.stringify(saved));
+  loadSavedListingSelect();
+  document.getElementById('ls-res').style.display='none';
+}
+
 function genListing(){
   var p=getProp('ls-sel');if(!p)return;
   var ext=document.getElementById('ls-ext').value.trim();
@@ -1269,6 +1345,7 @@ function genListing(){
   callAPI('당신은 인천 연수구 송도국제도시 전문 공인중개사(송도제일공인중개사사무소) 매물 상세설명 전문가입니다.\n\n[매물 정보]\n- 매물 종류: '+p.propertyType+'\n- 단지명: '+p.complexName+'\n- 동/호수: '+(p.unitInfo||'미입력')+'\n- 전용면적: '+(p.areaInfo||'미입력')+'\n- 층수: '+(p.floorInfo||'미입력')+'\n- 향: '+(p.direction||'미입력')+'\n- 가격: '+priceTxt(p)+'\n- 입주: '+(p.moveIn||'협의')+'\n- 소장 메모: '+(p.memo||'없음')+(ext?'\n- 추가 강조: '+ext:'')+'\n\n웹검색으로 "'+p.complexName+'" 실제 정보를 수집하여 아래 형식으로 작성하세요.\n\n📝 매물 상세 정보\n✨ 안녕하세요! 송도 21년 차 전문가, 송도제일공인중개사사무소입니다 😃.\n\n🌟 매물 핵심 포인트\n✅ **[포인트명]**: [설명] (4~6개)\n\n이모지 풍부하게. 500자 이내.',
   'ls-load','ls-ltxt','단지 정보를 검색하고 있습니다...',function(txt){
     document.getElementById('ls-txt').value=txt;document.getElementById('ag-txt').value=AGENCY;
+    loadSavedListingSelect();
     document.getElementById('ls-cb').textContent=txt.length+'자';document.getElementById('ls-cc').textContent='매물설명 '+txt.length+'자 생성 완료';
     document.getElementById('ls-res').style.display='block';
     document.getElementById('ls-txt').oninput=function(){document.getElementById('ls-cb').textContent=this.value.length+'자';};
