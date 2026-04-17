@@ -650,26 +650,55 @@ function blogLbNext(){if(_blogSelectedProp&&_blogLbIdx<_blogSelectedProp.photos.
 function blogLbClose(){var el=document.getElementById('blog-ph-lb');if(el)el.remove();document.removeEventListener('keydown',blogLbKey);}
 function blogLbKey(e){if(e.key==='Escape')blogLbClose();else if(e.key==='ArrowLeft')blogLbPrev();else if(e.key==='ArrowRight')blogLbNext();}
 
-// ═══ 개별 사진 다운로드 (CORS 우회) ═══
+// ═══ 개별 사진 다운로드 (CORS 우회 + UX 개선) ═══
 async function dlPropPhoto(idx){
   if(!_blogSelectedProp||!_blogSelectedProp.photos)return;
   var ph=_blogSelectedProp.photos[idx];if(!ph)return;
-  var complex=(_blogSelectedProp.complexName||'매물').replace(/[\/\\:*?"<>|]/g,'');
+  // ═══ 파일명 생성: "순서번호_원본명.jpg" ═══
   var num=String(idx+1).padStart(2,'0');
-  var fname=complex+'_'+num+(ph.star?'_대표':'')+'.jpg';
+  var baseName=(ph.name||'사진'+(idx+1)).replace(/[\/\\:*?"<>|]/g,'').replace(/\.[^.]+$/,'');
+  var fname=num+(ph.star?'_대표':'')+'_'+baseName+'.jpg';
+  // 1차 시도: fetch + blob (CORS 통과 시)
   try{
-    var res=await fetch(ph.url);
+    var res=await fetch(ph.url,{mode:'cors'});
+    if(!res.ok)throw new Error('HTTP '+res.status);
     var blob=await res.blob();
     var url=URL.createObjectURL(blob);
     var a=document.createElement('a');
     a.href=url;a.download=fname;
     document.body.appendChild(a);a.click();
     setTimeout(function(){document.body.removeChild(a);URL.revokeObjectURL(url);},100);
+    return;
   }catch(e){
-    // CORS 실패 시 새 창으로 대체
-    console.error('다운로드 실패, 새 창 열기:',e);
-    window.open(ph.url,'_blank');
+    console.warn('fetch 다운로드 실패, 대체 방법 시도:',e.message);
   }
+  // 2차 시도: <a download> 직접 사용 (같은 출처면 작동)
+  try{
+    var a2=document.createElement('a');
+    a2.href=ph.url;a2.download=fname;a2.target='_blank';
+    document.body.appendChild(a2);a2.click();
+    setTimeout(function(){document.body.removeChild(a2);},100);
+    // 새 탭이 열렸을 수 있으므로 3초 후 안내 표시
+    setTimeout(function(){showCorsHelp(ph,fname);},500);
+  }catch(e){
+    showCorsHelp(ph,fname);
+  }
+}
+
+// ═══ CORS 실패 시 사용자 안내 (라이트박스 내부에 표시) ═══
+function showCorsHelp(ph,fname){
+  // 라이트박스가 열려있으면 그 안에 안내 표시
+  var lb=document.getElementById('blog-ph-lb');
+  if(!lb)return; // 라이트박스 닫혀있으면 조용히 패스
+  var existing=document.getElementById('blog-ph-lb-help');
+  if(existing)return;
+  var help=document.createElement('div');
+  help.id='blog-ph-lb-help';
+  help.style.cssText='position:absolute;top:20px;left:50%;transform:translateX(-50%);background:#fff;color:#1a1a1a;padding:10px 16px;border-radius:10px;font-size:12px;box-shadow:0 4px 20px rgba(0,0,0,.3);max-width:90%;text-align:center';
+  help.innerHTML='💡 자동 다운로드가 열렸어요. 안 됐으면 <b>이미지 우클릭 → "다른 이름으로 저장"</b>으로 저장하세요.<br><span style="font-size:10px;color:#888">파일명 권장: '+fname+'</span> <button onclick="document.getElementById(\'blog-ph-lb-help\').remove()" style="margin-left:8px;padding:2px 8px;border:none;background:#f0f0f0;border-radius:4px;cursor:pointer;font-size:11px">✕</button>';
+  lb.appendChild(help);
+  // 5초 후 자동 제거
+  setTimeout(function(){var el=document.getElementById('blog-ph-lb-help');if(el)el.remove();},5000);
 }
 
 // ═══ 전체 사진 ZIP 다운로드 ═══
@@ -691,16 +720,23 @@ async function dlAllPropPhotos(){
     for(var i=0;i<photos.length;i++){
       var ph=photos[i];
       var num=String(i+1).padStart(2,'0');
-      var fname=num+(ph.star?'_대표':'')+'.jpg';
+      var baseName=(ph.name||'사진'+(i+1)).replace(/[\/\\:*?"<>|]/g,'').replace(/\.[^.]+$/,'');
+      var fname=num+(ph.star?'_대표':'')+'_'+baseName+'.jpg';
       if(btn)btn.textContent='⏳ '+(i+1)+' / '+photos.length;
       try{
-        var res=await fetch(ph.url);
+        var res=await fetch(ph.url,{mode:'cors'});
+        if(!res.ok)throw new Error('HTTP '+res.status);
         var blob=await res.blob();
         zip.file(fname,blob);
       }catch(err){
         failed.push(i+1);
         console.error('사진 '+(i+1)+' 실패:',err);
       }
+    }
+    if(!Object.keys(zip.files).length){
+      // 전부 실패 시 안내
+      alert('⚠️ ZIP 다운로드가 CORS 정책에 막혔습니다.\n\n해결 방법:\n1. Firebase Console에서 CORS 설정 (권장)\n2. 또는 사진을 하나씩 개별 다운로드\n\n자세한 안내는 Claude에게 문의하세요.');
+      return;
     }
     if(btn)btn.textContent='⏳ 압축 중...';
     var zipBlob=await zip.generateAsync({type:'blob'});
