@@ -55,11 +55,39 @@ input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none}
   /* 앱 네비 패딩 축소 */
   .wrap,.hdr-inner{padding-left:8px!important;padding-right:8px!important}
 }
+/* ═══ 사진 업로드 UI (신규) ═══ */
+.ph-sec{background:#f0f7ff;border:0.5px solid #bbdefb;border-radius:10px;padding:12px;margin-bottom:1rem}
+.ph-drop{border:2px dashed #90caf9;border-radius:10px;padding:16px;text-align:center;background:#fff;cursor:pointer;transition:.2s;margin-bottom:10px}
+.ph-drop:hover{background:#e3f2fd}
+.ph-drop.over{background:#bbdefb;border-color:#1565c0;border-style:solid}
+.ph-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px}
+.ph-item{position:relative;border:0.5px solid #e0e0e0;border-radius:8px;overflow:hidden;background:#fff;aspect-ratio:1}
+.ph-item.star{border:2px solid #f9a825;box-shadow:0 0 0 2px #fff9c4}
+.ph-item img{width:100%;height:100%;object-fit:cover;display:block;cursor:pointer}
+.ph-actions{position:absolute;top:4px;right:4px;display:flex;gap:3px;flex-direction:column}
+.ph-btn{width:24px;height:24px;border-radius:50%;border:none;background:rgba(0,0,0,.6);color:#fff;cursor:pointer;font-size:12px;display:flex;align-items:center;justify-content:center;padding:0}
+.ph-btn:hover{background:rgba(0,0,0,.85)}
+.ph-btn.star-on{background:#f9a825}
+.ph-star-badge{position:absolute;top:4px;left:4px;background:#f9a825;color:#fff;font-size:9px;font-weight:700;padding:2px 5px;border-radius:4px;pointer-events:none}
+.ph-progress{height:4px;background:#e0e0e0;border-radius:2px;overflow:hidden;margin-top:8px}
+.ph-progress-bar{height:100%;background:#1565c0;width:0;transition:width .3s}
+/* 매물 리스트 썸네일 */
+.tbl-thumb{width:38px;height:38px;border-radius:4px;object-fit:cover;border:0.5px solid #ddd;display:block}
+.tbl-thumb-wrap{position:relative;display:inline-block}
+.tbl-thumb-count{position:absolute;bottom:-4px;right:-4px;background:#1565c0;color:#fff;font-size:9px;font-weight:600;padding:1px 4px;border-radius:8px;line-height:1.2}
+.tbl-thumb-empty{width:38px;height:38px;border-radius:4px;background:#f5f5f3;border:0.5px dashed #ccc;display:flex;align-items:center;justify-content:center;font-size:14px;color:#bbb}
+/* 사진 라이트박스 */
+.ph-lightbox{position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px;flex-direction:column;gap:12px}
+.ph-lightbox img{max-width:95%;max-height:85vh;object-fit:contain;border-radius:6px}
+.ph-lightbox-ctrls{display:flex;gap:10px;align-items:center}
+.ph-lightbox-btn{padding:6px 14px;background:rgba(255,255,255,.15);color:#fff;border:1px solid rgba(255,255,255,.3);border-radius:20px;cursor:pointer;font-size:13px}
+.ph-lightbox-btn:hover{background:rgba(255,255,255,.3)}
 </style>
   <!-- ═══ Firebase SDK (compat v9) ═══ -->
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
-  <!-- ═══ Firebase Storage 어댑터 (window.storage 호환) ═══ -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-storage-compat.js"></script>
+  <!-- ═══ Firebase Storage 어댑터 (window.storage 호환 + sdImage) ═══ -->
   <script src="firebase-storage.js"></script>
 </head>
 <body>
@@ -240,6 +268,24 @@ input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none}
       </div>
     </div>
     <div style="margin-bottom:1rem"><label class="fl">물건 주요정보</label><textarea id="f-mo" rows="3" class="fi" style="resize:vertical" placeholder="예: 채드윅 방면 탁 트인 고층뷰, 집주인 직거주 집상태 최상, 풀옵션, 즉시입주 가능"></textarea></div>
+    <!-- ═══ 사진 첨부 섹션 (신규) ═══ -->
+    <div class="ph-sec">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:6px">
+        <span style="font-size:13px;font-weight:500;color:#1565c0">📸 매물 사진 <span id="f-ph-cnt" style="font-size:11px;color:#666;font-weight:400">(0 / 15장)</span></span>
+        <span style="font-size:10px;color:#888">⭐ 클릭 = 대표사진 · ✕ 삭제 · 이미지 클릭 = 크게보기</span>
+      </div>
+      <div id="f-ph-drop" class="ph-drop" onclick="document.getElementById('f-ph-file').click()">
+        <div style="font-size:28px;margin-bottom:4px">📷</div>
+        <div style="font-size:13px;font-weight:500;margin-bottom:2px">사진을 드래그하거나 클릭해서 선택</div>
+        <div style="font-size:11px;color:#666">JPG, PNG · 여러 장 한번에 가능 · 자동 압축 (~1600px)</div>
+        <input type="file" id="f-ph-file" accept="image/*" multiple style="display:none" onchange="onPhFileSelect(event)">
+      </div>
+      <div id="f-ph-prog-wrap" style="display:none">
+        <div class="ph-progress"><div id="f-ph-prog-bar" class="ph-progress-bar"></div></div>
+        <div id="f-ph-prog-txt" style="font-size:11px;color:#666;text-align:center;margin-top:3px"></div>
+      </div>
+      <div id="f-ph-grid" class="ph-grid"></div>
+    </div>
     <div style="display:flex;gap:10px">
       <button onclick="saveProp()" class="btn-p" style="flex:1" id="save-btn">💾 매물 저장</button>
       <button onclick="clearF()" class="btn-s">초기화</button>
@@ -365,7 +411,7 @@ input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none}
   </div>
   <div id="tbl-own" style="overflow-x:auto;border:0.5px solid #e0e0e0;border-top:none;border-radius:0 0 12px 12px">
     <table class="tbl">
-      <thead><tr><th id="th-chk" style="display:none"><input type="checkbox" id="chk-all" onclick="chkAllChange(this)"></th><th>#</th><th>종류</th><th>단지명</th><th>동(N)</th><th>동호수</th><th>면적</th><th>층/향</th><th>가격</th><th>연락처1</th><th>N</th><th>상태</th><th>접수일</th><th style="min-width:36px;width:36px;position:sticky;right:0;background:#f5f5f3;z-index:2;box-shadow:-2px 0 4px rgba(0,0,0,0.06)"></th></tr></thead>
+      <thead><tr><th id="th-chk" style="display:none"><input type="checkbox" id="chk-all" onclick="chkAllChange(this)"></th><th>#</th><th>종류</th><th>📷</th><th>단지명</th><th>동(N)</th><th>동호수</th><th>면적</th><th>층/향</th><th>가격</th><th>연락처1</th><th>N</th><th>상태</th><th>접수일</th><th style="min-width:36px;width:36px;position:sticky;right:0;background:#f5f5f3;z-index:2;box-shadow:-2px 0 4px rgba(0,0,0,0.06)"></th></tr></thead>
       <tbody id="tbdy"></tbody>
     </table>
   </div>
@@ -602,6 +648,11 @@ input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none}
         <div id="dtl-etc" style="font-size:12px;line-height:1.6;white-space:pre-wrap;color:#5a4000"></div>
       </div>
     </div>
+    <!-- 사진 갤러리 -->
+    <div id="dtl-photos-box" style="padding:0 20px;margin-bottom:20px;display:none">
+      <div style="font-size:10px;color:#aaa;margin-bottom:6px">📸 매물 사진 <span id="dtl-photos-cnt" style="color:#1565c0"></span></div>
+      <div id="dtl-photos" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(80px,1fr));gap:6px"></div>
+    </div>
     <!-- 접수일/경로 -->
     <div style="padding:0 20px;margin-bottom:20px;display:flex;gap:10px">
       <div style="flex:1;background:#f8f8f6;border-radius:10px;padding:10px 14px">
@@ -678,10 +729,174 @@ input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none}
 <script>
 var AGENCY='[송도제일공인중개사사무소]\n\n🕵️‍♂️✨ 송도 21년 차 문형은 대표입니다! 남다른 안목으로 최고의 매물을 찾아드립니다 💯.\n📍 연수구 해돋이로 168, 1층 103호(혜인프라자)\n☎️ 010-6401-9345 / 032-851-6688\n📺 유튜브: 송도제일부동산TV\n🌐 http://www.songdojeil.com';
 var props=[], editId=null;
+// ═══ 사진 업로드 상태 (신규) ═══
+var PH_MAX=15;                    // 매물당 최대 사진 수
+var _formPhotos=[];               // 폼에 업로드된 사진 목록 (저장 전)
+var _formPhotoPropId=null;        // 이 폼의 사진 그룹 ID (신규=새 ID, 수정=editId)
+var _phUploading=false;           // 업로드 중 플래그
 
 async function toStore(){try{await window.storage.set('sd_props',JSON.stringify(props));}catch(e){}}
 async function fromStore(){try{var r=await window.storage.get('sd_props');if(r&&r.value)props=JSON.parse(r.value);}catch(e){props=[];}}
-fromStore().then(function(){sw(0);loadListingsFromFirebase();});
+fromStore().then(function(){sw(0);loadListingsFromFirebase();initPhotoDrop();});
+
+// ═══ 사진 업로드 — 드래그앤드롭 초기화 ═══
+function initPhotoDrop(){
+  var el=document.getElementById('f-ph-drop');
+  if(!el)return;
+  el.addEventListener('dragover',function(e){e.preventDefault();el.classList.add('over');});
+  el.addEventListener('dragleave',function(){el.classList.remove('over');});
+  el.addEventListener('drop',function(e){
+    e.preventDefault();el.classList.remove('over');
+    if(e.dataTransfer&&e.dataTransfer.files)onPhFileSelect({target:{files:e.dataTransfer.files}});
+  });
+}
+
+// ═══ 사진 업로드 — 파일 선택/드롭 핸들러 ═══
+async function onPhFileSelect(e){
+  var files=e.target.files;
+  if(!files||!files.length)return;
+  if(_phUploading){alert('업로드가 진행 중입니다. 잠시만 기다려 주세요.');return;}
+  if(!_formPhotoPropId){_formPhotoPropId=editId||('new'+Date.now());}
+  var remaining=PH_MAX-_formPhotos.length;
+  if(remaining<=0){alert('최대 '+PH_MAX+'장까지만 업로드 가능합니다.');return;}
+  var list=Array.prototype.slice.call(files,0,remaining);
+  if(files.length>remaining)alert('최대 '+PH_MAX+'장까지 가능합니다. '+list.length+'장만 업로드합니다.');
+  _phUploading=true;
+  var progWrap=document.getElementById('f-ph-prog-wrap');
+  var progBar=document.getElementById('f-ph-prog-bar');
+  var progTxt=document.getElementById('f-ph-prog-txt');
+  progWrap.style.display='block';
+  var done=0,total=list.length;
+  for(var i=0;i<list.length;i++){
+    var file=list[i];
+    progTxt.textContent='업로드 중 '+(done+1)+' / '+total+' · '+(file.name.length>30?file.name.slice(0,30)+'…':file.name);
+    try{
+      var res=await window.sdImage.upload(file,'props',_formPhotoPropId,function(pct){
+        var overall=Math.round((done+pct/100)/total*100);
+        progBar.style.width=overall+'%';
+      });
+      _formPhotos.push({
+        url:res.url,
+        thumbUrl:res.thumbUrl,
+        path:res.path,
+        thumbPath:res.thumbPath,
+        name:res.name,
+        size:res.size,
+        uploadedAt:res.uploadedAt,
+        star:_formPhotos.length===0  // 첫 사진은 자동 대표
+      });
+      done++;
+      renderFormPhotos();
+    }catch(err){
+      console.error('업로드 실패:',err);
+      alert('업로드 실패 ('+file.name+'): '+err.message);
+    }
+  }
+  progWrap.style.display='none';
+  progBar.style.width='0';
+  progTxt.textContent='';
+  document.getElementById('f-ph-file').value='';
+  _phUploading=false;
+}
+
+// ═══ 사진 그리드 렌더링 ═══
+function renderFormPhotos(){
+  var grid=document.getElementById('f-ph-grid');
+  var cnt=document.getElementById('f-ph-cnt');
+  if(!grid)return;
+  cnt.textContent='('+_formPhotos.length+' / '+PH_MAX+'장)';
+  if(!_formPhotos.length){grid.innerHTML='';return;}
+  grid.innerHTML=_formPhotos.map(function(ph,i){
+    return '<div class="ph-item'+(ph.star?' star':'')+'">'
+      +(ph.star?'<div class="ph-star-badge">⭐ 대표</div>':'')
+      +'<img src="'+ph.thumbUrl+'" onclick="openLightbox('+i+')" alt="사진'+(i+1)+'">'
+      +'<div class="ph-actions">'
+      +'<button class="ph-btn'+(ph.star?' star-on':'')+'" title="대표사진 지정" onclick="setStarPhoto('+i+')">⭐</button>'
+      +'<button class="ph-btn" title="삭제" onclick="removeFormPhoto('+i+')">✕</button>'
+      +'</div></div>';
+  }).join('');
+}
+
+// ═══ 대표사진 지정 ═══
+function setStarPhoto(idx){
+  _formPhotos.forEach(function(p,i){p.star=(i===idx);});
+  // 대표사진을 배열 맨 앞으로
+  var star=_formPhotos.splice(idx,1)[0];
+  _formPhotos.unshift(star);
+  renderFormPhotos();
+}
+
+// ═══ 사진 삭제 ═══
+async function removeFormPhoto(idx){
+  var ph=_formPhotos[idx];
+  if(!ph)return;
+  if(!confirm('이 사진을 삭제할까요?\n(Firebase Storage에서도 영구 삭제됩니다)'))return;
+  try{
+    await window.sdImage.remove(ph.path,ph.thumbPath);
+  }catch(e){
+    console.error('Storage 삭제 실패:',e);
+    // Storage 삭제 실패해도 UI에서는 제거
+  }
+  var wasStar=ph.star;
+  _formPhotos.splice(idx,1);
+  // 대표사진이 삭제되었으면 첫 번째를 대표로
+  if(wasStar&&_formPhotos.length>0)_formPhotos[0].star=true;
+  renderFormPhotos();
+}
+
+// ═══ 라이트박스 (크게보기) ═══
+var _lbIdx=0;
+function openLightbox(idx){
+  _lbIdx=idx;
+  var existing=document.getElementById('ph-lb');
+  if(existing)existing.remove();
+  var lb=document.createElement('div');
+  lb.id='ph-lb';
+  lb.className='ph-lightbox';
+  lb.innerHTML='<img id="ph-lb-img" src=""><div class="ph-lightbox-ctrls">'
+    +'<button class="ph-lightbox-btn" onclick="lbPrev()">◀ 이전</button>'
+    +'<span id="ph-lb-cnt" style="color:#fff;font-size:13px"></span>'
+    +'<button class="ph-lightbox-btn" onclick="lbNext()">다음 ▶</button>'
+    +'<button class="ph-lightbox-btn" onclick="lbClose()">✕ 닫기</button>'
+    +'</div>';
+  lb.onclick=function(e){if(e.target===lb)lbClose();};
+  document.body.appendChild(lb);
+  lbShow();
+  document.addEventListener('keydown',lbKey);
+}
+function lbShow(){
+  var ph=_formPhotos[_lbIdx];if(!ph)return;
+  document.getElementById('ph-lb-img').src=ph.url;
+  document.getElementById('ph-lb-cnt').textContent=(_lbIdx+1)+' / '+_formPhotos.length;
+}
+function lbPrev(){if(_lbIdx>0){_lbIdx--;lbShow();}}
+function lbNext(){if(_lbIdx<_formPhotos.length-1){_lbIdx++;lbShow();}}
+function lbClose(){var el=document.getElementById('ph-lb');if(el)el.remove();document.removeEventListener('keydown',lbKey);}
+function lbKey(e){if(e.key==='Escape')lbClose();else if(e.key==='ArrowLeft')lbPrev();else if(e.key==='ArrowRight')lbNext();}
+
+// ═══ 리스트 썸네일 헬퍼 ═══
+function propThumb(p){
+  if(!p.photos||!p.photos.length)return '<div class="tbl-thumb-empty">📷</div>';
+  var star=p.photos.find(function(x){return x.star;})||p.photos[0];
+  var cnt=p.photos.length;
+  return '<div class="tbl-thumb-wrap">'
+    +'<img class="tbl-thumb" src="'+star.thumbUrl+'" alt="썸네일" onclick="viewPropPhotos(\''+p.id+'\');event.stopPropagation();">'
+    +(cnt>1?'<span class="tbl-thumb-count">'+cnt+'</span>':'')
+    +'</div>';
+}
+
+// ═══ 매물 리스트에서 사진 보기 (라이트박스 띄우기) ═══
+function viewPropPhotos(propId){
+  var p=props.find(function(x){return String(x.id)===String(propId);});
+  if(!p||!p.photos||!p.photos.length)return;
+  // 임시로 _formPhotos를 이 매물 사진으로 바꿔치기 → 라이트박스 표시 → 복원
+  var backup=_formPhotos;
+  _formPhotos=p.photos;
+  openLightbox(0);
+  // 닫힐 때 복원
+  var origClose=lbClose;
+  window.lbClose=function(){origClose();_formPhotos=backup;window.lbClose=origClose;};
+}
 
 function sw(n){
   for(var i=0;i<=7;i++){
@@ -879,8 +1094,9 @@ if(p.ps&&!isWol&&!isImd)ls.push('보증금: '+p.ps);if(p.gw)ls.push('권리금: 
 
 function saveProp(){
   var cx=document.getElementById('f-cx').value.trim();if(!cx){alert('단지명을 입력해 주세요.');return;}
+  if(_phUploading){alert('사진 업로드가 진행 중입니다. 완료 후 저장해 주세요.');return;}
   var pd=getPD(),now=new Date(),ds=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0');
-  var op=Object.assign({id:editId||Date.now(),propertyType:document.getElementById('f-type').value,complexName:cx,unitInfo:document.getElementById('f-un').value.trim(),areaInfo:document.getElementById('f-ar').value.trim(),floorInfo:document.getElementById('f-fl').value.trim(),direction:document.getElementById('f-di').value,moveIn:getMI(),memo:document.getElementById('f-mo').value.trim(),receiveDate:document.getElementById('f-rdate').value,route:document.getElementById('f-route').value,c1name:document.getElementById('f-c1name').value.trim(),c1tel:document.getElementById('f-c1tel').value.trim(),c1carrier:document.getElementById('f-c1carrier').value,c2name:document.getElementById('f-c2name').value.trim(),c2tel:document.getElementById('f-c2tel').value.trim(),c2carrier:document.getElementById('f-c2carrier').value,checkDate:document.getElementById('f-chkdate').value,lastMemo:document.getElementById('f-lastmemo').value.trim(),naver:document.getElementById('f-naver').checked,status:'활성',regAt:editId?(props.find(function(x){return x.id===editId;})||{}).regAt||ds:ds,updAt:ds},pd);
+  var op=Object.assign({id:editId||Date.now(),propertyType:document.getElementById('f-type').value,complexName:cx,unitInfo:document.getElementById('f-un').value.trim(),areaInfo:document.getElementById('f-ar').value.trim(),floorInfo:document.getElementById('f-fl').value.trim(),direction:document.getElementById('f-di').value,moveIn:getMI(),memo:document.getElementById('f-mo').value.trim(),receiveDate:document.getElementById('f-rdate').value,route:document.getElementById('f-route').value,c1name:document.getElementById('f-c1name').value.trim(),c1tel:document.getElementById('f-c1tel').value.trim(),c1carrier:document.getElementById('f-c1carrier').value,c2name:document.getElementById('f-c2name').value.trim(),c2tel:document.getElementById('f-c2tel').value.trim(),c2carrier:document.getElementById('f-c2carrier').value,checkDate:document.getElementById('f-chkdate').value,lastMemo:document.getElementById('f-lastmemo').value.trim(),naver:document.getElementById('f-naver').checked,photos:_formPhotos.slice(),status:'활성',regAt:editId?(props.find(function(x){return x.id===editId;})||{}).regAt||ds:ds,updAt:ds},pd);
   if(editId){var idx=props.findIndex(function(x){return x.id===editId;});if(idx>=0)props[idx]=op;editId=null;document.getElementById('save-btn').textContent='💾 매물 저장';}else props.unshift(op);
   toStore();rtbl();popSels();updFT();
   var ok=document.getElementById('save-ok');ok.textContent='매물이 저장되었습니다! 📋';ok.style.display='block';setTimeout(function(){ok.style.display='none';},3000);
@@ -890,6 +1106,8 @@ function clearF(){
   ['f-cx','f-un','f-ar','f-fl','fp-ma','fp-su','fp-b1','fp-b2','fp-b3','fp-g','f-my','f-mm','f-mo','f-rdate','f-c1name','f-c1tel','f-c2name','f-c2tel','f-chkdate','f-lastmemo','f-md','f-mt'].forEach(function(id){var el=document.getElementById(id);if(el)el.value='';});
   document.getElementById('f-naver').checked=false;
   ['f-c1carrier','f-c2carrier'].forEach(function(id){var el=document.getElementById(id);if(el)el.value='';});document.getElementById('f-type').value='아파트 매매';document.getElementById('f-di').value='';document.getElementById('f-mi').value='공실';document.getElementById('f-route').value='';document.getElementById('fp-tot').textContent='—';document.getElementById('fp-tot').style.color='#aaa';editId=null;onTC();onMI();
+  // ═══ 사진 상태 초기화 ═══
+  _formPhotos=[];_formPhotoPropId=null;renderFormPhotos();
 }
 var currentView='own'; // 'own' | 'naver'
 
@@ -994,6 +1212,7 @@ function rtbl(){
     var trBg=isExp?'background:#fffde7;':''; return'<tr style="cursor:pointer;'+trBg+'" onclick="openDetail('+p.id+')">'+''    +'<td id="chk-td-'+p.id+'" style="display:none;padding:6px 8px"><input type="checkbox" class="row-chk" data-id="'+p.id+'" onchange="updateSelCnt()"></td>'
     +'<td style="color:#aaa">'+(f.length-i)+'</td>'
     +'<td style="white-space:nowrap;font-size:11px">'+p.propertyType+'</td>'
+    +'<td style="padding:3px 6px;text-align:center">'+propThumb(p)+'</td>'
     +'<td style="font-weight:500">'+p.complexName+'</td>'
     +'<td style="color:#1565c0;font-size:11px;white-space:nowrap">'+(function(p){if(p.naverDong&&p.naverDong!=='undefined')return p.naverDong;var u=String(p.unitInfo||'');var m=u.match(/(\d+동)/);if(m)return m[1];return'—';})(p)+'</td>'
     +'<td style="color:#666;font-size:11px;white-space:nowrap">'+(function(p){if(p.naverDong)return p.unitInfo||'—';var u=String(p.unitInfo||'');var m=u.match(/\(([^)]+)\)/);if(m)return m[1];var m2=u.match(/\d+동\s*(.+)/);if(m2&&m2[1].trim())return m2[1].trim();return u||'—';})(p)+'</td>'
@@ -1077,6 +1296,22 @@ function openDetail(id){
   document.getElementById('dtl-route').textContent=p.route||'—';
   document.getElementById('dtl-chk').textContent=p.checkDate||'—';
   document.getElementById('dtl-expire-btn').style.display=isExp?'':'none';
+  // ═══ 사진 렌더링 ═══
+  var photosBox=document.getElementById('dtl-photos-box');
+  var photosEl=document.getElementById('dtl-photos');
+  var photosCnt=document.getElementById('dtl-photos-cnt');
+  if(p.photos&&p.photos.length){
+    photosBox.style.display='block';
+    photosCnt.textContent='('+p.photos.length+'장)';
+    photosEl.innerHTML=p.photos.map(function(ph,i){
+      return '<div style="position:relative;aspect-ratio:1;border-radius:6px;overflow:hidden;border:0.5px solid #e0e0e0;cursor:pointer" onclick="viewPropPhotos(\''+p.id+'\');event.stopPropagation();">'
+        +'<img src="'+ph.thumbUrl+'" style="width:100%;height:100%;object-fit:cover">'
+        +(ph.star?'<div style="position:absolute;top:2px;left:2px;background:#f9a825;color:#fff;font-size:9px;font-weight:700;padding:1px 4px;border-radius:3px">⭐</div>':'')
+        +'</div>';
+    }).join('');
+  }else{
+    photosBox.style.display='none';
+  }
   document.getElementById('detail-modal').style.display='flex';
 }
 
@@ -1151,6 +1386,10 @@ function editP(id){
   else if(mi.includes('즉시'))document.getElementById('f-mi').value='즉시';
   else document.getElementById('f-mi').value='협의';
   onMI();document.getElementById('save-btn').textContent='💾 수정 저장';
+  // ═══ 기존 사진 불러오기 ═══
+  _formPhotos=(p.photos||[]).slice();
+  _formPhotoPropId=p.id;
+  renderFormPhotos();
 }
 function togN(id){var p=props.find(function(x){return x.id===id;});if(p){p.naver=!p.naver;toStore();rtbl();}}
 
@@ -1213,7 +1452,16 @@ function bulkDelete(){
   toggleSelectMode();
   alert('✅ '+ids.length+'건 삭제 완료! 남은 매물: '+props.length+'건');
 }
-function delP(id){if(!confirm('이 매물을 삭제하시겠습니까?'))return;props=props.filter(function(p){return p.id!==id;});toStore();rtbl();popSels();updFT();}
+function delP(id){
+  if(!confirm('이 매물을 삭제하시겠습니까?'))return;
+  var p=props.find(function(x){return x.id===id;});
+  // ═══ Firebase Storage에서 사진도 함께 삭제 (실패해도 진행) ═══
+  if(p&&p.photos&&p.photos.length&&window.sdImage){
+    window.sdImage.removeAll('props',String(id)).catch(function(e){console.error('사진 삭제 실패:',e);});
+  }
+  props=props.filter(function(p){return p.id!==id;});
+  toStore();rtbl();popSels();updFT();
+}
 function exportXL(){
   if(!window.XLSX){alert('엑셀 라이브러리 준비 중입니다.');return;}
   var tf=document.getElementById('ft-type').value,sf=document.getElementById('ft-stat').value;
