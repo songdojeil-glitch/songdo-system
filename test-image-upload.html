@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>🧪 이미지 업로드 테스트 - 송도제일</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif;background:#f7f8fa;padding:20px;color:#1a1a1a}
+.box{max-width:700px;margin:0 auto;background:#fff;border-radius:16px;padding:24px;box-shadow:0 4px 20px rgba(0,0,0,.06)}
+h1{font-size:20px;margin-bottom:8px}
+.sub{font-size:13px;color:#666;margin-bottom:20px}
+.status{padding:10px 14px;border-radius:10px;margin-bottom:16px;font-size:13px}
+.status.ok{background:#e8f5e9;color:#2e7d32}
+.status.err{background:#ffebee;color:#c62828}
+.drop{border:2px dashed #90caf9;border-radius:12px;padding:40px 20px;text-align:center;background:#f0f7ff;cursor:pointer;margin-bottom:16px}
+.drop:hover{background:#e3f2fd}
+.drop.over{background:#bbdefb;border-color:#1565c0}
+.btn{padding:10px 20px;background:#1565c0;color:#fff;border:none;border-radius:8px;font-size:14px;cursor:pointer}
+.btn:hover{background:#0d47a1}
+.btn:disabled{background:#ccc;cursor:not-allowed}
+.progress{width:100%;height:6px;background:#e0e0e0;border-radius:3px;overflow:hidden;margin:10px 0}
+.progress-bar{height:100%;background:#1565c0;width:0%;transition:width .3s}
+.result{background:#f5f5f3;border-radius:10px;padding:14px;font-size:12px;font-family:monospace;white-space:pre-wrap;word-break:break-all;line-height:1.6;margin-top:16px}
+.preview{display:flex;gap:12px;margin-top:16px;flex-wrap:wrap}
+.preview img{border-radius:8px;border:0.5px solid #e0e0e0}
+.log{font-size:11px;color:#666;margin-top:8px;max-height:120px;overflow:auto;padding:8px;background:#fafafa;border-radius:6px;font-family:monospace}
+</style>
+<!-- ═══ Firebase SDK (compat v9) ═══ -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-storage-compat.js"></script>
+<!-- ═══ 어댑터 ═══ -->
+<script src="firebase-storage.js"></script>
+</head>
+<body>
+<div class="box">
+  <h1>🧪 Firebase Storage 업로드 테스트</h1>
+  <p class="sub">사진 1장 업로드해서 업로드·썸네일·URL 획득이 모두 되는지 확인합니다.</p>
+
+  <div id="status" class="status ok">⚪ 초기화 중...</div>
+
+  <div id="drop" class="drop">
+    <div style="font-size:36px;margin-bottom:8px">📷</div>
+    <div style="font-size:14px;font-weight:500;margin-bottom:4px">이미지를 드래그하거나 클릭해서 선택</div>
+    <div style="font-size:11px;color:#666">JPG, PNG · 자동 압축 (1600px, 85% 품질)</div>
+    <input type="file" id="file" accept="image/*" style="display:none">
+  </div>
+
+  <div id="prog-wrap" style="display:none">
+    <div class="progress"><div id="prog-bar" class="progress-bar"></div></div>
+    <div id="prog-txt" style="font-size:11px;color:#666;text-align:center"></div>
+  </div>
+
+  <div id="log" class="log"></div>
+
+  <div id="preview" class="preview"></div>
+
+  <div id="result" class="result" style="display:none"></div>
+</div>
+
+<script>
+var statusEl = document.getElementById('status');
+var dropEl = document.getElementById('drop');
+var fileEl = document.getElementById('file');
+var progWrap = document.getElementById('prog-wrap');
+var progBar = document.getElementById('prog-bar');
+var progTxt = document.getElementById('prog-txt');
+var logEl = document.getElementById('log');
+var previewEl = document.getElementById('preview');
+var resultEl = document.getElementById('result');
+
+function log(msg) {
+  var t = new Date().toTimeString().slice(0, 8);
+  logEl.textContent += '[' + t + '] ' + msg + '\n';
+  logEl.scrollTop = logEl.scrollHeight;
+  console.log('[TEST]', msg);
+}
+
+function setStatus(msg, ok) {
+  statusEl.textContent = msg;
+  statusEl.className = 'status ' + (ok ? 'ok' : 'err');
+}
+
+// 초기화 확인
+setTimeout(function() {
+  if (!window.firebase) {
+    setStatus('❌ Firebase SDK 로드 실패', false);
+    log('firebase 전역 객체 없음');
+    return;
+  }
+  if (!window.firebase.storage) {
+    setStatus('❌ firebase-storage-compat.js 로드 실패', false);
+    log('firebase.storage() 사용 불가');
+    return;
+  }
+  if (!window.sdImage || typeof window.sdImage.upload !== 'function') {
+    setStatus('❌ firebase-storage.js 업로드 기능 없음', false);
+    log('window.sdImage.upload 없음');
+    return;
+  }
+  setStatus('🟢 준비 완료 — 이미지를 선택하세요', true);
+  log('Firebase 초기화 성공, sdImage.upload 사용 가능');
+}, 1000);
+
+// 드래그 앤 드롭
+dropEl.onclick = function() { fileEl.click(); };
+dropEl.ondragover = function(e) { e.preventDefault(); dropEl.classList.add('over'); };
+dropEl.ondragleave = function() { dropEl.classList.remove('over'); };
+dropEl.ondrop = function(e) {
+  e.preventDefault();
+  dropEl.classList.remove('over');
+  if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+    handleFile(e.dataTransfer.files[0]);
+  }
+};
+fileEl.onchange = function() {
+  if (fileEl.files && fileEl.files[0]) handleFile(fileEl.files[0]);
+};
+
+async function handleFile(file) {
+  log('파일 선택: ' + file.name + ' (' + Math.round(file.size/1024) + 'KB)');
+  setStatus('⏳ 업로드 중...', true);
+  progWrap.style.display = 'block';
+  previewEl.innerHTML = '';
+  resultEl.style.display = 'none';
+
+  try {
+    var result = await window.sdImage.upload(file, 'test', 'testprop001', function(pct) {
+      progBar.style.width = pct + '%';
+      progTxt.textContent = pct + '%';
+    });
+    log('업로드 성공');
+    log('원본 URL: ' + result.url.slice(0, 80) + '...');
+    log('썸네일 URL: ' + result.thumbUrl.slice(0, 80) + '...');
+    setStatus('✅ 업로드 성공! 미리보기 아래 표시됨', true);
+
+    // 미리보기
+    var img1 = new Image();
+    img1.src = result.thumbUrl;
+    img1.style.width = '150px';
+    img1.style.height = '150px';
+    img1.style.objectFit = 'cover';
+    var lbl1 = document.createElement('div');
+    lbl1.style.textAlign = 'center';
+    lbl1.style.fontSize = '11px';
+    lbl1.innerHTML = '<b>썸네일</b> (400x400)';
+    var wrap1 = document.createElement('div');
+    wrap1.appendChild(img1);
+    wrap1.appendChild(lbl1);
+
+    var img2 = new Image();
+    img2.src = result.url;
+    img2.style.maxWidth = '300px';
+    img2.style.maxHeight = '200px';
+    img2.style.objectFit = 'contain';
+    var lbl2 = document.createElement('div');
+    lbl2.style.textAlign = 'center';
+    lbl2.style.fontSize = '11px';
+    lbl2.innerHTML = '<b>원본</b> (압축 1600px)';
+    var wrap2 = document.createElement('div');
+    wrap2.appendChild(img2);
+    wrap2.appendChild(lbl2);
+
+    previewEl.appendChild(wrap1);
+    previewEl.appendChild(wrap2);
+
+    // 결과 JSON
+    resultEl.style.display = 'block';
+    resultEl.textContent = '업로드 결과:\n\n' + JSON.stringify(result, null, 2);
+  } catch (e) {
+    log('❌ 오류: ' + e.message);
+    setStatus('❌ 업로드 실패: ' + e.message, false);
+    progWrap.style.display = 'none';
+  }
+}
+</script>
+</body>
+</html>

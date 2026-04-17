@@ -153,3 +153,230 @@ window.storage = (function() {
     }
   });
 })();
+
+// ──────────────────────────────────────────────────────────────
+// ⑤ Firebase Storage (파일 저장소) — 이미지 업로드용
+//    사용 전 Firebase Console → Storage → Get Started 필요
+//    추가 로드: firebase-storage-compat.js (HTML에서)
+// ──────────────────────────────────────────────────────────────
+window.sdImage = (function() {
+  function getStorage() {
+    if (!firebase.storage) {
+      throw new Error('firebase-storage-compat.js가 로드되지 않았습니다. HTML <head>에 SDK를 추가하세요.');
+    }
+    return firebase.storage();
+  }
+
+  /**
+   * 이미지 자동 압축 (용량 절약)
+   * - 최대 폭/높이 1600px (긴 쪽 기준)
+   * - JPEG 품질 0.85
+   * - WebP 사용하지 않음 (네이버 블로그 호환성)
+   * @param {File} file 원본 이미지 파일
+   * @returns {Promise<Blob>} 압축된 이미지 Blob
+   */
+  function compressImage(file) {
+    return new Promise(function(resolve, reject) {
+      var maxSide = 1600;
+      var quality = 0.85;
+      if (!file.type.match(/^image\//)) {
+        reject(new Error('이미지 파일이 아닙니다: ' + file.name));
+        return;
+      }
+      var reader = new FileReader();
+      reader.onerror = function() { reject(new Error('파일 읽기 실패')); };
+      reader.onload = function(e) {
+        var img = new Image();
+        img.onerror = function() { reject(new Error('이미지 디코딩 실패')); };
+        img.onload = function() {
+          var w = img.width, h = img.height;
+          if (w > maxSide || h > maxSide) {
+            if (w >= h) { h = Math.round(h * maxSide / w); w = maxSide; }
+            else       { w = Math.round(w * maxSide / h); h = maxSide; }
+          }
+          var canvas = document.createElement('canvas');
+          canvas.width = w; canvas.height = h;
+          var ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, w, h);
+          canvas.toBlob(function(blob) {
+            if (!blob) { reject(new Error('압축 실패')); return; }
+            resolve(blob);
+          }, 'image/jpeg', quality);
+        };
+        img.src = e.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  /**
+   * 썸네일 생성 (리스트용 소형 이미지)
+   * - 400x400 맞춤 (cover)
+   * - JPEG 품질 0.7
+   * @param {Blob|File} blob 원본 또는 압축된 이미지
+   * @returns {Promise<Blob>}
+   */
+  function makeThumbnail(blob) {
+    return new Promise(function(resolve, reject) {
+      var size = 400, quality = 0.7;
+      var reader = new FileReader();
+      reader.onerror = function() { reject(new Error('썸네일 읽기 실패')); };
+      reader.onload = function(e) {
+        var img = new Image();
+        img.onerror = function() { reject(new Error('썸네일 디코딩 실패')); };
+        img.onload = function() {
+          var canvas = document.createElement('canvas');
+          canvas.width = size; canvas.height = size;
+          var ctx = canvas.getContext('2d');
+          // cover 방식: 짧은 변 맞춤 크롭
+          var r = Math.max(size / img.width, size / img.height);
+          var nw = img.width * r, nh = img.height * r;
+          var dx = (size - nw) / 2, dy = (size - nh) / 2;
+          ctx.drawImage(img, dx, dy, nw, nh);
+          canvas.toBlob(function(out) {
+            if (!out) { reject(new Error('썸네일 생성 실패')); return; }
+            resolve(out);
+          }, 'image/jpeg', quality);
+        };
+        img.src = e.target.result;
+      };
+      reader.readAsDataURL(blob);
+    });
+  }
+
+  /**
+   * 이미지 업로드 (원본 + 썸네일)
+   * Storage 경로: /images/{folder}/{propId}/{fileName}
+   *              /images/{folder}/{propId}/thumbs/{fileName}
+   * @param {File} file 업로드할 이미지 파일
+   * @param {string} folder 분류 폴더 (예: 'props', 'custs', 'blog')
+   * @param {string} propId 매물/고객 ID (사진 그룹 식별자)
+   * @param {function} [onProgress] 진행률 콜백 (0~100)
+   * @returns {Promise<{url, thumbUrl, path, thumbPath, name, size, uploadedAt}>}
+   */
+  async function upload(file, folder, propId, onProgress) {
+    if (!file) throw new Error('파일이 없습니다.');
+    if (!folder) folder = 'misc';
+    if (!propId) propId = 'general';
+
+    try {
+      // 1) 원본 압축
+      var compressed = await compressImage(file);
+      // 2) 썸네일 생성
+      var thumb = await makeThumbnail(compressed);
+
+      // 3) 파일명 생성 (타임스탬프 + 랜덤)
+      var ts = Date.now();
+      var rnd = Math.random().toString(36).slice(2, 8);
+      var safeName = (file.name || 'image').replace(/[^\w.가-힣-]/g, '_').replace(/\.[^.]+$/, '');
+      var fileName = ts + '_' + rnd + '_' + safeName + '.jpg';
+
+      // 4) Storage 경로
+      var basePath = 'images/' + folder + '/' + propId;
+      var mainPath = basePath + '/' + fileName;
+      var thumbPath = basePath + '/thumbs/' + fileName;
+
+      var storage = getStorage();
+      var mainRef = storage.ref(mainPath);
+      var thumbRef = storage.ref(thumbPath);
+
+      // 5) 업로드 (원본)
+      var mainTask = mainRef.put(compressed, { contentType: 'image/jpeg' });
+      if (typeof onProgress === 'function') {
+        mainTask.on('state_changed', function(snap) {
+          var pct = (snap.bytesTransferred / snap.totalBytes) * 100;
+          onProgress(Math.round(pct * 0.7)); // 0~70%
+        });
+      }
+      await mainTask;
+
+      // 6) 업로드 (썸네일)
+      var thumbTask = thumbRef.put(thumb, { contentType: 'image/jpeg' });
+      if (typeof onProgress === 'function') {
+        thumbTask.on('state_changed', function(snap) {
+          var pct = (snap.bytesTransferred / snap.totalBytes) * 100;
+          onProgress(70 + Math.round(pct * 0.3)); // 70~100%
+        });
+      }
+      await thumbTask;
+
+      // 7) 다운로드 URL 획득
+      var url = await mainRef.getDownloadURL();
+      var thumbUrl = await thumbRef.getDownloadURL();
+
+      return {
+        url: url,
+        thumbUrl: thumbUrl,
+        path: mainPath,
+        thumbPath: thumbPath,
+        name: safeName,
+        size: compressed.size,
+        uploadedAt: new Date().toISOString()
+      };
+    } catch (e) {
+      console.error('[SD] 이미지 업로드 실패:', e);
+      throw e;
+    }
+  }
+
+  /**
+   * 이미지 삭제 (원본 + 썸네일)
+   * @param {string} path 원본 경로 (images/.../file.jpg)
+   * @param {string} [thumbPath] 썸네일 경로 (없으면 path에서 유추)
+   */
+  async function remove(path, thumbPath) {
+    if (!path) return;
+    try {
+      var storage = getStorage();
+      await storage.ref(path).delete().catch(function(e) {
+        // 이미 없는 경우는 무시
+        if (e.code !== 'storage/object-not-found') throw e;
+      });
+      if (!thumbPath) {
+        // 경로 유추: images/folder/id/file.jpg → images/folder/id/thumbs/file.jpg
+        var parts = path.split('/');
+        var fname = parts.pop();
+        thumbPath = parts.join('/') + '/thumbs/' + fname;
+      }
+      await storage.ref(thumbPath).delete().catch(function(e) {
+        if (e.code !== 'storage/object-not-found') throw e;
+      });
+    } catch (e) {
+      console.error('[SD] 이미지 삭제 실패:', e);
+      throw e;
+    }
+  }
+
+  /**
+   * 특정 매물의 모든 이미지 삭제 (매물 삭제 시 호출)
+   * @param {string} folder 분류 폴더
+   * @param {string} propId 매물/고객 ID
+   */
+  async function removeAll(folder, propId) {
+    if (!folder || !propId) return;
+    try {
+      var storage = getStorage();
+      var baseRef = storage.ref('images/' + folder + '/' + propId);
+      var list = await baseRef.listAll();
+      var deletes = [];
+      list.items.forEach(function(item) { deletes.push(item.delete()); });
+      // 썸네일 폴더도 삭제
+      list.prefixes.forEach(function(pref) {
+        pref.listAll().then(function(sub) {
+          sub.items.forEach(function(item) { deletes.push(item.delete()); });
+        });
+      });
+      await Promise.all(deletes);
+    } catch (e) {
+      console.error('[SD] 이미지 일괄 삭제 실패:', e);
+    }
+  }
+
+  return {
+    upload: upload,
+    remove: remove,
+    removeAll: removeAll,
+    _compress: compressImage,  // 디버깅용
+    _thumb: makeThumbnail       // 디버깅용
+  };
+})();
