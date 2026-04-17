@@ -61,14 +61,26 @@ input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none}
 .ph-drop:hover{background:#e3f2fd}
 .ph-drop.over{background:#bbdefb;border-color:#1565c0;border-style:solid}
 .ph-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px}
-.ph-item{position:relative;border:0.5px solid #e0e0e0;border-radius:8px;overflow:hidden;background:#fff;aspect-ratio:1}
+.ph-item{position:relative;border:0.5px solid #e0e0e0;border-radius:8px;overflow:hidden;background:#fff;aspect-ratio:1;transition:transform .15s,opacity .15s}
+.ph-item[draggable]{cursor:grab}
+.ph-item[draggable]:active{cursor:grabbing}
+.ph-item.dragging{opacity:.35;transform:scale(.95)}
+.ph-item.drop-left{box-shadow:-3px 0 0 #1565c0}
+.ph-item.drop-right{box-shadow:3px 0 0 #1565c0}
 .ph-item.star{border:2px solid #f9a825;box-shadow:0 0 0 2px #fff9c4}
-.ph-item img{width:100%;height:100%;object-fit:cover;display:block;cursor:pointer}
-.ph-actions{position:absolute;top:4px;right:4px;display:flex;gap:3px;flex-direction:column}
+.ph-item img{width:100%;height:100%;object-fit:cover;display:block;cursor:pointer;pointer-events:auto}
+.ph-actions{position:absolute;top:4px;right:4px;display:flex;gap:3px;flex-direction:column;pointer-events:auto}
 .ph-btn{width:24px;height:24px;border-radius:50%;border:none;background:rgba(0,0,0,.6);color:#fff;cursor:pointer;font-size:12px;display:flex;align-items:center;justify-content:center;padding:0}
 .ph-btn:hover{background:rgba(0,0,0,.85)}
 .ph-btn.star-on{background:#f9a825}
-.ph-star-badge{position:absolute;top:4px;left:4px;background:#f9a825;color:#fff;font-size:9px;font-weight:700;padding:2px 5px;border-radius:4px;pointer-events:none}
+.ph-star-badge{position:absolute;top:4px;left:4px;background:#f9a825;color:#fff;font-size:9px;font-weight:700;padding:2px 5px;border-radius:4px;pointer-events:none;z-index:2}
+/* 순서 번호 뱃지 (신규) */
+.ph-order-badge{position:absolute;bottom:4px;left:4px;background:rgba(26,26,26,.75);color:#fff;font-size:10px;font-weight:700;min-width:20px;height:20px;padding:0 6px;border-radius:10px;display:flex;align-items:center;justify-content:center;pointer-events:none;z-index:2}
+/* 순서 이동 버튼 (신규) */
+.ph-nav{position:absolute;bottom:4px;right:4px;display:flex;gap:3px;pointer-events:auto;z-index:2}
+.ph-nav-btn{width:22px;height:22px;border-radius:4px;border:none;background:rgba(255,255,255,.9);color:#1a1a1a;cursor:pointer;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;padding:0;box-shadow:0 1px 3px rgba(0,0,0,.2)}
+.ph-nav-btn:hover{background:#1565c0;color:#fff}
+.ph-nav-btn:disabled{opacity:.3;cursor:not-allowed;background:rgba(255,255,255,.5)}
 .ph-progress{height:4px;background:#e0e0e0;border-radius:2px;overflow:hidden;margin-top:8px}
 .ph-progress-bar{height:100%;background:#1565c0;width:0;transition:width .3s}
 /* 매물 리스트 썸네일 */
@@ -272,7 +284,7 @@ input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none}
     <div class="ph-sec">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:6px">
         <span style="font-size:13px;font-weight:500;color:#1565c0">📸 매물 사진 <span id="f-ph-cnt" style="font-size:11px;color:#666;font-weight:400">(0 / 15장)</span></span>
-        <span style="font-size:10px;color:#888">⭐ 클릭 = 대표사진 · ✕ 삭제 · 이미지 클릭 = 크게보기</span>
+        <span style="font-size:10px;color:#888">⭐ 대표 · ✕ 삭제 · ◀▶ 순서 · 드래그 이동 · 클릭 확대</span>
       </div>
       <div id="f-ph-drop" class="ph-drop" onclick="document.getElementById('f-ph-file').click()">
         <div style="font-size:28px;margin-bottom:4px">📷</div>
@@ -759,7 +771,12 @@ async function onPhFileSelect(e){
   if(!_formPhotoPropId){_formPhotoPropId=editId||('new'+Date.now());}
   var remaining=PH_MAX-_formPhotos.length;
   if(remaining<=0){alert('최대 '+PH_MAX+'장까지만 업로드 가능합니다.');return;}
-  var list=Array.prototype.slice.call(files,0,remaining);
+  // ═══ 파일명 자연 정렬 (1,2,10,11 순서 보장) ═══
+  var allFiles=Array.prototype.slice.call(files);
+  allFiles.sort(function(a,b){
+    return a.name.localeCompare(b.name,'ko',{numeric:true,sensitivity:'base'});
+  });
+  var list=allFiles.slice(0,remaining);
   if(files.length>remaining)alert('최대 '+PH_MAX+'장까지 가능합니다. '+list.length+'장만 업로드합니다.');
   _phUploading=true;
   var progWrap=document.getElementById('f-ph-prog-wrap');
@@ -806,15 +823,94 @@ function renderFormPhotos(){
   if(!grid)return;
   cnt.textContent='('+_formPhotos.length+' / '+PH_MAX+'장)';
   if(!_formPhotos.length){grid.innerHTML='';return;}
+  var last=_formPhotos.length-1;
   grid.innerHTML=_formPhotos.map(function(ph,i){
-    return '<div class="ph-item'+(ph.star?' star':'')+'">'
+    var canLeft=i>0;
+    var canRight=i<last;
+    return '<div class="ph-item'+(ph.star?' star':'')+'" draggable="true" data-idx="'+i+'" '
+      +'ondragstart="phDragStart(event,'+i+')" '
+      +'ondragover="phDragOver(event,'+i+')" '
+      +'ondragleave="phDragLeave(event)" '
+      +'ondrop="phDrop(event,'+i+')" '
+      +'ondragend="phDragEnd(event)">'
       +(ph.star?'<div class="ph-star-badge">⭐ 대표</div>':'')
-      +'<img src="'+ph.thumbUrl+'" onclick="openLightbox('+i+')" alt="사진'+(i+1)+'">'
+      +'<div class="ph-order-badge">'+(i+1)+'</div>'
+      +'<img src="'+ph.thumbUrl+'" onclick="openLightbox('+i+')" alt="사진'+(i+1)+'" draggable="false">'
       +'<div class="ph-actions">'
       +'<button class="ph-btn'+(ph.star?' star-on':'')+'" title="대표사진 지정" onclick="setStarPhoto('+i+')">⭐</button>'
       +'<button class="ph-btn" title="삭제" onclick="removeFormPhoto('+i+')">✕</button>'
-      +'</div></div>';
+      +'</div>'
+      +'<div class="ph-nav">'
+      +'<button class="ph-nav-btn" title="앞으로 이동" onclick="movePhoto('+i+',-1)"'+(canLeft?'':' disabled')+'>◀</button>'
+      +'<button class="ph-nav-btn" title="뒤로 이동" onclick="movePhoto('+i+',1)"'+(canRight?'':' disabled')+'>▶</button>'
+      +'</div>'
+      +'</div>';
   }).join('');
+}
+
+// ═══ 순서 이동 (◀▶ 버튼) ═══
+function movePhoto(idx,dir){
+  var newIdx=idx+dir;
+  if(newIdx<0||newIdx>=_formPhotos.length)return;
+  var item=_formPhotos.splice(idx,1)[0];
+  _formPhotos.splice(newIdx,0,item);
+  renderFormPhotos();
+}
+
+// ═══ 드래그 앤 드롭 순서 변경 ═══
+var _phDragFrom=null;
+function phDragStart(e,idx){
+  _phDragFrom=idx;
+  e.dataTransfer.effectAllowed='move';
+  try{e.dataTransfer.setData('text/plain',String(idx));}catch(_){}
+  var target=e.currentTarget||e.target;
+  if(target&&target.classList)target.classList.add('dragging');
+}
+function phDragOver(e,idx){
+  if(_phDragFrom===null||_phDragFrom===idx){e.preventDefault();return;}
+  e.preventDefault();
+  e.dataTransfer.dropEffect='move';
+  var target=e.currentTarget||e.target;
+  if(!target||!target.classList)return;
+  // 좌우 판정: 마우스 x가 중앙보다 왼쪽이면 좌측 삽입 표시
+  var rect=target.getBoundingClientRect();
+  var isLeft=(e.clientX-rect.left)<(rect.width/2);
+  // 이전 표시 지우기
+  document.querySelectorAll('.ph-item.drop-left,.ph-item.drop-right').forEach(function(el){
+    if(el!==target)el.classList.remove('drop-left','drop-right');
+  });
+  target.classList.toggle('drop-left',isLeft);
+  target.classList.toggle('drop-right',!isLeft);
+}
+function phDragLeave(e){
+  var target=e.currentTarget||e.target;
+  if(target&&target.classList)target.classList.remove('drop-left','drop-right');
+}
+function phDrop(e,toIdx){
+  e.preventDefault();
+  var from=_phDragFrom;
+  _phDragFrom=null;
+  document.querySelectorAll('.ph-item.drop-left,.ph-item.drop-right,.ph-item.dragging').forEach(function(el){
+    el.classList.remove('drop-left','drop-right','dragging');
+  });
+  if(from===null||from===toIdx)return;
+  // 좌우 판정 (떨어진 지점이 절반 왼쪽이면 toIdx 앞, 오른쪽이면 toIdx 뒤)
+  var target=e.currentTarget||e.target;
+  var rect=target.getBoundingClientRect();
+  var isLeft=(e.clientX-rect.left)<(rect.width/2);
+  var insertAt=isLeft?toIdx:toIdx+1;
+  // from이 insertAt보다 앞이면 insertAt 조정
+  if(from<insertAt)insertAt--;
+  if(from===insertAt)return;
+  var item=_formPhotos.splice(from,1)[0];
+  _formPhotos.splice(insertAt,0,item);
+  renderFormPhotos();
+}
+function phDragEnd(e){
+  _phDragFrom=null;
+  document.querySelectorAll('.ph-item.drop-left,.ph-item.drop-right,.ph-item.dragging').forEach(function(el){
+    el.classList.remove('drop-left','drop-right','dragging');
+  });
 }
 
 // ═══ 대표사진 지정 ═══
