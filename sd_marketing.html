@@ -499,21 +499,36 @@ async function loadBlogProps(){
   var sel=document.getElementById('blog-prop-sel');
   var cntEl=document.getElementById('blog-prop-count');
   if(!sel)return;
-  // 활성 매물만 필터 (완료/보류 제외) — sd_props 구조에 따라 status 필드 없을 수도 있음
+  // 활성 매물만 필터 (sd_props는 status='활성' 사용)
   var activeProps=_blogProps.filter(function(p){
     if(!p)return false;
-    var st=p.status||p.state||'';
-    return !st||!/완료|보류|거래|취소/.test(st);
+    return !p.status||p.status==='활성';
   });
+  // 가격 텍스트 헬퍼 (sd_props의 priceTxt 로직 간소화)
+  function mkPriceLabel(p){
+    var t=p.propertyType||'';
+    var isJeon=t.indexOf('전세')>=0;
+    var isWol=t.indexOf('월세')>=0||t.indexOf('임대차')>=0;
+    var isImd=t.indexOf('임대')>=0&&t.indexOf('임대차')<0;
+    if(p.tot)return p.tot;
+    if(isWol||isImd){
+      var parts=[];
+      if(p.ps)parts.push('보'+p.ps);
+      if(p.pm)parts.push('월'+p.pm);
+      return parts.join('/');
+    }
+    if(isJeon&&p.pm)return '전세 '+p.pm;
+    return p.pm||'';
+  }
   sel.innerHTML='<option value="">— 매물을 선택하면 자동 입력됩니다 —</option>'
-    +activeProps.map(function(p,i){
+    +activeProps.map(function(p){
       var idx=_blogProps.indexOf(p);
-      var label=(p.complexName||'(단지명없음)')+' '+(p.propertyType||'')
-        +(p.dong?' '+p.dong+'동':'')
-        +(p.ho?' '+p.ho+'호':'')
-        +(p.price?' · '+p.price:'')
-        +(p.deposit&&p.monthly?' · '+p.deposit+'/'+p.monthly:'');
-      return '<option value="'+idx+'">'+label.replace(/</g,'&lt;')+'</option>';
+      var price=mkPriceLabel(p);
+      var label=(p.complexName||'(단지명없음)')+' · '+(p.propertyType||'')
+        +(p.unitInfo?' · '+p.unitInfo:'')
+        +(p.floorInfo?' · '+p.floorInfo:'')
+        +(price?' · '+price:'');
+      return '<option value="'+idx+'">'+label.replace(/</g,'&lt;').replace(/"/g,'&quot;')+'</option>';
     }).join('');
   if(cntEl)cntEl.textContent='('+activeProps.length+'건)';
 }
@@ -531,16 +546,36 @@ function onBlogPropSelect(){
   // 자동 입력
   if(kwInput)kwInput.value=p.complexName||'';
   if(typeSel)typeSel.value='매물단독';
-  // 정보 박스 표시
+  // 정보 박스 표시 — 실제 필드 기준
+  var t=p.propertyType||'';
+  var isWol=t.indexOf('월세')>=0||t.indexOf('임대차')>=0||(t.indexOf('임대')>=0&&t.indexOf('임대차')<0);
+  var isJeon=t.indexOf('전세')>=0;
+  var isBun=t.indexOf('분양권')>=0;
+  var priceBits=[];
+  if(isBun){
+    if(p.bun)priceBits.push('분양 '+p.bun);
+    if(p.opt)priceBits.push('옵션 '+p.opt);
+    if(p.pre)priceBits.push('P '+p.pre);
+    if(p.tot)priceBits.push('합계 '+p.tot);
+  }else if(isWol){
+    if(p.ps)priceBits.push('보증금 '+p.ps);
+    if(p.pm)priceBits.push('월세 '+p.pm);
+    if(p.gw)priceBits.push('권리금 '+p.gw);
+  }else if(isJeon){
+    if(p.pm)priceBits.push('전세가 '+p.pm);
+  }else{
+    if(p.pm)priceBits.push('매매가 '+p.pm);
+    if(p.ps)priceBits.push('보증금 '+p.ps);
+  }
   var parts=[];
   if(p.complexName)parts.push('<b>'+p.complexName+'</b>');
   if(p.propertyType)parts.push(p.propertyType);
-  if(p.dong||p.ho)parts.push((p.dong||'')+(p.ho?' '+p.ho+'호':''));
-  if(p.floor)parts.push(p.floor);
-  if(p.areaSupply||p.areaExclusive)parts.push('공급 '+(p.areaSupply||'-')+'㎡ / 전용 '+(p.areaExclusive||'-')+'㎡');
-  if(p.price)parts.push('💰 '+p.price);
-  if(p.deposit)parts.push('보증금 '+p.deposit);
-  if(p.monthly)parts.push('월세 '+p.monthly);
+  if(p.unitInfo)parts.push('🏠 '+p.unitInfo);
+  if(p.floorInfo)parts.push(p.floorInfo);
+  if(p.areaInfo)parts.push('📐 '+p.areaInfo);
+  if(p.direction)parts.push('🧭 '+p.direction);
+  if(priceBits.length)parts.push('💰 '+priceBits.join(' / '));
+  if(p.moveIn)parts.push('📅 '+p.moveIn);
   info.innerHTML='✅ 선택됨: '+parts.join(' · ');
   info.style.display='block';
 }
@@ -766,20 +801,37 @@ function genBlog(){
   if(type==='매물단독' && _blogSelectedProp){
     // ═══ 매물 단독 포스트 (전환형) ═══
     var p=_blogSelectedProp;
+    var t=p.propertyType||'';
+    var isWol=t.indexOf('월세')>=0||t.indexOf('임대차')>=0||(t.indexOf('임대')>=0&&t.indexOf('임대차')<0);
+    var isJeon=t.indexOf('전세')>=0;
+    var isBun=t.indexOf('분양권')>=0;
     var propLines=[];
-    if(p.complexName)propLines.push('단지: '+p.complexName);
-    if(p.propertyType)propLines.push('유형: '+p.propertyType);
-    if(p.dong||p.ho)propLines.push('동·호: '+(p.dong||'')+(p.ho?' '+p.ho+'호':''));
-    if(p.floor)propLines.push('층: '+p.floor);
-    if(p.areaSupply||p.areaExclusive)propLines.push('면적: 공급'+(p.areaSupply||'-')+'㎡ / 전용'+(p.areaExclusive||'-')+'㎡');
-    if(p.price)propLines.push('가격: '+p.price);
-    if(p.deposit)propLines.push('보증금: '+p.deposit);
-    if(p.monthly)propLines.push('월세: '+p.monthly);
+    if(p.complexName)propLines.push('단지명: '+p.complexName);
+    if(p.propertyType)propLines.push('거래유형: '+p.propertyType);
+    if(p.unitInfo)propLines.push('동·호: '+p.unitInfo);
+    if(p.floorInfo)propLines.push('층: '+p.floorInfo);
+    if(p.areaInfo)propLines.push('면적: '+p.areaInfo);
     if(p.direction)propLines.push('방향: '+p.direction);
-    if(p.moveDate)propLines.push('입주: '+p.moveDate);
-    if(p.features)propLines.push('특징: '+p.features);
-    if(p.memo)propLines.push('메모: '+p.memo);
-    prompt='당신은 송도 21년 차 전문가 문형은 소장(송도제일공인중개사사무소)의 공식 네이버 블로그 에디터입니다.\n\n아래 실제 매물 정보를 바탕으로 "매물 단독 포스트"를 작성하세요. 이 포스트의 목적은 "전화·카톡 상담 전환"이며, 방문자의 즉각적인 연락을 유도해야 합니다.\n\n[매물 정보]\n'+propLines.join('\n')+(extra?'\n\n[추가 강조] '+extra:'')+'\n\n[포스트 구성]\n① 제목 3개 제안 (SEO 최적화, 35자 이내)\n   - 단지명 + 면적/층 + 가격 또는 "급매" "입주가능" 등 후킹 단어 포함\n   - 예: "[급매] 송도 더샵하버뷰14 84㎡ 고층 9.5억 (2026.4월)"\n\n② 오프닝 — 이 매물의 "한 줄 매력 포인트" 1~2문장\n\n③ 매물 상세 정보 (표 형식으로 명확히)\n   ✅ 단지/동·호/층\n   ✅ 면적 (공급/전용)\n   ✅ 가격/조건\n   ✅ 방향·입주가능일\n\n④ 이 매물의 강점 3~5가지 (✅ 체크리스트)\n   - 단지 경쟁력, 입지, 교통, 학군, 시세 대비 가치 등\n   [📸 이미지 추천: 매물 내부 사진 또는 단지 외관]\n\n⑤ 웹검색 기반 간단한 시세 맥락 (최근 실거래가 1~2건)\n\n⑥ "이런 분께 추천합니다" 섹션 (타겟 독자 명확히)\n\n⑦ 🔥 CTA 블록 (반드시 포함, 아래 형식 그대로):\n━━━━━━━━━━━━━━━━━━━━━━━━\n📞 지금 바로 상담 문의\n━━━━━━━━━━━━━━━━━━━━━━━━\n송도제일공인중개사사무소 | 소장 문형은 (21년 경력)\n☎ 사무실: 032-851-6688\n📱 직통: 010-6401-9345\n🌐 홈페이지: www.songdojeil.com\n📍 송도국제도시 혜인프라자 103호\n\n※ 본 매물은 '+ds+' 기준이며, 실시간 상태는 전화·문자로 확인 부탁드립니다.\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n⑧ 해시태그 8~10개 (단지명·지역·매물유형·가격대 포함)\n\n[작성 규칙]\n- 네이버 블로그 스타일, 이모지 적절히, 모바일 가독성 (2~3줄 줄바꿈)\n- 총 1,500~2,000자\n- "전환"이 목적이므로 CTA를 상단·하단에 2회 배치\n- 가격은 숫자 그대로 노출 (숨기지 말 것)\n- 과장 표현 배제, 정직하고 신뢰감 있는 톤';
+    // 가격 (거래 유형별)
+    if(isBun){
+      if(p.bun)propLines.push('분양가: '+p.bun);
+      if(p.opt)propLines.push('옵션비: '+p.opt);
+      if(p.pre)propLines.push('프리미엄: '+p.pre);
+      if(p.tot)propLines.push('합계: '+p.tot);
+    }else if(isWol){
+      if(p.ps)propLines.push('보증금: '+p.ps);
+      if(p.pm)propLines.push('월세: '+p.pm);
+      if(p.gw)propLines.push('권리금: '+p.gw);
+    }else if(isJeon){
+      if(p.pm)propLines.push('전세가: '+p.pm);
+    }else{
+      if(p.pm)propLines.push('매매가: '+p.pm);
+      if(p.ps)propLines.push('보증금: '+p.ps);
+    }
+    if(p.moveIn)propLines.push('입주시기: '+p.moveIn);
+    if(p.memo)propLines.push('특이사항: '+p.memo);
+    if(p.lastMemo)propLines.push('최근 체크: '+p.lastMemo);
+    prompt='당신은 송도 21년 차 전문가 문형은 소장(송도제일공인중개사사무소)의 공식 네이버 블로그 에디터입니다.\n\n아래 실제 매물 정보를 바탕으로 "매물 단독 포스트"를 작성하세요. 이 포스트의 목적은 "전화·카톡 상담 전환"이며, 방문자의 즉각적인 연락을 유도해야 합니다.\n\n[매물 정보]\n'+propLines.join('\n')+(extra?'\n\n[추가 강조] '+extra:'')+'\n\n[포스트 구성]\n① 제목 3개 제안 (SEO 최적화, 35자 이내)\n   - 단지명 + 면적/층 + 가격 또는 "급매" "입주가능" 등 후킹 단어 포함\n   - 예: "[급매] 송도 더샵하버뷰14 84㎡ 고층 9.5억 (2026.4월)"\n\n② 오프닝 — 이 매물의 "한 줄 매력 포인트" 1~2문장\n\n③ 매물 상세 정보 (표 형식으로 명확히)\n   ✅ 단지·동·호·층\n   ✅ 면적\n   ✅ 가격/조건\n   ✅ 방향·입주시기\n\n④ 이 매물의 강점 3~5가지 (✅ 체크리스트)\n   - 단지 경쟁력, 입지, 교통, 학군, 시세 대비 가치 등\n   [📸 이미지 추천: 매물 내부 사진 또는 단지 외관]\n\n⑤ 웹검색 기반 간단한 시세 맥락 (최근 실거래가 1~2건)\n\n⑥ "이런 분께 추천합니다" 섹션 (타겟 독자 명확히)\n\n⑦ 🔥 CTA 블록 (반드시 포함, 아래 형식 그대로):\n━━━━━━━━━━━━━━━━━━━━━━━━\n📞 지금 바로 상담 문의\n━━━━━━━━━━━━━━━━━━━━━━━━\n송도제일공인중개사사무소 | 소장 문형은 (21년 경력)\n☎ 사무실: 032-851-6688\n📱 직통: 010-6401-9345\n🌐 홈페이지: www.songdojeil.com\n📍 송도국제도시 혜인프라자 103호\n\n※ 본 매물은 '+ds+' 기준이며, 실시간 상태는 전화·문자로 확인 부탁드립니다.\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n⑧ 해시태그 8~10개 (단지명·지역·매물유형·가격대 포함)\n\n[작성 규칙]\n- 네이버 블로그 스타일, 이모지 적절히, 모바일 가독성 (2~3줄 줄바꿈)\n- 총 1,500~2,000자\n- "전환"이 목적이므로 CTA를 상단·하단에 2회 배치\n- 가격은 숫자 그대로 노출 (숨기지 말 것)\n- 과장 표현 배제, 정직하고 신뢰감 있는 톤';
   }else{
     // ═══ 기존 범용 블로그 포스트 ═══
     var typeMap={'매물단독':'매물 단독 소개 (매물 미선택)','단지소개':'단지 소개 및 특징 분석','시세분석':'최근 시세 동향 및 실거래가 분석','지역이슈':'지역 개발·이슈 소식','투자분석':'투자 관점 분석 및 수익률','생활정보':'생활 인프라 및 편의시설','정책정보':'부동산 정책·규제 해설'};
