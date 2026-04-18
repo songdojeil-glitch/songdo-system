@@ -908,7 +908,6 @@ function callAPI(prompt,loadId,ltxt,cb){
   if(ltxt)document.getElementById(ltxt).textContent='AI가 작성 중입니다... ('+(AI_MODEL_META[aiModel]?AI_MODEL_META[aiModel].short:'Sonnet')+')';
   fetch('https://wandering-star-5bb9.songdojeil.workers.dev/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({model:aiModel,max_tokens:3000,
-      tools:[{type:'web_search_20250305',name:'web_search'}],
       messages:[{role:'user',content:prompt}]})
   }).then(function(r){return r.json();})
   .then(function(d){
@@ -996,8 +995,25 @@ async function refreshHub(){
   }).join(''):'<p style="font-size:12px;color:#aaa">이번 주 예정 콘텐츠 없음</p>';
 }
 
-// ─ TAB1 뉴스 수집
+// ─ TAB1 뉴스 수집 (Claude 채팅으로 이동 — 웹검색 필요)
 function fetchNews(){
+  var cat=document.querySelector('input[name="news-cat"]:checked').value;
+  var kw=document.getElementById('news-keyword').value.trim();
+  var catMap={
+    '종합':'송도 부동산 시장 동향',
+    '아파트':'송도 아파트 시세 매매 전세',
+    '개발':'송도 개발 인프라 착공 준공',
+    '정책':'부동산 정책 규제 세금 취득세',
+    'GTX':'GTX-B 인천 교통 호재'
+  };
+  var searchQ='인천 연수구 송도 '+catMap[cat]+(kw?' '+kw:'');
+  var prompt='웹 검색으로 아래 키워드 관련 최신 뉴스를 10개 수집해줘.\n\n키워드: '+searchQ+'\n\n아래 JSON 형식으로만 출력해. 다른 텍스트 없이 JSON만:\n[\n  {"title":"뉴스 제목","url":"URL","summary":"2줄 요약","source":"언론사명","date":"YYYY-MM-DD"},\n  ...\n]\n\n반드시 실제 존재하는 URL만 포함하고, 최근 1개월 이내 기사 우선으로 선택해.';
+  var url='https://claude.ai/new?q='+encodeURIComponent(prompt);
+  window.open(url,'_blank');
+  alert('📰 Claude 채팅이 새 탭에서 열립니다.\n\n웹검색이 필요한 작업이라 Claude 채팅에서 실행됩니다.\n생성된 JSON 결과를 받은 뒤, 여기 "뉴스 결과"에 붙여넣기할 수 있는 기능은 추후 추가 가능합니다.');
+}
+
+function fetchNewsDisabled(){
   var cat=document.querySelector('input[name="news-cat"]:checked').value;
   var kw=document.getElementById('news-keyword').value.trim();
   var catMap={
@@ -1013,7 +1029,6 @@ function fetchNews(){
   document.getElementById('news-result').style.display='none';
   fetch('https://wandering-star-5bb9.songdojeil.workers.dev/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({model:aiModel,max_tokens:3000,
-      tools:[{type:'web_search_20250305',name:'web_search'}],
       messages:[{role:'user',content:prompt}]})
   }).then(function(r){return r.json();})
   .then(function(d){
