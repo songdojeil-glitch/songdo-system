@@ -1020,9 +1020,19 @@ window.addEventListener('load', function() {
       <textarea id="bl-memo" rows="3" class="fi" style="resize:vertical" placeholder="예: 채드윅 학군 인접, 고층 탁트인 뷰, 풀인테리어, 즉시입주 가능, 집주인 협의 의사 있음 등"></textarea>
     </div>
     <div>
-      <label class="fl">파일 첨부 <span style="font-size:11px;color:#aaa">(이미지·PDF·Word·텍스트 — 내용 자동 추출하여 글 작성에 반영)</span></label>
-      <input type="file" id="bl-file" accept="image/*,.pdf,.doc,.docx,.txt" class="fi" style="padding:6px" onchange="onBlogFile(event)">
-      <div id="bl-file-status" style="font-size:11px;color:#aaa;margin-top:5px;padding:4px 8px;background:#f5f5f3;border-radius:6px;display:none"></div>
+      <label class="fl">파일 첨부 <span style="font-size:11px;color:#aaa">문서(TXT·DOCX·PDF) 최대 3개 · 이미지 최대 10개</span></label>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px">
+        <label class="btn-s" style="cursor:pointer;font-size:11px;padding:5px 10px">
+          📄 문서 추가 <input type="file" id="bl-doc-file" accept=".txt,.docx,.pdf" multiple style="display:none" onchange="onBlDocAdd(event)">
+        </label>
+        <label class="btn-s" style="cursor:pointer;font-size:11px;padding:5px 10px">
+          🖼️ 이미지 추가 <input type="file" id="bl-img-file" accept="image/*" multiple style="display:none" onchange="onBlImgAdd(event)">
+        </label>
+      </div>
+      <div id="bl-file-list" style="display:none;background:#f5f5f3;border-radius:8px;padding:8px;font-size:11px">
+        <div id="bl-doc-list"></div>
+        <div id="bl-img-list"></div>
+      </div>
     </div>
   </div>
 
@@ -1266,6 +1276,8 @@ window.addEventListener('load', function() {
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script>
 var AGENCY='[송도제일공인중개사사무소]\n\n🕵️‍♂️✨ 송도 21년 차 문형은 대표입니다! 남다른 안목으로 최고의 매물을 찾아드립니다 💯.\n📍 연수구 해돋이로 168, 1층 103호(혜인프라자)\n☎️ 010-6401-9345 / 032-851-6688\n📺 유튜브: 송도제일부동산TV\n🌐 http://www.songdojeil.com';
 var props=[], editId=null;
@@ -3125,30 +3137,125 @@ function exportHistXL(){
 
 
 // ── 파일 첨부 처리 (이미지/PDF/텍스트/Word) ──
-var blogFileData=null, brFileData=null;
+var blogFileDocs=[], blogFileImages=[], brFileData=null;
 
+// PDF.js worker 설정
+function initPdfWorker(){
+  if(window.pdfjsLib&&!window.pdfjsLib.GlobalWorkerOptions.workerSrc){
+    window.pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  }
+}
+
+// 파일 읽기 — TXT/DOCX/PDF/이미지 지원
 function readAttachFile(file, cb){
   var ext=file.name.split('.').pop().toLowerCase();
-  var reader=new FileReader();
+  // 이미지
   if(['jpg','jpeg','png','gif','webp'].includes(ext)){
+    var reader=new FileReader();
     reader.onload=function(e){cb({type:'image',mediaType:file.type,b64:e.target.result.split(',')[1],name:file.name});};
     reader.readAsDataURL(file);
-  } else {
+  }
+  // DOCX → mammoth.js
+  else if(ext==='docx'){
+    if(typeof mammoth==='undefined'){cb({type:'text',content:'[mammoth.js 로드 실패 - 페이지 새로고침 후 재시도]',name:file.name});return;}
+    var reader=new FileReader();
+    reader.onload=function(e){
+      mammoth.extractRawText({arrayBuffer:e.target.result})
+        .then(function(result){cb({type:'text',content:result.value,name:file.name});})
+        .catch(function(err){cb({type:'text',content:'[DOCX 추출 오류: '+err.message+']',name:file.name});});
+    };
+    reader.readAsArrayBuffer(file);
+  }
+  // PDF → PDF.js
+  else if(ext==='pdf'){
+    initPdfWorker();
+    if(typeof pdfjsLib==='undefined'){cb({type:'text',content:'[PDF.js 로드 실패 - 페이지 새로고침 후 재시도]',name:file.name});return;}
+    var reader=new FileReader();
+    reader.onload=function(e){
+      pdfjsLib.getDocument({data:e.target.result}).promise.then(function(pdf){
+        var pages=[];
+        var total=pdf.numPages;
+        for(var i=1;i<=total;i++){pages.push(i);}
+        return Promise.all(pages.map(function(n){
+          return pdf.getPage(n).then(function(page){
+            return page.getTextContent().then(function(tc){
+              return tc.items.map(function(item){return item.str;}).join(' ');
+            });
+          });
+        }));
+      }).then(function(pageTexts){
+        cb({type:'text',content:pageTexts.join('\n'),name:file.name});
+      }).catch(function(err){
+        cb({type:'text',content:'[PDF 추출 오류: '+err.message+']',name:file.name});
+      });
+    };
+    reader.readAsArrayBuffer(file);
+  }
+  // TXT
+  else{
+    var reader=new FileReader();
     reader.onload=function(e){cb({type:'text',content:e.target.result,name:file.name});};
     reader.readAsText(file,'UTF-8');
   }
 }
 
-function onBlogFile(e){
-  var file=e.target.files[0];if(!file)return;
-  var st=document.getElementById('bl-file-status');
-  st.style.display='block';st.style.color='#f57f17';st.textContent='파일 읽는 중...';
-  readAttachFile(file,function(d){
-    blogFileData=d;
-    st.style.color='#2e7d32';
-    st.textContent='✅ '+d.name+(d.type==='image'?' (이미지)':' (텍스트)');
+// ── 문서 추가 (최대 3개)
+function onBlDocAdd(e){
+  var files=Array.from(e.target.files);
+  files.forEach(function(file){
+    if(blogFileDocs.length>=3){alert('문서는 최대 3개까지 첨부 가능합니다.');return;}
+    if(blogFileDocs.find(function(d){return d.name===file.name;}))return; // 중복 방지
+    readAttachFile(file,function(d){
+      blogFileDocs.push(d);
+      renderBlFileList();
+    });
   });
+  e.target.value='';
 }
+
+// ── 이미지 추가 (최대 10개)
+function onBlImgAdd(e){
+  var files=Array.from(e.target.files);
+  files.forEach(function(file){
+    if(blogFileImages.length>=10){alert('이미지는 최대 10개까지 첨부 가능합니다.');return;}
+    if(blogFileImages.find(function(d){return d.name===file.name;}))return;
+    readAttachFile(file,function(d){
+      blogFileImages.push(d);
+      renderBlFileList();
+    });
+  });
+  e.target.value='';
+}
+
+// ── 첨부 목록 렌더링
+function renderBlFileList(){
+  var listEl=document.getElementById('bl-file-list');
+  var docEl=document.getElementById('bl-doc-list');
+  var imgEl=document.getElementById('bl-img-list');
+  if(!listEl)return;
+  var hasFiles=blogFileDocs.length>0||blogFileImages.length>0;
+  listEl.style.display=hasFiles?'block':'none';
+  docEl.innerHTML=blogFileDocs.length?
+    '<div style="color:#f57f17;font-weight:500;margin-bottom:4px">📄 문서 ('+blogFileDocs.length+'/3)</div>'
+    +blogFileDocs.map(function(d,i){
+      return '<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;border-bottom:0.5px solid #e8e8e8">'
+        +'<span style="color:#333">'+d.name+'</span>'
+        +'<button onclick="blRemoveDoc('+i+')" style="border:none;background:transparent;color:#cc3333;cursor:pointer;font-size:12px;padding:0 4px">✕</button>'
+        +'</div>';
+    }).join(''):'';
+  imgEl.innerHTML=blogFileImages.length?
+    '<div style="color:#1565c0;font-weight:500;margin:'+(blogFileDocs.length?'8px':'0')+'px 0 4px">🖼️ 이미지 ('+blogFileImages.length+'/10)</div>'
+    +'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(60px,1fr));gap:4px">'
+    +blogFileImages.map(function(img,i){
+      return '<div style="position:relative;aspect-ratio:1;border-radius:4px;overflow:hidden;border:0.5px solid #ddd">'
+        +'<img src="data:'+img.mediaType+';base64,'+img.b64+'" style="width:100%;height:100%;object-fit:cover">'
+        +'<button onclick="blRemoveImg('+i+')" style="position:absolute;top:1px;right:1px;width:16px;height:16px;border-radius:50%;border:none;background:rgba(0,0,0,.6);color:#fff;cursor:pointer;font-size:9px;display:flex;align-items:center;justify-content:center;padding:0">✕</button>'
+        +'</div>';
+    }).join('')+'</div>':'';
+}
+
+function blRemoveDoc(i){blogFileDocs.splice(i,1);renderBlFileList();}
+function blRemoveImg(i){blogFileImages.splice(i,1);renderBlFileList();}
 
 function onBrFile(e){
   var file=e.target.files[0];if(!file)return;
@@ -3405,9 +3512,15 @@ function genBlog(){
   // 파일 첨부 정보
   var extraInfo='';
   if(memo)extraInfo+='\n[추가 강조] '+memo;
-  if(blogFileData){
-    if(blogFileData.type==='text')extraInfo+='\n[첨부 파일: '+blogFileData.name+']\n'+blogFileData.content.slice(0,2000);
-    else extraInfo+='\n[이미지 파일 첨부됨: '+blogFileData.name+']';
+  // 문서 첨부 (최대 3개 합산)
+  if(blogFileDocs.length>0){
+    blogFileDocs.forEach(function(d){
+      extraInfo+='\n[첨부 문서: '+d.name+']\n'+d.content.slice(0,1500);
+    });
+  }
+  // 이미지 첨부 명시
+  if(blogFileImages.length>0){
+    extraInfo+='\n[첨부 이미지 '+blogFileImages.length+'장: '+blogFileImages.map(function(img){return img.name;}).join(', ')+']';
   }
 
   var prompt;
@@ -3440,8 +3553,11 @@ function genBlog(){
   document.getElementById('bl-res').style.display='none';
 
   var messages=[{role:'user',content:[{type:'text',text:prompt}]}];
-  if(blogFileData&&blogFileData.type==='image'){
-    messages[0].content.unshift({type:'image',source:{type:'base64',media_type:blogFileData.mediaType,data:blogFileData.b64}});
+  // 이미지 최대 10개 배열로 삽입 (앞에 추가)
+  if(blogFileImages.length>0){
+    blogFileImages.slice(0,10).reverse().forEach(function(img){
+      messages[0].content.unshift({type:'image',source:{type:'base64',media_type:img.mediaType,data:img.b64}});
+    });
   }
 
   fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':getApiKey()||'','anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
@@ -3465,7 +3581,7 @@ function genBlog(){
   })
   .catch(function(e){document.getElementById('bl-load').style.display='none';alert('오류: '+e.message);});
 }
-function reBlog(){document.getElementById('bl-res').style.display='none';blogFileData=null;document.getElementById('bl-file').value='';document.getElementById('bl-file-status').style.display='none';genBlog();}
+function reBlog(){document.getElementById('bl-res').style.display='none';blogFileDocs=[];blogFileImages=[];renderBlFileList();genBlog();}
 
 
 // ── 텍스트 파일 다운로드 ──

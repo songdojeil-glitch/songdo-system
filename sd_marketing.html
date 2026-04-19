@@ -6,6 +6,8 @@
 <title>송도제일 마케팅 시스템</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <!-- ═══ Firebase SDK (compat v9) ═══ -->
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
@@ -240,6 +242,21 @@ body{font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif;background:#f7
     <div style="margin-bottom:10px">
       <label class="fl">추가 내용 / 강조 포인트</label>
       <textarea id="blog-extra" rows="3" class="fi" style="resize:vertical" placeholder="예: 최근 실거래가 언급, 학군 강조, 투자 수익률 분석 등 블로그에 반드시 포함할 내용"></textarea>
+    </div>
+    <div style="margin-bottom:10px">
+      <label class="fl">파일 첨부 <span style="font-size:11px;color:#aaa">문서(TXT·DOCX·PDF) 최대 3개 · 이미지 최대 10개</span></label>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px">
+        <label class="btn-s" style="cursor:pointer;font-size:11px;padding:5px 10px">
+          📄 문서 추가 <input type="file" id="blog-doc-file" accept=".txt,.docx,.pdf" multiple style="display:none" onchange="onMktDocAdd(event)">
+        </label>
+        <label class="btn-s" style="cursor:pointer;font-size:11px;padding:5px 10px">
+          🖼️ 이미지 추가 <input type="file" id="blog-img-file" accept="image/*" multiple style="display:none" onchange="onMktImgAdd(event)">
+        </label>
+      </div>
+      <div id="mkt-file-list" style="display:none;background:#f5f5f3;border-radius:8px;padding:8px;font-size:11px">
+        <div id="mkt-doc-list"></div>
+        <div id="mkt-img-list"></div>
+      </div>
     </div>
     
     <!-- ═══ 공인중개사법 표시광고 (신규) ═══ -->
@@ -1012,6 +1029,118 @@ function setTodayDate(){
   if(!document.getElementById('cal-date').value)document.getElementById('cal-date').value=ds;
 }
 
+// ─ 블로그 파일 첨부 (멀티)
+var mktFileDocs=[], mktFileImages=[];
+
+// PDF.js worker 설정
+function initPdfWorker(){
+  if(window.pdfjsLib&&!window.pdfjsLib.GlobalWorkerOptions.workerSrc){
+    window.pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  }
+}
+
+// 파일 읽기 — TXT/DOCX/PDF/이미지 지원
+function readAttachFile(file, cb){
+  var ext=file.name.split('.').pop().toLowerCase();
+  // 이미지
+  if(['jpg','jpeg','png','gif','webp'].includes(ext)){
+    var reader=new FileReader();
+    reader.onload=function(e){cb({type:'image',mediaType:file.type,b64:e.target.result.split(',')[1],name:file.name});};
+    reader.readAsDataURL(file);
+  }
+  // DOCX → mammoth.js
+  else if(ext==='docx'){
+    if(typeof mammoth==='undefined'){cb({type:'text',content:'[mammoth.js 로드 실패 - 페이지 새로고침 후 재시도]',name:file.name});return;}
+    var reader=new FileReader();
+    reader.onload=function(e){
+      mammoth.extractRawText({arrayBuffer:e.target.result})
+        .then(function(result){cb({type:'text',content:result.value,name:file.name});})
+        .catch(function(err){cb({type:'text',content:'[DOCX 추출 오류: '+err.message+']',name:file.name});});
+    };
+    reader.readAsArrayBuffer(file);
+  }
+  // PDF → PDF.js
+  else if(ext==='pdf'){
+    initPdfWorker();
+    if(typeof pdfjsLib==='undefined'){cb({type:'text',content:'[PDF.js 로드 실패 - 페이지 새로고침 후 재시도]',name:file.name});return;}
+    var reader=new FileReader();
+    reader.onload=function(e){
+      pdfjsLib.getDocument({data:e.target.result}).promise.then(function(pdf){
+        var pages=[];
+        var total=pdf.numPages;
+        for(var i=1;i<=total;i++){pages.push(i);}
+        return Promise.all(pages.map(function(n){
+          return pdf.getPage(n).then(function(page){
+            return page.getTextContent().then(function(tc){
+              return tc.items.map(function(item){return item.str;}).join(' ');
+            });
+          });
+        }));
+      }).then(function(pageTexts){
+        cb({type:'text',content:pageTexts.join('\n'),name:file.name});
+      }).catch(function(err){
+        cb({type:'text',content:'[PDF 추출 오류: '+err.message+']',name:file.name});
+      });
+    };
+    reader.readAsArrayBuffer(file);
+  }
+  // TXT
+  else{
+    var reader=new FileReader();
+    reader.onload=function(e){cb({type:'text',content:e.target.result,name:file.name});};
+    reader.readAsText(file,'UTF-8');
+  }
+}
+
+function onMktDocAdd(e){
+  var files=Array.from(e.target.files);
+  files.forEach(function(file){
+    if(mktFileDocs.length>=3){alert('문서는 최대 3개까지 첨부 가능합니다.');return;}
+    if(mktFileDocs.find(function(d){return d.name===file.name;}))return;
+    readAttachFile(file,function(d){mktFileDocs.push(d);renderMktFileList();});
+  });
+  e.target.value='';
+}
+
+function onMktImgAdd(e){
+  var files=Array.from(e.target.files);
+  files.forEach(function(file){
+    if(mktFileImages.length>=10){alert('이미지는 최대 10개까지 첨부 가능합니다.');return;}
+    if(mktFileImages.find(function(d){return d.name===file.name;}))return;
+    readAttachFile(file,function(d){mktFileImages.push(d);renderMktFileList();});
+  });
+  e.target.value='';
+}
+
+function renderMktFileList(){
+  var listEl=document.getElementById('mkt-file-list');
+  var docEl=document.getElementById('mkt-doc-list');
+  var imgEl=document.getElementById('mkt-img-list');
+  if(!listEl)return;
+  var hasFiles=mktFileDocs.length>0||mktFileImages.length>0;
+  listEl.style.display=hasFiles?'block':'none';
+  docEl.innerHTML=mktFileDocs.length?
+    '<div style="color:#f57f17;font-weight:500;margin-bottom:4px">📄 문서 ('+mktFileDocs.length+'/3)</div>'
+    +mktFileDocs.map(function(d,i){
+      return '<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;border-bottom:0.5px solid #e8e8e8">'
+        +'<span style="color:#333">'+d.name+'</span>'
+        +'<button onclick="mktRemoveDoc('+i+')" style="border:none;background:transparent;color:#cc3333;cursor:pointer;font-size:12px;padding:0 4px">✕</button>'
+        +'</div>';
+    }).join(''):'';
+  imgEl.innerHTML=mktFileImages.length?
+    '<div style="color:#1565c0;font-weight:500;margin:'+(mktFileDocs.length?'8px':'0')+'px 0 4px">🖼️ 이미지 ('+mktFileImages.length+'/10)</div>'
+    +'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(60px,1fr));gap:4px">'
+    +mktFileImages.map(function(img,i){
+      return '<div style="position:relative;aspect-ratio:1;border-radius:4px;overflow:hidden;border:0.5px solid #ddd">'
+        +'<img src="data:'+img.mediaType+';base64,'+img.b64+'" style="width:100%;height:100%;object-fit:cover">'
+        +'<button onclick="mktRemoveImg('+i+')" style="position:absolute;top:1px;right:1px;width:16px;height:16px;border-radius:50%;border:none;background:rgba(0,0,0,.6);color:#fff;cursor:pointer;font-size:9px;display:flex;align-items:center;justify-content:center;padding:0">✕</button>'
+        +'</div>';
+    }).join('')+'</div>':'';
+}
+
+function mktRemoveDoc(i){mktFileDocs.splice(i,1);renderMktFileList();}
+function mktRemoveImg(i){mktFileImages.splice(i,1);renderMktFileList();}
+
 // ─ 공통 유틸
 function getApiKey(){
   var k=localStorage.getItem('sd_api_key');
@@ -1257,11 +1386,6 @@ function genBlog(){
   var extra=document.getElementById('blog-extra').value.trim();
   var now=new Date(),ds=now.getFullYear()+'년 '+(now.getMonth()+1)+'월 '+now.getDate()+'일';
   var prompt;
-
-  // 매물단독 유형은 매물 선택 필수
-  if(type==='매물단독'&&!_blogSelectedProp){
-    alert('매물 단독 포스트는 매물을 먼저 선택해 주세요.');return;
-  }
   if(type==='매물단독' && _blogSelectedProp){
     // ═══ 매물 단독 포스트 (전환형) ═══
     var p=_blogSelectedProp;
@@ -1304,33 +1428,52 @@ function genBlog(){
       }).join('\n');
       photoInfo+='\n\n※ 글 흐름에 맞춰 아래 형식으로 사진 삽입 위치를 명확히 지정하세요:\n  [📸 사진1 삽입 — 오프닝 직후]\n  [📸 사진2 삽입 — 상세정보 표 아래]\n  [📸 사진3,4 삽입 — 강점 소개 중간]\n  실제 이미지는 네이버 블로그에서 수동 업로드합니다.';
     }
-    prompt='당신은 송도 21년 차 전문가 문형은 소장(송도제일공인중개사사무소)의 공식 네이버 블로그 에디터입니다.\n\n아래 실제 매물 정보를 바탕으로 "매물 단독 포스트"를 작성하세요. 이 포스트의 목적은 "전화·카톡 상담 전환"이며, 방문자의 즉각적인 연락을 유도해야 합니다.\n\n[매물 정보]\n'+propLines.join('\n')+photoInfo+(extra?'\n\n[추가 강조] '+extra:'')+'\n\n[포스트 구성]\n① 제목 3개 제안 (SEO 최적화, 35자 이내)\n   - 단지명 + 면적/층 + 가격 또는 "급매" "입주가능" 등 후킹 단어 포함\n   - 예: "[급매] 송도 더샵하버뷰14 84㎡ 고층 9.5억 (2026.4월)"\n\n② 오프닝 — 이 매물의 "한 줄 매력 포인트" 1~2문장\n\n③ 매물 상세 정보 (표 형식으로 명확히)\n   ✅ 단지·동·호·층\n   ✅ 면적\n   ✅ 가격/조건\n   ✅ 방향·입주시기\n\n④ 이 매물의 강점 3~5가지 (✅ 체크리스트)\n   - 단지 경쟁력, 입지, 교통, 학군, 시세 대비 가치 등\n\n⑤ 웹검색 기반 간단한 시세 맥락 (최근 실거래가 1~2건)\n\n⑥ "이런 분께 추천합니다" 섹션 (타겟 독자 명확히)\n\n⑦ 🔥 CTA 블록 (반드시 포함, 아래 형식 그대로):\n━━━━━━━━━━━━━━━━━━━━━━━━\n📞 지금 바로 상담 문의\n━━━━━━━━━━━━━━━━━━━━━━━━\n송도제일공인중개사사무소 | 소장 문형은 (21년 경력)\n☎ 사무실: 032-851-6688\n📱 직통: 010-6401-9345\n🌐 홈페이지: www.songdojeil.com\n📍 송도국제도시 혜인프라자 103호\n\n※ 본 매물은 '+ds+' 기준이며, 실시간 상태는 전화·문자로 확인 부탁드립니다.\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n⑧ 해시태그 8~10개 (단지명·지역·매물유형·가격대 포함)\n\n[작성 규칙]\n- 네이버 블로그 스타일, 이모지 적절히, 모바일 가독성 (2~3줄 줄바꿈)\n- 총 1,500~2,000자\n- "전환"이 목적이므로 CTA를 상단·하단에 2회 배치\n- 가격은 숫자 그대로 노출 (숨기지 말 것)\n- 과장 표현 배제, 정직하고 신뢰감 있는 톤\n- 사진 삽입 표시는 [📸 사진N 삽입 — 위치설명] 형식으로 글 흐름에 자연스럽게 배치';
+    prompt='당신은 송도 21년 차 전문가 문형은 소장(송도제일공인중개사사무소)의 공식 네이버 블로그 에디터입니다.\n\n아래 실제 매물 정보를 바탕으로 "매물 단독 포스트"를 작성하세요. 이 포스트의 목적은 "전화·카톡 상담 전환"이며, 방문자의 즉각적인 연락을 유도해야 합니다.\n\n[매물 정보]\n'+propLines.join('\n')+photoInfo+(extra?'\n\n[추가 강조] '+extra:'')+(mktFileDocs.length>0?mktFileDocs.map(function(d){return'
+[첨부 문서: '+d.name+']
+'+d.content.slice(0,1500);}).join(''):'')+(mktFileImages.length>0?'
+[첨부 이미지 '+mktFileImages.length+'장: '+mktFileImages.map(function(img){return img.name;}).join(', ')+']':'')+'\n\n[포스트 구성]\n① 제목 3개 제안 (SEO 최적화, 35자 이내)\n   - 단지명 + 면적/층 + 가격 또는 "급매" "입주가능" 등 후킹 단어 포함\n   - 예: "[급매] 송도 더샵하버뷰14 84㎡ 고층 9.5억 (2026.4월)"\n\n② 오프닝 — 이 매물의 "한 줄 매력 포인트" 1~2문장\n\n③ 매물 상세 정보 (표 형식으로 명확히)\n   ✅ 단지·동·호·층\n   ✅ 면적\n   ✅ 가격/조건\n   ✅ 방향·입주시기\n\n④ 이 매물의 강점 3~5가지 (✅ 체크리스트)\n   - 단지 경쟁력, 입지, 교통, 학군, 시세 대비 가치 등\n\n⑤ 웹검색 기반 간단한 시세 맥락 (최근 실거래가 1~2건)\n\n⑥ "이런 분께 추천합니다" 섹션 (타겟 독자 명확히)\n\n⑦ 🔥 CTA 블록 (반드시 포함, 아래 형식 그대로):\n━━━━━━━━━━━━━━━━━━━━━━━━\n📞 지금 바로 상담 문의\n━━━━━━━━━━━━━━━━━━━━━━━━\n송도제일공인중개사사무소 | 소장 문형은 (21년 경력)\n☎ 사무실: 032-851-6688\n📱 직통: 010-6401-9345\n🌐 홈페이지: www.songdojeil.com\n📍 송도국제도시 혜인프라자 103호\n\n※ 본 매물은 '+ds+' 기준이며, 실시간 상태는 전화·문자로 확인 부탁드립니다.\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n⑧ 해시태그 8~10개 (단지명·지역·매물유형·가격대 포함)\n\n[작성 규칙]\n- 네이버 블로그 스타일, 이모지 적절히, 모바일 가독성 (2~3줄 줄바꿈)\n- 총 1,500~2,000자\n- "전환"이 목적이므로 CTA를 상단·하단에 2회 배치\n- 가격은 숫자 그대로 노출 (숨기지 말 것)\n- 과장 표현 배제, 정직하고 신뢰감 있는 톤\n- 사진 삽입 표시는 [📸 사진N 삽입 — 위치설명] 형식으로 글 흐름에 자연스럽게 배치';
   }else{
     // ═══ 기존 범용 블로그 포스트 ═══
     var typeMap={'매물단독':'매물 단독 소개 (매물 미선택)','단지소개':'단지 소개 및 특징 분석','시세분석':'최근 시세 동향 및 실거래가 분석','지역이슈':'지역 개발·이슈 소식','투자분석':'투자 관점 분석 및 수익률','생활정보':'생활 인프라 및 편의시설','정책정보':'부동산 정책·규제 해설'};
-    prompt='당신은 송도 21년 차 전문가 문형은 소장(송도제일공인중개사사무소)의 공식 네이버 블로그 에디터입니다.\n\n웹검색으로 ['+kw+'] 관련 최신 정보를 수집한 뒤, 아래 조건의 블로그 글을 작성하세요.\n\n[주제] '+typeMap[type]+'\n[키워드] '+kw+(extra?'\n[추가 강조] '+extra:'')+'\n\n[블로그 글 구성]\n① 제목 2개 제안 (클릭 유도, 35자 이내)\n\n② 오프닝 — 독자에게 말 걸기 형식 😊\n\n   [📸 이미지 추천: 단지 외관 또는 지역 항공뷰]\n\n③ 핵심 내용 (이모지 + ✅ 체크리스트 또는 소제목 형식)\n\n   [📸 이미지 추천: 관련 사진 or 인포그래픽]\n\n④ 데이터 & 수치 (웹검색 기반 실거래가 또는 시세)\n\n⑤ 마무리 + 🔥 CTA 블록 (아래 형식 그대로):\n━━━━━━━━━━━━━━━━━━━━━━━━\n📞 송도 부동산 상담은 21년 경력 전문가에게\n━━━━━━━━━━━━━━━━━━━━━━━━\n송도제일공인중개사사무소 | 소장 문형은\n☎ 사무실: 032-851-6688\n📱 직통: 010-6401-9345\n🌐 홈페이지: www.songdojeil.com\n📍 송도국제도시 혜인프라자 103호\n작성일: '+ds+'\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n[작성 규칙]\n- 네이버 블로그 스타일, 이모지 풍부, 모바일 가독성 (2~3줄 줄바꿈)\n- 총 1,500~2,000자\n- 해시태그 6~8개 (끝에)\n- [📸 이미지 추천: ...] 형식으로 최적 이미지 위치 표시';
+    prompt='당신은 송도 21년 차 전문가 문형은 소장(송도제일공인중개사사무소)의 공식 네이버 블로그 에디터입니다.\n\n웹검색으로 ['+kw+'] 관련 최신 정보를 수집한 뒤, 아래 조건의 블로그 글을 작성하세요.\n\n[주제] '+typeMap[type]+'\n[키워드] '+kw+(extra?'\n[추가 강조] '+extra:'')+(mktFileDocs.length>0?mktFileDocs.map(function(d){return'
+[첨부 문서: '+d.name+']
+'+d.content.slice(0,1500);}).join(''):'')+(mktFileImages.length>0?'
+[첨부 이미지 '+mktFileImages.length+'장: '+mktFileImages.map(function(img){return img.name;}).join(', ')+']':'')+'\n\n[블로그 글 구성]\n① 제목 2개 제안 (클릭 유도, 35자 이내)\n\n② 오프닝 — 독자에게 말 걸기 형식 😊\n\n   [📸 이미지 추천: 단지 외관 또는 지역 항공뷰]\n\n③ 핵심 내용 (이모지 + ✅ 체크리스트 또는 소제목 형식)\n\n   [📸 이미지 추천: 관련 사진 or 인포그래픽]\n\n④ 데이터 & 수치 (웹검색 기반 실거래가 또는 시세)\n\n⑤ 마무리 + 🔥 CTA 블록 (아래 형식 그대로):\n━━━━━━━━━━━━━━━━━━━━━━━━\n📞 송도 부동산 상담은 21년 경력 전문가에게\n━━━━━━━━━━━━━━━━━━━━━━━━\n송도제일공인중개사사무소 | 소장 문형은\n☎ 사무실: 032-851-6688\n📱 직통: 010-6401-9345\n🌐 홈페이지: www.songdojeil.com\n📍 송도국제도시 혜인프라자 103호\n작성일: '+ds+'\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n[작성 규칙]\n- 네이버 블로그 스타일, 이모지 풍부, 모바일 가독성 (2~3줄 줄바꿈)\n- 총 1,500~2,000자\n- 해시태그 6~8개 (끝에)\n- [📸 이미지 추천: ...] 형식으로 최적 이미지 위치 표시';
   }
-  callAPI(prompt,'blog-load',null,function(txt){
-    // 표시광고 표 추가 로직
-    var adTable = generateAdTable();
-    var finalText = txt;
-    
-    if(adTable) {
-      // CTA 블록 앞에 표시광고 표 삽입
-      var ctaPattern = /━━━━━━━━━━━━━━━━━━━━━━━━[\s\S]*?📞[\s\S]*?━━━━━━━━━━━━━━━━━━━━━━━━/;
-      if(ctaPattern.test(txt)) {
-        finalText = txt.replace(ctaPattern, function(match) {
-          return adTable + '\n\n' + match;
-        });
-      } else {
-        // CTA 블록을 찾지 못한 경우 마지막에 추가
-        finalText = txt + '\n\n' + adTable;
-      }
+
+  // 이미지 첨부파일이 있으면 messages에 포함
+  var messages=[{role:'user',content:[{type:'text',text:prompt}]}];
+  if(mktFileImages.length>0){
+    mktFileImages.slice(0,10).reverse().forEach(function(img){
+      messages[0].content.unshift({type:'image',source:{type:'base64',media_type:img.mediaType,data:img.b64}});
+    });
+  }
+
+  var key=getApiKey();if(!key)return;
+  document.getElementById('blog-load').style.display='block';
+  document.getElementById('blog-res').style.display='none';
+
+  fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{
+    'Content-Type':'application/json','x-api-key':key,
+    'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'
+  },body:JSON.stringify({model:aiModel,max_tokens:3000,
+    tools:[{type:'web_search_20250305',name:'web_search'}],messages:messages})
+  }).then(function(r){if(!r.ok){return r.json().then(function(e){throw new Error(e.error&&e.error.message||r.status);});}return r.json();})
+  .then(function(d){
+    document.getElementById('blog-load').style.display='none';
+    var txt=d.content.filter(function(b){return b.type==='text';}).map(function(b){return b.text;}).join('\n').trim();
+    var adTable=generateAdTable();var finalText=txt;
+    if(adTable){
+      var ctaIdx=txt.indexOf('━━━━━━━━━━━━━━━━━━━━━━━━');
+      if(ctaIdx>=0){var ctaEnd=txt.lastIndexOf('━━━━━━━━━━━━━━━━━━━━━━━━');finalText=txt.slice(0,ctaEnd+24)+adTable+txt.slice(ctaEnd+24);}
+      else finalText=txt+'\n\n'+adTable;
     }
-    
-    document.getElementById('blog-txt').value = finalText;
-    document.getElementById('blog-char').textContent = finalText.length + '자';
-    document.getElementById('blog-res').style.display = 'block';
+    document.getElementById('blog-txt').value=finalText;
+    document.getElementById('blog-char').textContent=finalText.length+'자';
+    document.getElementById('blog-res').style.display='block';
+  }).catch(function(e){document.getElementById('blog-load').style.display='none';
+    if(e.message&&e.message.includes('401')){localStorage.removeItem('sd_api_key');alert('API 키가 올바르지 않습니다.');}
+    else alert('오류: '+e.message);
   });
 }
 
