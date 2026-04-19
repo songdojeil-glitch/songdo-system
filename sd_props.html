@@ -81,6 +81,14 @@ input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none}
 .ph-nav-btn{width:22px;height:22px;border-radius:4px;border:none;background:rgba(255,255,255,.9);color:#1a1a1a;cursor:pointer;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;padding:0;box-shadow:0 1px 3px rgba(0,0,0,.2)}
 .ph-nav-btn:hover{background:#1565c0;color:#fff}
 .ph-nav-btn:disabled{opacity:.3;cursor:not-allowed;background:rgba(255,255,255,.5)}
+/* 체크박스 선택 기능 (신규) */
+.ph-checkbox{position:absolute;top:4px;left:4px;width:18px;height:18px;background:rgba(255,255,255,.95);border:1px solid #ccc;border-radius:3px;display:none;align-items:center;justify-content:center;cursor:pointer;z-index:3;box-shadow:0 1px 3px rgba(0,0,0,.2)}
+.ph-checkbox input{display:none}
+.ph-checkbox.show{display:flex}
+.ph-checkbox.show .checkmark{width:100%;height:100%;display:flex;align-items:center;justify-content:center;border-radius:2px;transition:all .2s}
+.ph-checkbox input:checked + .checkmark{background:#1565c0;color:#fff}
+.ph-checkbox input:checked + .checkmark::after{content:'✓';font-size:12px;font-weight:700}
+.ph-item.selected{border:2px solid #1565c0;box-shadow:0 0 0 2px #e3f2fd}
 .ph-progress{height:4px;background:#e0e0e0;border-radius:2px;overflow:hidden;margin-top:8px}
 .ph-progress-bar{height:100%;background:#1565c0;width:0;transition:width .3s}
 /* 매물 리스트 썸네일 */
@@ -167,15 +175,18 @@ function applyWatermarkToCanvas(sourceCanvas, logoType, opacity) {
       const x = resultCanvas.width - logoWidth - 15;
       const y = resultCanvas.height - logoHeight - 15;
       
-      // 투명도 적용
+      // 투명도 및 블렌딩 모드 적용
       const prevAlpha = ctx.globalAlpha;
+      const prevComposite = ctx.globalCompositeOperation;
       ctx.globalAlpha = (opacity || 80) / 100;
+      ctx.globalCompositeOperation = 'source-over'; // 투명 배경 보장
       
       // 로고 그리기
       ctx.drawImage(logoImg, x, y, logoWidth, logoHeight);
       
-      // 투명도 복원
+      // 설정 복원
       ctx.globalAlpha = prevAlpha;
+      ctx.globalCompositeOperation = prevComposite;
       
       resolve(resultCanvas);
     };
@@ -681,7 +692,14 @@ window.addEventListener('load', function() {
     <div class="ph-sec">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:6px">
         <span style="font-size:13px;font-weight:500;color:#1565c0">📸 매물 사진 <span id="f-ph-cnt" style="font-size:11px;color:#666;font-weight:400">(0 / 15장)</span></span>
-        <span style="font-size:10px;color:#888">⭐ 대표 · ✕ 삭제 · ◀▶ 순서 · 드래그 이동 · 클릭 확대</span>
+        <div style="display:flex;gap:6px;align-items:center">
+          <span style="font-size:10px;color:#888">⭐ 대표 · ☑️ 선택 · ✕ 삭제 · ◀▶ 순서 · 드래그 이동</span>
+          <div id="batch-delete-controls" style="display:none;gap:4px">
+            <button onclick="toggleSelectAll()" class="btn-s" style="padding:3px 6px;font-size:10px" id="select-all-btn">전체 선택</button>
+            <button onclick="deleteSelected()" class="btn-d" style="padding:3px 6px;font-size:10px">선택 삭제</button>
+            <button onclick="deleteAllPhotos()" class="btn-d" style="padding:3px 6px;font-size:10px">전체 삭제</button>
+          </div>
+        </div>
       </div>
       <div id="f-ph-drop" class="ph-drop" onclick="document.getElementById('f-ph-file').click()">
         <div style="font-size:28px;margin-bottom:4px">📷</div>
@@ -1224,12 +1242,16 @@ function renderFormPhotos(){
   grid.innerHTML=_formPhotos.map(function(ph,i){
     var canLeft=i>0;
     var canRight=i<last;
-    return '<div class="ph-item'+(ph.star?' star':'')+'" draggable="true" data-idx="'+i+'" '
+    return '<div class="ph-item'+(ph.star?' star':'')+(ph.selected?' selected':'')+'" draggable="true" data-idx="'+i+'" '
       +'ondragstart="phDragStart(event,'+i+')" '
       +'ondragover="phDragOver(event,'+i+')" '
       +'ondragleave="phDragLeave(event)" '
       +'ondrop="phDrop(event,'+i+')" '
       +'ondragend="phDragEnd(event)">'
+      +'<div class="ph-checkbox'+(window.batchMode?' show':'')+'" onclick="togglePhotoSelect('+i+')">'
+      +'<input type="checkbox" id="ph-cb-'+i+'" '+(ph.selected?'checked':'')+' />'
+      +'<span class="checkmark"></span>'
+      +'</div>'
       +(ph.star?'<div class="ph-star-badge">⭐ 대표</div>':'')
       +'<div class="ph-order-badge">'+(i+1)+'</div>'
       +'<img src="'+ph.thumbUrl+'" onclick="openLightbox('+i+')" alt="사진'+(i+1)+'" draggable="false">'
@@ -3235,6 +3257,145 @@ function cpKakao(){
     setTimeout(function(){b.textContent=o;b.style.background='#fee500';b.style.color='#1a1a1a';},3000);
   });
 }
+
+// ═══ 사진 일괄 삭제 기능 ═══
+window.batchMode = false;
+
+function toggleBatchMode() {
+  window.batchMode = !window.batchMode;
+  var controls = document.getElementById('batch-delete-controls');
+  controls.style.display = window.batchMode ? 'flex' : 'none';
+  
+  // 체크박스 표시/숨기기
+  renderPhotos();
+  
+  // 전체 선택 초기화
+  if (!window.batchMode) {
+    _formPhotos.forEach(function(ph) { delete ph.selected; });
+    renderPhotos();
+  }
+}
+
+function togglePhotoSelect(idx) {
+  if (!window.batchMode) {
+    toggleBatchMode(); // 자동으로 배치 모드 활성화
+  }
+  
+  _formPhotos[idx].selected = !_formPhotos[idx].selected;
+  renderPhotos();
+  updateBatchControls();
+}
+
+function toggleSelectAll() {
+  var btn = document.getElementById('select-all-btn');
+  var allSelected = _formPhotos.every(function(ph) { return ph.selected; });
+  
+  _formPhotos.forEach(function(ph) { 
+    ph.selected = !allSelected; 
+  });
+  
+  btn.textContent = allSelected ? '전체 선택' : '전체 해제';
+  renderPhotos();
+}
+
+function updateBatchControls() {
+  var selectedCount = _formPhotos.filter(function(ph) { return ph.selected; }).length;
+  var btn = document.getElementById('select-all-btn');
+  
+  if (selectedCount === 0) {
+    btn.textContent = '전체 선택';
+  } else if (selectedCount === _formPhotos.length) {
+    btn.textContent = '전체 해제';
+  } else {
+    btn.textContent = '전체 선택';
+  }
+}
+
+function deleteSelected() {
+  var selectedIndices = [];
+  _formPhotos.forEach(function(ph, idx) {
+    if (ph.selected) selectedIndices.push(idx);
+  });
+  
+  if (selectedIndices.length === 0) {
+    alert('삭제할 사진을 선택해주세요.');
+    return;
+  }
+  
+  if (confirm(selectedIndices.length + '장의 사진을 삭제하시겠습니까?')) {
+    // 뒤에서부터 삭제 (인덱스 변경 방지)
+    for (var i = selectedIndices.length - 1; i >= 0; i--) {
+      _formPhotos.splice(selectedIndices[i], 1);
+    }
+    
+    renderPhotos();
+    toggleBatchMode(); // 배치 모드 종료
+  }
+}
+
+function deleteAllPhotos() {
+  if (_formPhotos.length === 0) {
+    alert('삭제할 사진이 없습니다.');
+    return;
+  }
+  
+  if (confirm('모든 사진(' + _formPhotos.length + '장)을 삭제하시겠습니까?')) {
+    _formPhotos = [];
+    renderPhotos();
+    if (window.batchMode) toggleBatchMode(); // 배치 모드 종료
+  }
+}
+
+// 렌더링 시 배치 컨트롤 표시/숨기기
+function updatePhotoUIControls() {
+  var controls = document.getElementById('batch-delete-controls');
+  controls.style.display = _formPhotos.length > 0 ? 'flex' : 'none';
+}
+
+// 기존 renderPhotos 함수 수정 - 끝에 컨트롤 업데이트 추가
+var originalRenderPhotos = window.renderPhotos;
+window.renderPhotos = function() {
+  var cnt = document.getElementById('f-ph-cnt');
+  var grid = document.getElementById('f-ph-grid');
+  cnt.textContent = '(' + _formPhotos.length + ' / ' + PH_MAX + '장)';
+  
+  if (!_formPhotos.length) {
+    grid.innerHTML = '';
+    updatePhotoUIControls();
+    return;
+  }
+  
+  var last = _formPhotos.length - 1;
+  grid.innerHTML = _formPhotos.map(function(ph, i) {
+    var canLeft = i > 0;
+    var canRight = i < last;
+    return '<div class="ph-item' + (ph.star ? ' star' : '') + (ph.selected ? ' selected' : '') + '" draggable="true" data-idx="' + i + '" ' +
+      'ondragstart="phDragStart(event,' + i + ')" ' +
+      'ondragover="phDragOver(event,' + i + ')" ' +
+      'ondragleave="phDragLeave(event)" ' +
+      'ondrop="phDrop(event,' + i + ')" ' +
+      'ondragend="phDragEnd(event)">' +
+      '<div class="ph-checkbox' + (window.batchMode ? ' show' : '') + '" onclick="togglePhotoSelect(' + i + ')">' +
+      '<input type="checkbox" id="ph-cb-' + i + '" ' + (ph.selected ? 'checked' : '') + ' />' +
+      '<span class="checkmark"></span>' +
+      '</div>' +
+      (ph.star ? '<div class="ph-star-badge">⭐ 대표</div>' : '') +
+      '<div class="ph-order-badge">' + (i + 1) + '</div>' +
+      '<img src="' + ph.thumbUrl + '" onclick="openLightbox(' + i + ')" alt="사진' + (i + 1) + '" draggable="false">' +
+      '<div class="ph-actions">' +
+      '<button class="ph-btn' + (ph.star ? ' star-on' : '') + '" title="대표사진 지정" onclick="setStarPhoto(' + i + ')">⭐</button>' +
+      '<button class="ph-btn" title="삭제" onclick="removeFormPhoto(' + i + ')">✕</button>' +
+      '</div>' +
+      '<div class="ph-nav">' +
+      '<button class="ph-nav-btn" title="앞으로 이동" onclick="movePhoto(' + i + ',-1)"' + (canLeft ? '' : ' disabled') + '>◀</button>' +
+      '<button class="ph-nav-btn" title="뒤로 이동" onclick="movePhoto(' + i + ',1)"' + (canRight ? '' : ' disabled') + '>▶</button>' +
+      '</div>' +
+      '</div>';
+  }).join('');
+  
+  updatePhotoUIControls();
+  if (window.batchMode) updateBatchControls();
+};
 
 </script>
 </body>
