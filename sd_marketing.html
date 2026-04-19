@@ -244,10 +244,10 @@ body{font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif;background:#f7
       <textarea id="blog-extra" rows="3" class="fi" style="resize:vertical" placeholder="예: 최근 실거래가 언급, 학군 강조, 투자 수익률 분석 등 블로그에 반드시 포함할 내용"></textarea>
     </div>
     <div style="margin-bottom:10px">
-      <label class="fl">파일 첨부 <span style="font-size:11px;color:#aaa">문서(TXT·DOCX·PDF) 최대 3개 · 이미지 최대 10개</span></label>
+      <label class="fl">파일 첨부 <span style="font-size:11px;color:#aaa">문서(TXT·DOCX·PDF·XLSX) 최대 3개 · 이미지 최대 10개</span></label>
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px">
         <label class="btn-s" style="cursor:pointer;font-size:11px;padding:5px 10px">
-          📄 문서 추가 <input type="file" id="blog-doc-file" accept=".txt,.docx,.pdf" multiple style="display:none" onchange="onMktDocAdd(event)">
+          📄 문서 추가 <input type="file" id="blog-doc-file" accept=".txt,.docx,.pdf,.xlsx,.xls" multiple style="display:none" onchange="onMktDocAdd(event)">
         </label>
         <label class="btn-s" style="cursor:pointer;font-size:11px;padding:5px 10px">
           🖼️ 이미지 추가 <input type="file" id="blog-img-file" accept="image/*" multiple style="display:none" onchange="onMktImgAdd(event)">
@@ -1081,6 +1081,30 @@ function readAttachFile(file, cb){
       }).catch(function(err){
         cb({type:'text',content:'[PDF 추출 오류: '+err.message+']',name:file.name});
       });
+    };
+    reader.readAsArrayBuffer(file);
+  }
+  // Excel → SheetJS
+  else if(ext==='xlsx'||ext==='xls'){
+    if(typeof XLSX==='undefined'){cb({type:'text',content:'[SheetJS 로드 실패 - 페이지 새로고침 후 재시도]',name:file.name});return;}
+    var reader=new FileReader();
+    reader.onload=function(e){
+      try{
+        var wb=XLSX.read(e.target.result,{type:'array'});
+        var lines=[];
+        wb.SheetNames.forEach(function(sheetName){
+          var ws=wb.Sheets[sheetName];
+          var csv=XLSX.utils.sheet_to_csv(ws,{blankrows:false});
+          var rows=csv.split('\n').filter(function(r){return r.replace(/,/g,'').trim();}).slice(0,200);
+          if(rows.length){
+            lines.push('[시트: '+sheetName+']');
+            lines=lines.concat(rows);
+          }
+        });
+        cb({type:'text',content:lines.join('\n'),name:file.name});
+      }catch(err){
+        cb({type:'text',content:'[Excel 추출 오류: '+err.message+']',name:file.name});
+      }
     };
     reader.readAsArrayBuffer(file);
   }
