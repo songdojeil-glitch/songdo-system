@@ -1945,6 +1945,55 @@ function genSNS(){
 }
 
 // ─ TAB5 디지털 명함
+// ─ 명함 설정 저장/불러오기 (localStorage)
+var CARD_STORE_KEY = 'sd_card_settings';
+
+function saveCardSettings(){
+  var fields = ['bc-name','bc-title','bc-company','bc-mobile','bc-office','bc-fax',
+    'bc-email','bc-addr','bc-web','bc-blog','bc-yt','bc-promo1','bc-promo2',
+    'bc-career1','bc-career2','bc-career3','bc-career4','bc-career5','bc-career6',
+    'bc-kakao','bc-kakao-chat'];
+  var data = {};
+  fields.forEach(function(id){
+    var el = document.getElementById(id);
+    if(el) data[id] = el.value;
+  });
+  // 사진/로고 base64도 저장
+  if(_cardPhotoB64) data['_photo'] = _cardPhotoB64;
+  if(_cardLogoB64)  data['_logo']  = _cardLogoB64;
+  try{ localStorage.setItem(CARD_STORE_KEY, JSON.stringify(data)); }
+  catch(e){ console.warn('명함 설정 저장 실패:', e); }
+}
+
+function loadCardSettings(){
+  try{
+    var raw = localStorage.getItem(CARD_STORE_KEY);
+    if(!raw) return;
+    var data = JSON.parse(raw);
+    Object.keys(data).forEach(function(id){
+      if(id==='_photo'){
+        _cardPhotoB64 = data[id];
+        var img = document.getElementById('bc-photo-img');
+        var prev = document.getElementById('bc-photo-preview');
+        var ph = document.getElementById('bc-photo-placeholder');
+        if(img&&prev&&ph){ img.src=_cardPhotoB64; prev.style.display='block'; ph.style.display='none'; }
+      } else if(id==='_logo'){
+        _cardLogoB64 = data[id];
+        var limg = document.getElementById('bc-logo-img');
+        var lprev = document.getElementById('bc-logo-preview');
+        var lph = document.getElementById('bc-logo-placeholder');
+        if(limg&&lprev&&lph){ limg.src=_cardLogoB64; lprev.style.display='block'; lph.style.display='none'; }
+      } else {
+        var el = document.getElementById(id);
+        if(el) el.value = data[id];
+      }
+    });
+    // 카카오 채널 ID 표시 업데이트
+    var kakaoUrl = document.getElementById('bc-kakao');
+    if(kakaoUrl && kakaoUrl.value) autoFillKakaoChat();
+  }catch(e){ console.warn('명함 설정 불러오기 실패:', e); }
+}
+
 // ─ 명함 관련 변수
 var _cardPhotoB64 = null;
 var _cardLogoB64  = null;
@@ -1957,6 +2006,7 @@ function onCardPhotoUpload(e){
     document.getElementById('bc-photo-img').src=_cardPhotoB64;
     document.getElementById('bc-photo-preview').style.display='block';
     document.getElementById('bc-photo-placeholder').style.display='none';
+    saveCardSettings();
   };
   reader.readAsDataURL(file);
 }
@@ -1969,6 +2019,7 @@ function onCardLogoUpload(e){
     document.getElementById('bc-logo-img').src=_cardLogoB64;
     document.getElementById('bc-logo-preview').style.display='block';
     document.getElementById('bc-logo-placeholder').style.display='none';
+    saveCardSettings();
   };
   reader.readAsDataURL(file);
 }
@@ -2190,8 +2241,8 @@ function renderCard(){
     ctx.lineTo(0,r);ctx.quadraticCurveTo(0,0,r,0);
     ctx.closePath();ctx.fill();
 
-    // ── 상단 네이비 헤더 (로고+사진 공간 80px)
-    var headerH = 90;
+    // ── 상단 네이비 헤더 (패턴만, 로고 없음)
+    var headerH = 16; // 얇은 상단 바만
     ctx.fillStyle = C.navy;
     ctx.beginPath();
     ctx.moveTo(r,0);ctx.lineTo(W-r,0);ctx.quadraticCurveTo(W,0,W,r);
@@ -2199,13 +2250,28 @@ function renderCard(){
     ctx.quadraticCurveTo(0,0,r,0);ctx.closePath();ctx.fill();
     drawNavyPattern(0, 0, W, headerH);
 
-    // ── 사진 + 로고 배치 (헤더에 걸침)
-    var photoR   = 66;
-    var photoCY  = headerH + photoR + 14;
+    // ── 사진 + 로고 나란히 배치
+    var photoR  = 66;
+    var photoCY = headerH + photoR + 20; // 헤더 아래 시작
 
-    // 로고가 있으면: 사진 오른쪽 편중, 로고 왼쪽
+    // 로고가 있으면: 사진 우측 편중 + 로고 사진 왼쪽 수직 중앙
     // 로고 없으면: 사진 중앙
-    var photoCX = logoImg ? Math.round(W * 0.62) : W/2;
+    var photoCX = logoImg ? Math.round(W * 0.63) : W/2;
+
+    // ── 로고 (사진 왼쪽 영역 중앙에 배치)
+    if(logoImg){
+      var logoAreaX = 10;
+      var logoAreaW = photoCX - photoR - 20; // 사진 왼쪽 가장자리까지
+      var logoMaxW  = logoAreaW - 16;
+      var logoMaxH  = photoR * 1.6;          // 사진 높이의 80%
+      var lw = logoImg.width, lh = logoImg.height;
+      var ls = Math.min(logoMaxW/lw, logoMaxH/lh, 1);
+      var lW = lw*ls, lH = lh*ls;
+      // 수직 중앙 정렬 (사진 원 기준)
+      var lX = logoAreaX + (logoAreaW - lW)/2;
+      var lY = photoCY - lH/2;
+      ctx.drawImage(logoImg, lX, lY, lW, lH);
+    }
 
     // 사진 그리기
     if(photoImg){
@@ -2703,8 +2769,19 @@ async function initAll(){
   await fromStoreCal();
   refreshHub();
   setSNSType('네이버블로그');
+  // 저장된 명함 설정 불러오기
+  loadCardSettings();
   renderCard();
   applyAIConfigUI();
+  // 명함 입력 필드 변경 시 자동 저장
+  var cardFields = ['bc-name','bc-title','bc-company','bc-mobile','bc-office','bc-fax',
+    'bc-email','bc-addr','bc-web','bc-blog','bc-yt','bc-promo1','bc-promo2',
+    'bc-career1','bc-career2','bc-career3','bc-career4','bc-career5','bc-career6',
+    'bc-kakao','bc-kakao-chat'];
+  cardFields.forEach(function(id){
+    var el = document.getElementById(id);
+    if(el) el.addEventListener('input', function(){ saveCardSettings(); });
+  });
 }
 initAll();
 </script>
