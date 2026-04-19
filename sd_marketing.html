@@ -2231,7 +2231,7 @@ function renderCard(){
   }
 
   function drawCard(qrImg, photoImg, logoImg){
-    // ── 흰 배경 (둥근 모서리)
+    // ── 흰 배경
     ctx.fillStyle = C.bg;
     var r=20;
     ctx.beginPath();
@@ -2241,44 +2241,37 @@ function renderCard(){
     ctx.lineTo(0,r);ctx.quadraticCurveTo(0,0,r,0);
     ctx.closePath();ctx.fill();
 
-    // ── 상단 네이비 헤더 (패턴만, 로고 없음)
-    var headerH = 16; // 얇은 상단 바만
+    // fix1: 상단 헤더 잘림 방지 — r보다 크게
+    var headerH = Math.max(r+2, 22);
     ctx.fillStyle = C.navy;
     ctx.beginPath();
     ctx.moveTo(r,0);ctx.lineTo(W-r,0);ctx.quadraticCurveTo(W,0,W,r);
     ctx.lineTo(W,headerH);ctx.lineTo(0,headerH);ctx.lineTo(0,r);
     ctx.quadraticCurveTo(0,0,r,0);ctx.closePath();ctx.fill();
-    drawNavyPattern(0, 0, W, headerH);
+    drawNavyPattern(0,0,W,headerH);
 
-    // ── 사진 + 로고 나란히 배치
-    var photoR  = 66;
-    var photoCY = headerH + photoR + 20; // 헤더 아래 시작
+    // fix3: 사진 10% 크게 + 우측 이동
+    var photoR  = Math.round(66*1.10);           // 66 → 73
+    var photoCX = logoImg ? Math.round(W*0.67) : W/2;
+    var photoCY = headerH + photoR + 18;
 
-    // 로고가 있으면: 사진 우측 편중 + 로고 사진 왼쪽 수직 중앙
-    // 로고 없으면: 사진 중앙
-    var photoCX = logoImg ? Math.round(W * 0.63) : W/2;
-
-    // ── 로고 (사진 왼쪽 영역 중앙에 배치)
+    // fix2: 로고 25% 크게, 사진 왼쪽 수직 중앙
     if(logoImg){
-      var logoAreaX = 10;
-      var logoAreaW = photoCX - photoR - 20; // 사진 왼쪽 가장자리까지
-      var logoMaxW  = logoAreaW - 16;
-      var logoMaxH  = photoR * 1.6;          // 사진 높이의 80%
-      var lw = logoImg.width, lh = logoImg.height;
-      var ls = Math.min(logoMaxW/lw, logoMaxH/lh, 1);
-      var lW = lw*ls, lH = lh*ls;
-      // 수직 중앙 정렬 (사진 원 기준)
-      var lX = logoAreaX + (logoAreaW - lW)/2;
-      var lY = photoCY - lH/2;
-      ctx.drawImage(logoImg, lX, lY, lW, lH);
+      var logoAreaW = photoCX - photoR - 14;
+      var logoMaxW  = logoAreaW * 1.25;
+      var logoMaxH  = photoR * 2.0;
+      var lw=logoImg.width, lh=logoImg.height;
+      var ls=Math.min(logoMaxW/lw, logoMaxH/lh, 1.5);
+      var lW=lw*ls, lH=lh*ls;
+      var lX=8+(logoAreaW-lW)/2;
+      var lY=photoCY-lH/2;
+      ctx.drawImage(logoImg,lX,lY,lW,lH);
     }
 
-    // 사진 그리기
+    // 사진
     if(photoImg){
-      // 흰 테두리
       ctx.fillStyle='#ffffff';
       ctx.beginPath();ctx.arc(photoCX,photoCY,photoR+5,0,Math.PI*2);ctx.fill();
-      // 회색 테두리 (요청 3)
       ctx.fillStyle='#aaaaaa';
       ctx.beginPath();ctx.arc(photoCX,photoCY,photoR+3,0,Math.PI*2);ctx.fill();
       ctx.save();
@@ -2291,134 +2284,128 @@ function renderCard(){
       ctx.fillStyle='#cccccc';
       ctx.beginPath();ctx.arc(photoCX,photoCY,photoR,0,Math.PI*2);ctx.fill();
       ctx.fillStyle=C.lgray;ctx.font='48px sans-serif';ctx.textAlign='center';
-      ctx.fillText('👤',photoCX,photoCY+16);
+      ctx.fillText('\uD83D\uDC64',photoCX,photoCY+16);
     }
 
-    // 로고 (사진 왼쪽, 헤더 내 수직 중앙)
-    if(logoImg){
-      var logoMaxW = 140, logoMaxH = 72;
-      var lw = logoImg.width, lh = logoImg.height;
-      var ls = Math.min(logoMaxW/lw, logoMaxH/lh);
-      var lW = lw*ls, lH = lh*ls;
-      var lX = 20 + (photoCX - photoR - 20 - lW)/2 + 20;
-      var lY = (headerH - lH)/2;
-      ctx.drawImage(logoImg, lX, lY, lW, lH);
-    }
-
-    // ── 이름 (요청 2: 크기 축소 + 간격)
+    // 이름
     var nameY = photoCY + photoR + 20;
-    ctx.fillStyle = C.navy;
-    ctx.font = 'bold 24px "Apple SD Gothic Neo","Noto Sans KR",sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText(name, W/2, nameY);
+    ctx.fillStyle=C.navy;
+    ctx.font='bold 24px "Apple SD Gothic Neo","Noto Sans KR",sans-serif';
+    ctx.textAlign='center';
+    ctx.fillText(name,W/2,nameY);
+    ctx.fillStyle=C.accent;
+    ctx.font='bold 13px "Apple SD Gothic Neo","Noto Sans KR",sans-serif';
+    ctx.fillText(title,W/2,nameY+22);
 
-    // 직함 (레드 포인트)
-    ctx.fillStyle = C.accent;
-    ctx.font = 'bold 13px "Apple SD Gothic Neo","Noto Sans KR",sans-serif';
-    ctx.fillText(title, W/2, nameY+22);
-
-    // ── 구분선 1
-    var div1Y = nameY + 42;
-    ctx.strokeStyle = C.divider; ctx.lineWidth=1;
+    // 구분선 1
+    var div1Y=nameY+42;
+    ctx.strokeStyle=C.divider;ctx.lineWidth=1;
     ctx.beginPath();ctx.moveTo(30,div1Y);ctx.lineTo(W-30,div1Y);ctx.stroke();
 
-    // ── 연락처 (요청 4: 크기 키우고 선명하게, 아이콘/레이블/값 정렬)
-    var infoY = div1Y + 20;
-    var iconX=34, labelW=68, valX=iconX+22+labelW;
-    var lineH=30;
+    // fix7: QR을 연락처 우측 컬럼에 배치
+    var qrS    = 72;  // 기존 80의 90%
+    var iconX  = 34, valX = 34+22+68;
+    var lineH  = 30;
+    var qrColX, infoMaxW;
+    if(qrImg){
+      qrColX   = W - qrS - 16;
+      infoMaxW = qrColX - valX - 10;
+    } else {
+      infoMaxW = W - valX - 20;
+    }
 
     var contacts=[];
-    if(mobile) contacts.push({icon:'📱',label:'Mobile',val:mobile,bold:true});
-    if(office) contacts.push({icon:'☎', label:'Tel',   val:office,bold:false});
-    if(fax)    contacts.push({icon:'📠',label:'Fax',   val:fax,   bold:false});
-    if(email)  contacts.push({icon:'✉️',label:'E-mail',val:email, bold:false});
-    if(addr)   contacts.push({icon:'📍',label:'Address',val:addr, bold:false});
-    if(web)    contacts.push({icon:'🌐',label:'Web',   val:web,   bold:false});
+    if(mobile) contacts.push({icon:'\uD83D\uDCF1',label:'Mobile',val:mobile,bold:true});
+    if(office) contacts.push({icon:'\u260E', label:'Tel',    val:office,bold:false});
+    if(fax)    contacts.push({icon:'\uD83D\uDCE0',label:'Fax',    val:fax,   bold:false});
+    if(email)  contacts.push({icon:'\u2709\uFE0F',label:'E-mail', val:email, bold:false});
+    if(addr)   contacts.push({icon:'\uD83D\uDCCD',label:'Address',val:addr,  bold:false,wrap:true});
+    if(web)    contacts.push({icon:'\uD83C\uDF10',label:'Web',    val:web,   bold:false});
 
-    contacts.forEach(function(c,ci){
-      var y = infoY + ci*lineH;
-      // 아이콘
+    var infoY=div1Y+20;
+    var curY=infoY;
+
+    contacts.forEach(function(c){
       ctx.font='14px sans-serif';ctx.textAlign='left';
-      ctx.fillStyle=C.gray;ctx.fillText(c.icon,iconX,y);
-      // 레이블 (블루, bold)
+      ctx.fillStyle=C.gray;ctx.fillText(c.icon,iconX,curY);
       ctx.fillStyle=C.blue;
       ctx.font='bold 12px "Apple SD Gothic Neo","Noto Sans KR",sans-serif';
-      ctx.fillText(c.label,iconX+22,y-1);
-      // 값 (선명하게, 요청 4)
-      ctx.fillStyle = c.bold ? C.navy : C.gray;
-      ctx.font = (c.bold?'bold ':'')+'14px "Apple SD Gothic Neo","Noto Sans KR",sans-serif';
-      // 주소 줄바꿈 처리
-      if(c.label==='Address' && ctx.measureText(c.val).width > W-valX-20){
-        var addrParts = c.val.split(',');
-        if(addrParts.length>1){
-          ctx.fillText(addrParts[0]+',', valX, y-1);
-          ctx.fillText(addrParts.slice(1).join(',').trim(), valX, y+15);
-        } else { wrapText(c.val, valX, y-1, W-valX-20, 15); }
+      ctx.fillText(c.label,iconX+22,curY-1);
+      ctx.fillStyle=c.bold?C.navy:C.gray;
+      ctx.font=(c.bold?'bold ':'')+'14px "Apple SD Gothic Neo","Noto Sans KR",sans-serif';
+      // fix4: 주소 2줄 처리 후 curY 누적
+      if(c.wrap && ctx.measureText(c.val).width > infoMaxW){
+        var parts=c.val.split(',');
+        if(parts.length>1){
+          ctx.fillText(parts[0]+',',valX,curY-1);
+          curY+=16;
+          ctx.fillText(parts.slice(1).join(',').trim(),valX,curY);
+          curY+=lineH+4; // 주소 2줄 후 Web과 간격
+        } else {
+          ctx.fillText(c.val,valX,curY);
+          curY+=lineH;
+        }
       } else {
-        ctx.fillText(c.val, valX, y);
+        ctx.fillText(c.val,valX,curY);
+        curY+=lineH;
       }
     });
 
-    var afterInfo = infoY + contacts.length * lineH + (addr?12:0) + 8;
+    // QR — 연락처 첫 줄(Mobile) 우측, 수직 중앙
+    if(qrImg){
+      var qrY=infoY-8;
+      ctx.fillStyle='#f8f8f8';
+      ctx.beginPath();ctx.roundRect(qrColX-6,qrY-6,qrS+12,qrS+22,8);ctx.fill();
+      ctx.strokeStyle='#e0e0e0';ctx.lineWidth=1;
+      ctx.beginPath();ctx.roundRect(qrColX-6,qrY-6,qrS+12,qrS+22,8);ctx.stroke();
+      ctx.drawImage(qrImg,qrColX,qrY,qrS,qrS);
+      ctx.fillStyle=C.lgray;
+      ctx.font='9px sans-serif';ctx.textAlign='center';
+      ctx.fillText('카카오 채팅',qrColX+qrS/2,qrY+qrS+13);
+    }
 
-    // ── 구분선 2
+    var afterInfo=curY+6;
+
+    // 구분선 2
     ctx.strokeStyle=C.divider;ctx.lineWidth=1;
     ctx.beginPath();ctx.moveTo(30,afterInfo);ctx.lineTo(W-30,afterInfo);ctx.stroke();
 
-    // ── 홍보문구 1 (요청 5: 돋보이게)
-    var p1Y = afterInfo + 22;
+    // fix5: 홍보문구1 — 경력과 간격 확보
+    var p1Y=afterInfo+24;
     if(promo1){
-      // 배경 강조박스
       ctx.fillStyle='#f0f4ff';
-      ctx.beginPath();ctx.roundRect(26,p1Y-18,W-52,30,8);ctx.fill();
+      ctx.beginPath();ctx.roundRect(26,p1Y-18,W-52,32,8);ctx.fill();
       ctx.strokeStyle='#c5d5f5';ctx.lineWidth=1;
-      ctx.beginPath();ctx.roundRect(26,p1Y-18,W-52,30,8);ctx.stroke();
+      ctx.beginPath();ctx.roundRect(26,p1Y-18,W-52,32,8);ctx.stroke();
       ctx.fillStyle=C.navy;
       ctx.font='bold 14px "Apple SD Gothic Neo","Noto Sans KR",sans-serif';
       ctx.textAlign='center';
-      ctx.fillText(promo1, W/2, p1Y);
-      p1Y += 20;
+      ctx.fillText(promo1,W/2,p1Y);
+      p1Y+=36; // fix5: 충분한 간격
     }
 
-    // ── 경력 태그 (요청 6: 연회색 배경 + 흰 글씨)
+    // fix6: 경력 태그 — 파란색 배경
     if(careers.length>0){
-      var tagX=30, tagY=p1Y+14;
-      var tagH=26, tagPadX=14, tagMargin=8;
+      var tagX=30,tagY=p1Y+6;
+      var tagH=26,tagPadX=14,tagMarginX=8,tagMarginY=10;
       ctx.font='12px "Apple SD Gothic Neo","Noto Sans KR",sans-serif';
       careers.forEach(function(career){
         var tw=ctx.measureText(career).width+tagPadX*2;
-        if(tagX+tw>W-30){tagX=30;tagY+=tagH+tagMargin;}
-        ctx.fillStyle=C.tagBg;
+        if(tagX+tw>W-30){tagX=30;tagY+=tagH+tagMarginY;}
+        ctx.fillStyle='#1565c0'; // fix6: 파란색
         ctx.beginPath();ctx.roundRect(tagX,tagY-18,tw,tagH,13);ctx.fill();
-        ctx.fillStyle=C.tagTxt;
+        ctx.fillStyle='#ffffff';
         ctx.textAlign='left';
         ctx.fillText(career,tagX+tagPadX,tagY);
-        tagX+=tw+tagMargin;
+        tagX+=tw+tagMarginX;
       });
-      p1Y = tagY + tagH + 6;
+      p1Y=tagY+tagH+10;
     }
 
-    // ── QR코드 (요청 8: 소형화 — 우측 배치, 작게)
-    var qrS = 80;
-    var qrY = p1Y + 10;
-    if(qrImg){
-      var qrX = W - qrS - 24;
-      // QR 흰 배경
-      ctx.fillStyle='#f8f8f8';
-      ctx.beginPath();ctx.roundRect(qrX-6,qrY-6,qrS+12,qrS+22,8);ctx.fill();
-      ctx.strokeStyle='#e0e0e0';ctx.lineWidth=1;
-      ctx.beginPath();ctx.roundRect(qrX-6,qrY-6,qrS+12,qrS+22,8);ctx.stroke();
-      ctx.drawImage(qrImg,qrX,qrY,qrS,qrS);
-      ctx.fillStyle=C.lgray;
-      ctx.font='9px sans-serif';ctx.textAlign='center';
-      ctx.fillText('카카오 채팅',qrX+qrS/2,qrY+qrS+12);
-    }
-
-    // ── 하단 슬로건 (요청 5+6: 고급스럽게, 음영 패턴)
+    // 하단 슬로건
     if(promo2){
       var sloganH=54;
       var sloganY=H-sloganH;
-      // 네이비 배경
       ctx.fillStyle=C.navy;
       ctx.beginPath();
       ctx.moveTo(0,sloganY);ctx.lineTo(W,sloganY);
@@ -2426,13 +2413,13 @@ function renderCard(){
       ctx.lineTo(r,H);ctx.quadraticCurveTo(0,H,0,H-r);
       ctx.lineTo(0,sloganY);ctx.closePath();ctx.fill();
       drawNavyPattern(0,sloganY,W,sloganH);
-      // 슬로건 텍스트
       ctx.fillStyle='#ffffff';
       ctx.font='bold 13px "Apple SD Gothic Neo","Noto Sans KR",sans-serif';
       ctx.textAlign='center';
-      ctx.fillText(promo2, W/2, sloganY+sloganH/2+5);
+      ctx.fillText(promo2,W/2,sloganY+sloganH/2+5);
     }
   }
+
 
   // ── 이미지 로드 후 그리기 (사진+QR+로고)
   var loaded=0;
