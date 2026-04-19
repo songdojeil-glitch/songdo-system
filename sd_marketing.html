@@ -2251,17 +2251,17 @@ function renderCard(){
     drawNavyPattern(0,0,W,headerH);
 
     // fix3: 사진 10% 크게 + 우측 이동
-    var photoR  = Math.round(66*1.10);           // 66 → 73
+    var photoR  = Math.round(66*1.21);           // 66 → 80 (10% 추가)
     var photoCX = logoImg ? Math.round(W*0.67) : W/2;
-    var photoCY = headerH + photoR + 18;
+    var photoCY = headerH + photoR + 28;
 
     // fix2: 로고 25% 크게, 사진 왼쪽 수직 중앙
     if(logoImg){
       var logoAreaW = photoCX - photoR - 14;
-      var logoMaxW  = logoAreaW * 1.25;
+      var logoMaxW  = logoAreaW * 1.5;
       var logoMaxH  = photoR * 2.0;
       var lw=logoImg.width, lh=logoImg.height;
-      var ls=Math.min(logoMaxW/lw, logoMaxH/lh, 1.5);
+      var ls=Math.min(logoMaxW/lw, logoMaxH/lh, 1.8);
       var lW=lw*ls, lH=lh*ls;
       var lX=8+(logoAreaW-lW)/2;
       var lY=photoCY-lH/2;
@@ -2308,7 +2308,7 @@ function renderCard(){
     var lineH  = 30;
     var qrColX, infoMaxW;
     if(qrImg){
-      qrColX   = W - qrS - 16;
+      qrColX   = W - qrS - 36;
       infoMaxW = qrColX - valX - 10;
     } else {
       infoMaxW = W - valX - 20;
@@ -2489,16 +2489,65 @@ function dlCardImage(){
 function cpCardTxt(){
   var txt = document.getElementById('card-txt-area').value;
   if(!txt){ alert('먼저 명함을 생성해 주세요.'); return; }
+
+  // 클립보드 API 시도 (PC/모바일 공통)
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(txt).then(function(){
+      // 성공 토스트 표시
+      var toast=document.createElement('div');
+      toast.textContent='✅ 문자 명함이 복사됐습니다! 카카오톡에 붙여넣기 하세요.';
+      toast.style.cssText='position:fixed;bottom:30px;left:50%;transform:translateX(-50%);background:#1a2744;color:#fff;padding:12px 20px;border-radius:24px;font-size:13px;z-index:9999;box-shadow:0 4px 16px rgba(0,0,0,.3);white-space:nowrap';
+      document.body.appendChild(toast);
+      setTimeout(function(){document.body.removeChild(toast);},2500);
+    }).catch(function(){ cpCardTxtFallback(txt); });
+  } else {
+    cpCardTxtFallback(txt);
+  }
+}
+
+// 클립보드 API 미지원 시 팝업 폴백
+function cpCardTxtFallback(txt){
   var ov=document.createElement('div');
   ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
   var box=document.createElement('div');
   box.style.cssText='background:#fff;border-radius:12px;padding:20px;max-width:480px;width:100%;display:flex;flex-direction:column;gap:12px';
-  box.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center"><span style="font-size:14px;font-weight:600">📋 문자 명함 복사</span><button id="cptxt-close" style="border:none;background:transparent;font-size:20px;cursor:pointer">✕</button></div><p style="font-size:12px;color:#666;margin:0">Ctrl+A → Ctrl+C 로 복사 후 카카오톡에 붙여넣기</p>';
+  var header=document.createElement('div');
+  header.style.cssText='display:flex;justify-content:space-between;align-items:center';
+  var title=document.createElement('span');
+  title.textContent='📋 문자 명함 복사';
+  title.style.cssText='font-size:14px;font-weight:600';
+  var btnRow=document.createElement('div');
+  btnRow.style.cssText='display:flex;gap:8px;align-items:center';
+  // 복사 버튼
+  var cpBtn=document.createElement('button');
+  cpBtn.textContent='📋 복사';
+  cpBtn.style.cssText='background:#1a2744;color:#fff;border:none;padding:6px 14px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer';
+  // 닫기 버튼
+  var closeBtn=document.createElement('button');
+  closeBtn.textContent='✕';
+  closeBtn.style.cssText='border:none;background:transparent;font-size:20px;cursor:pointer;color:#888';
+  btnRow.appendChild(cpBtn);btnRow.appendChild(closeBtn);
+  header.appendChild(title);header.appendChild(btnRow);
+  var hint=document.createElement('p');
+  hint.textContent='아래 텍스트가 전체 선택됩니다. 📋 복사 버튼을 누르세요.';
+  hint.style.cssText='font-size:12px;color:#666;margin:0';
   var ta=document.createElement('textarea');
-  ta.value=txt; ta.style.cssText='width:100%;height:200px;border:1px solid #e0e0e0;border-radius:8px;padding:10px;font-size:13px;line-height:1.8;resize:none;font-family:inherit';
-  box.appendChild(ta); ov.appendChild(box); document.body.appendChild(ov);
-  ta.focus(); ta.select();
-  document.getElementById('cptxt-close').onclick=function(){document.body.removeChild(ov);};
+  ta.value=txt;
+  ta.style.cssText='width:100%;height:200px;border:1px solid #e0e0e0;border-radius:8px;padding:10px;font-size:13px;line-height:1.8;resize:none;font-family:inherit;box-sizing:border-box';
+  box.appendChild(header);box.appendChild(hint);box.appendChild(ta);
+  ov.appendChild(box);document.body.appendChild(ov);
+  ta.focus();ta.select();
+  cpBtn.onclick=function(){
+    ta.select();
+    try{
+      document.execCommand('copy');
+      cpBtn.textContent='✅ 복사됨!';
+      cpBtn.style.background='#2e7d32';
+      setTimeout(function(){document.body.removeChild(ov);},800);
+    }catch(e){ alert('복사 실패. 텍스트를 직접 선택 후 복사해 주세요.'); }
+  };
+  closeBtn.onclick=function(){document.body.removeChild(ov);};
+  ov.onclick=function(e){if(e.target===ov)document.body.removeChild(ov);};
 }
 
 function cpCardHTML(){
