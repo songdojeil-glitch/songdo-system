@@ -907,7 +907,20 @@ window.addEventListener('load', function() {
     </div>
     <div style="margin-bottom:12px"><label class="fl">고객 정보 / 요청사항 <span style="font-size:11px;color:#aaa">(선택)</span></label><input id="br-cust" type="text" class="fi" placeholder="예: 4인 가족, 초등 자녀 2명 / 투자 겸 실거주 / 예산 10억 이내"></div>
     <div style="margin-bottom:12px"><label class="fl">매물 특징 · 장점 · 추천 사유 <span style="font-size:11px;color:#aaa">(직접 입력 또는 붙여넣기)</span></label><textarea id="br-feat" rows="3" class="fi" style="resize:vertical" placeholder="예: 채드윅 학군, 고층 뻥뷰, 풀인테리어, 즉시입주 — 보고서에 반영됩니다"></textarea></div>
-    <div><label class="fl">파일 첨부 <span style="font-size:11px;color:#aaa">(이미지·PDF·Word·텍스트 — 내용 자동 추출)</span></label><input type="file" id="br-file" accept="image/*,.pdf,.doc,.docx,.txt" class="fi" style="padding:6px" onchange="onBrFile(event)"><div id="br-file-status" style="font-size:11px;color:#aaa;margin-top:5px;padding:4px 8px;background:#f5f5f3;border-radius:6px;display:none"></div></div>
+    <div><label class="fl">파일 첨부 <span style="font-size:11px;color:#aaa">문서(TXT·DOCX·PDF·XLSX) 최대 3개 · 이미지 최대 10개</span></label>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px">
+        <label class="btn-s" style="cursor:pointer;font-size:11px;padding:5px 10px">
+          📄 문서 추가 <input type="file" id="br-doc-file" accept=".txt,.docx,.pdf,.xlsx,.xls" multiple style="display:none" onchange="onBrDocAdd(event)">
+        </label>
+        <label class="btn-s" style="cursor:pointer;font-size:11px;padding:5px 10px">
+          🖼️ 이미지 추가 <input type="file" id="br-img-file" accept="image/*" multiple style="display:none" onchange="onBrImgAdd(event)">
+        </label>
+      </div>
+      <div id="br-file-list" style="display:none;background:#f5f5f3;border-radius:8px;padding:8px;font-size:11px">
+        <div id="br-doc-list"></div>
+        <div id="br-img-list"></div>
+      </div>
+    </div>
   </div>
   <div id="br-load" style="display:none;text-align:center;padding:2rem"><div class="spin-el"></div><p id="br-ltxt" style="font-size:13px;color:#666;margin:0"></p></div>
   <div id="br-res" style="display:none">
@@ -2267,13 +2280,46 @@ function genBrief(){
   var feat=document.getElementById('br-feat').value.trim();
   document.getElementById('br-res').style.display='none';
   var now=new Date(),ds=now.getFullYear()+'년 '+(now.getMonth()+1)+'월 '+now.getDate()+'일';
-  callAPI('당신은 인천 연수구 송도국제도시 전문 공인중개사(송도제일공인중개사사무소)입니다.\n\n[매물 정보]\n- 종류: '+p.propertyType+'\n- 단지명: '+p.complexName+'\n- 동/호수: '+(p.unitInfo||'미입력')+'\n- 전용면적: '+(p.areaInfo||'미입력')+'\n- 층수/향: '+(p.floorInfo||'')+(p.direction?' / '+p.direction:'')+'\n- 가격: '+priceTxt(p)+'\n- 입주: '+(p.moveIn||'협의')+'\n- 특장점: '+(p.memo||'없음')+(cust?'\n- 고객 정보: '+cust:'')+(feat?'\n- 매물 특징/장점/추천사유: '+feat:'')+(brFileData&&brFileData.type==='text'?'\n- 첨부파일 내용:\n'+brFileData.content.slice(0,1500):'')+'\n\n웹검색으로 실제 정보를 수집하여 아래 형식의 브리핑 보고서를 작성하세요.\n\n════════════════════════════════════\n      매물 브리핑 보고서\n════════════════════════════════════\n작성일: '+ds+'\n담당: 송도제일공인중개사사무소  문형은 대표\n☎ 010-6401-9345 / 032-851-6688\n\n■ 1. 매물 기본 정보\n■ 2. 단지 소개\n■ 3. 가격 분석\n■ 4. 생활 인프라\n■ 5. 이 매물을 추천하는 이유 3가지\n■ 6. 담당자 한마디\n\n════════════════════════════════════\n송도제일공인중개사사무소  ☎ 010-6401-9345\n🌐 www.songdojeil.com\n════════════════════════════════════\n\n불확실 정보는 "약" 표현. 900~1,300자 목표.',
-  'br-load','br-ltxt','단지 정보 및 시세 데이터를 수집하고 있습니다...',function(txt){
+
+  // 문서 첨부 내용 합산
+  var docInfo='';
+  if(brFileDocs.length>0){
+    brFileDocs.forEach(function(d){
+      docInfo+='\n- 첨부 문서('+d.name+'):\n'+d.content.slice(0,1500);
+    });
+  }
+  if(brFileImages.length>0){
+    docInfo+='\n- 첨부 이미지 '+brFileImages.length+'장 참조';
+  }
+
+  var prompt='당신은 인천 연수구 송도국제도시 전문 공인중개사(송도제일공인중개사사무소)입니다.\n\n[매물 정보]\n- 종류: '+p.propertyType+'\n- 단지명: '+p.complexName+'\n- 동/호수: '+(p.unitInfo||'미입력')+'\n- 전용면적: '+(p.areaInfo||'미입력')+'\n- 층수/향: '+(p.floorInfo||'')+(p.direction?' / '+p.direction:'')+'\n- 가격: '+priceTxt(p)+'\n- 입주: '+(p.moveIn||'협의')+'\n- 특장점: '+(p.memo||'없음')+(cust?'\n- 고객 정보: '+cust:'')+(feat?'\n- 매물 특징/장점/추천사유: '+feat:'')+docInfo+'\n\n웹검색으로 실제 정보를 수집하여 아래 형식의 브리핑 보고서를 작성하세요.\n\n════════════════════════════════════\n      매물 브리핑 보고서\n════════════════════════════════════\n작성일: '+ds+'\n담당: 송도제일공인중개사사무소  문형은 대표\n☎ 010-6401-9345 / 032-851-6688\n\n■ 1. 매물 기본 정보\n■ 2. 단지 소개\n■ 3. 가격 분석\n■ 4. 생활 인프라\n■ 5. 이 매물을 추천하는 이유 3가지\n■ 6. 담당자 한마디\n\n════════════════════════════════════\n송도제일공인중개사사무소  ☎ 010-6401-9345\n🌐 www.songdojeil.com\n════════════════════════════════════\n\n불확실 정보는 "약" 표현. 900~1,300자 목표.';
+
+  document.getElementById('br-load').style.display='block';
+  document.getElementById('br-ltxt').textContent='단지 정보 및 시세 데이터를 수집하고 있습니다...';
+
+  var messages=[{role:'user',content:[{type:'text',text:prompt}]}];
+  if(brFileImages.length>0){
+    brFileImages.slice(0,10).reverse().forEach(function(img){
+      messages[0].content.unshift({type:'image',source:{type:'base64',media_type:img.mediaType,data:img.b64}});
+    });
+  }
+
+  fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{
+    'Content-Type':'application/json','x-api-key':getApiKey()||'',
+    'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'
+  },body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:3000,
+    tools:[{type:'web_search_20250305',name:'web_search'}],messages:messages})
+  })
+  .then(function(r){document.getElementById('br-ltxt').textContent='보고서를 작성하고 있습니다...';return r.json();})
+  .then(function(d){
+    document.getElementById('br-load').style.display='none';
+    var txt=d.content.filter(function(b){return b.type==='text';}).map(function(b){return b.text;}).join('\n').trim();
     document.getElementById('br-txt').value=txt;
     document.getElementById('br-res').style.display='block';
     document.getElementById('br-prop-name').textContent=p.complexName+(p.unitInfo?' '+p.unitInfo:'');
     document.getElementById('br-res').dataset.propId=p.id;
-  });
+  })
+  .catch(function(e){document.getElementById('br-load').style.display='none';alert('오류: '+e.message);});
 }
 
 function openCompleteFromBrief(){
@@ -3137,7 +3183,7 @@ function exportHistXL(){
 
 
 // ── 파일 첨부 처리 (이미지/PDF/텍스트/Word) ──
-var blogFileDocs=[], blogFileImages=[], brFileData=null;
+var blogFileDocs=[], blogFileImages=[], brFileDocs=[], brFileImages=[];
 
 // PDF.js worker 설정
 function initPdfWorker(){
@@ -3282,16 +3328,57 @@ function renderBlFileList(){
 function blRemoveDoc(i){blogFileDocs.splice(i,1);renderBlFileList();}
 function blRemoveImg(i){blogFileImages.splice(i,1);renderBlFileList();}
 
-function onBrFile(e){
-  var file=e.target.files[0];if(!file)return;
-  var st=document.getElementById('br-file-status');
-  st.style.display='block';st.style.color='#f57f17';st.textContent='파일 읽는 중...';
-  readAttachFile(file,function(d){
-    brFileData=d;
-    st.style.color='#2e7d32';
-    st.textContent='✅ '+d.name+(d.type==='image'?' (이미지)':' (텍스트)');
+// ── 브리핑 문서 추가 (최대 3개)
+function onBrDocAdd(e){
+  var files=Array.from(e.target.files);
+  files.forEach(function(file){
+    if(brFileDocs.length>=3){alert('문서는 최대 3개까지 첨부 가능합니다.');return;}
+    if(brFileDocs.find(function(d){return d.name===file.name;}))return;
+    readAttachFile(file,function(d){brFileDocs.push(d);renderBrFileList();});
   });
+  e.target.value='';
 }
+
+// ── 브리핑 이미지 추가 (최대 10개)
+function onBrImgAdd(e){
+  var files=Array.from(e.target.files);
+  files.forEach(function(file){
+    if(brFileImages.length>=10){alert('이미지는 최대 10개까지 첨부 가능합니다.');return;}
+    if(brFileImages.find(function(d){return d.name===file.name;}))return;
+    readAttachFile(file,function(d){brFileImages.push(d);renderBrFileList();});
+  });
+  e.target.value='';
+}
+
+// ── 브리핑 첨부 목록 렌더링
+function renderBrFileList(){
+  var listEl=document.getElementById('br-file-list');
+  var docEl=document.getElementById('br-doc-list');
+  var imgEl=document.getElementById('br-img-list');
+  if(!listEl)return;
+  listEl.style.display=(brFileDocs.length>0||brFileImages.length>0)?'block':'none';
+  docEl.innerHTML=brFileDocs.length?
+    '<div style="color:#f57f17;font-weight:500;margin-bottom:4px">📄 문서 ('+brFileDocs.length+'/3)</div>'
+    +brFileDocs.map(function(d,i){
+      return '<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;border-bottom:0.5px solid #e8e8e8">'
+        +'<span style="color:#333">'+d.name+'</span>'
+        +'<button onclick="brRemoveDoc('+i+')" style="border:none;background:transparent;color:#cc3333;cursor:pointer;font-size:12px;padding:0 4px">✕</button>'
+        +'</div>';
+    }).join(''):'';
+  imgEl.innerHTML=brFileImages.length?
+    '<div style="color:#1565c0;font-weight:500;margin:'+(brFileDocs.length?'8px':'0')+'px 0 4px">🖼️ 이미지 ('+brFileImages.length+'/10)</div>'
+    +'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(60px,1fr));gap:4px">'
+    +brFileImages.map(function(img,i){
+      return '<div style="position:relative;aspect-ratio:1;border-radius:4px;overflow:hidden;border:0.5px solid #ddd">'
+        +'<img src="data:'+img.mediaType+';base64,'+img.b64+'" style="width:100%;height:100%;object-fit:cover">'
+        +'<button onclick="brRemoveImg('+i+')" style="position:absolute;top:1px;right:1px;width:16px;height:16px;border-radius:50%;border:none;background:rgba(0,0,0,.6);color:#fff;cursor:pointer;font-size:9px;display:flex;align-items:center;justify-content:center;padding:0">✕</button>'
+        +'</div>';
+    }).join('')+'</div>':'';
+}
+
+function brRemoveDoc(i){brFileDocs.splice(i,1);renderBrFileList();}
+function brRemoveImg(i){brFileImages.splice(i,1);renderBrFileList();}
+
 
 // ── 블로그 탭 매물 선택 이벤트 ──
 function onBlPropSelect(){

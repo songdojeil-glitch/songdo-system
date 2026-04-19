@@ -440,6 +440,21 @@ body{font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif;background:#f7
       <label class="fl">추가 강조 내용</label>
       <textarea id="yt-extra" rows="2" class="fi" style="resize:vertical" placeholder="예: 최근 실거래가 반드시 포함, 경쟁 단지 비교, 학군 강조"></textarea>
     </div>
+    <div style="margin-bottom:12px">
+      <label class="fl">파일 첨부 <span style="font-size:11px;color:#aaa">문서(TXT·DOCX·PDF·XLSX) 최대 3개 · 이미지 최대 10개</span></label>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px">
+        <label class="btn-s" style="cursor:pointer;font-size:11px;padding:5px 10px">
+          📄 문서 추가 <input type="file" id="yt-doc-file" accept=".txt,.docx,.pdf,.xlsx,.xls" multiple style="display:none" onchange="onYtDocAdd(event)">
+        </label>
+        <label class="btn-s" style="cursor:pointer;font-size:11px;padding:5px 10px">
+          🖼️ 이미지 추가 <input type="file" id="yt-img-file" accept="image/*" multiple style="display:none" onchange="onYtImgAdd(event)">
+        </label>
+      </div>
+      <div id="yt-file-list" style="display:none;background:#f5f5f3;border-radius:8px;padding:8px;font-size:11px">
+        <div id="yt-doc-list"></div>
+        <div id="yt-img-list"></div>
+      </div>
+    </div>
     <button onclick="genYT()" class="btn-p" style="width:100%">🎬 스크립트 생성</button>
   </div>
   <div id="yt-load" style="display:none;text-align:center;padding:2rem"><div class="spin-el"></div><p style="font-size:12px;color:#666">스크립트를 작성하고 있습니다...</p></div>
@@ -1496,6 +1511,57 @@ function genBlog(){
 }
 
 // ─ TAB3 유튜브 스크립트
+// ─ 유튜브 파일 첨부
+var ytFileDocs=[], ytFileImages=[];
+
+function onYtDocAdd(e){
+  var files=Array.from(e.target.files);
+  files.forEach(function(file){
+    if(ytFileDocs.length>=3){alert('문서는 최대 3개까지 첨부 가능합니다.');return;}
+    if(ytFileDocs.find(function(d){return d.name===file.name;}))return;
+    readAttachFile(file,function(d){ytFileDocs.push(d);renderYtFileList();});
+  });
+  e.target.value='';
+}
+
+function onYtImgAdd(e){
+  var files=Array.from(e.target.files);
+  files.forEach(function(file){
+    if(ytFileImages.length>=10){alert('이미지는 최대 10개까지 첨부 가능합니다.');return;}
+    if(ytFileImages.find(function(d){return d.name===file.name;}))return;
+    readAttachFile(file,function(d){ytFileImages.push(d);renderYtFileList();});
+  });
+  e.target.value='';
+}
+
+function renderYtFileList(){
+  var listEl=document.getElementById('yt-file-list');
+  var docEl=document.getElementById('yt-doc-list');
+  var imgEl=document.getElementById('yt-img-list');
+  if(!listEl)return;
+  listEl.style.display=(ytFileDocs.length>0||ytFileImages.length>0)?'block':'none';
+  docEl.innerHTML=ytFileDocs.length?
+    '<div style="color:#f57f17;font-weight:500;margin-bottom:4px">📄 문서 ('+ytFileDocs.length+'/3)</div>'
+    +ytFileDocs.map(function(d,i){
+      return '<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;border-bottom:0.5px solid #e8e8e8">'
+        +'<span style="color:#333">'+d.name+'</span>'
+        +'<button onclick="ytRemoveDoc('+i+')" style="border:none;background:transparent;color:#cc3333;cursor:pointer;font-size:12px;padding:0 4px">✕</button>'
+        +'</div>';
+    }).join(''):'';
+  imgEl.innerHTML=ytFileImages.length?
+    '<div style="color:#1565c0;font-weight:500;margin:'+(ytFileDocs.length?'8px':'0')+'px 0 4px">🖼️ 이미지 ('+ytFileImages.length+'/10)</div>'
+    +'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(60px,1fr));gap:4px">'
+    +ytFileImages.map(function(img,i){
+      return '<div style="position:relative;aspect-ratio:1;border-radius:4px;overflow:hidden;border:0.5px solid #ddd">'
+        +'<img src="data:'+img.mediaType+';base64,'+img.b64+'" style="width:100%;height:100%;object-fit:cover">'
+        +'<button onclick="ytRemoveImg('+i+')" style="position:absolute;top:1px;right:1px;width:16px;height:16px;border-radius:50%;border:none;background:rgba(0,0,0,.6);color:#fff;cursor:pointer;font-size:9px;display:flex;align-items:center;justify-content:center;padding:0">✕</button>'
+        +'</div>';
+    }).join('')+'</div>':'';
+}
+
+function ytRemoveDoc(i){ytFileDocs.splice(i,1);renderYtFileList();}
+function ytRemoveImg(i){ytFileImages.splice(i,1);renderYtFileList();}
+
 function genYT(){
   var type=document.getElementById('yt-type').value;
   var topic=document.getElementById('yt-topic').value.trim()||'송도 부동산';
@@ -1503,11 +1569,49 @@ function genYT(){
   var target=document.getElementById('yt-target').value;
   var extra=document.getElementById('yt-extra').value.trim();
   var typeMap={'단지투어':'단지 투어 및 현장 리뷰','시세브리핑':'시세 동향 브리핑','지역소개':'지역 소개','투자분석':'투자 분석','정책해설':'정책 해설','매물소개':'매물 소개'};
-  var prompt='당신은 송도 21년 차 공인중개사 문형은 소장(송도제일공인중개사사무소)의 유튜브 영상 스크립트 작가입니다.\n\n웹검색으로 ['+topic+'] 관련 최신 정보를 수집한 뒤, 아래 조건의 유튜브 스크립트를 작성하세요.\n\n[영상 유형] '+typeMap[type]+'\n[주제] '+topic+'\n[길이] '+length+'\n[타겟] '+target+(extra?'\n[추가 강조] '+extra:'')+'\n\n[스크립트 구성]\n📌 제목 (유튜브 SEO 최적화, 35자 이내) — 2개 제안\n📌 설명란 문구 (200자 이내)\n📌 태그 10개\n\n[인트로 (15초)]\n[본론 각 섹션별]\n[아웃트로 + CTA (구독/좋아요/연락처)]\n\n✅ 각 섹션 앞에 [시간대] 표시\n✅ 카메라 위치/행동 지시 [] 안에 표시\n✅ 자연스러운 대화체, 전문성 + 친근함\n✅ 구체적 수치/실거래가 포함 (웹검색)\n✅ 마지막: 송도제일공인중개사사무소 / ☎ 010-6401-9345';
-  callAPI(prompt,'yt-load',null,function(txt){
+
+  // 문서/이미지 첨부 정보
+  var docInfo='';
+  if(ytFileDocs.length>0){
+    ytFileDocs.forEach(function(d){
+      docInfo+='\n[첨부 문서: '+d.name+']\n'+d.content.slice(0,1500);
+    });
+  }
+  if(ytFileImages.length>0){
+    docInfo+='\n[첨부 이미지 '+ytFileImages.length+'장 참조]';
+  }
+
+  var prompt='당신은 송도 21년 차 공인중개사 문형은 소장(송도제일공인중개사사무소)의 유튜브 영상 스크립트 작가입니다.\n\n웹검색으로 ['+topic+'] 관련 최신 정보를 수집한 뒤, 아래 조건의 유튜브 스크립트를 작성하세요.\n\n[영상 유형] '+typeMap[type]+'\n[주제] '+topic+'\n[길이] '+length+'\n[타겟] '+target+(extra?'\n[추가 강조] '+extra:'')+docInfo+'\n\n[스크립트 구성]\n📌 제목 (유튜브 SEO 최적화, 35자 이내) — 2개 제안\n📌 설명란 문구 (200자 이내)\n📌 태그 10개\n\n[인트로 (15초)]\n[본론 각 섹션별]\n[아웃트로 + CTA (구독/좋아요/연락처)]\n\n✅ 각 섹션 앞에 [시간대] 표시\n✅ 카메라 위치/행동 지시 [] 안에 표시\n✅ 자연스러운 대화체, 전문성 + 친근함\n✅ 구체적 수치/실거래가 포함 (웹검색)\n✅ 마지막: 송도제일공인중개사사무소 / ☎ 010-6401-9345';
+
+  document.getElementById('yt-load').style.display='block';
+  document.getElementById('yt-res').style.display='none';
+
+  var messages=[{role:'user',content:[{type:'text',text:prompt}]}];
+  if(ytFileImages.length>0){
+    ytFileImages.slice(0,10).reverse().forEach(function(img){
+      messages[0].content.unshift({type:'image',source:{type:'base64',media_type:img.mediaType,data:img.b64}});
+    });
+  }
+
+  var key=getApiKey();if(!key){document.getElementById('yt-load').style.display='none';return;}
+  fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{
+    'Content-Type':'application/json','x-api-key':key,
+    'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'
+  },body:JSON.stringify({model:aiModel,max_tokens:3000,
+    tools:[{type:'web_search_20250305',name:'web_search'}],messages:messages})
+  })
+  .then(function(r){if(!r.ok){return r.json().then(function(e){throw new Error(e.error&&e.error.message||r.status);});}return r.json();})
+  .then(function(d){
+    document.getElementById('yt-load').style.display='none';
+    var txt=d.content.filter(function(b){return b.type==='text';}).map(function(b){return b.text;}).join('\n').trim();
     document.getElementById('yt-txt').value=txt;
     document.getElementById('yt-char').textContent=txt.length+'자';
     document.getElementById('yt-res').style.display='block';
+  })
+  .catch(function(e){
+    document.getElementById('yt-load').style.display='none';
+    if(e.message&&e.message.includes('401')){localStorage.removeItem('sd_api_key');alert('API 키가 올바르지 않습니다.');}
+    else alert('오류: '+e.message);
   });
 }
 
