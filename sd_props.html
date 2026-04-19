@@ -73,6 +73,7 @@ input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none}
 .ph-btn{width:24px;height:24px;border-radius:50%;border:none;background:rgba(0,0,0,.6);color:#fff;cursor:pointer;font-size:12px;display:flex;align-items:center;justify-content:center;padding:0}
 .ph-btn:hover{background:rgba(0,0,0,.85)}
 .ph-btn.star-on{background:#f9a825}
+.ph-btn.sel-on{background:#1565c0}
 .ph-star-badge{position:absolute;top:4px;left:4px;background:#f9a825;color:#fff;font-size:9px;font-weight:700;padding:2px 5px;border-radius:4px;pointer-events:none;z-index:2}
 /* 순서 번호 뱃지 (신규) */
 .ph-order-badge{position:absolute;bottom:4px;left:4px;background:rgba(26,26,26,.75);color:#fff;font-size:10px;font-weight:700;min-width:20px;height:20px;padding:0 6px;border-radius:10px;display:flex;align-items:center;justify-content:center;pointer-events:none;z-index:2}
@@ -693,7 +694,7 @@ window.addEventListener('load', function() {
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:6px">
         <span style="font-size:13px;font-weight:500;color:#1565c0">📸 매물 사진 <span id="f-ph-cnt" style="font-size:11px;color:#666;font-weight:400">(0 / 15장)</span></span>
         <div style="display:flex;gap:6px;align-items:center">
-          <span style="font-size:10px;color:#888">⭐ 대표 · ☑️ 선택 · ✕ 삭제 · ◀▶ 순서 · 드래그 이동</span>
+          <span style="font-size:10px;color:#888">⭐ 대표 · ☑ 선택→삭제 · ◀▶ 순서 · 드래그 이동 · 클릭 확대</span>
           <div id="batch-delete-controls" style="display:none;gap:4px;align-items:center">
             <button onclick="toggleSelectAll()" class="btn-s" style="padding:3px 8px;font-size:11px" id="select-all-btn">☑️ 전체 선택</button>
             <button onclick="deleteSelected()" class="btn-d" style="padding:3px 8px;font-size:11px">선택 삭제</button>
@@ -1252,7 +1253,7 @@ function renderFormPhotos(){
       +'ondragleave="phDragLeave(event)" '
       +'ondrop="phDrop(event,'+i+')" '
       +'ondragend="phDragEnd(event)">'
-      +'<div class="ph-checkbox'+(window.batchMode?' show':'')+'" onclick="togglePhotoSelect('+i+')">'
+      +'<div class="ph-checkbox show" onclick="event.stopPropagation();togglePhotoSelect('+i+')">'
       +'<input type="checkbox" id="ph-cb-'+i+'" '+(ph.selected?'checked':'')+' />'
       +'<span class="checkmark"></span>'
       +'</div>'
@@ -1261,7 +1262,7 @@ function renderFormPhotos(){
       +'<img src="'+ph.thumbUrl+'" onclick="openLightbox('+i+')" alt="사진'+(i+1)+'" draggable="false">'
       +'<div class="ph-actions">'
       +'<button class="ph-btn'+(ph.star?' star-on':'')+'" title="대표사진 지정" onclick="setStarPhoto('+i+')">⭐</button>'
-      +'<button class="ph-btn" title="삭제" onclick="removeFormPhoto('+i+')">✕</button>'
+      +'<button class="ph-btn'+(ph.selected?' sel-on':'')+'" title="선택" onclick="togglePhotoSelect('+i+')">☑</button>'
       +'</div>'
       +'<div class="ph-nav">'
       +'<button class="ph-nav-btn" title="앞으로 이동" onclick="movePhoto('+i+',-1)"'+(canLeft?'':' disabled')+'>◀</button>'
@@ -3264,91 +3265,45 @@ function cpKakao(){
   });
 }
 
-// ═══ 사진 일괄 삭제 기능 ═══
-window.batchMode = false;
-
-function toggleBatchMode() {
-  window.batchMode = !window.batchMode;
-  var controls = document.getElementById('batch-delete-controls');
-  controls.style.display = window.batchMode ? 'flex' : 'none';
-  
-  // 체크박스 표시/숨기기
-  renderPhotos();
-  
-  // 전체 선택 초기화
-  if (!window.batchMode) {
-    _formPhotos.forEach(function(ph) { delete ph.selected; });
-    renderPhotos();
-  }
-}
+// ═══ 사진 선택 삭제 기능 (통합) ═══
 
 function togglePhotoSelect(idx) {
-  if (!window.batchMode) {
-    toggleBatchMode(); // 자동으로 배치 모드 활성화
-  }
-  
   _formPhotos[idx].selected = !_formPhotos[idx].selected;
-  renderPhotos();
+  renderFormPhotos();
   updateBatchControls();
 }
 
 function toggleSelectAll() {
-  var btn = document.getElementById('select-all-btn');
   var allSelected = _formPhotos.every(function(ph) { return ph.selected; });
-  
-  _formPhotos.forEach(function(ph) { 
-    ph.selected = !allSelected; 
-  });
-  
-  btn.textContent = allSelected ? '전체 선택' : '전체 해제';
-  renderPhotos();
+  _formPhotos.forEach(function(ph) { ph.selected = !allSelected; });
+  renderFormPhotos();
+  updateBatchControls();
 }
 
 function updateBatchControls() {
-  var selectedCount = _formPhotos.filter(function(ph) { return ph.selected; }).length;
   var btn = document.getElementById('select-all-btn');
-  
-  if (selectedCount === 0) {
-    btn.textContent = '전체 선택';
-  } else if (selectedCount === _formPhotos.length) {
-    btn.textContent = '전체 해제';
-  } else {
-    btn.textContent = '전체 선택';
-  }
+  if (!btn) return;
+  var selCount = _formPhotos.filter(function(ph) { return ph.selected; }).length;
+  btn.textContent = (selCount > 0 && selCount === _formPhotos.length) ? '☑️ 전체 해제' : '☑️ 전체 선택';
 }
 
 function deleteSelected() {
   var selectedIndices = [];
-  _formPhotos.forEach(function(ph, idx) {
-    if (ph.selected) selectedIndices.push(idx);
-  });
-  
-  if (selectedIndices.length === 0) {
-    alert('삭제할 사진을 선택해주세요.');
-    return;
-  }
-  
+  _formPhotos.forEach(function(ph, idx) { if (ph.selected) selectedIndices.push(idx); });
+  if (selectedIndices.length === 0) { alert('삭제할 사진을 선택해주세요.'); return; }
   if (confirm(selectedIndices.length + '장의 사진을 삭제하시겠습니까?')) {
-    // 뒤에서부터 삭제 (인덱스 변경 방지)
     for (var i = selectedIndices.length - 1; i >= 0; i--) {
       _formPhotos.splice(selectedIndices[i], 1);
     }
-    
-    renderPhotos();
-    toggleBatchMode(); // 배치 모드 종료
+    renderFormPhotos();
   }
 }
 
 function deleteAllPhotos() {
-  if (_formPhotos.length === 0) {
-    alert('삭제할 사진이 없습니다.');
-    return;
-  }
-  
+  if (_formPhotos.length === 0) { alert('삭제할 사진이 없습니다.'); return; }
   if (confirm('모든 사진(' + _formPhotos.length + '장)을 삭제하시겠습니까?')) {
     _formPhotos = [];
-    renderPhotos();
-    if (window.batchMode) toggleBatchMode(); // 배치 모드 종료
+    renderFormPhotos();
   }
 }
 
@@ -3358,51 +3313,6 @@ function updatePhotoUIControls() {
   if (!controls) return;
   controls.style.display = _formPhotos.length > 0 ? 'flex' : 'none';
 }
-
-// 기존 renderPhotos 함수 수정 - 끝에 컨트롤 업데이트 추가
-var originalRenderPhotos = window.renderPhotos;
-window.renderPhotos = function() {
-  var cnt = document.getElementById('f-ph-cnt');
-  var grid = document.getElementById('f-ph-grid');
-  cnt.textContent = '(' + _formPhotos.length + ' / ' + PH_MAX + '장)';
-  
-  if (!_formPhotos.length) {
-    grid.innerHTML = '';
-    updatePhotoUIControls();
-    return;
-  }
-  
-  var last = _formPhotos.length - 1;
-  grid.innerHTML = _formPhotos.map(function(ph, i) {
-    var canLeft = i > 0;
-    var canRight = i < last;
-    return '<div class="ph-item' + (ph.star ? ' star' : '') + (ph.selected ? ' selected' : '') + '" draggable="true" data-idx="' + i + '" ' +
-      'ondragstart="phDragStart(event,' + i + ')" ' +
-      'ondragover="phDragOver(event,' + i + ')" ' +
-      'ondragleave="phDragLeave(event)" ' +
-      'ondrop="phDrop(event,' + i + ')" ' +
-      'ondragend="phDragEnd(event)">' +
-      '<div class="ph-checkbox' + (window.batchMode ? ' show' : '') + '" onclick="togglePhotoSelect(' + i + ')">' +
-      '<input type="checkbox" id="ph-cb-' + i + '" ' + (ph.selected ? 'checked' : '') + ' />' +
-      '<span class="checkmark"></span>' +
-      '</div>' +
-      (ph.star ? '<div class="ph-star-badge">⭐ 대표</div>' : '') +
-      '<div class="ph-order-badge">' + (i + 1) + '</div>' +
-      '<img src="' + ph.thumbUrl + '" onclick="openLightbox(' + i + ')" alt="사진' + (i + 1) + '" draggable="false">' +
-      '<div class="ph-actions">' +
-      '<button class="ph-btn' + (ph.star ? ' star-on' : '') + '" title="대표사진 지정" onclick="setStarPhoto(' + i + ')">⭐</button>' +
-      '<button class="ph-btn" title="삭제" onclick="removeFormPhoto(' + i + ')">✕</button>' +
-      '</div>' +
-      '<div class="ph-nav">' +
-      '<button class="ph-nav-btn" title="앞으로 이동" onclick="movePhoto(' + i + ',-1)"' + (canLeft ? '' : ' disabled') + '>◀</button>' +
-      '<button class="ph-nav-btn" title="뒤로 이동" onclick="movePhoto(' + i + ',1)"' + (canRight ? '' : ' disabled') + '>▶</button>' +
-      '</div>' +
-      '</div>';
-  }).join('');
-  
-  updatePhotoUIControls();
-  if (window.batchMode) updateBatchControls();
-};
 
 </script>
 </body>
