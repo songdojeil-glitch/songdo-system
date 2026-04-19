@@ -1013,18 +1013,46 @@ function setTodayDate(){
 }
 
 // ─ 공통 유틸
+function getApiKey(){
+  var k=localStorage.getItem('sd_api_key');
+  if(!k){
+    k=prompt('Anthropic API 키를 입력하세요:\n(한 번 입력하면 저장됩니다)','sk-ant-...');
+    if(!k)return null;
+    localStorage.setItem('sd_api_key',k.trim());
+  }
+  return k.trim();
+}
+
 function callAPI(prompt,loadId,ltxt,cb){
+  var key=getApiKey();
+  if(!key){alert('API 키가 필요합니다.');return;}
   document.getElementById(loadId).style.display='block';
   if(ltxt)document.getElementById(ltxt).textContent='AI가 작성 중입니다... ('+(AI_MODEL_META[aiModel]?AI_MODEL_META[aiModel].short:'Sonnet')+')';
-  fetch('https://wandering-star-5bb9.songdojeil.workers.dev/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},
+  fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{
+    'Content-Type':'application/json',
+    'x-api-key':key,
+    'anthropic-version':'2023-06-01',
+    'anthropic-dangerous-direct-browser-access':'true'
+  },
     body:JSON.stringify({model:aiModel,max_tokens:3000,
+      tools:[{type:'web_search_20250305',name:'web_search'}],
       messages:[{role:'user',content:prompt}]})
-  }).then(function(r){return r.json();})
+  }).then(function(r){
+    if(!r.ok){return r.json().then(function(e){throw new Error(e.error&&e.error.message||r.status);});}
+    if(ltxt)document.getElementById(ltxt).textContent='웹 검색 중입니다...';
+    return r.json();
+  })
   .then(function(d){
     document.getElementById(loadId).style.display='none';
     var txt=d.content.filter(function(b){return b.type==='text';}).map(function(b){return b.text;}).join('\n').trim();
     cb(txt);
-  }).catch(function(e){document.getElementById(loadId).style.display='none';alert('오류: '+e.message);});
+  }).catch(function(e){
+    document.getElementById(loadId).style.display='none';
+    if(e.message&&e.message.includes('401')){
+      localStorage.removeItem('sd_api_key');
+      alert('API 키가 올바르지 않습니다. 다시 입력해 주세요.');
+    }else{alert('오류: '+e.message);}
+  });
 }
 
 function cpTxt(id){
@@ -1137,10 +1165,21 @@ function fetchNewsDisabled(){
   var prompt='웹 검색으로 아래 키워드 관련 최신 뉴스를 10개 수집해줘.\n\n키워드: '+searchQ+'\n\n아래 JSON 형식으로만 출력해. 다른 텍스트 없이 JSON만:\n[\n  {"title":"뉴스 제목","url":"URL","summary":"2줄 요약","source":"언론사명","date":"YYYY-MM-DD"},\n  ...\n]\n\n반드시 실제 존재하는 URL만 포함하고, 최근 1개월 이내 기사 우선으로 선택해.';
   document.getElementById('news-load').style.display='block';
   document.getElementById('news-result').style.display='none';
-  fetch('https://wandering-star-5bb9.songdojeil.workers.dev/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},
+  var key=getApiKey();
+  if(!key){document.getElementById('news-load').style.display='none';return;}
+  fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{
+    'Content-Type':'application/json',
+    'x-api-key':key,
+    'anthropic-version':'2023-06-01',
+    'anthropic-dangerous-direct-browser-access':'true'
+  },
     body:JSON.stringify({model:aiModel,max_tokens:3000,
+      tools:[{type:'web_search_20250305',name:'web_search'}],
       messages:[{role:'user',content:prompt}]})
-  }).then(function(r){return r.json();})
+  }).then(function(r){
+    if(!r.ok){return r.json().then(function(e){throw new Error(e.error&&e.error.message||r.status);});}
+    return r.json();
+  })
   .then(function(d){
     document.getElementById('news-load').style.display='none';
     var raw=d.content.filter(function(b){return b.type==='text';}).map(function(b){return b.text;}).join('').trim();
