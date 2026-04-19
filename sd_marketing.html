@@ -513,6 +513,21 @@ body{font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif;background:#f7
       <label class="fl">전달 내용</label>
       <textarea id="sns-content" rows="3" class="fi" style="resize:vertical" placeholder="예: 더샵하버뷰 84㎡ 9억 급매 — 이번 주 마감 / 송도 GTX-B 착공 확정 소식"></textarea>
     </div>
+    <div style="margin-bottom:12px">
+      <label class="fl">파일 첨부 <span style="font-size:11px;color:#aaa">문서(TXT·DOCX·PDF·XLSX) 최대 3개 · 이미지 최대 10개</span></label>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px">
+        <label class="btn-s" style="cursor:pointer;font-size:11px;padding:5px 10px">
+          📄 문서 추가 <input type="file" id="sns-doc-file" accept=".txt,.docx,.pdf,.xlsx,.xls" multiple style="display:none" onchange="onSnsDocAdd(event)">
+        </label>
+        <label class="btn-s" style="cursor:pointer;font-size:11px;padding:5px 10px">
+          🖼️ 이미지 추가 <input type="file" id="sns-img-file" accept="image/*" multiple style="display:none" onchange="onSnsImgAdd(event)">
+        </label>
+      </div>
+      <div id="sns-file-list" style="display:none;background:#f5f5f3;border-radius:8px;padding:8px;font-size:11px">
+        <div id="sns-doc-list"></div>
+        <div id="sns-img-list"></div>
+      </div>
+    </div>
     <button onclick="genSNS()" class="btn-p" style="width:100%">📱 SNS 문구 생성</button>
   </div>
   <div id="sns-load" style="display:none;text-align:center;padding:2rem"><div class="spin-el"></div></div>
@@ -1616,12 +1631,76 @@ function genYT(){
 }
 
 // ─ TAB4 SNS
+// ─ SNS 파일 첨부
+var snsFileDocs=[], snsFileImages=[];
+
+function onSnsDocAdd(e){
+  var files=Array.from(e.target.files);
+  files.forEach(function(file){
+    if(snsFileDocs.length>=3){alert('문서는 최대 3개까지 첨부 가능합니다.');return;}
+    if(snsFileDocs.find(function(d){return d.name===file.name;}))return;
+    readAttachFile(file,function(d){snsFileDocs.push(d);renderSnsFileList();});
+  });
+  e.target.value='';
+}
+
+function onSnsImgAdd(e){
+  var files=Array.from(e.target.files);
+  files.forEach(function(file){
+    if(snsFileImages.length>=10){alert('이미지는 최대 10개까지 첨부 가능합니다.');return;}
+    if(snsFileImages.find(function(d){return d.name===file.name;}))return;
+    readAttachFile(file,function(d){snsFileImages.push(d);renderSnsFileList();});
+  });
+  e.target.value='';
+}
+
+function renderSnsFileList(){
+  var listEl=document.getElementById('sns-file-list');
+  var docEl=document.getElementById('sns-doc-list');
+  var imgEl=document.getElementById('sns-img-list');
+  if(!listEl)return;
+  listEl.style.display=(snsFileDocs.length>0||snsFileImages.length>0)?'block':'none';
+  docEl.innerHTML=snsFileDocs.length?
+    '<div style="color:#f57f17;font-weight:500;margin-bottom:4px">📄 문서 ('+snsFileDocs.length+'/3)</div>'
+    +snsFileDocs.map(function(d,i){
+      return '<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;border-bottom:0.5px solid #e8e8e8">'
+        +'<span style="color:#333">'+d.name+'</span>'
+        +'<button onclick="snsRemoveDoc('+i+')" style="border:none;background:transparent;color:#cc3333;cursor:pointer;font-size:12px;padding:0 4px">✕</button>'
+        +'</div>';
+    }).join(''):'';
+  imgEl.innerHTML=snsFileImages.length?
+    '<div style="color:#1565c0;font-weight:500;margin:'+(snsFileDocs.length?'8px':'0')+'px 0 4px">🖼️ 이미지 ('+snsFileImages.length+'/10)</div>'
+    +'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(60px,1fr));gap:4px">'
+    +snsFileImages.map(function(img,i){
+      return '<div style="position:relative;aspect-ratio:1;border-radius:4px;overflow:hidden;border:0.5px solid #ddd">'
+        +'<img src="data:'+img.mediaType+';base64,'+img.b64+'" style="width:100%;height:100%;object-fit:cover">'
+        +'<button onclick="snsRemoveImg('+i+')" style="position:absolute;top:1px;right:1px;width:16px;height:16px;border-radius:50%;border:none;background:rgba(0,0,0,.6);color:#fff;cursor:pointer;font-size:9px;display:flex;align-items:center;justify-content:center;padding:0">✕</button>'
+        +'</div>';
+    }).join('')+'</div>':'';
+}
+
+function snsRemoveDoc(i){snsFileDocs.splice(i,1);renderSnsFileList();}
+function snsRemoveImg(i){snsFileImages.splice(i,1);renderSnsFileList();}
+
 function setSNSType(t){
   snsType=t;
   var all=['네이버블로그','인스타그램','카카오채널','네이버카페','카드뉴스','페이스북','X','카카오스토리'];
-  var colors={'네이버블로그':'#e8f5e9','인스타그램':'#fce4ec','카카오채널':'#fffde7','네이버카페':'#e3f2fd','카드뉴스':'#f3e5f5'};
-  var bcolors={'네이버블로그':'#a5d6a7','인스타그램':'#f48fb1','카카오채널':'#ffe082','네이버카페':'#90caf9','카드뉴스':'#ce93d8'};
-  var tcolors={'네이버블로그':'#2e7d32','인스타그램':'#c62828','카카오채널':'#f57f17','네이버카페':'#1565c0','카드뉴스':'#7b1fa2'};
+  // ✅ 모든 8개 플랫폼 색상 정의
+  var colors={
+    '네이버블로그':'#e8f5e9','인스타그램':'#fce4ec','카카오채널':'#fffde7',
+    '네이버카페':'#e3f2fd','카드뉴스':'#f3e5f5',
+    '페이스북':'#e8eaf6','X':'#f5f5f5','카카오스토리':'#fffde7'
+  };
+  var bcolors={
+    '네이버블로그':'#a5d6a7','인스타그램':'#f48fb1','카카오채널':'#ffe082',
+    '네이버카페':'#90caf9','카드뉴스':'#ce93d8',
+    '페이스북':'#9fa8da','X':'#616161','카카오스토리':'#ffd54f'
+  };
+  var tcolors={
+    '네이버블로그':'#2e7d32','인스타그램':'#c62828','카카오채널':'#f57f17',
+    '네이버카페':'#1565c0','카드뉴스':'#7b1fa2',
+    '페이스북':'#283593','X':'#212121','카카오스토리':'#e65100'
+  };
   all.forEach(function(b){
     var el=document.getElementById('sns-'+b);if(!el)return;
     if(b===t){el.style.background=colors[b];el.style.borderColor=bcolors[b];el.style.color=tcolors[b];}
@@ -1633,14 +1712,65 @@ function genSNS(){
   var kw=document.getElementById('sns-keyword').value.trim();
   var ct=document.getElementById('sns-content-type').value;
   var content=document.getElementById('sns-content').value.trim();
-  var lenMap={'네이버블로그':'500~800자 (소제목 + 이모지)','인스타그램':'150~300자 + 해시태그 20개','카카오채널':'200~350자 (친근·간결)','네이버카페':'300~500자 (상세 설명)','카드뉴스':'슬라이드 6장 구성, 각 슬라이드 2~3줄','페이스북':'200~400자 (친근·정보형, 이모지 적절히, 링크 첨부 유도)','X':'140자 이내 (임팩트 있게, 핵심만, 해시태그 2~3개)','카카오스토리':'150~300자 (친근·감성적, 이모지 풍부, 지인 공유 유도)'};
+  var lenMap={
+    '네이버블로그':'500~800자 (소제목 + 이모지)',
+    '인스타그램':'150~300자 + 해시태그 20개',
+    '카카오채널':'200~350자 (친근·간결)',
+    '네이버카페':'300~500자 (상세 설명)',
+    '카드뉴스':'슬라이드 6장 구성, 각 슬라이드 2~3줄',
+    '페이스북':'200~400자 (친근·정보형, 이모지 적절히, 링크 첨부 유도)',
+    'X':'140자 이내 (임팩트 있게, 핵심만, 해시태그 2~3개)',
+    '카카오스토리':'150~300자 (친근·감성적, 이모지 풍부, 지인 공유 유도)'
+  };
   var platform=snsType+'용';
-  var prompt='당신은 송도제일공인중개사사무소 마케팅 담당입니다.\n\n[플랫폼] '+platform+'\n[내용 유형] '+ct+(kw?'\n[키워드] '+kw:'')+(content?'\n[전달 내용] '+content:'')+'\n\n아래 형식에 맞게 SNS 문구를 작성하세요.\n길이: '+lenMap[snsType]+'\n\n[작성 규칙]\n- 해당 플랫폼 특성에 맞는 어투와 형식\n- 이모지 적절히 활용\n- 전문성 + 친근함 균형\n- 마지막에 반드시: 송도제일공인중개사사무소 | 010-6401-9345\n- 카드뉴스는 슬라이드별로 [슬라이드 1], [슬라이드 2] 형식으로 구분\n\n문구 본문만 출력. 설명 없이 바로 시작.';
-  callAPI(prompt,'sns-load',null,function(txt){
+
+  // 파일 첨부 정보
+  var docInfo='';
+  if(snsFileDocs.length>0){
+    snsFileDocs.forEach(function(d){
+      docInfo+='\n[첨부 문서: '+d.name+']\n'+d.content.slice(0,1500);
+    });
+  }
+  if(snsFileImages.length>0){
+    docInfo+='\n[첨부 이미지 '+snsFileImages.length+'장 참조]';
+  }
+
+  var prompt='당신은 송도제일공인중개사사무소 마케팅 담당입니다.\n\n[플랫폼] '+platform+'\n[내용 유형] '+ct+(kw?'\n[키워드] '+kw:'')+(content?'\n[전달 내용] '+content:'')+docInfo+'\n\n아래 형식에 맞게 SNS 문구를 작성하세요.\n길이: '+lenMap[snsType]+'\n\n[작성 규칙]\n- 해당 플랫폼 특성에 맞는 어투와 형식\n- 이모지 적절히 활용\n- 전문성 + 친근함 균형\n- 마지막에 반드시: 송도제일공인중개사사무소 | 010-6401-9345\n- 카드뉴스는 슬라이드별로 [슬라이드 1], [슬라이드 2] 형식으로 구분\n\n문구 본문만 출력. 설명 없이 바로 시작.';
+
+  document.getElementById('sns-load').style.display='block';
+  document.getElementById('sns-res').style.display='none';
+
+  var messages=[{role:'user',content:[{type:'text',text:prompt}]}];
+  if(snsFileImages.length>0){
+    snsFileImages.slice(0,10).reverse().forEach(function(img){
+      messages[0].content.unshift({type:'image',source:{type:'base64',media_type:img.mediaType,data:img.b64}});
+    });
+  }
+
+  var key=getApiKey();if(!key){document.getElementById('sns-load').style.display='none';return;}
+  fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{
+    'Content-Type':'application/json','x-api-key':key,
+    'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'
+  },body:JSON.stringify({model:aiModel,max_tokens:1200,
+    tools:[{type:'web_search_20250305',name:'web_search'}],messages:messages})
+  })
+  .then(function(r){if(!r.ok){return r.json().then(function(e){throw new Error(e.error&&e.error.message||r.status);});}return r.json();})
+  .then(function(d){
+    document.getElementById('sns-load').style.display='none';
+    var txt=d.content.filter(function(b){return b.type==='text';}).map(function(b){return b.text;}).join('\n').trim();
     document.getElementById('sns-txt').value=txt;
     document.getElementById('sns-char').textContent=txt.length+'자';
-    document.getElementById('sns-platform-label').textContent={'네이버블로그':'N 네이버 블로그','인스타그램':'📸 인스타그램','카카오채널':'💬 카카오 채널','네이버카페':'☕ 네이버 카페','카드뉴스':'🗂️ 카드뉴스','페이스북':'📘 페이스북','X':'𝕏 X (트위터)','카카오스토리':'🟡 카카오스토리'}[snsType]||'📱 SNS 문구';
+    document.getElementById('sns-platform-label').textContent={
+      '네이버블로그':'N 네이버 블로그','인스타그램':'📸 인스타그램','카카오채널':'💬 카카오 채널',
+      '네이버카페':'☕ 네이버 카페','카드뉴스':'🗂️ 카드뉴스',
+      '페이스북':'📘 페이스북','X':'𝕏 X (트위터)','카카오스토리':'🟡 카카오스토리'
+    }[snsType]||'📱 SNS 문구';
     document.getElementById('sns-res').style.display='block';
+  })
+  .catch(function(e){
+    document.getElementById('sns-load').style.display='none';
+    if(e.message&&e.message.includes('401')){localStorage.removeItem('sd_api_key');alert('API 키가 올바르지 않습니다.');}
+    else alert('오류: '+e.message);
   });
 }
 
