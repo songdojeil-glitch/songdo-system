@@ -90,6 +90,7 @@ body{margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',
   <button onclick="sw(0)" id="tn0" class="tnb on">🏠 홈</button>
   <button onclick="sw(1)" id="tn1" class="tnb">👤 고객 등록</button>
   <button onclick="sw(2)" id="tn2" class="tnb">📋 고객 관리</button>
+  <button onclick="sw(10)" id="tn10" class="tnb">🏢 중개업소</button>
   <button onclick="sw(3)" id="tn3" class="tnb">🔔 팔로업</button>
   <button onclick="sw(4)" id="tn4" class="tnb">🤖 AI 매칭</button>
   <button onclick="sw(5)" id="tn5" class="tnb">📄 맞춤 제안서</button>
@@ -654,13 +655,335 @@ function migrateTags(c){
 
 async function toStore(){try{await window.storage.set('sd_custs',JSON.stringify(custs));}catch(e){}}
 async function fromStore(){try{var r=await window.storage.get('sd_custs');if(r&&r.value)custs=JSON.parse(r.value);}catch(e){custs=[];}}
-async function initAll(){await fromStore();await fromStoreTodo();sw(0);initCharCounters();}
+// ══════════════════════════════════════════════
+// ─ 중개업소 관리 (TAB10)
+// ══════════════════════════════════════════════
+var brks=[], _brkUpRows=[];
+var BRK_AC={'송도연합회':'#1565c0','송도비회원':'#f57f17','연수구원도심':'#e65100','타지역':'#c62828'};
+var BRK_AB={'송도연합회':'#e3f2fd','송도비회원':'#fff8e1','연수구원도심':'#fff3e0','타지역':'#fce4ec'};
+var BRK_STARS=function(n){return'★'.repeat(n)+'☆'.repeat(5-n);};
+
+async function fromStoreBrk(){try{var r=await window.storage.get('sd_brokers');if(r&&r.value)brks=JSON.parse(r.value);}catch(e){brks=[];}}
+async function toStoreBrk(){try{await window.storage.set('sd_brokers',JSON.stringify(brks));}catch(e){console.warn('중개업소 저장 실패',e);}}
+
+// 주소에서 단지/건물명 자동 추출
+function extractBldg(addr){
+  if(!addr) return '';
+  // 숫자+층, 숫자-숫자호, B동 등 제거 후 마지막 고유명사 추출
+  var parts = addr.split(/[\s,]+/);
+  for(var i=parts.length-1;i>=0;i--){
+    var p=parts[i].trim();
+    // 숫자만이거나 층/호/번길/로/대로/길 로 끝나면 스킵
+    if(!p||/^[\d\-]+$/.test(p)||/[층호번]$/.test(p)||/[로길대]$/.test(p)) continue;
+    if(p.length>=3) return p;
+  }
+  return '';
+}
+
+function autoExtractBldg(){
+  var addr=document.getElementById('brkAddr').value;
+  var bldg=document.getElementById('brkBldg');
+  if(!bldg.value||bldg.dataset.auto==='1'){
+    var extracted=extractBldg(addr);
+    if(extracted){bldg.value=extracted;bldg.dataset.auto='1';}
+  }
+}
+
+function onBrkAssocChange(){
+  var assoc=document.getElementById('brkAssoc').value;
+  var isSongdo=assoc==='송도연합회'||assoc==='송도비회원';
+  document.getElementById('brkGuDiv').style.opacity=isSongdo?'1':'0.4';
+}
+
+function renderBrk(){
+  var assocF=document.getElementById('bfAssoc').value;
+  var guF=document.getElementById('bfGu').value;
+  var gradeF=document.getElementById('bfGrade').value;
+  var statusF=document.getElementById('bfStatus').value;
+  var q=(document.getElementById('bfQ').value||'').trim().toLowerCase();
+
+  var f=brks.filter(function(b){
+    if(assocF&&b.assoc!==assocF)return false;
+    if(guF&&b.gu!==guF)return false;
+    if(gradeF&&String(b.grade)!==gradeF)return false;
+    if(statusF==='active'&&b.closed)return false;
+    if(statusF==='closed'&&!b.closed)return false;
+    if(q){
+      var hay=[b.name,b.rep,b.bldg,b.addr,b.mobile,b.assoc,b.gu,b.regNo].join(' ').toLowerCase();
+      if(hay.indexOf(q)<0)return false;
+    }
+    return true;
+  });
+
+  document.getElementById('bfCnt').textContent=f.length+'개 업소 / 전체 '+brks.filter(function(b){return!b.closed;}).length+'개';
+
+  var tbody=document.getElementById('brkTbody');
+  if(!f.length){
+    tbody.innerHTML='<tr><td colspan="13" style="text-align:center;color:#aaa;padding:20px">등록된 중개업소가 없습니다</td></tr>';
+    return;
+  }
+  tbody.innerHTML=f.map(function(b,i){
+    var ac=BRK_AC[b.assoc]||'#888', ab=BRK_AB[b.assoc]||'#f5f5f5';
+    var rs=b.closed?'opacity:.45;background:#fafafa':'';
+    return '<tr style="'+rs+'">'
+      +'<td style="color:#aaa">'+( i+1)+'</td>'
+      +'<td><span style="font-size:10px;padding:2px 5px;border-radius:6px;background:'+ab+';color:'+ac+';white-space:nowrap">'+b.assoc+'</span></td>'
+      +'<td style="font-size:11px;color:#1565c0">'+(b.gu||'—')+'</td>'
+      +'<td style="font-size:10px;color:#888">'+(b.regNo||'—')+'</td>'
+      +'<td style="font-weight:500;white-space:nowrap">'+(b.closed?'<s>':'')+b.name+(b.closed?'</s>':'')+'</td>'
+      +'<td style="white-space:nowrap">'+(b.rep||'—')+'</td>'
+      +'<td style="font-size:12px;white-space:nowrap">'+(b.mobile||'—')+'</td>'
+      +'<td style="font-size:11px;white-space:nowrap">'+(b.tel||'—')+'</td>'
+      +'<td style="font-size:11px;max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+(b.bldg||'')+'">'+(b.bldg||'—')+'</td>'
+      +'<td style="font-size:11px">'+(b.field||'—')+'</td>'
+      +'<td style="font-size:11px;color:#f57f17;white-space:nowrap">'+(b.grade?BRK_STARS(b.grade):'—')+'</td>'
+      +'<td>'+(b.closed?'<span style="font-size:10px;background:#eee;color:#888;padding:2px 5px;border-radius:5px">폐업</span>':'<span style="font-size:10px;background:#e8f5e9;color:#2e7d32;padding:2px 5px;border-radius:5px">활성</span>')+'</td>'
+      +'<td style="white-space:nowrap">'
+      +'<button onclick="openBrkForm('+b.id+')" class="btn-s" style="font-size:10px;padding:2px 7px;margin-right:2px">수정</button>'
+      +(b.closed
+        ?'<button onclick="restoreBrk('+b.id+')" class="btn-s" style="font-size:10px;padding:2px 7px;color:#2e7d32">복구</button>'
+        :'<button onclick="closeBrk('+b.id+')" class="btn-s" style="font-size:10px;padding:2px 7px;color:#e65100">폐업</button>')
+      +'<button onclick="delBrk('+b.id+')" class="btn-d" style="font-size:10px;padding:2px 7px;margin-left:2px">삭제</button>'
+      +'</td></tr>';
+  }).join('');
+}
+
+function openBrkForm(id){
+  var modal=document.getElementById('brkFormModal');
+  if(id){
+    var b=brks.find(function(x){return x.id===id;});if(!b)return;
+    document.getElementById('brkFormTitle').textContent='🏢 중개업소 수정';
+    document.getElementById('brkEid').value=b.id;
+    document.getElementById('brkName').value=b.name||'';
+    document.getElementById('brkRep').value=b.rep||'';
+    document.getElementById('brkMobile').value=b.mobile||'';
+    document.getElementById('brkTel').value=b.tel||'';
+    document.getElementById('brkFax').value=b.fax||'';
+    document.getElementById('brkRegNo').value=b.regNo||'';
+    document.getElementById('brkAssoc').value=b.assoc||'송도연합회';
+    document.getElementById('brkGu').value=b.gu||'';
+    document.getElementById('brkAddr').value=b.addr||'';
+    document.getElementById('brkBldg').value=b.bldg||'';
+    document.getElementById('brkBldg').dataset.auto='';
+    document.getElementById('brkField').value=b.field||'';
+    document.getElementById('brkGrade').value=String(b.grade||3);
+    document.getElementById('brkMemo').value=b.memo||'';
+  }else{
+    document.getElementById('brkFormTitle').textContent='🏢 중개업소 등록';
+    document.getElementById('brkEid').value='';
+    ['brkName','brkRep','brkMobile','brkTel','brkFax','brkRegNo','brkAddr','brkBldg','brkMemo'].forEach(function(i){document.getElementById(i).value='';});
+    document.getElementById('brkBldg').dataset.auto='';
+    document.getElementById('brkAssoc').value='송도연합회';
+    document.getElementById('brkGu').value='';
+    document.getElementById('brkField').value='';
+    document.getElementById('brkGrade').value='3';
+  }
+  onBrkAssocChange();
+  modal.style.display='flex';
+}
+function closeBrkForm(){document.getElementById('brkFormModal').style.display='none';}
+
+async function saveBrk(){
+  var name=document.getElementById('brkName').value.trim();
+  var rep=document.getElementById('brkRep').value.trim();
+  var mobile=document.getElementById('brkMobile').value.trim();
+  if(!name||!rep||!mobile){alert('업소명, 대표자, 휴대폰은 필수입니다.');return;}
+  var eid=document.getElementById('brkEid').value;
+  var now=new Date().toISOString().slice(0,10);
+  var entry={
+    id:eid?parseInt(eid):Date.now(),
+    name:name,rep:rep,mobile:mobile,
+    tel:document.getElementById('brkTel').value.trim(),
+    fax:document.getElementById('brkFax').value.trim(),
+    regNo:document.getElementById('brkRegNo').value.trim(),
+    assoc:document.getElementById('brkAssoc').value,
+    gu:document.getElementById('brkGu').value,
+    addr:document.getElementById('brkAddr').value.trim(),
+    bldg:document.getElementById('brkBldg').value.trim(),
+    field:document.getElementById('brkField').value,
+    grade:parseInt(document.getElementById('brkGrade').value)||3,
+    memo:document.getElementById('brkMemo').value.trim(),
+    closed:eid?(brks.find(function(b){return b.id===parseInt(eid);})||{}).closed||false:false,
+    regAt:eid?(brks.find(function(b){return b.id===parseInt(eid);})||{}).regAt||now:now,
+    updAt:now
+  };
+  if(eid){var idx=brks.findIndex(function(b){return b.id===parseInt(eid);});if(idx>=0)brks[idx]=entry;}
+  else brks.unshift(entry);
+  await toStoreBrk();
+  closeBrkForm();renderBrk();
+}
+
+async function closeBrk(id){
+  var b=brks.find(function(x){return x.id===id;});
+  if(!b||!confirm('"'+b.name+'" 폐업 처리할까요?\n(데이터는 보존됩니다)'))return;
+  b.closed=true;b.closedAt=new Date().toISOString().slice(0,10);
+  await toStoreBrk();renderBrk();
+}
+async function restoreBrk(id){
+  var b=brks.find(function(x){return x.id===id;});if(!b)return;
+  b.closed=false;delete b.closedAt;
+  await toStoreBrk();renderBrk();
+}
+async function delBrk(id){
+  var b=brks.find(function(x){return x.id===id;});
+  if(!b||!confirm('"'+b.name+'" 완전 삭제할까요?'))return;
+  brks=brks.filter(function(x){return x.id!==id;});
+  await toStoreBrk();renderBrk();
+}
+
+// ─ 일괄 업로드
+function openBrkUpload(){
+  document.getElementById('brkUploadModal').style.display='flex';
+  document.getElementById('brkUpPreview').style.display='none';
+  document.getElementById('brkUpFile').value='';
+  _brkUpRows=[];
+}
+function closeBrkUpload(){document.getElementById('brkUploadModal').style.display='none';}
+
+function previewBrkUpload(e){
+  var file=e.target.files[0];if(!file)return;
+  var ext=file.name.split('.').pop().toLowerCase();
+  if(['xlsx','xls'].includes(ext)){
+    var reader=new FileReader();
+    reader.onload=function(ev){
+      var wb=XLSX.read(ev.target.result,{type:'array'});
+      var ws=wb.Sheets[wb.SheetNames[0]];
+      var rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
+      // 헤더 행 제거 (첫 행이 텍스트면 스킵)
+      if(rows.length&&isNaN(rows[0][0])&&typeof rows[0][0]==='string'&&rows[0][0].length<5)rows=rows.slice(1);
+      processBrkUploadRows(rows);
+    };
+    reader.readAsArrayBuffer(file);
+  }else{
+    var reader=new FileReader();
+    reader.onload=function(ev){
+      var lines=ev.target.result.split('\n').filter(function(l){return l.trim();});
+      var rows=lines.map(function(l){return l.split(/\t|,/);});
+      if(rows.length&&isNaN(rows[0][0])&&typeof rows[0][0]==='string'&&rows[0][0].length<5)rows=rows.slice(1);
+      processBrkUploadRows(rows);
+    };
+    reader.readAsText(file,'UTF-8');
+  }
+}
+
+function processBrkUploadRows(rows){
+  // 컬럼: 0=등록번호 1=공구 2=업소명 3=대표자 4=대표번호 5=휴대폰 6=팩스 7=주소 8=전문분야 9=등급
+  var upRows=rows.map(function(r){
+    return {
+      regNo:(r[0]||'').trim(),gu:(r[1]||'').trim(),name:(r[2]||'').trim(),
+      rep:(r[3]||'').trim(),tel:(r[4]||'').trim(),mobile:(r[5]||'').trim(),
+      fax:(r[6]||'').trim(),addr:(r[7]||'').trim(),field:(r[8]||'').trim(),
+      grade:parseInt(r[9])||3
+    };
+  }).filter(function(r){return r.name&&r.rep&&r.mobile;});
+
+  // 기존 송도연합회 업소 목록
+  var existing=brks.filter(function(b){return b.assoc==='송도연합회'&&!b.closed;});
+  var newC=0,updC=0,clsC=0,ambC=0;
+  var preview=[];
+
+  // 업로드 행 분류
+  upRows.forEach(function(r){
+    // 3가지 모두 일치
+    var full=brks.find(function(b){return b.assoc==='송도연합회'&&b.regNo===r.regNo&&b.rep===r.rep&&b.mobile===r.mobile;});
+    if(full){
+      preview.push({type:'upd',color:'#1565c0',label:'업데이트',b:full,r:r});updC++;return;
+    }
+    // 부분 일치 (2개 일치)
+    var part=brks.find(function(b){
+      return b.assoc==='송도연합회'&&(
+        (b.rep===r.rep&&b.mobile===r.mobile)||
+        (b.regNo&&b.regNo===r.regNo&&b.rep===r.rep)||
+        (b.regNo&&b.regNo===r.regNo&&b.mobile===r.mobile)
+      );
+    });
+    if(part){preview.push({type:'amb',color:'#c62828',label:'확인필요',b:part,r:r});ambC++;return;}
+    preview.push({type:'new',color:'#2e7d32',label:'신규등록',b:null,r:r});newC++;
+  });
+
+  // 폐업 처리 대상 (기존에 있는데 업로드에 없는 것)
+  var uploadKeys=upRows.map(function(r){return r.regNo+'|'+r.rep+'|'+r.mobile;});
+  existing.forEach(function(b){
+    var key=b.regNo+'|'+b.rep+'|'+b.mobile;
+    if(!uploadKeys.includes(key)){
+      preview.push({type:'cls',color:'#e65100',label:'폐업처리',b:b,r:null});clsC++;
+    }
+  });
+
+  _brkUpRows=preview;
+
+  document.getElementById('brkUpNew').textContent='🆕 신규 '+newC+'건';
+  document.getElementById('brkUpUpd').textContent='🔄 업데이트 '+updC+'건';
+  document.getElementById('brkUpCls').textContent='🚫 폐업 '+clsC+'건';
+  document.getElementById('brkUpAmb').textContent='⚠️ 확인필요 '+ambC+'건';
+
+  var tbody=document.getElementById('brkUpTbody');
+  tbody.innerHTML=preview.map(function(p){
+    var r=p.r||p.b;
+    return '<tr style="background:'+(p.type==='cls'?'#fff8f5':p.type==='amb'?'#fff5f5':'')+'">'
+      +'<td><span style="font-size:10px;padding:2px 6px;border-radius:6px;background:'+p.color+'22;color:'+p.color+';font-weight:600">'+p.label+'</span></td>'
+      +'<td style="font-size:10px;color:#888">'+(r.regNo||'—')+'</td>'
+      +'<td style="font-weight:500">'+(r.name||'—')+'</td>'
+      +'<td>'+(r.rep||'—')+'</td>'
+      +'<td style="font-size:11px">'+(r.mobile||'—')+'</td>'
+      +'<td style="font-size:10px;color:#888">'+(p.type==='cls'?(p.b.name+' 폐업처리'):p.type==='amb'?'부분일치 수동확인 권장':'')+'</td>'
+      +'</tr>';
+  }).join('');
+
+  document.getElementById('brkUpPreview').style.display='block';
+}
+
+async function applyBrkUpload(){
+  if(!_brkUpRows.length)return;
+  var now=new Date().toISOString().slice(0,10);
+  _brkUpRows.forEach(function(p){
+    if(p.type==='new'){
+      brks.unshift({
+        id:Date.now()+Math.random(),
+        regNo:p.r.regNo,gu:p.r.gu,name:p.r.name,rep:p.r.rep,
+        mobile:p.r.mobile,tel:p.r.tel,fax:p.r.fax,addr:p.r.addr,
+        bldg:extractBldg(p.r.addr),field:p.r.field,grade:p.r.grade,
+        assoc:'송도연합회',closed:false,regAt:now,updAt:now
+      });
+    }else if(p.type==='upd'){
+      Object.assign(p.b,{
+        regNo:p.r.regNo,gu:p.r.gu,name:p.r.name,rep:p.r.rep,
+        mobile:p.r.mobile,tel:p.r.tel,fax:p.r.fax,addr:p.r.addr,
+        bldg:p.b.bldg||extractBldg(p.r.addr),field:p.r.field,grade:p.r.grade,
+        updAt:now
+      });
+    }else if(p.type==='cls'){
+      p.b.closed=true;p.b.closedAt=now;
+    }
+    // amb(확인필요)는 적용 안 함 — 수동 처리
+  });
+  await toStoreBrk();
+  closeBrkUpload();
+  renderBrk();
+  alert('✅ 업로드 적용 완료!\n⚠️ 확인필요 항목은 수동으로 처리해 주세요.');
+}
+
+// 엑셀 내보내기
+function exportBrk(){
+  if(!brks.length){alert('내보낼 데이터가 없습니다.');return;}
+  var cols=['소속','공구','등록번호','업소명','대표자','휴대폰','대표번호','팩스','단지&주소명','전문분야','등급','주소','메모','상태','등록일'];
+  var rows=[cols].concat(brks.map(function(b){return[
+    b.assoc,b.gu||'',b.regNo||'',b.name,b.rep,b.mobile,b.tel||'',b.fax||'',
+    b.bldg||'',b.field||'',b.grade||'',b.addr||'',b.memo||'',
+    b.closed?'폐업':'활성',b.regAt||''
+  ];}));
+  var ws=XLSX.utils.aoa_to_sheet(rows);
+  var wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'중개업소');
+  XLSX.writeFile(wb,'송도제일_중개업소_'+new Date().toISOString().slice(0,10)+'.xlsx');
+}
+
+async function initAll(){await fromStore();await fromStoreTodo();await fromStoreBrk();sw(0);initCharCounters();}
 fromStore().then(function(){sw(0);setToday();initCharCounters();});
 
 function setToday(){var t=new Date(),ds=t.getFullYear()+'-'+String(t.getMonth()+1).padStart(2,'0')+'-'+String(t.getDate()).padStart(2,'0');document.getElementById('f-rdate').value=ds;document.getElementById('f-lastdate').value=ds;}
 
 function sw(n){
-  for(var i=0;i<=9;i++){
+  for(var i=0;i<=10;i++){
     var tc=document.getElementById('tc'+i),tn=document.getElementById('tn'+i);
     if(tc)tc.className='tc'+(i===n?' on':'');
     if(tn){tn.style.borderBottomColor=i===n?'#1a1a1a':'transparent';tn.style.color=i===n?'#1a1a1a':'#666';tn.style.fontWeight=i===n?'500':'400';}
@@ -674,6 +997,7 @@ function sw(n){
   if(n===7)renderTodo();
   if(n===8)renderAnni();
   if(n===9)initCallTab();
+  if(n===10)renderBrokers();
 }
 
 function refreshHub(){
@@ -1735,5 +2059,171 @@ function resetCallTab(){
   document.getElementById('call-analyze-btn').disabled=true;
 }
 </script>
+<!-- TAB10 중개업소 관리 -->
+<div id="tc10" class="tc">
+  <div class="card" style="margin-bottom:10px">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:12px">
+      <p class="sec" style="margin:0">🏢 중개업소 관리</p>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <button onclick="openBrkForm(null)" class="btn-p" style="font-size:12px;padding:6px 14px">➕ 신규 등록</button>
+        <button onclick="openBrkUpload()" class="btn-s" style="font-size:12px">📥 일괄 업로드</button>
+        <button onclick="exportBrk()" class="btn-s" style="font-size:12px">📤 엑셀 내보내기</button>
+      </div>
+    </div>
+    <!-- 필터 -->
+    <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+      <select id="bfAssoc" class="fi" style="width:120px;padding:4px 6px;font-size:12px" onchange="renderBrk()">
+        <option value="">전체 소속</option>
+        <option value="송도연합회">🔵 송도연합회</option>
+        <option value="송도비회원">🟡 송도비회원</option>
+        <option value="연수구원도심">🟠 연수구원도심</option>
+        <option value="타지역">🔴 타지역</option>
+      </select>
+      <select id="bfGu" class="fi" style="width:110px;padding:4px 6px;font-size:12px" onchange="renderBrk()">
+        <option value="">전체 공구</option>
+        <option>1공구</option><option>2공구</option><option>3공구</option>
+        <option>4공구</option><option>5공구</option><option>6공구</option>
+        <option>7공구</option><option>랜드마크시티</option><option>기타</option>
+      </select>
+      <select id="bfGrade" class="fi" style="width:95px;padding:4px 6px;font-size:12px" onchange="renderBrk()">
+        <option value="">전체 등급</option>
+        <option value="5">★★★★★</option><option value="4">★★★★</option>
+        <option value="3">★★★</option><option value="2">★★</option><option value="1">★</option>
+      </select>
+      <select id="bfStatus" class="fi" style="width:90px;padding:4px 6px;font-size:12px" onchange="renderBrk()">
+        <option value="active">활성</option>
+        <option value="closed">폐업</option>
+        <option value="">전체</option>
+      </select>
+      <input id="bfQ" type="text" class="fi" style="width:180px;padding:4px 6px;font-size:12px" placeholder="업소명·대표자·단지·주소 검색" oninput="renderBrk()">
+      <span id="bfCnt" style="font-size:12px;color:#888;margin-left:2px"></span>
+    </div>
+  </div>
+  <div style="overflow-x:auto">
+    <table class="tbl" style="font-size:11px">
+      <thead><tr>
+        <th>#</th><th>소속</th><th>공구</th><th>등록번호</th>
+        <th>업소명</th><th>대표자</th><th>휴대폰</th><th>대표번호</th>
+        <th>단지&amp;주소명</th><th>전문분야</th><th>등급</th><th>상태</th><th>액션</th>
+      </tr></thead>
+      <tbody id="brkTbody"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- 등록/수정 모달 -->
+<div id="brkFormModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;align-items:center;justify-content:center;padding:12px">
+  <div style="background:#fff;border-radius:14px;max-width:560px;width:100%;max-height:92vh;overflow-y:auto;box-shadow:0 8px 40px rgba(0,0,0,.25)">
+    <div style="background:#1a2744;color:#fff;padding:13px 18px;display:flex;justify-content:space-between;align-items:center;border-radius:14px 14px 0 0">
+      <span id="brkFormTitle" style="font-size:14px;font-weight:700">🏢 중개업소 등록</span>
+      <button onclick="closeBrkForm()" style="background:transparent;color:#fff;border:none;font-size:20px;cursor:pointer;line-height:1">✕</button>
+    </div>
+    <div style="padding:16px;display:flex;flex-direction:column;gap:10px">
+      <input type="hidden" id="brkEid">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div><label class="fl">업소명 *</label><input id="brkName" type="text" class="fi" placeholder="예: 송도중앙공인중개사"></div>
+        <div><label class="fl">대표자 *</label><input id="brkRep" type="text" class="fi" placeholder="예: 홍길동"></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div><label class="fl">휴대폰 *</label><input id="brkMobile" type="text" class="fi" placeholder="예: 010-1234-5678"></div>
+        <div><label class="fl">대표번호</label><input id="brkTel" type="text" class="fi" placeholder="예: 032-123-4567"></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div><label class="fl">팩스</label><input id="brkFax" type="text" class="fi" placeholder="예: 032-123-4568"></div>
+        <div><label class="fl">등록번호</label><input id="brkRegNo" type="text" class="fi" placeholder="예: 28380-2005-00123"></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div><label class="fl">소속 *</label>
+          <select id="brkAssoc" class="fi" onchange="onBrkAssocChange()">
+            <option value="송도연합회">🔵 송도연합회</option>
+            <option value="송도비회원">🟡 송도비회원</option>
+            <option value="연수구원도심">🟠 연수구원도심</option>
+            <option value="타지역">🔴 타지역</option>
+          </select>
+        </div>
+        <div id="brkGuDiv"><label class="fl">공구</label>
+          <select id="brkGu" class="fi">
+            <option value="">선택</option>
+            <option>1공구</option><option>2공구</option><option>3공구</option>
+            <option>4공구</option><option>5공구</option><option>6공구</option>
+            <option>7공구</option><option>랜드마크시티</option><option>기타</option>
+          </select>
+        </div>
+      </div>
+      <div>
+        <label class="fl">주소</label>
+        <input id="brkAddr" type="text" class="fi" placeholder="예: 인천 연수구 컨벤시아대로 204, 1층" oninput="autoExtractBldg()">
+      </div>
+      <div>
+        <label class="fl">단지&amp;주소명 <span style="font-size:11px;color:#aaa">(주소에서 자동추출, 수정 가능)</span></label>
+        <input id="brkBldg" type="text" class="fi" placeholder="예: 힐스테이트레이크송도3차, 에스파이브시티">
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div><label class="fl">전문분야</label>
+          <select id="brkField" class="fi">
+            <option value="">선택</option>
+            <option>아파트</option><option>상가</option><option>오피스텔</option>
+            <option>분양권</option><option>토지/건물</option><option>전체</option>
+          </select>
+        </div>
+        <div><label class="fl">등급</label>
+          <select id="brkGrade" class="fi">
+            <option value="3">★★★ 보통</option>
+            <option value="5">★★★★★ 핵심</option>
+            <option value="4">★★★★ 우수</option>
+            <option value="2">★★ 일반</option>
+            <option value="1">★ 참고</option>
+          </select>
+        </div>
+      </div>
+      <div><label class="fl">메모</label><input id="brkMemo" type="text" class="fi" placeholder="예: 상가 분양 협력 우수, 송도5공구 전문"></div>
+      <div style="display:flex;gap:8px;margin-top:4px">
+        <button onclick="saveBrk()" class="btn-p" style="flex:1">💾 저장</button>
+        <button onclick="closeBrkForm()" class="btn-s" style="flex:1">취소</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 일괄 업로드 모달 -->
+<div id="brkUploadModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;align-items:center;justify-content:center;padding:12px">
+  <div style="background:#fff;border-radius:14px;max-width:640px;width:100%;max-height:92vh;overflow-y:auto;box-shadow:0 8px 40px rgba(0,0,0,.25)">
+    <div style="background:#1565c0;color:#fff;padding:13px 18px;display:flex;justify-content:space-between;align-items:center;border-radius:14px 14px 0 0">
+      <span style="font-size:14px;font-weight:700">📥 송도연합회 명단 일괄 업로드</span>
+      <button onclick="closeBrkUpload()" style="background:transparent;color:#fff;border:none;font-size:20px;cursor:pointer;line-height:1">✕</button>
+    </div>
+    <div style="padding:16px;display:flex;flex-direction:column;gap:12px">
+      <div style="padding:11px 14px;background:#e3f2fd;border-radius:8px;font-size:12px;color:#1565c0;line-height:1.9">
+        ⚠️ <strong>송도연합회 소속 업소에만 적용됩니다</strong><br>
+        📋 컬럼 순서 (엑셀/탭 구분 텍스트):<br>
+        <code style="background:#fff;padding:2px 6px;border-radius:4px;font-size:11px">등록번호 | 공구 | 업소명 | 대표자 | 대표번호 | 휴대폰 | 팩스 | 주소 | 전문분야 | 등급</code><br>
+        🔄 <strong>매칭: 등록번호+대표자+휴대폰</strong> → 3개 일치=업데이트 / 신규=등록 / 명단 누락=폐업처리
+      </div>
+      <div>
+        <label class="fl">파일 선택 (xlsx/xls/csv/tsv/txt)</label>
+        <input type="file" id="brkUpFile" accept=".xlsx,.xls,.csv,.txt,.tsv" class="fi" style="padding:6px" onchange="previewBrkUpload(event)">
+      </div>
+      <div id="brkUpPreview" style="display:none">
+        <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap">
+          <span id="brkUpNew" style="background:#e8f5e9;color:#2e7d32;padding:3px 10px;border-radius:10px;font-size:12px;font-weight:600"></span>
+          <span id="brkUpUpd" style="background:#e3f2fd;color:#1565c0;padding:3px 10px;border-radius:10px;font-size:12px;font-weight:600"></span>
+          <span id="brkUpCls" style="background:#fff3e0;color:#e65100;padding:3px 10px;border-radius:10px;font-size:12px;font-weight:600"></span>
+          <span id="brkUpAmb" style="background:#fce4ec;color:#c62828;padding:3px 10px;border-radius:10px;font-size:12px;font-weight:600"></span>
+        </div>
+        <div style="max-height:280px;overflow-y:auto;border:0.5px solid #e0e0e0;border-radius:8px">
+          <table class="tbl" style="font-size:11px">
+            <thead><tr><th>구분</th><th>등록번호</th><th>업소명</th><th>대표자</th><th>휴대폰</th><th>비고</th></tr></thead>
+            <tbody id="brkUpTbody"></tbody>
+          </table>
+        </div>
+        <div style="margin-top:12px;display:flex;gap:8px">
+          <button onclick="applyBrkUpload()" class="btn-p" style="flex:1">✅ 적용하기</button>
+          <button onclick="closeBrkUpload()" class="btn-s">취소</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>
