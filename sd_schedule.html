@@ -1247,46 +1247,49 @@ async function initAll(){
   await loadAll();
   renderToday();
   renderCal();
-  // 고객관리 시스템에서 넘어온 파라미터 처리
-  applyUrlParams();
 }
-initAll();
+initAll().then(function(){
+  // initAll 완전 완료 후 URL 파라미터 처리 (탭 덮어쓰기 방지)
+  applyUrlParams();
+});
 
 // ── 고객관리 → 일정등록 URL 파라미터 수신
 function applyUrlParams(){
   var p = new URLSearchParams(window.location.search);
-  if(!p.has('withName') && !p.has('withTel')) return;
+  if(!p.has('withName') && !p.has('withTel') && !p.has('memo')) return;
 
-  // TAB3 (일정&할일 등록)으로 이동
-  sw(3);
-
-  // 할일 모드 설정
-  var kind = p.get('kind') || 'todo';
-  if(typeof setKind === 'function') setKind(kind);
-
-  // 고객명/연락처 자동 입력
-  var nm = p.get('withName')||'';
-  var tel = p.get('withTel')||'';
+  var nm   = p.get('withName')||'';
+  var tel  = p.get('withTel')||'';
   var memo = p.get('memo')||'';
+  var kind = p.get('kind')||'todo';
 
+  // URL 파라미터 즉시 제거 (뒤로가기 시 재실행 방지)
+  window.history.replaceState({},'',window.location.pathname);
+
+  // TAB4 (일정&할일 등록)으로 이동 — 충분한 딜레이로 renderCal 완료 후 실행
   setTimeout(function(){
-    var wname = document.getElementById('sch-with-name');
-    var wtel  = document.getElementById('sch-with-tel');
-    var wmemo = document.getElementById('sch-memo');
-    if(wname) wname.value = nm;
-    if(wtel)  wtel.value  = tel;
-    if(wmemo) wmemo.value = memo;
-    // 안내 토스트
-    if(nm){
+    sw(4); // ← 일정 등록 탭 (TAB3=알림센터, TAB4=일정등록)
+
+    setTimeout(function(){
+      // 할일 모드 설정
+      if(typeof setKind === 'function') setKind(kind);
+
+      // 고객명/연락처/메모 자동 입력
+      var wname = document.getElementById('sch-with-name');
+      var wtel  = document.getElementById('sch-with-tel');
+      var wmemo = document.getElementById('sch-memo');
+      if(wname && nm)   wname.value = nm;
+      if(wtel  && tel)  wtel.value  = tel;
+      if(wmemo && memo) wmemo.value = memo;
+
+      // 안내 토스트
       var toast=document.createElement('div');
-      toast.innerHTML='📅 <strong>'+nm+'</strong> 고객의 다음 일정&할일을 등록합니다';
-      toast.style.cssText='position:fixed;bottom:30px;left:50%;transform:translateX(-50%);background:#1a2744;color:#fff;padding:12px 20px;border-radius:24px;font-size:13px;z-index:9999;box-shadow:0 4px 16px rgba(0,0,0,.3);white-space:nowrap';
+      toast.innerHTML='📅 <strong>'+(nm||'고객')+'</strong> 님의 다음 일정&amp;할일을 등록하세요';
+      toast.style.cssText='position:fixed;top:70px;left:50%;transform:translateX(-50%);background:#1a2744;color:#fff;padding:12px 20px;border-radius:24px;font-size:13px;z-index:9999;box-shadow:0 4px 16px rgba(0,0,0,.3);white-space:nowrap';
       document.body.appendChild(toast);
       setTimeout(function(){if(toast.parentNode)document.body.removeChild(toast);},3000);
-    }
-    // URL 파라미터 제거 (뒤로가기 시 재실행 방지)
-    window.history.replaceState({},'',window.location.pathname);
-  },300);
+    },150);
+  },200);
 }
 </script>
 
