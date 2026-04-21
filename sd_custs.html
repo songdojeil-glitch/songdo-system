@@ -896,8 +896,8 @@ function previewBrkUpload(e){
       var wb=XLSX.read(ev.target.result,{type:'array'});
       var ws=wb.Sheets[wb.SheetNames[0]];
       var rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
-      // 헤더 행 제거 (첫 행이 텍스트면 스킵)
-      if(rows.length&&isNaN(rows[0][0])&&typeof rows[0][0]==='string'&&rows[0][0].length<5)rows=rows.slice(1);
+      // 헤더 행 제거 (첫 셀이 'No.' 또는 숫자가 아닌 문자열이면 스킵)
+      if(rows.length&&(rows[0][0]==='No.'||rows[0][0]==='no.'||(typeof rows[0][0]==='string'&&isNaN(Number(rows[0][0])))))rows=rows.slice(1);
       processBrkUploadRows(rows);
     };
     reader.readAsArrayBuffer(file);
@@ -906,7 +906,7 @@ function previewBrkUpload(e){
     reader.onload=function(ev){
       var lines=ev.target.result.split('\n').filter(function(l){return l.trim();});
       var rows=lines.map(function(l){return l.split(/\t|,/);});
-      if(rows.length&&isNaN(rows[0][0])&&typeof rows[0][0]==='string'&&rows[0][0].length<5)rows=rows.slice(1);
+      if(rows.length&&(rows[0][0]==='No.'||rows[0][0]==='no.'||(typeof rows[0][0]==='string'&&isNaN(Number(rows[0][0])))))rows=rows.slice(1);
       processBrkUploadRows(rows);
     };
     reader.readAsText(file,'UTF-8');
@@ -914,14 +914,15 @@ function previewBrkUpload(e){
 }
 
 function processBrkUploadRows(rows){
-  // 컬럼: 0=등록번호 1=공구 2=업소명 3=대표자 4=대표번호 5=휴대폰 6=팩스 7=주소 8=전문분야 9=등급
+  // 컬럼: 0=No. 1=소속 2=공구 3=단지&건물명 4=업소명 5=대표자 6=등록번호 7=대표번호 8=핸드폰번호 9=관계등급 10=전문1 11=전문2 12=팩스번호 13=주소 14=메모
   var upRows=rows.map(function(r){
     var s=function(v){return String(v==null?'':v).trim();};
+    var field=[s(r[10]),s(r[11])].filter(Boolean).join('/');
     return {
-      regNo:s(r[0]),gu:s(r[1]),name:s(r[2]),
-      rep:s(r[3]),tel:s(r[4]),mobile:s(r[5]),
-      fax:s(r[6]),addr:s(r[7]),field:s(r[8]),
-      grade:parseInt(r[9])||3
+      regNo:s(r[6]),gu:s(r[2]),assoc:s(r[1]),prop:s(r[3]),name:s(r[4]),
+      rep:s(r[5]),tel:s(r[7]),mobile:s(r[8]),
+      fax:s(r[12]),addr:s(r[13]),field:field,
+      grade:parseInt(r[9])||3,memo:s(r[14])
     };
   }).filter(function(r){return r.name&&r.rep&&r.mobile;});
 
@@ -994,15 +995,15 @@ async function applyBrkUpload(){
         id:Date.now()+Math.random(),
         regNo:s(p.r.regNo),gu:s(p.r.gu),name:s(p.r.name),rep:s(p.r.rep),
         mobile:s(p.r.mobile),tel:s(p.r.tel),fax:s(p.r.fax),addr:s(p.r.addr),
-        bldg:extractBldg(s(p.r.addr)),field1:s(p.r.field),field2:'',grade:p.r.grade,
-        assoc:'송도연합회',closed:false,regAt:now,updAt:now
+        bldg:s(p.r.prop)||extractBldg(s(p.r.addr)),field1:s(p.r.field),field2:'',grade:p.r.grade,
+        assoc:s(p.r.assoc)||'송도연합회',memo:s(p.r.memo),closed:false,regAt:now,updAt:now
       });
     }else if(p.type==='upd'){
       Object.assign(p.b,{
         regNo:p.r.regNo,gu:p.r.gu,name:p.r.name,rep:p.r.rep,
         mobile:p.r.mobile,tel:p.r.tel,fax:p.r.fax,addr:p.r.addr,
-        bldg:p.b.bldg||extractBldg(p.r.addr),field:p.r.field,grade:p.r.grade,
-        updAt:now
+        bldg:p.r.prop||p.b.bldg||extractBldg(p.r.addr),field1:p.r.field,grade:p.r.grade,
+        assoc:p.r.assoc||p.b.assoc,memo:p.r.memo,updAt:now
       });
     }else if(p.type==='cls'){
       p.b.closed=true;p.b.closedAt=now;
