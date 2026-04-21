@@ -719,14 +719,15 @@ function renderBrk(){
 
   var tbody=document.getElementById('brkTbody');
   if(!f.length){
-    tbody.innerHTML='<tr><td colspan="13" style="text-align:center;color:#aaa;padding:20px">등록된 중개업소가 없습니다</td></tr>';
+    tbody.innerHTML='<tr><td colspan="14" style="text-align:center;color:#aaa;padding:20px">등록된 중개업소가 없습니다</td></tr>';
     return;
   }
   tbody.innerHTML=f.map(function(b,i){
     var ac=BRK_AC[b.assoc]||'#888', ab=BRK_AB[b.assoc]||'#f5f5f5';
     var rs=b.closed?'opacity:.45;background:#fafafa':'';
     return '<tr style="'+rs+'">'
-      +'<td style="color:#aaa">'+( i+1)+'</td>'
+      +'<td><input type="checkbox" class="brk-chk" value="'+b.id+'"></td>'
+      +'<td style="color:#aaa;font-size:11px">'+(i+1)+'</td>'
       +'<td><span style="font-size:10px;padding:2px 5px;border-radius:6px;background:'+ab+';color:'+ac+';white-space:nowrap">'+b.assoc+'</span></td>'
       +'<td style="font-size:11px;color:#1565c0">'+(b.gu||'—')+'</td>'
       +'<td style="font-size:10px;color:#888">'+(b.regNo||'—')+'</td>'
@@ -831,7 +832,40 @@ async function delBrk(id){
   await toStoreBrk();renderBrk();
 }
 
-// ─ 일괄 업로드
+function toggleAllBrkChk(chk){
+  document.querySelectorAll('.brk-chk').forEach(function(c){c.checked=chk.checked;});
+}
+
+async function delSelectedBrks(){
+  var ids=[];
+  document.querySelectorAll('.brk-chk:checked').forEach(function(c){ids.push(parseInt(c.value));});
+  if(!ids.length){alert('삭제할 업소를 선택해 주세요.');return;}
+  if(!confirm(ids.length+'개 업소를 완전 삭제할까요?\n(복구 불가)'))return;
+  brks=brks.filter(function(b){return!ids.includes(b.id);});
+  await toStoreBrk();
+  renderBrk();
+}
+
+async function delAllBrks(){
+  var statusF=document.getElementById('bfStatus').value;
+  var assocF=document.getElementById('bfAssoc').value;
+  var target=brks.filter(function(b){
+    if(assocF&&b.assoc!==assocF)return false;
+    if(statusF==='active'&&b.closed)return false;
+    if(statusF==='closed'&&!b.closed)return false;
+    return true;
+  });
+  if(!target.length){alert('삭제할 업소가 없습니다.');return;}
+  var msg='현재 필터 기준 '+target.length+'개 업소를 전체 삭제할까요?\n(복구 불가)\n\n필터: '
+    +(assocF||'전체 소속')+' / '+(statusF==='active'?'활성':statusF==='closed'?'폐업':'전체');
+  if(!confirm(msg))return;
+  var targetIds=target.map(function(b){return b.id;});
+  brks=brks.filter(function(b){return!targetIds.includes(b.id);});
+  await toStoreBrk();
+  renderBrk();
+}
+
+
 function openBrkUpload(){
   document.getElementById('brkUploadModal').style.display='flex';
   document.getElementById('brkUpPreview').style.display='none';
@@ -2068,6 +2102,8 @@ function resetCallTab(){
         <button onclick="openBrkForm(null)" class="btn-p" style="font-size:12px;padding:6px 14px">➕ 신규 등록</button>
         <button onclick="openBrkUpload()" class="btn-s" style="font-size:12px">📥 일괄 업로드</button>
         <button onclick="exportBrk()" class="btn-s" style="font-size:12px">📤 엑셀 내보내기</button>
+        <button onclick="delSelectedBrks()" class="btn-s" style="font-size:12px;color:#e65100;border-color:#ffb74d">☑️ 선택 삭제</button>
+        <button onclick="delAllBrks()" class="btn-d" style="font-size:12px">🗑️ 전체 삭제</button>
       </div>
     </div>
     <!-- 필터 -->
@@ -2102,6 +2138,7 @@ function resetCallTab(){
   <div style="overflow-x:auto">
     <table class="tbl" style="font-size:11px">
       <thead><tr>
+        <th style="width:28px"><input type="checkbox" id="brkChkAll" onclick="toggleAllBrkChk(this)" title="전체 선택"></th>
         <th>#</th><th>소속</th><th>공구</th><th>등록번호</th>
         <th>업소명</th><th>대표자</th><th>휴대폰</th><th>대표번호</th>
         <th>단지&amp;주소명</th><th>전문분야</th><th>등급</th><th>상태</th><th>액션</th>
