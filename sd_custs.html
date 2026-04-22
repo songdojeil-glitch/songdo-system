@@ -695,6 +695,12 @@ function autoExtractBldg(){
   }
 }
 
+function normGu(v){
+  if(!v)return '';
+  var t=String(v).trim();
+  return /^\d+$/.test(t)?t+'공구':t;
+}
+
 function onBrkAssocChange(){
   var assoc=document.getElementById('brkAssoc').value;
   var isSongdo=assoc==='송도연합회'||assoc==='송도비회원';
@@ -710,7 +716,7 @@ function renderBrk(){
 
   var f=brks.filter(function(b){
     if(assocF&&b.assoc!==assocF)return false;
-    if(guF&&b.gu!==guF)return false;
+    if(guF&&normGu(b.gu)!==guF)return false;
     if(gradeF&&String(b.grade)!==gradeF)return false;
     if(statusF==='active'&&b.closed)return false;
     if(statusF==='closed'&&!b.closed)return false;
@@ -739,7 +745,7 @@ function renderBrk(){
       +'<td onclick="event.stopPropagation()"><input type="checkbox" class="brk-chk" value="'+b.id+'"></td>'
       +'<td style="color:#aaa;font-size:11px">'+(i+1)+'</td>'
       +'<td><span style="font-size:10px;padding:2px 5px;border-radius:6px;background:'+ab+';color:'+ac+';white-space:nowrap">'+b.assoc+'</span></td>'
-      +'<td style="font-size:11px;color:#1565c0;white-space:nowrap">'+(b.gu||'')+'</td>'
+      +'<td style="font-size:11px;color:#1565c0;white-space:nowrap">'+normGu(b.gu)+'</td>'
       +'<td style="font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+(b.bldg||'')+'">'+(b.bldg||'')+'</td>'
       +'<td style="font-weight:500;white-space:nowrap">'+(b.closed?'<s>':'')+b.name+(b.closed?'</s>':'')+'</td>'
       +'<td style="white-space:nowrap">'+(b.rep||'—')+'</td>'
@@ -787,7 +793,7 @@ function openBrkDetail(id,e){
     +detRow('팩스',b.fax||'—')
     +detRow('등록번호',b.regNo||'—')
     +detRow('관계등급',gradeLabel2?'<span style="background:'+gc+'22;color:'+gc+';padding:2px 8px;border-radius:6px;font-size:12px;font-weight:600">'+gradeLabel2+'</span>':'—')
-    +detRow('공구',b.gu||'—')
+    +detRow('공구',normGu(b.gu)||'—')
     +detRow('전문1',b.field1||'—')
     +detRow('전문2',b.field2||'—')
     +detRow('단지&건물명',b.bldg||'—')
@@ -869,7 +875,7 @@ function openBrkForm(id){
     document.getElementById('brkFax').value=b.fax||'';
     document.getElementById('brkRegNo').value=b.regNo||'';
     document.getElementById('brkAssoc').value=b.assoc||'송도연합회';
-    document.getElementById('brkGu').value=b.gu||'';
+    document.getElementById('brkGu').value=normGu(b.gu)||'';
     document.getElementById('brkAddr').value=b.addr||'';
     document.getElementById('brkBldg').value=b.bldg||'';
     document.getElementById('brkBldg').dataset.auto='';
@@ -907,7 +913,7 @@ async function saveBrk(){
     fax:document.getElementById('brkFax').value.trim(),
     regNo:document.getElementById('brkRegNo').value.trim(),
     assoc:document.getElementById('brkAssoc').value,
-    gu:document.getElementById('brkGu').value,
+    gu:normGu(document.getElementById('brkGu').value),
     addr:document.getElementById('brkAddr').value.trim(),
     bldg:document.getElementById('brkBldg').value.trim(),
     field1:document.getElementById('brkField1').value,
@@ -1020,7 +1026,7 @@ function processBrkUploadRows(rows){
     var s=function(v){return String(v==null?'':v).trim();};
     var field=[s(r[10]),s(r[11])].filter(Boolean).join('/');
     return {
-      regNo:s(r[6]),gu:s(r[2]),assoc:s(r[1]),prop:s(r[3]),name:s(r[4]),
+      regNo:s(r[6]),gu:(function(v){var t=s(v);return(/^\d+$/.test(t))?t+'공구':t;})(r[2]),assoc:s(r[1]),prop:s(r[3]),name:s(r[4]),
       rep:s(r[5]),tel:s(r[7]),mobile:s(r[8]),
       fax:s(r[12]),addr:s(r[13]),field:field,
       grade:(function(v){var t=s(v);return(['VIP','우수','일반','관리'].indexOf(t)>=0)?t:(parseInt(t)||3);})(r[9]),memo:s(r[14])
@@ -1094,14 +1100,14 @@ async function applyBrkUpload(){
       var s=function(v){return String(v==null?'':v).trim();};
       brks.unshift({
         id:Date.now()+Math.random(),
-        regNo:s(p.r.regNo),gu:s(p.r.gu),name:s(p.r.name),rep:s(p.r.rep),
+        regNo:s(p.r.regNo),gu:normGu(s(p.r.gu)),name:s(p.r.name),rep:s(p.r.rep),
         mobile:s(p.r.mobile),tel:s(p.r.tel),fax:s(p.r.fax),addr:s(p.r.addr),
         bldg:s(p.r.prop)||extractBldg(s(p.r.addr)),field1:s(p.r.field),field2:'',grade:p.r.grade,
         assoc:s(p.r.assoc)||'송도연합회',memo:s(p.r.memo),closed:false,regAt:now,updAt:now
       });
     }else if(p.type==='upd'){
       Object.assign(p.b,{
-        regNo:p.r.regNo,gu:p.r.gu,name:p.r.name,rep:p.r.rep,
+        regNo:p.r.regNo,gu:normGu(p.r.gu),name:p.r.name,rep:p.r.rep,
         mobile:p.r.mobile,tel:p.r.tel,fax:p.r.fax,addr:p.r.addr,
         bldg:p.r.prop||p.b.bldg||extractBldg(p.r.addr),field1:p.r.field,grade:p.r.grade,
         assoc:p.r.assoc||p.b.assoc,memo:p.r.memo,updAt:now
@@ -1122,7 +1128,7 @@ function exportBrk(){
   if(!brks.length){alert('내보낼 데이터가 없습니다.');return;}
   var cols=['소속','공구','단지&건물명','업소명','대표자','등록번호','대표번호','핸드폰번호','관계등급','전문1','전문2','팩스번호','주소','메모','상태','등록일'];
   var rows=[cols].concat(brks.map(function(b){return[
-    b.assoc,b.gu||'',b.bldg||'',b.name,b.rep,b.regNo||'',b.tel||'',b.mobile,
+    b.assoc,normGu(b.gu)||'',b.bldg||'',b.name,b.rep,b.regNo||'',b.tel||'',b.mobile,
     b.grade||'',b.field1||b.field||'',b.field2||'',b.fax||'',b.addr||'',b.memo||'',
     b.closed?'폐업':'활성',b.regAt||''
   ];}));
@@ -2420,10 +2426,7 @@ function resetCallTab(){
             <tbody id="brkUpTbody"></tbody>
           </table>
         </div>
-        <div style="margin-top:12px;display:flex;gap:8px">
-          <button onclick="applyBrkUpload()" class="btn-p" style="flex:1;padding:10px;font-size:13px">✅ 적용하기</button>
-          <button onclick="closeBrkUpload()" class="btn-s" style="padding:10px;font-size:13px">취소</button>
-        </div>
+        
       </div>
     </div>
     <!-- 버튼 하단 항상 고정 -->
