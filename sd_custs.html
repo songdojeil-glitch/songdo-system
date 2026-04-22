@@ -731,8 +731,10 @@ function renderBrk(){
   tbody.innerHTML=f.map(function(b,i){
     var ac=BRK_AC[b.assoc]||'#888', ab=BRK_AB[b.assoc]||'#f5f5f5';
     var rs=b.closed?'opacity:.45;background:#fafafa':'';
+    var gradeMap={1:'VIP',2:'우수',3:'일반',4:'관리'};
+    var gradeLabel=(typeof b.grade==='number'||!isNaN(Number(b.grade))&&b.grade!=='')?gradeMap[parseInt(b.grade)]||b.grade:b.grade;
     var gradeInfo={'VIP':'#c62828','우수':'#1565c0','일반':'#2e7d32','관리':'#888'};
-    var gradeColor=gradeInfo[b.grade]||'#888';
+    var gradeColor=gradeInfo[gradeLabel]||'#888';
     return '<tr style="cursor:pointer;'+rs+'" onclick="openBrkDetail('+b.id+',event)">'
       +'<td onclick="event.stopPropagation()"><input type="checkbox" class="brk-chk" value="'+b.id+'"></td>'
       +'<td style="color:#aaa;font-size:11px">'+(i+1)+'</td>'
@@ -744,7 +746,7 @@ function renderBrk(){
       +'<td style="font-size:10px;color:#888;white-space:nowrap">'+(b.regNo||'')+'</td>'
       +'<td style="font-size:11px;white-space:nowrap">'+(b.tel||'')+'</td>'
       +'<td style="font-size:12px;font-weight:500;white-space:nowrap;color:#1a1a1a">'+(b.mobile||'—')+'</td>'
-      +'<td style="white-space:nowrap">'+(b.grade?'<span style="font-size:10px;padding:2px 6px;border-radius:6px;background:'+gradeColor+'22;color:'+gradeColor+';font-weight:600">'+b.grade+'</span>':'')+'</td>'
+      +'<td style="white-space:nowrap">'+(gradeLabel?'<span style="font-size:10px;padding:2px 6px;border-radius:6px;background:'+gradeColor+'22;color:'+gradeColor+';font-weight:600">'+gradeLabel+'</span>':'')+'</td>'
       +'<td style="font-size:11px;white-space:nowrap">'+(b.field1||'')+'</td>'
       +'<td style="font-size:11px;white-space:nowrap;color:#888">'+(b.field2||'')+'</td>'
       +'<td style="font-size:11px;color:#aaa;white-space:nowrap">'+(b.fax||'')+'</td>'
@@ -761,8 +763,10 @@ function renderBrk(){
 function openBrkDetail(id,e){
   if(e&&e.target&&(e.target.tagName==='INPUT'||e.target.tagName==='BUTTON'))return;
   var b=brks.find(function(x){return x.id==id;});if(!b)return;
+  var gradeMap2={1:'VIP',2:'우수',3:'일반',4:'관리'};
+  var gradeLabel2=(typeof b.grade==='number'||(!isNaN(Number(b.grade))&&b.grade!==''))?gradeMap2[parseInt(b.grade)]||String(b.grade):b.grade;
   var gradeInfo={'VIP':'#c62828','우수':'#1565c0','일반':'#2e7d32','관리':'#888'};
-  var gc=gradeInfo[b.grade]||'#888';
+  var gc=gradeInfo[gradeLabel2]||'#888';
   var ac=BRK_AC[b.assoc]||'#888', ab=BRK_AB[b.assoc]||'#f5f5f5';
   var m=document.getElementById('brkDetailModal');
   m.style.display='flex';
@@ -782,8 +786,10 @@ function openBrkDetail(id,e){
     +detRow('대표번호',b.tel||'—')
     +detRow('팩스',b.fax||'—')
     +detRow('등록번호',b.regNo||'—')
-    +detRow('관계등급',b.grade?'<span style="background:'+gc+'22;color:'+gc+';padding:2px 8px;border-radius:6px;font-size:12px;font-weight:600">'+b.grade+'</span>':'—')
-    +detRow('전문분야',[b.field1,b.field2].filter(Boolean).join(' / ')||'—')
+    +detRow('관계등급',gradeLabel2?'<span style="background:'+gc+'22;color:'+gc+';padding:2px 8px;border-radius:6px;font-size:12px;font-weight:600">'+gradeLabel2+'</span>':'—')
+    +detRow('공구',b.gu||'—')
+    +detRow('전문1',b.field1||'—')
+    +detRow('전문2',b.field2||'—')
     +detRow('단지&건물명',b.bldg||'—')
     +'</div>'
     +'<div style="margin-top:8px;font-size:13px">'+detRow('주소',b.addr||'—','full')+'</div>'
@@ -869,7 +875,7 @@ function openBrkForm(id){
     document.getElementById('brkBldg').dataset.auto='';
     document.getElementById('brkField1').value=b.field1||b.field||'';
     document.getElementById('brkField2').value=b.field2||'';
-    document.getElementById('brkGrade').value=b.grade||'';
+    var _gm={1:'VIP','1':'VIP',2:'우수','2':'우수',3:'일반','3':'일반',4:'관리','4':'관리'};var gradeVal=_gm[b.grade]||b.grade||'';document.getElementById('brkGrade').value=gradeVal;
     document.getElementById('brkMemo').value=b.memo||'';
   }else{
     document.getElementById('brkFormTitle').textContent='🏢 중개업소 등록';
@@ -1017,7 +1023,7 @@ function processBrkUploadRows(rows){
       regNo:s(r[6]),gu:s(r[2]),assoc:s(r[1]),prop:s(r[3]),name:s(r[4]),
       rep:s(r[5]),tel:s(r[7]),mobile:s(r[8]),
       fax:s(r[12]),addr:s(r[13]),field:field,
-      grade:parseInt(r[9])||3,memo:s(r[14])
+      grade:(function(v){var t=s(v);return(['VIP','우수','일반','관리'].indexOf(t)>=0)?t:(parseInt(t)||3);})(r[9]),memo:s(r[14])
     };
   }).filter(function(r){return r.name&&r.rep&&r.mobile;});
 
@@ -2233,7 +2239,7 @@ function resetCallTab(){
         <option value="">전체 공구</option>
         <option>1공구</option><option>2공구</option><option>3공구</option>
         <option>4공구</option><option>5공구</option><option>6공구</option>
-        <option>7공구</option><option>랜드마크시티</option><option>기타</option>
+        <option>7공구</option><option>8공구</option><option>11공구</option>
       </select>
       <select id="bfGrade" class="fi" style="width:95px;padding:4px 6px;font-size:12px" onchange="renderBrk()">
         <option value="">전체 등급</option>
@@ -2333,7 +2339,7 @@ function resetCallTab(){
             <option value="">선택</option>
             <option>1공구</option><option>2공구</option><option>3공구</option>
             <option>4공구</option><option>5공구</option><option>6공구</option>
-            <option>7공구</option><option>랜드마크시티</option><option>기타</option>
+            <option>7공구</option><option>8공구</option><option>11공구</option>
           </select>
         </div>
       </div>
