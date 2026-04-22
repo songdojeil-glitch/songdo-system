@@ -2392,7 +2392,13 @@ function renderCard(){
   var canvas = document.getElementById('img-card-canvas');
   var ctx    = canvas.getContext('2d');
   var SCALE  = 2;           // 해상도 2배
-  var W = 420, H = 820;     // 논리 크기
+  var W = 420;
+  // 경력 개수에 따라 캔버스 높이 동적 결정
+  var _careerCount = [1,2,3,4,5,6].map(function(i){
+    var el=document.getElementById('bc-career'+i);
+    return el&&el.value.trim()?1:0;
+  }).reduce(function(a,b){return a+b;},0);
+  var H = 820 + Math.max(0, _careerCount - 4) * 36; // 경력 5개→+36, 6개→+72
   canvas.width  = W * SCALE;
   canvas.height = H * SCALE;
   canvas.style.width  = W + 'px';
@@ -2469,7 +2475,7 @@ function renderCard(){
 
     // fix3: 사진 10% 크게 + 우측 이동
     var photoR  = Math.round(66*1.21);           // 66 → 80 (10% 추가)
-    var photoCX = logoImg ? Math.round(W*0.67) : W/2;
+    var photoCX = logoImg ? Math.round(W*0.72) : W/2;
     var photoCY = headerH + photoR + 28;
 
     // fix2: 로고 25% 크게, 사진 왼쪽 수직 중앙
@@ -2619,10 +2625,17 @@ function renderCard(){
       p1Y=tagY+tagH+10;
     }
 
-    // 하단 슬로건
+    // 하단 슬로건 — 경력 태그 아래 최소 16px 여백 확보
     if(promo2){
       var sloganH=54;
-      var sloganY=H-sloganH;
+      var sloganY=Math.max(H-sloganH, p1Y+16);
+      // 슬로건이 밀린 경우 캔버스 실제 높이도 늘림
+      if(sloganY+sloganH > H){
+        H = sloganY+sloganH;
+        canvas.height = H*SCALE;
+        canvas.style.height = H+'px';
+        ctx.scale(SCALE,SCALE);
+      }
       ctx.fillStyle=C.navy;
       ctx.beginPath();
       ctx.moveTo(0,sloganY);ctx.lineTo(W,sloganY);
