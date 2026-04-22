@@ -1968,18 +1968,44 @@ var cardLibKey = 'sd_card_library';
 var cardLib = []; // [{id, title, savedAt, data:{...fields, _photo, _logo}}]
 
 // Firebase에서 불러오기
+var _cardLibLoaded = false; // Firebase에서 성공적으로 로드됐는지 플래그
+
 async function fromStoreCardLib(){
-  try{
-    var r = await window.storage.get(cardLibKey);
-    if(r && r.value) cardLib = JSON.parse(r.value);
-    // else: 데이터 없으면 기존 cardLib 유지 (신규면 이미 []로 초기화됨)
-  }catch(e){ console.warn('[SD] 명함 보관함 로드 실패 - 기존 데이터 유지', e); }
+  // 최대 3회 재시도 (Firebase 연결 지연 대응)
+  for(var attempt=1; attempt<=3; attempt++){
+    try{
+      var r = await window.storage.get(cardLibKey);
+      if(r && r.value){
+        cardLib = JSON.parse(r.value);
+        _cardLibLoaded = true;
+        console.log('[SD] 명함 보관함 로드 성공 ('+attempt+'회차): '+cardLib.length+'개');
+        break;
+      } else if(r !== null){
+        // get은 성공했으나 데이터가 없음 = 신규 사용자
+        _cardLibLoaded = true;
+        console.log('[SD] 명함 보관함 신규 (데이터 없음)');
+        break;
+      } else {
+        // null 반환 = Firebase 아직 준비 안 됨
+        console.warn('[SD] 명함 로드 시도 '+attempt+'/3 실패, 재시도...');
+        if(attempt < 3) await new Promise(function(res){setTimeout(res, 800*attempt);});
+      }
+    }catch(e){
+      console.warn('[SD] 명함 보관함 로드 오류 ('+attempt+'회차):', e);
+      if(attempt < 3) await new Promise(function(res){setTimeout(res, 800*attempt);});
+    }
+  }
   renderCardLib();
 }
 
 // Firebase에 저장
 async function toStoreCardLib(){
-  // 안전장치: cardLib가 빈 배열이고 Firebase에 기존 데이터 있으면 저장 차단
+  // 안전장치1: Firebase 로드가 완료되지 않은 상태에서 저장 차단
+  if(!_cardLibLoaded){
+    console.warn('[SD] 명함 저장 차단 - 아직 Firebase 로드 미완료');
+    return;
+  }
+  // 안전장치2: 빈 배열로 기존 데이터 덮어쓰기 방지
   if(cardLib.length === 0){
     try{
       var check = await window.storage.get(cardLibKey);
@@ -1990,7 +2016,11 @@ async function toStoreCardLib(){
           return;
         }
       }
-    }catch(e){}
+    }catch(e){
+      // storage.get 실패 시도 저장 차단 (안전 우선)
+      console.warn('[SD] 명함 저장 차단 - 기존 데이터 확인 실패, 저장 보류');
+      return;
+    }
   }
   try{ await window.storage.set(cardLibKey, JSON.stringify(cardLib)); }
   catch(e){ console.warn('명함 보관함 저장 실패:', e); }
