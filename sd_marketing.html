@@ -931,9 +931,9 @@ var _blogProps=[];          // sd_props에서 불러온 매물 전체
 var _blogSelectedProp=null; // 선택된 매물 객체
 
 // ─ 스토리지
-async function toStoreNews(){try{await window.storage.set('sd_mktg_news',JSON.stringify(savedNews));}catch(e){}}
+async function toStoreNews(){if(!savedNews.length)return;try{await window.storage.set('sd_mktg_news',JSON.stringify(savedNews));}catch(e){console.warn('[SD] 뉴스 저장 실패',e);}}
 async function fromStoreNews(){try{var r=await window.storage.get('sd_mktg_news');if(r&&r.value)savedNews=JSON.parse(r.value);}catch(e){console.warn('[SD] 뉴스 로드 실패',e);}}
-async function toStoreCal(){try{await window.storage.set('sd_mktg_posts',JSON.stringify(calPosts));}catch(e){}}
+async function toStoreCal(){if(!calPosts.length)return;try{await window.storage.set('sd_mktg_posts',JSON.stringify(calPosts));}catch(e){console.warn('[SD] 캘린더 저장 실패',e);}}
 async function fromStoreCal(){try{var r=await window.storage.get('sd_mktg_posts');if(r&&r.value)calPosts=JSON.parse(r.value);}catch(e){console.warn('[SD] 캘린더 로드 실패',e);}}
 
 // ═══ AI 모델 설정 스토리지 ═══
@@ -1978,6 +1978,19 @@ async function fromStoreCardLib(){
 
 // Firebase에 저장
 async function toStoreCardLib(){
+  // 안전장치: cardLib가 빈 배열이고 Firebase에 기존 데이터 있으면 저장 차단
+  if(cardLib.length === 0){
+    try{
+      var check = await window.storage.get(cardLibKey);
+      if(check && check.value){
+        var existing = JSON.parse(check.value);
+        if(existing && existing.length > 0){
+          console.warn('[SD] 명함 저장 차단 - 빈 배열로 기존 데이터 덮어쓰기 방지');
+          return;
+        }
+      }
+    }catch(e){}
+  }
   try{ await window.storage.set(cardLibKey, JSON.stringify(cardLib)); }
   catch(e){ console.warn('명함 보관함 저장 실패:', e); }
 }
@@ -3307,7 +3320,7 @@ async function initAll(){
     if(el) el.addEventListener('input', function(){ saveCardSettings(); });
   });
 }
-initAll();
+document.addEventListener('DOMContentLoaded', function(){ initAll(); });
 </script>
 <!-- TAB8 중개업소 홍보 -->
 <div id="tc8" class="tc">
