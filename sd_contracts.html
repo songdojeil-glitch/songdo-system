@@ -220,7 +220,8 @@ body{margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',
       <div id="fc-p1w"><label class="fl" id="fc-p1l">전세금</label><input id="fc-price" type="text" class="fi" placeholder="예: 4억 5,000만원"></div>
       <div id="fc-p2w" style="display:none"><label class="fl">보증금</label><input id="fc-deposit" type="text" class="fi"></div>
       <div id="fc-p3w" style="display:none"><label class="fl">월세</label><input id="fc-monthly" type="text" class="fi"></div>
-      <div><label class="fl">수수료</label><input id="fc-fee" type="text" class="fi"></div>
+      <div><label class="fl">법정 중개보수 <button type="button" onclick="calcFee()" style="margin-left:6px;font-size:10px;padding:1px 7px;background:#e3f2fd;color:#1565c0;border:0.5px solid #90caf9;border-radius:5px;cursor:pointer">자동계산</button></label>
+          <input id="fc-fee" type="text" class="fi" placeholder="자동계산 또는 직접 입력"></div>
       <div id="fc-period-wrap"><label class="fl">계약 기간 (개월)</label>
         <div style="display:flex;align-items:center;gap:6px"><input id="fc-period" type="number" class="fi" min="1" max="120" placeholder="예: 24" oninput="autoExpiry()" style="flex:1"><span style="font-size:12px;color:#666;white-space:nowrap">개월</span></div>
       </div>
@@ -646,7 +647,7 @@ function openDetail(id){
       html+=row(c.deal==='전세'?'전세금':'매매가',fi('price',c.price));
     }
   }
-  html+=row('수수료',fi('fee',c.fee))+'</div>';
+  html+=row('법정 중개보수',fi('fee',c.fee))+'</div>';
   html+='<div style="border-top:0.5px solid #f0f0f0;padding-top:10px;margin-bottom:12px">'
     +'<p class="sec" style="margin-bottom:8px">🏢 중개업소 · 담당자</p>'
     +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">'
@@ -1235,6 +1236,9 @@ function fillContractForm(d){
   Object.keys(map).forEach(function(id){
     if(map[id]){ var el=document.getElementById(id); if(el) el.value=map[id]; }
   });
+  // UI 먼저 갱신 (deal 설정 후 필드 표시 상태 확정)
+  if(typeof onCDeal==='function') onCDeal();
+
   // 중개업소 자동 설정
   if(d.agencySeller){
     if(d.agencySeller==='송도제일공인'){
@@ -1254,8 +1258,7 @@ function fillContractForm(d){
       if(ab)ab.value=d.agencyBuyer;
     }
   }
-  // UI 갱신
-  if(typeof onCDeal==='function') onCDeal();
+  // 만기일 재계산 (period 입력 후)
   if(typeof autoExpiry==='function') autoExpiry();
 }
 
@@ -1298,6 +1301,107 @@ function viewContractFile(url, name){
     +'</div>';
   modal.onclick=function(e){if(e.target===modal)modal.remove();};
   document.body.appendChild(modal);
+}
+
+
+// ─────────────────────────────────────────────
+// 법정 중개보수 자동계산
+// ─────────────────────────────────────────────
+function calcFee(){
+  var deal = document.getElementById('fc-deal').value;
+  var type = document.getElementById('fc-type').value;
+  var priceEl = document.getElementById('fc-price');
+  var depositEl = document.getElementById('fc-deposit');
+  var monthlyEl = document.getElementById('fc-monthly');
+
+  // 거래금액 산출
+  var price = 0;
+  var isCommercial = ['상가','사무실','생활숙박시설'].includes(type);
+
+  if(deal === '매매' || deal === '분양권매매'){
+    price = toNum(priceEl ? priceEl.value : '');
+  } else if(deal === '전세'){
+    price = toNum(priceEl ? priceEl.value : '');
+  } else if(deal === '월세' || deal === '임대차' || deal === '임대'){
+    var deposit = toNum(depositEl ? depositEl.value : '');
+    var monthly = toNum(monthlyEl ? monthlyEl.value : '');
+    if(isCommercial){
+      // 상가: 환산보증금 = 보증금 + (월세 × 100)
+      price = deposit + (monthly * 100);
+    } else {
+      // 주거: 환산보증금 = 보증금 + (월세 × 100), 단 5000만원 미만이면 월세 × 70
+      var converted = deposit + (monthly * 100);
+      if(converted < 50000000){
+        converted = deposit + (monthly * 70);
+      }
+      price = converted;
+    }
+  }
+
+  if(!price){ alert('거래금액을 먼저 입력해 주세요.'); return; }
+
+  var rate = 0, maxFee = 0;
+
+  if(isCommercial){
+    // 상가·사무실: 거래금액 무관 0.9% (부가세 포함 0.99%)
+    rate = 0.009;
+    var fee = Math.floor(price * rate);
+    var feeVat = Math.floor(fee * 1.1); // 부가세 10%
+    document.getElementById('fc-fee').value = feeVat.toLocaleString() + '원 (부가세포함)';
+    showFeeInfo('상가 중개보수: ' + price.toLocaleString() + '원 × 0.9% = ' + fee.toLocaleString() + '원 + VAT = ' + feeVat.toLocaleString() + '원');
+    return;
+  }
+
+  // 주거용 (아파트·오피스텔) 요율표
+  if(deal === '매매' || deal === '분양권매매'){
+    if(price < 50000000)      { rate = 0.006; maxFee = 250000; }
+    else if(price < 200000000){ rate = 0.005; maxFee = 800000; }
+    else if(price < 600000000){ rate = 0.004; maxFee = 0; }
+    else if(price < 900000000){ rate = 0.005; maxFee = 0; }
+    else                       { rate = 0.009; maxFee = 0; }
+  } else {
+    // 전세·임대차·월세 (환산보증금 기준)
+    if(price < 50000000)      { rate = 0.005; maxFee = 200000; }
+    else if(price < 100000000){ rate = 0.004; maxFee = 300000; }
+    else if(price < 300000000){ rate = 0.003; maxFee = 0; }
+    else if(price < 600000000){ rate = 0.004; maxFee = 0; }
+    else if(price < 900000000){ rate = 0.005; maxFee = 0; }
+    else                       { rate = 0.006; maxFee = 0; }
+  }
+
+  var fee = Math.floor(price * rate);
+  if(maxFee > 0) fee = Math.min(fee, maxFee);
+  document.getElementById('fc-fee').value = fee.toLocaleString() + '원';
+
+  var rateStr = (rate * 100).toFixed(1) + '%';
+  var maxStr = maxFee ? ' (한도 ' + maxFee.toLocaleString() + '원)' : '';
+  showFeeInfo('거래금액 ' + price.toLocaleString() + '원 × ' + rateStr + maxStr + ' = ' + fee.toLocaleString() + '원');
+}
+
+function toNum(s){
+  if(!s) return 0;
+  // 한국어 금액 파싱 (예: 3억5000만원, 30000000, 2,200,000)
+  s = String(s).replace(/,/g,'').replace(/원/g,'').trim();
+  var result = 0;
+  var eok = s.match(/(\d+\.?\d*)억/);
+  var man = s.match(/(\d+\.?\d*)만/);
+  var bare = s.match(/^(\d+)$/);
+  if(eok) result += parseFloat(eok[1]) * 100000000;
+  if(man) result += parseFloat(man[1]) * 10000;
+  if(!eok && !man && bare) result = parseFloat(bare[1]);
+  return result || 0;
+}
+
+function showFeeInfo(msg){
+  var existing = document.getElementById('fee-info-box');
+  if(existing) existing.remove();
+  var box = document.createElement('div');
+  box.id = 'fee-info-box';
+  box.style.cssText = 'margin-top:4px;font-size:11px;color:#1565c0;background:#e3f2fd;padding:5px 10px;border-radius:6px';
+  box.textContent = '💡 ' + msg;
+  var feeEl = document.getElementById('fc-fee');
+  feeEl.parentNode.appendChild(box);
+  setTimeout(function(){ if(box.parentNode) box.remove(); }, 5000);
 }
 
 function saveContract(){
@@ -1801,7 +1905,7 @@ function openDetail(id){
       html+=row(c.deal==='전세'?'전세금':'매매가',fi('price',c.price));
     }
   }
-  html+=row('수수료',fi('fee',c.fee))+'</div>';
+  html+=row('법정 중개보수',fi('fee',c.fee))+'</div>';
   html+='<div style="border-top:0.5px solid #f0f0f0;padding-top:10px;margin-bottom:12px">'
     +'<p class="sec" style="margin-bottom:8px">🏢 중개업소 · 담당자</p>'
     +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">'
