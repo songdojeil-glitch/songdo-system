@@ -44,6 +44,7 @@ body{margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',
 </style>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-storage-compat.js"></script>
   <!-- Firebase Storage 어댑터 (window.storage 호환) -->
   <script src="firebase-storage.js"></script>
 </head>
@@ -122,6 +123,27 @@ body{margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',
 
 <!-- TAB1 계약 등록 -->
 <div id="tc1" class="tc">
+  <!-- AI 계약서 분석 카드 -->
+  <div class="card" style="border:1.5px solid #e3f2fd;background:#f8fbff">
+    <p class="sec" style="color:#1565c0">📄 계약서 AI 자동 분석</p>
+    <p style="font-size:12px;color:#888;margin:-4px 0 10px">PDF 또는 이미지(JPG·PNG) 첨부 → AI가 계약 정보를 자동으로 입력합니다</p>
+    <div id="contract-file-zone" onclick="document.getElementById('contract-file-input').click()"
+      style="border:2px dashed #90caf9;border-radius:10px;padding:20px;text-align:center;cursor:pointer;background:#fff;transition:border-color .2s"
+      onmouseover="this.style.borderColor='#1565c0'" onmouseout="this.style.borderColor='#90caf9'">
+      <div style="font-size:28px;margin-bottom:6px">📎</div>
+      <div style="font-size:13px;color:#1565c0;font-weight:600">클릭하여 계약서 파일 선택</div>
+      <div style="font-size:11px;color:#aaa;margin-top:4px">PDF / JPG / PNG 지원 · 최대 10MB</div>
+    </div>
+    <input type="file" id="contract-file-input" accept=".pdf,.jpg,.jpeg,.png" style="display:none" onchange="onContractFileSelect(this)">
+    <div id="contract-file-info" style="display:none;margin-top:10px;padding:8px 12px;background:#e3f2fd;border-radius:8px;font-size:12px;color:#1565c0;display:flex;align-items:center;gap:8px">
+      <span id="contract-file-name" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
+      <button onclick="clearContractFile()" style="background:transparent;border:none;color:#e53935;cursor:pointer;font-size:14px;flex-shrink:0">✕</button>
+    </div>
+    <div id="contract-ai-status" style="display:none;margin-top:10px;padding:10px 14px;border-radius:8px;font-size:13px"></div>
+    <button id="contract-ai-btn" onclick="analyzeContractFile()" style="display:none;margin-top:10px;width:100%;padding:11px;background:#1565c0;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer">
+      🤖 AI로 계약 정보 자동 입력
+    </button>
+  </div>
   <div class="card">
     <p class="sec">🔗 연동 불러오기</p>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
@@ -269,7 +291,7 @@ body{margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',
   </div>
   <div style="overflow-x:auto;border:0.5px solid #e0e0e0;border-radius:12px">
     <table class="tbl">
-      <thead><tr><th>#</th><th>신규/갱신</th><th>종류</th><th>구분</th><th>건물명</th><th>동/호</th><th>계약일</th><th>중도금</th><th>잔금일</th><th>임대인</th><th>임차인</th><th>가격</th><th>만기일</th><th>D-day</th><th>담당</th><th style="min-width:80px;position:sticky;right:0;background:#f5f5f3;z-index:2">액션</th></tr></thead>
+      <thead><tr><th>#</th><th>신규/갱신</th><th>종류</th><th>구분</th><th>건물명</th><th>동/호</th><th>계약일</th><th>중도금</th><th>잔금일</th><th>임대인</th><th>임차인</th><th>가격</th><th>만기일</th><th>D-day</th><th>담당</th><th title="첨부파일">📎</th><th style="min-width:80px;position:sticky;right:0;background:#f5f5f3;z-index:2">액션</th></tr></thead>
       <tbody id="ctbdy"></tbody>
     </table>
   </div>
@@ -1048,6 +1070,209 @@ function fillFromCust(){
   });
 }
 
+// ─────────────────────────────────────────────
+// 계약서 파일 첨부 + AI 분석 + Firebase Storage 업로드
+// ─────────────────────────────────────────────
+var _contractFileB64 = null;   // base64 데이터
+var _contractFileMime = null;  // MIME 타입
+var _contractFileUrl = '';     // Storage 다운로드 URL
+var _contractFileName = '';    // 파일명
+
+function onContractFileSelect(input){
+  var file = input.files[0];
+  if(!file) return;
+  if(file.size > 10*1024*1024){ alert('파일 크기가 10MB를 초과합니다.'); return; }
+  var allowed = ['application/pdf','image/jpeg','image/png'];
+  if(!allowed.includes(file.type)){ alert('PDF, JPG, PNG 파일만 지원합니다.'); return; }
+  _contractFileMime = file.type;
+  _contractFileName = file.name;
+  _contractFileUrl = ''; // 새 파일 선택 시 기존 URL 초기화
+  // 파일명 표시
+  var info = document.getElementById('contract-file-info');
+  document.getElementById('contract-file-name').textContent = '📄 ' + file.name + ' (' + (file.size/1024).toFixed(0) + 'KB)';
+  info.style.display = 'flex';
+  document.getElementById('contract-ai-btn').style.display = 'block';
+  document.getElementById('contract-ai-status').style.display = 'none';
+  // base64 변환
+  var reader = new FileReader();
+  reader.onload = function(e){
+    _contractFileB64 = e.target.result.split(',')[1];
+  };
+  reader.readAsDataURL(file);
+}
+
+function clearContractFile(){
+  _contractFileB64 = null;
+  _contractFileMime = null;
+  _contractFileUrl = '';
+  _contractFileName = '';
+  document.getElementById('contract-file-input').value = '';
+  document.getElementById('contract-file-info').style.display = 'none';
+  document.getElementById('contract-ai-btn').style.display = 'none';
+  document.getElementById('contract-ai-status').style.display = 'none';
+}
+
+function setAIStatus(msg, type){
+  var el = document.getElementById('contract-ai-status');
+  var colors = {
+    ing:  {bg:'#e3f2fd', color:'#1565c0'},
+    ok:   {bg:'#e8f5e9', color:'#2e7d32'},
+    err:  {bg:'#ffebee', color:'#c62828'}
+  };
+  var c = colors[type] || colors.ing;
+  el.style.background = c.bg;
+  el.style.color = c.color;
+  el.style.padding = '10px 14px';
+  el.style.borderRadius = '8px';
+  el.style.fontSize = '13px';
+  el.textContent = msg;
+  el.style.display = 'block';
+}
+
+async function analyzeContractFile(){
+  if(!_contractFileB64){ alert('파일을 먼저 선택해 주세요.'); return; }
+  var btn = document.getElementById('contract-ai-btn');
+  btn.disabled = true;
+  btn.textContent = '⏳ AI 분석 중...';
+  setAIStatus('⏳ AI가 계약서를 읽고 있습니다...', 'ing');
+
+  try{
+    // Claude API 호출
+    var body = {
+      model: 'claude-sonnet-4-5-20250514',
+      max_tokens: 1500,
+      messages:[{
+        role:'user',
+        content:[
+          {
+            type: _contractFileMime==='application/pdf' ? 'document' : 'image',
+            source:{
+              type:'base64',
+              media_type: _contractFileMime,
+              data: _contractFileB64
+            }
+          },
+          {
+            type:'text',
+            text:`이 계약서에서 아래 항목을 추출해서 반드시 JSON만 출력하세요. 값이 없으면 빈 문자열로 두세요.
+{
+  "type": "아파트|상가|오피스텔|사무실|토지|분양권|권리|생활숙박시설 중 하나",
+  "deal": "전세|임대차|매매|월세|임대|분양권매매 중 하나",
+  "bldg": "건물명(단지명)",
+  "dong": "동",
+  "ho": "호수",
+  "addr": "주소",
+  "cdate": "계약일(YYYY-MM-DD)",
+  "fdate": "잔금일(YYYY-MM-DD)",
+  "expiry": "만기일(YYYY-MM-DD, 전세/임대차만)",
+  "seller": "매도인 또는 임대인 성명",
+  "sellerTel": "매도인/임대인 연락처",
+  "buyer": "매수인 또는 임차인 성명",
+  "buyerTel": "매수인/임차인 연락처",
+  "price": "전세금 또는 매매가(숫자+단위, 예: 3억 5,000만원)",
+  "deposit": "보증금(월세 계약)",
+  "monthly": "월세금액",
+  "period": "계약기간 개월수(숫자만, 예: 24)",
+  "memo": "특이사항이 있으면 간단히"
+}`
+          }
+        ]
+      }]
+    };
+
+    var res = await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify(body)
+    });
+    var data = await res.json();
+    var text = (data.content||[]).map(function(b){return b.text||'';}).join('');
+
+    // JSON 파싱
+    var jsonMatch = text.match(/\{[\s\S]*\}/);
+    if(!jsonMatch) throw new Error('AI 응답에서 JSON을 찾을 수 없습니다.');
+    var extracted = JSON.parse(jsonMatch[0]);
+
+    // 폼에 자동 입력
+    fillContractForm(extracted);
+
+    // Firebase Storage에 파일 업로드
+    setAIStatus('⏳ 계약서 파일을 저장 중...', 'ing');
+    await uploadContractFile();
+
+    setAIStatus('✅ 계약 정보가 자동으로 입력됐습니다! 내용을 확인 후 저장해 주세요.', 'ok');
+    btn.textContent = '✅ 분석 완료';
+
+  }catch(e){
+    console.error('[AI 계약서 분석]', e);
+    setAIStatus('❌ 분석 실패: ' + e.message + '\n\n파일을 직접 확인 후 수동 입력해 주세요.', 'err');
+    btn.disabled = false;
+    btn.textContent = '🤖 AI로 계약 정보 자동 입력';
+  }
+}
+
+function fillContractForm(d){
+  // 물건종류·계약구분
+  if(d.type){ var s=document.getElementById('fc-type'); if(s) s.value=d.type; }
+  if(d.deal){ var s=document.getElementById('fc-deal'); if(s) s.value=d.deal; }
+  // 텍스트 필드
+  var map = {
+    'fc-bldg':d.bldg, 'fc-dong':d.dong, 'fc-ho':d.ho, 'fc-addr':d.addr,
+    'fc-cdate':d.cdate, 'fc-fdate':d.fdate, 'fc-expiry':d.expiry,
+    'fc-seller':d.seller, 'fc-stl':d.sellerTel,
+    'fc-buyer':d.buyer, 'fc-btl':d.buyerTel,
+    'fc-price':d.price, 'fc-deposit':d.deposit, 'fc-monthly':d.monthly,
+    'fc-period':d.period, 'fc-memo':d.memo
+  };
+  Object.keys(map).forEach(function(id){
+    if(map[id]){ var el=document.getElementById(id); if(el) el.value=map[id]; }
+  });
+  // UI 갱신
+  if(typeof onCDeal==='function') onCDeal();
+  if(typeof autoExpiry==='function') autoExpiry();
+}
+
+async function uploadContractFile(){
+  if(!_contractFileB64 || !_contractFileMime) return;
+  try{
+    var storage = firebase.storage();
+    var contractId = Date.now();
+    var ext = _contractFileMime==='application/pdf'?'pdf':(_contractFileMime==='image/png'?'png':'jpg');
+    var path = 'contracts/' + contractId + '_' + (_contractFileName||'contract.'+ext);
+    var ref = storage.ref(path);
+    // base64 → Blob
+    var byteStr = atob(_contractFileB64);
+    var arr = new Uint8Array(byteStr.length);
+    for(var i=0;i<byteStr.length;i++) arr[i]=byteStr.charCodeAt(i);
+    var blob = new Blob([arr],{type:_contractFileMime});
+    await ref.put(blob,{contentType:_contractFileMime});
+    _contractFileUrl = await ref.getDownloadURL();
+    console.log('[SD] 계약서 업로드 완료:', _contractFileUrl);
+  }catch(e){
+    console.warn('[SD] 계약서 업로드 실패 (저장은 계속):', e);
+  }
+}
+
+function viewContractFile(url, name){
+  if(!url){ alert('첨부파일이 없습니다.'); return; }
+  var modal = document.createElement('div');
+  modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px';
+  var isImg = /\.(jpg|jpeg|png)$/i.test(name||'') || url.includes('image');
+  modal.innerHTML='<div style="background:#fff;border-radius:12px;width:100%;max-width:680px;max-height:90vh;display:flex;flex-direction:column;overflow:hidden">'
+    +'<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;background:#1a2744;color:#fff;border-radius:12px 12px 0 0">'
+    +'<span style="font-size:13px;font-weight:600">📎 '+(name||'계약서')+'</span>'
+    +'<div style="display:flex;gap:8px">'
+    +'<a href="'+url+'" download="'+(name||'계약서')+'" target="_blank" style="background:#1565c0;color:#fff;padding:5px 12px;border-radius:6px;text-decoration:none;font-size:12px">⬇️ 다운로드</a>'
+    +'<button onclick="this.closest('div[style*=fixed]').remove()" style="background:transparent;border:none;color:#fff;font-size:20px;cursor:pointer;line-height:1">✕</button>'
+    +'</div></div>'
+    +(isImg
+      ? '<div style="overflow:auto;padding:16px;flex:1"><img src="'+url+'" style="max-width:100%;border-radius:6px"></div>'
+      : '<iframe src="'+url+'" style="flex:1;border:none;width:100%" frameborder="0"></iframe>')
+    +'</div>';
+  modal.onclick=function(e){if(e.target===modal)modal.remove();};
+  document.body.appendChild(modal);
+}
+
 function saveContract(){
   var bldg=document.getElementById('fc-bldg').value.trim();if(!bldg){alert('건물명을 입력해 주세요.');return;}
   var now=new Date(),ds=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0');
@@ -1072,7 +1297,8 @@ function saveContract(){
     landlord:document.getElementById('fc-landlord')?document.getElementById('fc-landlord').value.trim():'',
     landlordTel:document.getElementById('fc-landlordtel')?document.getElementById('fc-landlordtel').value.trim():'',
     landlordExp:document.getElementById('fc-landlordexp')?document.getElementById('fc-landlordexp').value:'',
-    propId:propId,custId:document.getElementById('fc-custid').value,seeded:false};
+    propId:propId,custId:document.getElementById('fc-custid').value,seeded:false,
+    fileUrl:_contractFileUrl||'',fileName:_contractFileName||''};
   if(cEditId){var idx=contracts.findIndex(function(x){return x.id===cEditId;});if(idx>=0)contracts[idx]=obj;cEditId=null;document.getElementById('csave-btn').textContent='💾 계약 저장';}else contracts.unshift(obj);
   toCStore();
   if(!cEditId&&propId&&confirm('연결된 매물을 "거래완료"로 변경할까요?')){window.storage.get('sd_props').then(function(r){var props=r&&r.value?JSON.parse(r.value):[];var p=props.find(function(x){return String(x.id)===String(propId);});if(p){p.status='거래완료';window.storage.set('sd_props',JSON.stringify(props));}});}
@@ -1092,6 +1318,7 @@ function clearCF(){
   var bs=document.getElementById('btn-sdj-seller');if(bs)bs.classList.remove('active');
   var bb=document.getElementById('btn-sdj-buyer');if(bb)bb.classList.remove('active');
   cEditId=null;document.getElementById('csave-btn').textContent='💾 계약 저장';document.getElementById('fc-form-title').textContent='계약 등록';
+  clearContractFile();
   setTodayCF();onCDeal();
 }
 
@@ -1129,6 +1356,9 @@ function renderCT(){
       +'<td style="font-size:11px">'+(c.expiry||'—')+'</td>'
       +'<td style="font-size:11px">'+(['매매','분양권매매','권리'].includes(c.deal)?'<span style="color:#aaa">—</span>':ddayTxt(c.expiry))+'</td>'
       +'<td>'+mgrBdg+'</td>'
+      +'<td style="text-align:center" onclick="event.stopPropagation()">'
+      +(c.fileUrl?'<button onclick="viewContractFile(\'' +c.fileUrl+ '\',\'' +(c.fileName||'계약서')+ '\')" title="'+(c.fileName||'계약서')+'" style="background:none;border:none;cursor:pointer;font-size:16px">📎</button>':'<span style="color:#e0e0e0;font-size:12px">—</span>')
+      +'</td>'
       +'<td style="white-space:nowrap;position:sticky;right:0;background:#fff;z-index:1" onclick="event.stopPropagation()">'
       +'<button onclick="openDetail('+c.id+')" class="btn-s" style="font-size:11px;padding:4px 7px;margin-right:2px">상세</button>'
       +'<button onclick="delCT('+c.id+')" class="btn-d">삭제</button>'
