@@ -1137,6 +1137,15 @@ async function analyzeContractFile(){
   setAIStatus('⏳ AI가 계약서를 읽고 있습니다...', 'ing');
 
   try{
+    // API 키 확인
+    var apiKey = localStorage.getItem('sd_api_key');
+    if(!apiKey){
+      apiKey = prompt('Anthropic API 키를 입력하세요:\n(한 번 입력하면 저장됩니다)','sk-ant-...');
+      if(!apiKey){ btn.disabled=false; btn.textContent='🤖 AI로 계약 정보 자동 입력'; setAIStatus('❌ API 키가 필요합니다.','err'); return; }
+      localStorage.setItem('sd_api_key', apiKey.trim());
+    }
+    apiKey = apiKey.trim();
+
     // Claude API 호출
     var body = {
       model: 'claude-sonnet-4-5-20250514',
@@ -1182,7 +1191,12 @@ async function analyzeContractFile(){
 
     var res = await fetch('https://api.anthropic.com/v1/messages',{
       method:'POST',
-      headers:{'Content-Type':'application/json'},
+      headers:{
+        'Content-Type':'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version':'2023-06-01',
+        'anthropic-dangerous-direct-browser-access':'true'
+      },
       body:JSON.stringify(body)
     });
     var data = await res.json();
@@ -1205,7 +1219,12 @@ async function analyzeContractFile(){
 
   }catch(e){
     console.error('[AI 계약서 분석]', e);
-    setAIStatus('❌ 분석 실패: ' + e.message + '\n\n파일을 직접 확인 후 수동 입력해 주세요.', 'err');
+    if(e.message&&e.message.includes('401')){
+      localStorage.removeItem('sd_api_key');
+      setAIStatus('❌ API 키가 올바르지 않습니다. 다시 시도해 주세요.','err');
+    } else {
+      setAIStatus('❌ 분석 실패: ' + e.message + '\n\n파일을 직접 확인 후 수동 입력해 주세요.', 'err');
+    }
     btn.disabled = false;
     btn.textContent = '🤖 AI로 계약 정보 자동 입력';
   }
