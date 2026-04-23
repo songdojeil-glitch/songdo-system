@@ -24,6 +24,7 @@ body{margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',
 .tbl td{padding:7px 10px;border-bottom:0.5px solid #e0e0e0;vertical-align:middle}
 .tbl tr:last-child td{border-bottom:none}
 .tbl tr:hover td{background:#fafafa}
+.row-click{cursor:pointer}
 .bdg{display:inline-block;padding:2px 7px;border-radius:8px;font-size:11px;font-weight:500}
 .modal-bg{display:none;position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,.45);z-index:1000;align-items:flex-start;justify-content:center;overflow-y:auto;padding:24px 12px}
 .modal-bg.open{display:flex}
@@ -365,6 +366,22 @@ input[type=range]{width:100%;accent-color:#1a1a1a}
   </div>
 </div>
 </div><!-- /root -->
+<!-- 호실 상세/수정 모달 -->
+<div id="ho-modal" class="modal-bg">
+  <div class="modal-box" style="max-width:640px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.25rem">
+      <h2 style="font-size:16px;font-weight:600;margin:0" id="ho-modal-title">호실 상세</h2>
+      <button onclick="document.getElementById('ho-modal').classList.remove('open')" style="background:none;border:none;font-size:20px;cursor:pointer;color:#666">✕</button>
+    </div>
+    <div id="ho-modal-body"></div>
+    <div style="display:flex;gap:8px;margin-top:1.25rem;padding-top:1rem;border-top:0.5px solid #f0f0f0">
+      <button onclick="saveHoModal()" class="btn-p">💾 저장</button>
+      <button onclick="document.getElementById('ho-modal').classList.remove('open')" class="btn-s">닫기</button>
+    </div>
+    <div id="ho-modal-msg" style="display:none;margin-top:10px;padding:8px 12px;border-radius:8px;font-size:12px"></div>
+  </div>
+</div>
+
 
 <!-- 건물 추가 모달 -->
 <div id="bldg-modal" class="modal-bg">
@@ -424,6 +441,105 @@ function initBuildings(){
   });
 }
 
+
+// ═══ 호실 상세 모달
+var _editHo = null;
+
+function openHoModal(ho){
+  var props = getCurProps();
+  var p = props.find(function(x){return x.ho===ho;});
+  if(!p) return;
+  _editHo = ho;
+
+  var sc = statusColor(p.status||'미분양');
+  document.getElementById('ho-modal-title').innerHTML =
+    p.ho + ' &nbsp;<span class="bdg" style="background:'+sc[0]+';color:'+sc[1]+'">'+( p.status||'미분양')+'</span> &nbsp;<span style="font-size:12px;color:#888;font-weight:400">'+p.floor+'</span>';
+
+  var statusOpts = ['선임대','분양&임대','분양','분양&자영','미분양','해제','해제&선임대','분양&소송','임대']
+    .map(function(s){return'<option value="'+s+'"'+(p.status===s?' selected':'')+'>'+s+'</option>';}).join('');
+
+  var body = document.getElementById('ho-modal-body');
+  body.innerHTML = '';
+
+  // 고정 정보
+  var info = document.createElement('div');
+  info.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px';
+  info.innerHTML = '<div><label class="fl">전용면적</label><input class="fi" value="'+p.area+'㎡ ('+p.areaPy+'평)" readonly style="background:#f5f5f3;font-size:12px"></div>'
+    +'<div><label class="fl">분양면적</label><input class="fi" value="'+p.supArea+'㎡ ('+p.supAreaPy+'평)" readonly style="background:#f5f5f3;font-size:12px"></div>'
+    +'<div><label class="fl">공급금액</label><input class="fi" value="'+fmt(p.price)+'원" readonly style="background:#f5f5f3;font-size:12px"></div>'
+    +'<div><label class="fl">총분양가</label><input class="fi" value="'+fmt(p.total)+'원" readonly style="background:#f5f5f3;font-size:12px"></div>';
+  body.appendChild(info);
+
+  // 수정 섹션
+  var edit = document.createElement('div');
+  edit.style.cssText = 'border-top:0.5px solid #f0f0f0;padding-top:12px;margin-bottom:12px';
+  edit.innerHTML = '<p class="sec" style="margin-bottom:8px">✏️ 수정 가능 항목</p>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">'
+    +'<div><label class="fl">현황</label><select id="hm-status" class="fi" style="font-size:12px">'+statusOpts+'</select></div>'
+    +'<div><label class="fl">입점업종</label><input id="hm-tenant" class="fi" style="font-size:12px"></div>'
+    +'<div><label class="fl">보증금 (만원)</label><input id="hm-deposit" type="number" class="fi" style="font-size:12px"></div>'
+    +'<div><label class="fl">월세 (만원)</label><input id="hm-monthly" type="number" class="fi" style="font-size:12px"></div>'
+    +'</div>';
+  body.appendChild(edit);
+
+  // 값 직접 설정 (따옴표 충돌 없음)
+  document.getElementById('hm-tenant').value = p.tenant || '';
+  document.getElementById('hm-deposit').value = p.deposit || 0;
+  document.getElementById('hm-monthly').value = p.monthly || 0;
+
+  // 수익률 표시
+  var yieldDiv = document.createElement('div');
+  yieldDiv.style.cssText = 'padding:10px;background:#f8f8f6;border-radius:8px;font-size:12px;color:#666';
+  var yc = p.yieldCur>0 ? (p.yieldCur>=5?'#2e7d32':p.yieldCur>=4?'#f57f17':'#c62828') : '#aaa';
+  var yv = p.yieldCur>0 ? p.yieldCur.toFixed(2)+'%' : '—';
+  yieldDiv.innerHTML = '<strong>현 수익률:</strong> <span style="color:'+yc+';font-weight:600">'+yv+'</span>'
+    +' &nbsp;|&nbsp; <strong>입력 수익률 자동계산:</strong> <span id="hm-yield-auto" style="font-weight:600;color:#1565c0">—</span>'
+    +'<button onclick="calcHmYield()" style="margin-left:8px;font-size:11px;padding:2px 8px;background:#e3f2fd;color:#1565c0;border:0.5px solid #90caf9;border-radius:5px;cursor:pointer">계산</button>';
+  body.appendChild(yieldDiv);
+
+  document.getElementById('ho-modal').classList.add('open');
+  document.getElementById('ho-modal-msg').style.display='none';
+}
+
+function calcHmYield(){
+  var props = getCurProps();
+  var p = props.find(function(x){return x.ho===_editHo;});
+  if(!p) return;
+  var dep = parseFloat(document.getElementById('hm-deposit').value)||0;
+  var mon = parseFloat(document.getElementById('hm-monthly').value)||0;
+  if(!mon){document.getElementById('hm-yield-auto').textContent='월세 필요';return;}
+  var y = (mon*10000*12)/(p.price - dep*10000)*100;
+  document.getElementById('hm-yield-auto').textContent = y.toFixed(2)+'%';
+}
+
+function saveHoModal(){
+  var bldg = BUILDINGS.find(function(b){return b.id===curBldgId;});
+  if(!bldg) return;
+  var p = bldg.props.find(function(x){return x.ho===_editHo;});
+  if(!p) return;
+
+  p.status  = document.getElementById('hm-status').value;
+  p.tenant  = document.getElementById('hm-tenant').value.trim();
+  p.deposit = parseFloat(document.getElementById('hm-deposit').value)||0;
+  p.monthly = parseFloat(document.getElementById('hm-monthly').value)||0;
+  // 수익률 재계산
+  if(p.monthly>0){
+    p.yieldCur = parseFloat(((p.monthly*10000*12)/(p.price - p.deposit*10000)*100).toFixed(4));
+  } else {
+    p.yieldCur = 0;
+  }
+
+  saveBldgs();
+  renderDash(); renderTable();
+  if(curMapFloor) renderFloorMap();
+
+  var msg = document.getElementById('ho-modal-msg');
+  msg.textContent='✅ 저장됐습니다!'; msg.style.background='#e8f5e9'; msg.style.color='#2e7d32'; msg.style.display='block';
+  setTimeout(function(){
+    msg.style.display='none';
+    document.getElementById('ho-modal').classList.remove('open');
+  }, 1500);
+}
 function saveBldgs(){
   window.storage.set('sd_buildings', JSON.stringify(BUILDINGS)).catch(function(){});
 }
@@ -565,9 +681,10 @@ function renderTable(){
   });
   var colors={'선임대':'#c62828','분양&임대':'#1565c0','분양':'#2e7d32','미분양':'#666','분양&자영':'#e65100','해제':'#f9a825'};
   document.getElementById('tbl-body').innerHTML=f.map(function(p){
+    var trClick='onclick="openHoModal(\''+p.ho+'\')"';
     var sc=statusColor(p.status||'미분양');
     var yc=p.yieldCur>0?(p.yieldCur>=5?'color:#2e7d32':p.yieldCur>=4?'color:#f57f17':'color:#c62828'):'color:#aaa';
-    return'<tr><td style="font-weight:500">'+p.ho+'</td><td style="font-size:11px;color:#888">'+p.floor+'</td>'
+    return'<tr class="row-click" '+trClick+'><td style="font-weight:500">'+p.ho+'</td><td style="font-size:11px;color:#888">'+p.floor+'</td>'
       +'<td style="font-size:11px">'+p.area+'㎡</td><td style="font-size:11px">'+p.supArea+'㎡</td>'
       +'<td style="font-size:12px">'+fmt(p.price)+'</td><td style="font-size:12px">'+fmt(p.total)+'</td>'
       +'<td><span class="bdg" style="background:'+sc[0]+';color:'+sc[1]+'">'+( p.status||'미분양')+'</span></td>'
