@@ -186,6 +186,7 @@ body{margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',
         <select id="fc-renewal-right" class="fi"><option value="">미선택</option><option value="사용">사용</option><option value="미사용">미사용</option></select>
       </div>
       <div><label class="fl">건물명</label><input id="fc-bldg" type="text" class="fi" placeholder="예: 송도더샵하버뷰13단지"></div>
+      <div><label class="fl">전용면적 (㎡)</label><input id="fc-area" type="text" class="fi" placeholder="예: 46.41"></div>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr 2fr;gap:10px;margin-bottom:10px">
       <div><label class="fl">동</label><input id="fc-dong" type="text" class="fi"></div>
@@ -1010,17 +1011,17 @@ function onCDeal(){
   if(rrWrap)rrWrap.style.display=(isRenewal&&isApt&&!isMae)?'block':'none';
 }
 function calcExpiry(fdate,period,deal){
-  // 초일 산입: 잔금일 당일부터 계산 → 만기일 = 잔금일 + 기간 - 1일
+  // 초일 산입: 잔금일 당일부터 계산 → 만기일 = 잔금일 + 기간(개월) - 1일
   if(!fdate)return'';
   var d=new Date(fdate);
+  var months=0;
   if(period){
-    var months=Math.round(parseFloat(period)*12);
-    d.setMonth(d.getMonth()+months);
-    d.setDate(d.getDate()-1);
+    months=parseInt(period); // 개월수 그대로 사용
   } else if(['전세','임대차','월세','임대'].includes(deal)){
-    d.setFullYear(d.getFullYear()+2);
-    d.setDate(d.getDate()-1);
+    months=24; // 기본 24개월
   } else return'';
+  d.setMonth(d.getMonth()+months);
+  d.setDate(d.getDate()-1);
   return d.toISOString().split('T')[0];
 }
 function autoExpiry(){
@@ -1164,7 +1165,7 @@ async function analyzeContractFile(){
           },
           {
             type:'text',
-            text: '이 계약서에서 정보를 추출해서 JSON만 출력하세요. 다른 텍스트 없이 JSON 객체만 출력하세요.\n\n출력할 JSON 키: type(물건종류), deal(계약구분), bldg(건물명), dong(동), ho(호수), addr(주소), cdate(계약일 YYYY-MM-DD), fdate(잔금일 YYYY-MM-DD), expiry(만기일 YYYY-MM-DD), seller(임대인/매도인), sellerTel(임대인연락처), buyer(임차인/매수인), buyerTel(임차인연락처), price(전세금/매매가), deposit(보증금), monthly(월세), period(계약기간 숫자만), memo(특이사항)\n\ntype값: 아파트|상가|오피스텔|사무실|토지|분양권|권리|생활숙박시설\ndeal값: 전세|임대차|매매|월세|임대|분양권매매\n없는 값은 빈 문자열("")'
+            text: '이 계약서 이미지에서 정보를 추출해서 JSON만 출력하세요. 다른 텍스트 없이 순수 JSON 객체만 출력하세요.\n\n출력할 JSON 키:\n- type: 아파트|상가|오피스텔|사무실|토지|분양권|권리|생활숙박시설\n- deal: 전세|임대차|매매|월세|임대|분양권매매\n- bldg: 건물명(단지명, 타워명)\n- dong: 동\n- ho: 호수\n- addr: 전체 주소\n- area: 전용면적(숫자만, 예: 46.41)\n- cdate: 계약일 YYYY-MM-DD\n- fdate: 잔금일(임대차는 잔금일/인도일) YYYY-MM-DD\n- expiry: 만기일 YYYY-MM-DD (임대차기간 종료일)\n- seller: 임대인 또는 매도인 성명\n- sellerTel: 임대인/매도인 휴대전화\n- buyer: 임차인 또는 매수인 성명\n- buyerTel: 임차인/매수인 휴대전화\n- price: 전세금 또는 매매가 (숫자, 예: 30000000)\n- deposit: 보증금 (월세/임대차 계약의 보증금, 숫자)\n- monthly: 월세 금액 (숫자)\n- period: 계약기간 개월수 (숫자만, 예: 24)\n- conditions: 특약사항 전체 내용을 요약 없이 그대로 모두 기록\n- agencySeller: 계약서 하단 좌측(임대인측) 중개업소명. 송도제일공인중개사사무소이면 "송도제일공인"으로 기록\n- agencyBuyer: 계약서 하단 우측(임차인측) 중개업소명. 송도제일공인중개사사무소이면 "송도제일공인"으로 기록\n\n주의사항:\n- 임대차 계약에서 보증금과 월세가 모두 있으면 deposit과 monthly 모두 입력\n- price는 전세금이나 매매가에만 사용, 임대차 보증금은 deposit에 입력\n- conditions는 특약사항 전체를 빠짐없이 그대로 기록\n- 없는 값은 빈 문자열("")'
           }
         ]
       }]
@@ -1228,11 +1229,31 @@ function fillContractForm(d){
     'fc-seller':d.seller, 'fc-stl':d.sellerTel,
     'fc-buyer':d.buyer, 'fc-btl':d.buyerTel,
     'fc-price':d.price, 'fc-deposit':d.deposit, 'fc-monthly':d.monthly,
-    'fc-period':d.period, 'fc-memo':d.memo
+    'fc-period':d.period, 'fc-area':d.area, 'fc-conditions':d.conditions
   };
+  // memo는 자동 입력 안 함 (수동 입력 예정)
   Object.keys(map).forEach(function(id){
     if(map[id]){ var el=document.getElementById(id); if(el) el.value=map[id]; }
   });
+  // 중개업소 자동 설정
+  if(d.agencySeller){
+    if(d.agencySeller==='송도제일공인'){
+      var bs=document.getElementById('btn-sdj-seller');
+      if(bs)bs.classList.add('active');
+    } else {
+      var as=document.getElementById('fc-agency-seller');
+      if(as)as.value=d.agencySeller;
+    }
+  }
+  if(d.agencyBuyer){
+    if(d.agencyBuyer==='송도제일공인'){
+      var bb=document.getElementById('btn-sdj-buyer');
+      if(bb)bb.classList.add('active');
+    } else {
+      var ab=document.getElementById('fc-agency-buyer');
+      if(ab)ab.value=d.agencyBuyer;
+    }
+  }
   // UI 갱신
   if(typeof onCDeal==='function') onCDeal();
   if(typeof autoExpiry==='function') autoExpiry();
@@ -1288,7 +1309,7 @@ function saveContract(){
   var obj={id:cEditId||Date.now(),type:document.getElementById('fc-type').value,deal:document.getElementById('fc-deal').value,
     renewalType:document.getElementById('fc-newrenewal')?document.getElementById('fc-newrenewal').value:'신규',
     renewalRight:document.getElementById('fc-renewal-right')?document.getElementById('fc-renewal-right').value:'',
-    bldg:bldg,dong:document.getElementById('fc-dong').value.trim(),ho:document.getElementById('fc-ho').value.trim(),addr:document.getElementById('fc-addr').value.trim(),
+    bldg:bldg,dong:document.getElementById('fc-dong').value.trim(),ho:document.getElementById('fc-ho').value.trim(),addr:document.getElementById('fc-addr').value.trim(),area:document.getElementById('fc-area')?document.getElementById('fc-area').value.trim():'',
     cdate:document.getElementById('fc-cdate').value,mid1:document.getElementById('fc-mid1').value,mid2:document.getElementById('fc-mid2').value,fdate:document.getElementById('fc-fdate').value,
     seller:document.getElementById('fc-seller').value.trim(),sellerTel:document.getElementById('fc-stl').value.trim(),
     buyer:document.getElementById('fc-buyer').value.trim(),buyerTel:document.getElementById('fc-btl').value.trim(),
@@ -1312,7 +1333,7 @@ function saveContract(){
 }
 
 function clearCF(){
-  ['fc-bldg','fc-dong','fc-ho','fc-addr','fc-cdate','fc-mid1','fc-mid2','fc-fdate','fc-seller','fc-stl','fc-buyer','fc-btl','fc-price','fc-deposit','fc-monthly','fc-fee','fc-memo','fc-expiry'].forEach(function(id){var el=document.getElementById(id);if(el)el.value='';});
+  ['fc-bldg','fc-dong','fc-ho','fc-addr','fc-cdate','fc-mid1','fc-mid2','fc-fdate','fc-seller','fc-stl','fc-buyer','fc-btl','fc-price','fc-deposit','fc-monthly','fc-fee','fc-memo','fc-expiry','fc-area'].forEach(function(id){var el=document.getElementById(id);if(el)el.value='';});
   document.getElementById('fc-type').value='아파트';document.getElementById('fc-deal').value='전세';document.getElementById('fc-period').value='';
   document.getElementById('fc-propid').value='';document.getElementById('fc-custid').value='';
   document.getElementById('fc-link-info').style.display='none';document.getElementById('prop-sel-wrap').style.display='none';document.getElementById('cust-sel-wrap').style.display='none';
