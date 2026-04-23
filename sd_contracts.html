@@ -202,9 +202,9 @@ body{margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;margin-bottom:10px">
       <div><label class="fl">매도/임대인</label><input id="fc-seller" type="text" class="fi"></div>
-      <div><label class="fl">연락처</label><input id="fc-stl" type="text" class="fi"></div>
+      <div><label class="fl">연락처</label><input id="fc-stl" type="text" class="fi" oninput="fmtTel(this)" maxlength="14"></div>
       <div><label class="fl">매수/임차인</label><input id="fc-buyer" type="text" class="fi"></div>
-      <div><label class="fl">연락처</label><input id="fc-btl" type="text" class="fi"></div>
+      <div><label class="fl">연락처</label><input id="fc-btl" type="text" class="fi" oninput="fmtTel(this)" maxlength="14"></div>
     </div>
     <!-- 상가 임대인 (권리계약) -->
     <div id="fc-landlord-wrap" style="display:none;margin-bottom:10px;padding:10px;background:#fff8e1;border:0.5px solid #ffe082;border-radius:8px">
@@ -217,9 +217,9 @@ body{margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',
     </div>
     <!-- 가격 -->
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:10px">
-      <div id="fc-p1w"><label class="fl" id="fc-p1l">전세금</label><input id="fc-price" type="text" class="fi" placeholder="예: 4억 5,000만원"></div>
-      <div id="fc-p2w" style="display:none"><label class="fl">보증금</label><input id="fc-deposit" type="text" class="fi"></div>
-      <div id="fc-p3w" style="display:none"><label class="fl">월세</label><input id="fc-monthly" type="text" class="fi"></div>
+      <div id="fc-p1w"><label class="fl" id="fc-p1l">전세금</label><input id="fc-price" type="text" class="fi" oninput="fmtMoney(this)" placeholder="예: 4억 5,000만원"></div>
+      <div id="fc-p2w" style="display:none"><label class="fl">보증금</label><input id="fc-deposit" type="text" class="fi" oninput="fmtMoney(this)"></div>
+      <div id="fc-p3w" style="display:none"><label class="fl">월세</label><input id="fc-monthly" type="text" class="fi" oninput="fmtMoney(this)"></div>
       <div><label class="fl">법정 중개보수 <button type="button" onclick="calcFee()" style="margin-left:6px;font-size:10px;padding:1px 7px;background:#e3f2fd;color:#1565c0;border:0.5px solid #90caf9;border-radius:5px;cursor:pointer">자동계산</button></label>
           <input id="fc-fee" type="text" class="fi" placeholder="자동계산 또는 직접 입력"></div>
       <div id="fc-period-wrap"><label class="fl">계약 기간 (개월)</label>
@@ -1220,45 +1220,36 @@ async function analyzeContractFile(){
 }
 
 function fillContractForm(d){
-  // 물건종류·계약구분
+  // 1단계: type/deal 세팅
   if(d.type){ var s=document.getElementById('fc-type'); if(s) s.value=d.type; }
   if(d.deal){ var s=document.getElementById('fc-deal'); if(s) s.value=d.deal; }
-  // 텍스트 필드
-  var map = {
-    'fc-bldg':d.bldg, 'fc-dong':d.dong, 'fc-ho':d.ho, 'fc-addr':d.addr,
-    'fc-cdate':d.cdate, 'fc-fdate':d.fdate, 'fc-expiry':d.expiry,
-    'fc-seller':d.seller, 'fc-stl':d.sellerTel,
-    'fc-buyer':d.buyer, 'fc-btl':d.buyerTel,
-    'fc-price':d.price, 'fc-deposit':d.deposit, 'fc-monthly':d.monthly,
-    'fc-period':d.period, 'fc-area':d.area, 'fc-conditions':d.conditions
-  };
-  // memo는 자동 입력 안 함 (수동 입력 예정)
-  Object.keys(map).forEach(function(id){
-    if(map[id]){ var el=document.getElementById(id); if(el) el.value=map[id]; }
-  });
-  // UI 먼저 갱신 (deal 설정 후 필드 표시 상태 확정)
+  // 2단계: onCDeal — 보증금·월세 필드 visible 확정
   if(typeof onCDeal==='function') onCDeal();
-
+  // 3단계: 값 입력
+  var map = {
+    'fc-bldg':d.bldg,'fc-dong':d.dong,'fc-ho':d.ho,'fc-addr':d.addr,
+    'fc-cdate':d.cdate,'fc-fdate':d.fdate,'fc-expiry':d.expiry,
+    'fc-seller':d.seller,'fc-stl':fmtTelStr(d.sellerTel),
+    'fc-buyer':d.buyer,'fc-btl':fmtTelStr(d.buyerTel),
+    'fc-price':fmtMoneyStr(d.price),'fc-deposit':fmtMoneyStr(d.deposit),
+    'fc-monthly':fmtMoneyStr(d.monthly),
+    'fc-period':d.period,'fc-area':d.area,'fc-conditions':d.conditions
+  };
+  Object.keys(map).forEach(function(id){
+    if(map[id]!==undefined&&map[id]!==null&&String(map[id])!==''){
+      var el=document.getElementById(id); if(el) el.value=map[id];
+    }
+  });
   // 중개업소 자동 설정
   if(d.agencySeller){
-    if(d.agencySeller==='송도제일공인'){
-      var bs=document.getElementById('btn-sdj-seller');
-      if(bs)bs.classList.add('active');
-    } else {
-      var as=document.getElementById('fc-agency-seller');
-      if(as)as.value=d.agencySeller;
-    }
+    if(d.agencySeller==='송도제일공인'){var bs=document.getElementById('btn-sdj-seller');if(bs)bs.classList.add('active');}
+    else{var as=document.getElementById('fc-agency-seller');if(as)as.value=d.agencySeller;}
   }
   if(d.agencyBuyer){
-    if(d.agencyBuyer==='송도제일공인'){
-      var bb=document.getElementById('btn-sdj-buyer');
-      if(bb)bb.classList.add('active');
-    } else {
-      var ab=document.getElementById('fc-agency-buyer');
-      if(ab)ab.value=d.agencyBuyer;
-    }
+    if(d.agencyBuyer==='송도제일공인'){var bb=document.getElementById('btn-sdj-buyer');if(bb)bb.classList.add('active');}
+    else{var ab=document.getElementById('fc-agency-buyer');if(ab)ab.value=d.agencyBuyer;}
   }
-  // 만기일 재계산 (period 입력 후)
+  // 만기일 재계산
   if(typeof autoExpiry==='function') autoExpiry();
 }
 
@@ -1404,6 +1395,43 @@ function showFeeInfo(msg){
   setTimeout(function(){ if(box.parentNode) box.remove(); }, 5000);
 }
 
+
+// ── 금액 콤마 자동 포맷 (입력 이벤트)
+function fmtMoney(el){
+  var raw=el.value.replace(/[^0-9]/g,'');
+  el.value=raw?parseInt(raw).toLocaleString():'';
+}
+// ── 금액 문자열 콤마 포맷 (AI 자동입력용)
+function fmtMoneyStr(v){
+  if(!v&&v!==0)return'';
+  var raw=String(v).replace(/[^0-9]/g,'');
+  return raw?parseInt(raw).toLocaleString():'';
+}
+// ── 전화번호 하이픈 자동 포맷 (입력 이벤트)
+function fmtTel(el){
+  el.value=fmtTelStr(el.value);
+}
+// ── 전화번호 문자열 하이픈 포맷
+function fmtTelStr(v){
+  if(!v)return'';
+  var n=String(v).replace(/[^0-9]/g,'');
+  if(n.length<=3)return n;
+  if(n.startsWith('02')){
+    if(n.length<=5)return n.slice(0,2)+'-'+n.slice(2);
+    if(n.length<=9)return n.slice(0,2)+'-'+n.slice(2,5)+'-'+n.slice(5);
+    return n.slice(0,2)+'-'+n.slice(2,6)+'-'+n.slice(6,10);
+  }
+  if(n.length<=6)return n.slice(0,3)+'-'+n.slice(3);
+  if(n.length<=10)return n.slice(0,3)+'-'+n.slice(3,6)+'-'+n.slice(6);
+  return n.slice(0,3)+'-'+n.slice(3,7)+'-'+n.slice(7,11);
+}
+// ── 저장 전 숫자 추출 (콤마 제거)
+function rawNum(id){
+  var el=document.getElementById(id);
+  if(!el)return'';
+  return el.value.replace(/,/g,'').trim();
+}
+
 function saveContract(){
   var bldg=document.getElementById('fc-bldg').value.trim();if(!bldg){alert('건물명을 입력해 주세요.');return;}
   var now=new Date(),ds=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0');
@@ -1417,7 +1445,7 @@ function saveContract(){
     cdate:document.getElementById('fc-cdate').value,mid1:document.getElementById('fc-mid1').value,mid2:document.getElementById('fc-mid2').value,fdate:document.getElementById('fc-fdate').value,
     seller:document.getElementById('fc-seller').value.trim(),sellerTel:document.getElementById('fc-stl').value.trim(),
     buyer:document.getElementById('fc-buyer').value.trim(),buyerTel:document.getElementById('fc-btl').value.trim(),
-    price:document.getElementById('fc-price').value.trim(),deposit:document.getElementById('fc-deposit').value.trim(),monthly:document.getElementById('fc-monthly').value.trim(),
+    price:rawNum('fc-price'),deposit:rawNum('fc-deposit'),monthly:rawNum('fc-monthly'),
     pbase:document.getElementById('fc-pbase')?document.getElementById('fc-pbase').value:'',
     popt:document.getElementById('fc-popt')?document.getElementById('fc-popt').value:'',
     pprem:document.getElementById('fc-pprem')?document.getElementById('fc-pprem').value:'',
