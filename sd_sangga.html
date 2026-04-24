@@ -792,6 +792,121 @@ function saveEstimateImageL(){
   } else {doSaveImage(el);}
 }
 
+
+// ═══ 수익률 시뮬레이터
+function runSim(){
+  var props = getCurProps();
+  if(!props||!props.length) return;
+  var yRate  = parseFloat(document.getElementById('rs-yield').value);
+  var disc   = parseFloat(document.getElementById('rs-disc').value);
+  var depR   = parseFloat(document.getElementById('rs-dep').value);
+  var loanR  = parseFloat(document.getElementById('rs-loan').value);
+  var intR   = parseFloat(document.getElementById('rs-rate').value);
+  var floorF = document.getElementById('rs-floor').value;
+
+  ['yield','disc','dep','loan','rate'].forEach(function(k){
+    var el=document.getElementById('vs-'+k); if(!el)return;
+    var v=parseFloat(document.getElementById('rs-'+k).value);
+    el.textContent=(k==='yield'||k==='rate')?v.toFixed(1)+'%':v+'%';
+  });
+
+  var filtered = floorF ? props.filter(function(p){return p.floor===floorF;}) : props;
+  var results = filtered.map(function(p){
+    var discPrice = Math.round(p.price*(1-disc/100));
+    var cm = calcMonthly(discPrice, depR, yRate);
+    var yl = calcYield(discPrice, cm.dep, cm.mon, loanR, intR);
+    return{p:p, discPrice:discPrice, dep:cm.dep, mon:cm.mon, yl:yl};
+  });
+  if(!results.length) return;
+
+  var avgNoLoan   = results.reduce(function(s,r){return s+r.yl.noLoan;},0)/results.length;
+  var avgWithLoan = results.reduce(function(s,r){return s+r.yl.withLoan;},0)/results.length;
+  var minInvest   = Math.min.apply(null, results.map(function(r){return r.yl.realInvest;}));
+  var maxYield    = Math.max.apply(null, results.map(function(r){return r.yl.withLoan;}));
+
+  var sumEl = document.getElementById('sim-summary');
+  if(sumEl) sumEl.innerHTML=[
+    {n:avgNoLoan.toFixed(2)+'%',l:'평균 무대출수익률',c:'#1565c0',bg:'#e3f2fd'},
+    {n:avgWithLoan.toFixed(2)+'%',l:'평균 대출수익률',c:'#2e7d32',bg:'#e8f5e9'},
+    {n:fmtM(minInvest),l:'최소 실투자금',c:'#e65100',bg:'#fff3e0'},
+    {n:maxYield.toFixed(2)+'%',l:'최고 대출수익률',c:'#c62828',bg:'#fce4ec'},
+  ].map(function(s){return'<div class="stat-box" style="background:'+s.bg+'"><div class="stat-n" style="color:'+s.c+'">'+s.n+'</div><div class="stat-l">'+s.l+'</div></div>';}).join('');
+
+  var bodyEl = document.getElementById('sim-body');
+  if(bodyEl) bodyEl.innerHTML = results.map(function(r){
+    var nl=r.yl.noLoan; var wl=r.yl.withLoan;
+    var nc=nl>=5?'yield-high':nl>=4?'yield-mid':'yield-low';
+    var wc=wl>=5?'yield-high':wl>=4?'yield-mid':'yield-low';
+    return'<tr><td style="font-weight:500">'+r.p.ho+'</td><td style="font-size:11px;color:#888">'+r.p.floor+'</td>'
+      +'<td style="font-size:11px">'+r.p.area+'㎡</td>'
+      +'<td style="font-size:12px">'+fmt(r.p.price)+'</td>'
+      +'<td style="font-size:12px">'+(disc>0?fmt(r.discPrice):'-')+'</td>'
+      +'<td style="font-size:12px">'+fmt(r.dep)+'만</td><td style="font-size:12px">'+fmt(r.mon)+'만</td>'
+      +'<td style="font-size:12px">'+fmtM(r.yl.realInvest)+'</td>'
+      +'<td class="'+nc+'">'+nl.toFixed(2)+'%</td>'
+      +'<td class="'+wc+'">'+wl.toFixed(2)+'%</td></tr>';
+  }).join('');
+}
+
+// ═══ 층별 현황도
+var curMapFloor = '';
+function initFloorMap(){
+  var props = getCurProps();
+  if(!props||!props.length) return;
+  var floors = [...new Set(props.map(function(p){return p.floor;}))];
+  if(!curMapFloor || !floors.includes(curMapFloor)) curMapFloor = floors[0]||'';
+
+  var tabEl = document.getElementById('map-floor-tabs');
+  if(tabEl) tabEl.innerHTML = floors.map(function(f){
+    return'<button class="floor-tab'+(f===curMapFloor?' on':'')+'" onclick="switchMapFloor(\''+f+'\',this)">'+f+'</button>';
+  }).join('');
+  renderFloorMap();
+}
+
+function switchMapFloor(f, btn){
+  curMapFloor = f;
+  var tabs = document.querySelectorAll('#map-floor-tabs .floor-tab');
+  tabs.forEach(function(t){t.classList.remove('on');});
+  if(btn) btn.classList.add('on');
+  renderFloorMap();
+}
+
+function renderFloorMap(){
+  var props = getCurProps();
+  if(!props||!props.length) return;
+  var fp = props.filter(function(p){return p.floor===curMapFloor;});
+  var el = document.getElementById('floor-map');
+  if(!el) return;
+  el.innerHTML = fp.map(function(p){
+    var sc = statusColor(p.status||'미분양');
+    return'<div onclick="showHoDetail(\''+p.ho+'\')" style="background:'+sc[0]+';border:1px solid '+sc[1]+';border-radius:10px;padding:10px 8px;cursor:pointer;min-width:80px;text-align:center;transition:transform .1s" onmouseover="this.style.transform=\'scale(1.05)\'" onmouseout="this.style.transform=\'scale(1)\'">'
+      +'<div style="font-size:13px;font-weight:600;color:'+sc[1]+'">'+p.ho+'</div>'
+      +'<div style="font-size:10px;color:'+sc[1]+';margin-top:2px">'+p.area+'㎡</div>'
+      +'<div style="font-size:10px;color:'+sc[1]+';margin-top:1px">'+(p.tenant||p.status||'미분양')+'</div>'
+      +'</div>';
+  }).join('');
+}
+
+function showHoDetail(ho){
+  var props = getCurProps();
+  var p = props.find(function(x){return x.ho===ho;});
+  if(!p) return;
+  var sc = statusColor(p.status||'미분양');
+  var card = document.getElementById('ho-detail-card');
+  var detail = document.getElementById('ho-detail-content');
+  if(!detail) return;
+  detail.innerHTML=
+    '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:1rem">'
+    +'<div><h3 style="margin:0;font-size:16px">'+p.ho+' <span class="bdg" style="background:'+sc[0]+';color:'+sc[1]+'">'+( p.status||'미분양')+'</span></h3>'
+    +'<p style="margin:4px 0 0;font-size:12px;color:#888">'+p.floor+'</p></div>'
+    +'<button onclick="document.getElementById(\'ho-detail-card\').style.display=\'none\'" style="background:none;border:none;cursor:pointer;font-size:18px;color:#666">✕</button></div>'
+    +'<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px">'
+    +[['전용면적',p.area+'㎡'],['분양면적',p.supArea+'㎡'],['공급금액',fmtM(p.price)],['총분양가',fmtM(p.total)],
+      ['입점업종',p.tenant||'—'],['보증금',p.deposit?fmt(p.deposit)+'만':'—'],['월세',p.monthly?fmt(p.monthly)+'만':'—'],['현수익률',p.yieldCur?p.yieldCur.toFixed(2)+'%':'—']]
+    .map(function(v){return'<div class="stat-box"><div style="font-size:13px;font-weight:500">'+v[1]+'</div><div class="stat-l">'+v[0]+'</div></div>';}).join('')+'</div>';
+  if(card) card.style.display='block';
+}
+
 function saveBldgs(){
   var saveData = BUILDINGS.map(function(b){
     if(b.id === 'es5'){
