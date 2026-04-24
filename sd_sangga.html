@@ -575,27 +575,27 @@ function initBuildings(){
     // 에스파이브 기본 건물 처리
     var es5 = BUILDINGS.find(function(b){return b.id==='es5';});
     if(!es5){
-      BUILDINGS.unshift({id:'es5', name:'송도에스파이브시티', props: ES5_PROPS});
-    } else {
-      // delta 방식: 저장된 수정값을 ES5_PROPS에 덮어씌우기
-      if(es5.deltas && es5.deltas.length > 0){
-        var baseProps = JSON.parse(JSON.stringify(ES5_PROPS));
-        var deltaMap = {};
-        es5.deltas.forEach(function(d){ deltaMap[d.ho]=d; });
-        baseProps.forEach(function(p){
-          if(deltaMap[p.ho]){
-            p.status=deltaMap[p.ho].status;
-            p.tenant=deltaMap[p.ho].tenant;
-            p.deposit=deltaMap[p.ho].deposit;
-            p.monthly=deltaMap[p.ho].monthly;
-            p.yieldCur=deltaMap[p.ho].yieldCur;
-          }
-        });
-        es5.props = baseProps;
-      } else if(!es5.props || es5.props.length < 100){
-        es5.props = ES5_PROPS;
-      }
+      // Firebase에 없으면 기본 데이터로 추가
+      BUILDINGS.unshift({id:'es5', name:'송도에스파이브시티', props: JSON.parse(JSON.stringify(ES5_PROPS))});
+      es5 = BUILDINGS[0];
     }
+    // 항상 ES5_PROPS 기반으로 복원 (delta 방식)
+    var baseProps = JSON.parse(JSON.stringify(ES5_PROPS));
+    if(es5.deltas && es5.deltas.length > 0){
+      var deltaMap = {};
+      es5.deltas.forEach(function(d){ deltaMap[d.ho]=d; });
+      baseProps.forEach(function(p){
+        if(deltaMap[p.ho]){
+          p.status  = deltaMap[p.ho].status;
+          p.tenant  = deltaMap[p.ho].tenant;
+          p.deposit = deltaMap[p.ho].deposit;
+          p.monthly = deltaMap[p.ho].monthly;
+          p.yieldCur= deltaMap[p.ho].yieldCur;
+        }
+      });
+    }
+    // props는 항상 ES5_PROPS 기반 (225개 보장)
+    es5.props = baseProps;
     renderBldgTabs();
     selectBldg(BUILDINGS[0].id);
   }).catch(function(e){
