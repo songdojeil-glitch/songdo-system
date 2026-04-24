@@ -124,9 +124,20 @@ input[type=range]{width:100%;accent-color:#1a1a1a}
         <input id="flt-q" type="text" class="fi" style="width:120px;font-size:12px" placeholder="호수/업종 검색" oninput="renderTable()">
       </div>
     </div>
-    <div style="overflow-x:auto">
-      <table class="tbl">
-        <thead><tr><th>호수</th><th>층</th><th>전용㎡</th><th>분양㎡</th><th>공급금액</th><th>총분양가</th><th>현황</th><th>입점업종</th><th>보증금</th><th>월세</th><th>수익률</th></tr></thead>
+    <!-- 상단 스크롤바 -->
+    <div id="dashScrollTop" style="overflow-x:auto;height:12px;margin-bottom:2px" onscroll="document.getElementById('dashScrollMain').scrollLeft=this.scrollLeft">
+      <div id="dashScrollInner" style="height:1px"></div>
+    </div>
+    <div id="dashScrollMain" style="overflow-x:auto" onscroll="document.getElementById('dashScrollTop').scrollLeft=this.scrollLeft">
+      <table class="tbl" id="dashTable">
+        <thead><tr>
+          <th>호수</th><th>층</th>
+          <th>전용㎡</th><th>전용평</th>
+          <th>분양㎡</th><th>분양평</th><th>평당가</th>
+          <th>공급금액</th><th>부가세</th><th>총분양가</th>
+          <th>현황</th><th>입점업종</th>
+          <th>보증금</th><th>월세</th><th>수익률</th>
+        </tr></thead>
         <tbody id="tbl-body"></tbody>
       </table>
     </div>
@@ -135,76 +146,137 @@ input[type=range]{width:100%;accent-color:#1a1a1a}
 
 <!-- TAB1 분양 견적서 -->
 <div id="tc1" class="tc">
-  <div class="card">
-    <p class="sec">⚙️ 견적 조건 설정</p>
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:14px;margin-bottom:14px">
-      <div>
-        <label class="fl">계약금 비율</label>
-        <div style="display:flex;align-items:center;gap:8px">
-          <input type="range" id="r-contract" min="5" max="30" value="10" step="5" oninput="updSlider('contract')">
-          <span class="slider-val" id="v-contract">10%</span>
-        </div>
-      </div>
-      <div>
-        <label class="fl">할인율</label>
-        <div style="display:flex;align-items:center;gap:8px">
-          <input type="range" id="r-discount" min="0" max="20" value="0" step="1" oninput="updSlider('discount')">
-          <span class="slider-val" id="v-discount">0%</span>
-        </div>
-      </div>
-      <div>
-        <label class="fl">보증금 비율</label>
-        <div style="display:flex;align-items:center;gap:8px">
-          <input type="range" id="r-deprate" min="3" max="20" value="5" step="1" oninput="updSlider('deprate')">
-          <span class="slider-val" id="v-deprate">5%</span>
-        </div>
-      </div>
-      <div>
-        <label class="fl">적용 수익률</label>
-        <div style="display:flex;align-items:center;gap:8px">
-          <input type="range" id="r-yield" min="3" max="8" value="4.5" step="0.1" oninput="updSlider('yield')">
-          <span class="slider-val" id="v-yield">4.5%</span>
-        </div>
-      </div>
-    </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
-      <div>
-        <label class="fl">대출 비율</label>
-        <div style="display:flex;align-items:center;gap:8px">
-          <input type="range" id="r-loan" min="0" max="80" value="60" step="10" oninput="updSlider('loan')">
-          <span class="slider-val" id="v-loan">60%</span>
-        </div>
-      </div>
-      <div>
-        <label class="fl">이자율</label>
-        <div style="display:flex;align-items:center;gap:8px">
-          <input type="range" id="r-rate" min="2" max="8" value="4" step="0.1" oninput="updSlider('rate')">
-          <span class="slider-val" id="v-rate">4.0%</span>
-        </div>
-      </div>
-      <div>
-        <label class="fl">견적일</label>
-        <input type="date" id="est-date" class="fi">
-      </div>
-    </div>
-  </div>
-  <div class="card">
-    <p class="sec">🏢 호실 선택 (다중 선택 가능)</p>
-    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px" id="floor-filter-tabs"></div>
-    <div id="ho-chips" style="max-height:200px;overflow-y:auto;padding:4px 0"></div>
-    <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
-      <button onclick="selAllHo('sale')" class="btn-s" style="font-size:11px">미분양 전체 선택</button>
-      <button onclick="clearSelHo()" class="btn-s" style="font-size:11px">선택 초기화</button>
-      <span id="sel-cnt" style="font-size:12px;color:#1565c0;font-weight:500;align-self:center"></span>
-    </div>
-  </div>
-  <div style="display:flex;gap:8px;margin-bottom:1rem">
-    <button onclick="genEstimate('sale')" class="btn-p" style="flex:1">📄 분양 견적서 생성</button>
-    <button onclick="window.print()" class="btn-s">🖨️ 인쇄/PDF</button>
-  </div>
-  <div id="est-preview"></div>
-</div>
 
+  <!-- 서브탭 -->
+  <div style="display:flex;gap:6px;margin-bottom:1rem;border-bottom:0.5px solid #e0e0e0;padding-bottom:0">
+    <button onclick="swEst(0)" id="etn0" class="tnb on" style="font-size:13px">🏗️ 분양 호실 <span id="est-unsold-cnt" style="font-size:10px;color:#aaa"></span></button>
+    <button onclick="swEst(1)" id="etn1" class="tnb" style="font-size:13px">✅ 임대완료 분양호실 <span id="est-leased-cnt" style="font-size:10px;color:#aaa"></span></button>
+  </div>
+
+  <!-- ── 서브탭0: 분양 호실 (임대 미확정) ── -->
+  <div id="etc0" class="tc on">
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <p class="sec" style="margin:0">⚙️ 핵심 변수</p>
+        <button onclick="toggleAdvOpts()" id="adv-toggle-btn" class="btn-s" style="font-size:11px">⚙️ 부가 옵션 ▼</button>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:12px">
+        <div>
+          <label class="fl">📉 분양가 할인율</label>
+          <div style="display:flex;align-items:center;gap:8px">
+            <input type="range" id="r-discount" min="0" max="20" value="0" step="1" oninput="updSlider('discount')">
+            <span class="slider-val" id="v-discount">0%</span>
+          </div>
+        </div>
+        <div>
+          <label class="fl">💰 보증금 비율</label>
+          <div style="display:flex;align-items:center;gap:8px">
+            <input type="range" id="r-deprate" min="3" max="20" value="5" step="1" oninput="updSlider('deprate')">
+            <span class="slider-val" id="v-deprate">5%</span>
+          </div>
+        </div>
+        <div>
+          <label class="fl">📊 적용 수익률</label>
+          <div style="display:flex;align-items:center;gap:8px">
+            <input type="range" id="r-yield" min="3" max="8" value="4.5" step="0.1" oninput="updSlider('yield')">
+            <span class="slider-val" id="v-yield">4.5%</span>
+          </div>
+        </div>
+      </div>
+      <!-- 부가 옵션 (접이식) -->
+      <div id="adv-opts" style="display:none;border-top:0.5px solid #f0f0f0;padding-top:12px">
+        <p style="font-size:11px;color:#aaa;margin:0 0 10px">부가 옵션 — 계약금·대출 조건</p>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px">
+          <div>
+            <label class="fl">계약금 비율</label>
+            <div style="display:flex;align-items:center;gap:8px">
+              <input type="range" id="r-contract" min="5" max="30" value="10" step="5" oninput="updSlider('contract')">
+              <span class="slider-val" id="v-contract">10%</span>
+            </div>
+          </div>
+          <div>
+            <label class="fl">대출 비율</label>
+            <div style="display:flex;align-items:center;gap:8px">
+              <input type="range" id="r-loan" min="0" max="80" value="60" step="10" oninput="updSlider('loan')">
+              <span class="slider-val" id="v-loan">60%</span>
+            </div>
+          </div>
+          <div>
+            <label class="fl">이자율</label>
+            <div style="display:flex;align-items:center;gap:8px">
+              <input type="range" id="r-rate" min="2" max="8" value="4" step="0.1" oninput="updSlider('rate')">
+              <span class="slider-val" id="v-rate">4.0%</span>
+            </div>
+          </div>
+          <div>
+            <label class="fl">견적일</label>
+            <input type="date" id="est-date" class="fi">
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <p class="sec">🏢 호실 선택 <span style="font-size:11px;color:#aaa;font-weight:400">— 분양 미확정 호실</span></p>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px" id="floor-filter-tabs"></div>
+      <div id="ho-chips" style="max-height:200px;overflow-y:auto;padding:4px 0"></div>
+      <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
+        <button onclick="selAllHo('sale')" class="btn-s" style="font-size:11px">미분양 전체 선택</button>
+        <button onclick="clearSelHo()" class="btn-s" style="font-size:11px">선택 초기화</button>
+        <span id="sel-cnt" style="font-size:12px;color:#1565c0;font-weight:500;align-self:center"></span>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:1rem">
+      <button onclick="genEstimate('sale')" class="btn-p" style="flex:1">📄 분양 견적서 생성</button>
+      <button onclick="window.print()" class="btn-s">🖨️ 인쇄/PDF</button>
+    </div>
+    <div id="est-preview"></div>
+  </div>
+
+  <!-- ── 서브탭1: 임대완료 분양호실 ── -->
+  <div id="etc1" class="tc">
+    <div class="card" style="border:1.5px solid #e8f5e9;background:#f9fdf9">
+      <p class="sec" style="color:#2e7d32">⚙️ 변수 (할인율만)</p>
+      <p style="font-size:12px;color:#888;margin:-6px 0 12px">보증금·월세는 확정값 사용 · 수익률은 자동 계산</p>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px">
+        <div>
+          <label class="fl">📉 분양가 할인율</label>
+          <div style="display:flex;align-items:center;gap:8px">
+            <input type="range" id="r-l-discount" min="0" max="20" value="0" step="1" oninput="updSliderL('discount')">
+            <span class="slider-val" id="v-l-discount">0%</span>
+          </div>
+        </div>
+        <div>
+          <label class="fl">대출 비율</label>
+          <div style="display:flex;align-items:center;gap:8px">
+            <input type="range" id="r-l-loan" min="0" max="80" value="60" step="10" oninput="updSliderL('loan')">
+            <span class="slider-val" id="v-l-loan">60%</span>
+          </div>
+        </div>
+        <div>
+          <label class="fl">이자율</label>
+          <div style="display:flex;align-items:center;gap:8px">
+            <input type="range" id="r-l-rate" min="2" max="8" value="4" step="0.1" oninput="updSliderL('rate')">
+            <span class="slider-val" id="v-l-rate">4.0%</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <p class="sec">🏢 호실 선택 <span style="font-size:11px;color:#aaa;font-weight:400">— 임대 확정 호실만</span></p>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px" id="floor-filter-tabs-l"></div>
+      <div id="ho-chips-l" style="max-height:200px;overflow-y:auto;padding:4px 0"></div>
+      <div style="margin-top:10px;display:flex;gap:8px">
+        <button onclick="clearSelHoL()" class="btn-s" style="font-size:11px">선택 초기화</button>
+        <span id="sel-cnt-l" style="font-size:12px;color:#2e7d32;font-weight:500;align-self:center"></span>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:1rem">
+      <button onclick="genEstimate('leased')" class="btn-p" style="flex:1;background:#2e7d32">📄 임대완료 분양호실 견적서 생성</button>
+      <button onclick="window.print()" class="btn-s">🖨️ 인쇄/PDF</button>
+    </div>
+    <div id="est-preview-l"></div>
+  </div>
+</div>
 <!-- TAB2 임대 견적서 -->
 <div id="tc2" class="tc">
   <div class="card">
@@ -462,11 +534,16 @@ function openHoModal(ho){
   body.innerHTML = '';
 
   // 고정 정보
+  var pyPerM2 = p.supAreaPy>0 ? fmt(Math.round(p.price/p.supAreaPy))+'원/평' : '—';
   var info = document.createElement('div');
-  info.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px';
-  info.innerHTML = '<div><label class="fl">전용면적</label><input class="fi" value="'+p.area+'㎡ ('+p.areaPy+'평)" readonly style="background:#f5f5f3;font-size:12px"></div>'
-    +'<div><label class="fl">분양면적</label><input class="fi" value="'+p.supArea+'㎡ ('+p.supAreaPy+'평)" readonly style="background:#f5f5f3;font-size:12px"></div>'
+  info.style.cssText = 'display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:12px';
+  info.innerHTML = '<div><label class="fl">전용면적</label><input class="fi" value="'+p.area+'㎡" readonly style="background:#f5f5f3;font-size:12px"></div>'
+    +'<div><label class="fl">전용평</label><input class="fi" value="'+p.areaPy+'평" readonly style="background:#f5f5f3;font-size:12px"></div>'
+    +'<div><label class="fl">분양면적</label><input class="fi" value="'+p.supArea+'㎡" readonly style="background:#f5f5f3;font-size:12px"></div>'
+    +'<div><label class="fl">분양평</label><input class="fi" value="'+p.supAreaPy+'평" readonly style="background:#f5f5f3;font-size:12px"></div>'
+    +'<div><label class="fl">평당가</label><input class="fi" value="'+pyPerM2+'" readonly style="background:#f5f5f3;font-size:12px"></div>'
     +'<div><label class="fl">공급금액</label><input class="fi" value="'+fmt(p.price)+'원" readonly style="background:#f5f5f3;font-size:12px"></div>'
+    +'<div><label class="fl">부가세</label><input class="fi" value="'+fmt(p.vat)+'원" readonly style="background:#f5f5f3;font-size:12px"></div>'
     +'<div><label class="fl">총분양가</label><input class="fi" value="'+fmt(p.total)+'원" readonly style="background:#f5f5f3;font-size:12px"></div>';
   body.appendChild(info);
 
@@ -566,6 +643,7 @@ function selectBldg(id){
   });
   
   initChips();
+  initChipsL();
   initChips2();
   initFloorMap();
   initFloorFilterTabs();
@@ -587,7 +665,7 @@ function sw(n){
     if(tn){tn.style.borderBottomColor=i===n?'#1a1a1a':'transparent';tn.style.color=i===n?'#1a1a1a':'#666';tn.style.fontWeight=i===n?'500':'400';}
   }
   if(n===0)renderDash();
-  if(n===1)initChips();
+  if(n===1){initChips();initChipsL();}
   if(n===2)initChips2();
   if(n===3)runSim();
   if(n===4)initFloorMap();
@@ -682,11 +760,17 @@ function renderTable(){
   var colors={'선임대':'#c62828','분양&임대':'#1565c0','분양':'#2e7d32','미분양':'#666','분양&자영':'#e65100','해제':'#f9a825'};
   document.getElementById('tbl-body').innerHTML=f.map(function(p){
     var trClick='onclick="openHoModal(\''+p.ho+'\')"';
+  setTimeout(function(){var t=document.getElementById('dashTable');var i=document.getElementById('dashScrollInner');if(t&&i)i.style.width=t.scrollWidth+'px';},50);
     var sc=statusColor(p.status||'미분양');
     var yc=p.yieldCur>0?(p.yieldCur>=5?'color:#2e7d32':p.yieldCur>=4?'color:#f57f17':'color:#c62828'):'color:#aaa';
+    var pyPerM = p.supAreaPy>0 ? fmt(Math.round(p.price/p.supAreaPy)) : '—';
     return'<tr class="row-click" '+trClick+'><td style="font-weight:500">'+p.ho+'</td><td style="font-size:11px;color:#888">'+p.floor+'</td>'
-      +'<td style="font-size:11px">'+p.area+'㎡</td><td style="font-size:11px">'+p.supArea+'㎡</td>'
-      +'<td style="font-size:12px">'+fmt(p.price)+'</td><td style="font-size:12px">'+fmt(p.total)+'</td>'
+      +'<td style="font-size:11px">'+p.area+'㎡</td><td style="font-size:11px">'+p.areaPy+'평</td>'
+      +'<td style="font-size:11px">'+p.supArea+'㎡</td><td style="font-size:11px">'+p.supAreaPy+'평</td>'
+      +'<td style="font-size:11px">'+pyPerM+'</td>'
+      +'<td style="font-size:12px">'+fmt(p.price)+'</td>'
+      +'<td style="font-size:12px;color:#888">'+fmt(p.vat)+'</td>'
+      +'<td style="font-size:12px">'+fmt(p.total)+'</td>'
       +'<td><span class="bdg" style="background:'+sc[0]+';color:'+sc[1]+'">'+( p.status||'미분양')+'</span></td>'
       +'<td style="font-size:12px">'+(p.tenant||'—')+'</td>'
       +'<td style="font-size:12px">'+(p.deposit?fmt(p.deposit)+'만':'—')+'</td>'
@@ -727,6 +811,9 @@ function initChips(){
     return'<span class="'+cls+'" onclick="toggleHo(\''+p.ho+'\')" style="border-color:'+sc[1]+';'+(selHos.has(p.ho)?'':'color:'+sc[1]+';')+'">'+p.ho+(p.tenant?' <span style="font-size:10px">('+p.tenant+')</span>':'')+'</span>';
   }).join('');
   document.getElementById('sel-cnt').textContent = selHos.size ? selHos.size+'개 선택됨' : '';
+  // 카운트 업데이트
+  var unsoldCnt=document.getElementById('est-unsold-cnt');
+  if(unsoldCnt) unsoldCnt.textContent='('+getCurProps().filter(function(p){return !['선임대','분양&임대','해제&선임대'].includes(p.status)&&p.monthly===0;}).length+'개)';
 }
 
 function toggleHo(ho){selHos.has(ho)?selHos.delete(ho):selHos.add(ho);initChips();}
@@ -752,7 +839,158 @@ function toggleHo2(ho){selHos2.has(ho)?selHos2.delete(ho):selHos2.add(ho);initCh
 function clearSelHo2(){selHos2.clear();initChips2();}
 
 // ═══ 견적서 생성
+
+// ═══ 분양견적서 서브탭
+function swEst(n){
+  for(var i=0;i<2;i++){
+    var tc=document.getElementById('etc'+i),tn=document.getElementById('etn'+i);
+    if(tc)tc.className='tc'+(i===n?' on':'');
+    if(tn){tn.style.borderBottomColor=i===n?'#1a1a1a':'transparent';tn.style.color=i===n?'#1a1a1a':'#666';tn.style.fontWeight=i===n?'500':'400';}
+  }
+  if(n===0) initChips();
+  if(n===1) initChipsL();
+}
+
+// 부가 옵션 토글
+function toggleAdvOpts(){
+  var el=document.getElementById('adv-opts');
+  var btn=document.getElementById('adv-toggle-btn');
+  var isOpen=el.style.display!=='none';
+  el.style.display=isOpen?'none':'block';
+  btn.textContent=isOpen?'⚙️ 부가 옵션 ▼':'⚙️ 부가 옵션 ▲';
+}
+
+// 임대완료 슬라이더
+function updSliderL(k){
+  var v=parseFloat(document.getElementById('r-l-'+k).value);
+  document.getElementById('v-l-'+k).textContent=(k==='rate')?v.toFixed(1)+'%':v+'%';
+}
+
+// 임대완료 호실 칩
+var selHosL = new Set();
+var LEASED_STATUSES = ['선임대','분양&임대','해제&선임대'];
+
+function initChipsL(){
+  var props = getCurProps();
+  var leasedProps = props.filter(function(p){
+    return LEASED_STATUSES.some(function(s){return p.status.includes(s.replace('&',''));}) ||
+           LEASED_STATUSES.includes(p.status) ||
+           (p.monthly > 0);
+  });
+
+  // 층 탭
+  var floors = [...new Set(leasedProps.map(function(p){return p.floor;}))];
+  document.getElementById('floor-filter-tabs-l').innerHTML =
+    '<button class="floor-tab on" onclick="filterFloorL(\'\',this)">전체</button>'
+    +floors.map(function(f){return'<button class="floor-tab" onclick="filterFloorL(\''+f+'\',this)">'+f+'</button>';}).join('');
+
+  var filtered = curFloorFilterL ? leasedProps.filter(function(p){return p.floor===curFloorFilterL;}) : leasedProps;
+
+  document.getElementById('ho-chips-l').innerHTML = filtered.map(function(p){
+    var sc=statusColor(p.status||'');
+    var yc=p.yieldCur>0?(p.yieldCur>=5?'#2e7d32':p.yieldCur>=4?'#f57f17':'#c62828'):'#aaa';
+    var cls='ho-chip'+(selHosL.has(p.ho)?' sel-임대':'');
+    return'<span class="'+cls+'" onclick="toggleHoL(\''+p.ho+'\')" style="border-color:'+sc[1]+';'+(selHosL.has(p.ho)?'':'color:'+sc[1]+';')+'">'
+      +p.ho+' <span style="font-size:10px">('+fmt(p.deposit)+'만/'+fmt(p.monthly)+'만)</span>'
+      +(p.yieldCur>0?' <span style="font-size:10px;color:'+yc+'">'+p.yieldCur.toFixed(1)+'%</span>':'')
+      +'</span>';
+  }).join('');
+
+  document.getElementById('sel-cnt-l').textContent = selHosL.size ? selHosL.size+'개 선택됨' : '';
+  document.getElementById('est-leased-cnt').textContent = '('+leasedProps.length+'개)';
+  document.getElementById('est-unsold-cnt').textContent = '('+(getCurProps().length-leasedProps.length)+'개)';
+}
+
+var curFloorFilterL = '';
+function filterFloorL(floor, btn){
+  curFloorFilterL = floor;
+  document.querySelectorAll('#floor-filter-tabs-l .floor-tab').forEach(function(t){t.classList.remove('on');});
+  btn.classList.add('on');
+  initChipsL();
+}
+function toggleHoL(ho){selHosL.has(ho)?selHosL.delete(ho):selHosL.add(ho);initChipsL();}
+function clearSelHoL(){selHosL.clear();initChipsL();}
+
+// 임대완료 분양호실 견적서 생성
+function buildLeasedEstimate(selProps, bldgName, estDate, discountPct, loanRate, intRate){
+  var rows = selProps.map(function(p,i){
+    var discPrice = Math.round(p.price*(1-discountPct/100));
+    var discTotal = Math.round(p.total*(1-discountPct/100));
+    // 수익률은 확정 보증금·월세로 계산
+    var yNoLoan = p.monthly>0 ? (p.monthly*10000*12)/(discPrice - p.deposit*10000)*100 : 0;
+    // 대출 수익률
+    var loan = discPrice * loanRate/100;
+    var realInvest = discPrice - loan - p.deposit*10000;
+    var interest = loan * intRate/100/12;
+    var netMon = p.monthly*10000 - interest;
+    var yLoan = realInvest>0 ? netMon*12/realInvest*100 : 0;
+    var sc = statusColor(p.status||'');
+    var yc = yNoLoan>=5?'#2e7d32':yNoLoan>=4?'#f57f17':'#c62828';
+
+    return'<tr>'
+      +'<td>'+(i+1)+'</td><td style="font-weight:600">'+p.ho+'</td>'
+      +'<td>'+p.area+'㎡ ('+p.areaPy+'평)</td>'
+      +'<td>'+fmt(discPrice)+'</td>'
+      +'<td style="color:#1565c0;font-weight:600">'+fmt(p.deposit)+'만원</td>'
+      +'<td style="color:#c62828;font-weight:600">'+fmt(p.monthly)+'만원</td>'
+      +'<td style="font-weight:600;color:'+yc+'">'+yNoLoan.toFixed(2)+'%</td>'
+      +'<td>'+fmt(realInvest)+'</td>'
+      +'<td>'+fmt(Math.round(interest))+'원</td>'
+      +'<td style="font-weight:600;color:'+yc+'">'+yLoan.toFixed(2)+'%</td>'
+      +'<td><span style="background:'+sc[0]+';color:'+sc[1]+';padding:1px 6px;border-radius:6px;font-size:10px">'+p.tenant+'</span></td>'
+      +'</tr>';
+  }).join('');
+
+  var summary = selProps.map(function(p){
+    var discPrice = Math.round(p.price*(1-discountPct/100));
+    var y = p.monthly>0?(p.monthly*10000*12)/(discPrice-p.deposit*10000)*100:0;
+    return y;
+  });
+  var avgY = summary.reduce(function(a,b){return a+b;},0)/summary.length;
+
+  return'<div class="est-card">'
+    +'<div class="est-title" style="border-bottom-color:#2e7d32">▣ '+bldgName+' 임대완료 분양호실 견적서'
+    +(discountPct>0?' <span style="color:#c62828;font-size:14px">('+discountPct+'% 할인 적용)</span>':'')
+    +'<span style="float:right;font-size:13px;font-weight:400">견적일: '+estDate+'</span></div>'
+    +'<div style="background:#e8f5e9;border-radius:8px;padding:10px 14px;margin-bottom:1rem;font-size:13px;color:#2e7d32">'
+    +'✅ 확정 임대가 기준 견적 &nbsp;|&nbsp; 대출비율 '+loanRate+'% · 이자율 '+intRate+'% &nbsp;|&nbsp; '
+    +'평균 확정 수익률 <strong>'+avgY.toFixed(2)+'%</strong>'
+    +'</div>'
+    +'<table class="est-tbl"><thead><tr>'
+    +'<th>NO</th><th>호수</th><th>전용면적</th><th>할인 분양가</th>'
+    +'<th>확정 보증금</th><th>확정 월세</th><th>무대출수익률</th>'
+    +'<th>실투자금</th><th>월이자</th><th>대출수익률</th><th>입점업종</th>'
+    +'</tr></thead><tbody>'+rows+'</tbody></table>'
+    +'<div style="margin-top:1rem;padding:10px;background:#f8f8f6;border-radius:8px;font-size:12px">'
+    +'* 보증금·월세는 임차인과 확정된 금액 기준 &nbsp;|&nbsp; 대출수익률은 대출비율 '+loanRate+'%, 이자율 '+intRate+'% 적용 시 기준<br>'
+    +'송도제일공인중개사사무소 032-851-6688</div>'
+    +'</div>';
+}
+
 function genEstimate(type){
+  var props = getCurProps();
+  var bldg = BUILDINGS.find(function(b){return b.id===curBldgId;});
+  var bldgName = bldg ? bldg.name : '';
+  var estDate = (document.getElementById('est-date')||{value:''}).value.replace(/-/g,'.');
+  if(!estDate){var d=new Date();estDate=d.getFullYear()+'.'+(d.getMonth()+1)+'.'+d.getDate();}
+
+  if(type==='leased'){
+    var sel = [...selHosL];
+    if(!sel.length){alert('호실을 선택해 주세요.');return;}
+    var selProps = sel.map(function(ho){return props.find(function(p){return p.ho===ho;});}).filter(Boolean);
+    var discL = parseFloat(document.getElementById('r-l-discount').value);
+    var loanL = parseFloat(document.getElementById('r-l-loan').value);
+    var rateL = parseFloat(document.getElementById('r-l-rate').value);
+    var html = buildLeasedEstimate(selProps, bldgName, estDate, discL, loanL, rateL);
+    document.getElementById('est-preview-l').innerHTML = html;
+    document.getElementById('print-content').innerHTML = html;
+    return;
+  }
+
+  var sel = type==='sale' ? [...selHos] : [...selHos2];
+  if(!sel.length){alert('호실을 선택해 주세요.');return;}
+
+
   var props = getCurProps();
   var sel = type==='sale' ? [...selHos] : [...selHos2];
   if(!sel.length){alert('호실을 선택해 주세요.');return;}
@@ -782,361 +1020,3 @@ function genEstimate(type){
   }
   document.getElementById('print-content').innerHTML = html;
 }
-
-function buildSaleEstimate(selProps, bldgName, estDate, discount, contractRate, depRate, yRate, loanRate, intRate){
-  var totalPrice=0, totalVat=0, totalDisc=0;
-  selProps.forEach(function(p){totalPrice+=p.price;totalVat+=p.vat;totalDisc+=Math.round(p.price*(1-discount));});
-
-  var rows1 = selProps.map(function(p,i){
-    var discPrice = Math.round(p.price*(1-discount));
-    var discTotal = Math.round(p.total*(1-discount));
-    return'<tr><td>'+(i+1)+'</td><td>'+p.ho+'</td><td>'+p.area+'</td><td>'+p.areaPy.toFixed(2)+'</td>'
-      +'<td>'+p.supArea+'</td><td>'+p.supAreaPy.toFixed(2)+'</td>'
-      +'<td>'+fmt(Math.round(p.land*(1-discount)))+'</td><td>'+fmt(Math.round(p.bldg*(1-discount)))+'</td>'
-      +'<td>'+fmt(Math.round(p.price/p.supAreaPy*(1-discount)))+'</td>'
-      +'<td><strong>'+fmt(discPrice)+'</strong></td>'
-      +'<td>'+fmt(Math.round(p.vat*(1-discount)))+'</td><td><strong>'+fmt(discTotal)+'</strong></td></tr>';
-  }).join('');
-
-  var calc = selProps.map(function(p,i){
-    var discPrice = Math.round(p.price*(1-discount));
-    var cm = calcMonthly(discPrice, depRate*100, yRate*100);
-    var yl = calcYield(discPrice, cm.dep, cm.mon, loanRate*100, intRate*100);
-    return'<tr><td>'+(i+1)+'</td><td>'+p.ho+'</td>'
-      +'<td>'+fmt(cm.dep)+'</td><td>'+fmt(cm.mon)+'</td>'
-      +'<td><strong>'+fmt(discPrice-cm.dep*10000)+'</strong></td>'
-      +'<td class="'+(yl.noLoan>=5?'yield-high':yl.noLoan>=4?'yield-mid':'yield-low')+'">'+yl.noLoan.toFixed(2)+'%</td>'
-      +'<td>'+p.area.toFixed(2)+'</td>'
-      +'<td>'+fmt(discPrice*loanRate)+'</td><td>'+fmt(discPrice*loanRate*(1-depRate)-discPrice*loanRate)+'</td>'
-      +'<td>'+fmt(yl.interest)+'</td><td>'+fmt(yl.netMon)+'</td>'
-      +'<td class="'+(yl.withLoan>=5?'yield-high':yl.withLoan>=4?'yield-mid':'yield-low')+'">'+yl.withLoan.toFixed(2)+'%</td></tr>';
-  }).join('');
-
-  var schedule = selProps.map(function(p,i){
-    var discPrice = Math.round(p.price*(1-discount));
-    var contract = Math.round(discPrice*contractRate);
-    var balance = discPrice - contract;
-    return'<tr><td>'+(i+1)+'</td><td>'+p.ho+'</td>'
-      +'<td>'+fmt(contract)+'</td><td>'+fmt(Math.round(p.vat*(1-discount)*contractRate))+'</td>'
-      +'<td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td>'
-      +'<td>'+fmt(balance)+'</td><td>'+fmt(Math.round(p.vat*(1-discount)*(1-contractRate)))+'</td></tr>';
-  }).join('');
-
-  return'<div class="est-card">'
-    +'<div class="est-title">▣ '+bldgName+' 분양 견적가격'+(discount>0?' ('+( discount*100).toFixed(0)+'% 할인 적용)':'')+'<span style="float:right;font-size:13px;font-weight:400">견적일: '+estDate+'</span></div>'
-    +'<table class="est-tbl"><thead><tr><th>NO</th><th>호수</th><th>전용㎡</th><th>전용평</th><th>분양㎡</th><th>분양평</th><th>토지가격</th><th>건물가격</th><th>평당가</th><th>공급가격</th><th>부가세</th><th>총분양가</th></tr></thead><tbody>'+rows1
-    +'<tr style="background:#f0f4ff;font-weight:600"><td colspan="9">합계</td><td>'+fmt(totalDisc)+'</td><td>'+fmt(Math.round(totalVat*(1-discount)))+'</td><td>'+fmt(Math.round((totalPrice+totalVat)*(1-discount)))+'</td></tr>'
-    +'</tbody></table>'
-    +'<div class="est-title" style="margin-top:1.5rem">▣ 예상 임대가 및 수익률 <span style="font-size:11px;font-weight:400;color:#666">(단위: 만원 | 보증금비율 '+(depRate*100).toFixed(0)+'% | 적용수익률 '+(yRate*100).toFixed(1)+'% | 대출비율 '+(loanRate*100).toFixed(0)+'% | 이자율 '+(intRate*100).toFixed(1)+'%)</span></div>'
-    +'<table class="est-tbl"><thead><tr><th>NO</th><th>호수</th><th>보증금(만)</th><th>월세(만)</th><th>실투자금</th><th>무대출수익률</th><th>전용㎡</th><th>대출금</th><th>실투자금(대출)</th><th>이자</th><th>순월세</th><th>대출수익률</th></tr></thead><tbody>'+calc+'</tbody></table>'
-    +'<div class="est-title" style="margin-top:1.5rem">▣ 분양대금 납부 일정</div>'
-    +'<table class="est-tbl"><thead><tr><th>NO</th><th>호수</th><th colspan="2">계약금 '+(contractRate*100).toFixed(0)+'%</th><th colspan="2">1차중도금</th><th colspan="2">2차중도금</th><th colspan="2">3차중도금</th><th colspan="2">잔금</th></tr>'
-    +'<tr><th></th><th></th><th>공급가</th><th>부가세</th><th>공급가</th><th>부가세</th><th>공급가</th><th>부가세</th><th>공급가</th><th>부가세</th><th>공급가</th><th>부가세</th></tr></thead><tbody>'+schedule+'</tbody></table>'
-    +'<div style="margin-top:1.5rem;padding:12px;background:#f8f8f6;border-radius:8px;font-size:12px"><strong>입금계좌</strong> &nbsp; 수협은행 주식회사 에스개발 1010-1152-5134 &nbsp;|&nbsp; 상담문의: 송도제일공인중개사사무소 032-851-6688</div>'
-    +'</div>';
-}
-
-function buildRentEstimate(selProps, bldgName, estDate, depRate, yRate, loanRate, intRate){
-  var rows = selProps.map(function(p,i){
-    var cm = calcMonthly(p.price, depRate*100, yRate*100);
-    var yl = calcYield(p.price, cm.dep, cm.mon, loanRate*100, intRate*100);
-    return'<tr><td>'+(i+1)+'</td><td>'+p.ho+'</td><td>'+p.area+'㎡ ('+p.areaPy.toFixed(2)+'평)</td>'
-      +'<td>'+fmt(p.price)+'</td>'
-      +'<td>'+fmt(cm.dep)+'만원</td><td>'+fmt(cm.mon)+'만원</td>'
-      +'<td>'+fmt(yl.noLoan.toFixed ? p.price-cm.dep*10000 : 0)+'</td>'
-      +'<td class="'+(yl.noLoan>=5?'yield-high':yl.noLoan>=4?'yield-mid':'yield-low')+'">'+yl.noLoan.toFixed(2)+'%</td>'
-      +'<td>'+fmt(p.price*loanRate/100)+'</td><td>'+fmt(yl.interest)+'</td>'
-      +'<td>'+fmt(yl.netMon)+'</td>'
-      +'<td class="'+(yl.withLoan>=5?'yield-high':yl.withLoan>=4?'yield-mid':'yield-low')+'">'+yl.withLoan.toFixed(2)+'%</td></tr>';
-  }).join('');
-
-  return'<div class="est-card">'
-    +'<div class="est-title">▣ '+bldgName+' 임대 견적서 <span style="float:right;font-size:13px;font-weight:400">견적일: '+estDate+'</span></div>'
-    +'<p style="font-size:11px;color:#888;margin:0 0 10px">적용수익률 '+(yRate*100).toFixed(1)+'% | 보증금비율 '+(depRate*100).toFixed(0)+'% | 대출비율 '+(loanRate*100).toFixed(0)+'% | 이자율 '+(intRate*100).toFixed(1)+'%</p>'
-    +'<table class="est-tbl"><thead><tr><th>NO</th><th>호수</th><th>전용면적</th><th>공급금액</th><th>보증금</th><th>월세</th><th>실투자금</th><th>무대출수익률</th><th>대출금</th><th>월이자</th><th>순월세</th><th>대출수익률</th></tr></thead><tbody>'+rows+'</tbody></table>'
-    +'<div style="margin-top:1rem;padding:10px;background:#e3f2fd;border-radius:8px;font-size:12px;color:#1565c0">송도제일공인중개사사무소 &nbsp;|&nbsp; 032-851-6688 &nbsp;|&nbsp; 인천광역시 연수구 해돋이로 168, 1층 103호</div>'
-    +'</div>';
-}
-
-// ═══ 수익률 시뮬레이터
-function runSim(){
-  var props = getCurProps();
-  var yRate=parseFloat(document.getElementById('rs-yield').value);
-  var disc=parseFloat(document.getElementById('rs-disc').value);
-  var depR=parseFloat(document.getElementById('rs-dep').value);
-  var loanR=parseFloat(document.getElementById('rs-loan').value);
-  var intR=parseFloat(document.getElementById('rs-rate').value);
-  var floorF=document.getElementById('rs-floor').value;
-
-  ['yield','disc','dep','loan','rate'].forEach(function(k){
-    var el=document.getElementById('vs-'+k);
-    if(!el)return;
-    var v=parseFloat(document.getElementById('rs-'+k).value);
-    el.textContent=(k==='yield'||k==='rate')?v.toFixed(1)+'%':v+'%';
-  });
-
-  var filtered = floorF ? props.filter(function(p){return p.floor===floorF;}) : props;
-  var results = filtered.map(function(p){
-    var discPrice = Math.round(p.price*(1-disc/100));
-    var cm = calcMonthly(discPrice, depR, yRate);
-    var yl = calcYield(discPrice, cm.dep, cm.mon, loanR, intR);
-    return{p:p, discPrice:discPrice, dep:cm.dep, mon:cm.mon, yl:yl};
-  });
-
-  var avgNoLoan = results.reduce(function(s,r){return s+r.yl.noLoan;},0)/results.length;
-  var avgWithLoan = results.reduce(function(s,r){return s+r.yl.withLoan;},0)/results.length;
-  var minInvest = Math.min.apply(null, results.map(function(r){return r.yl.realInvest;}));
-  var maxYield = Math.max.apply(null, results.map(function(r){return r.yl.withLoan;}));
-
-  document.getElementById('sim-summary').innerHTML=[
-    {n:avgNoLoan.toFixed(2)+'%',l:'평균 무대출수익률',c:'#1565c0',bg:'#e3f2fd'},
-    {n:avgWithLoan.toFixed(2)+'%',l:'평균 대출수익률',c:'#2e7d32',bg:'#e8f5e9'},
-    {n:fmtM(minInvest),l:'최소 실투자금',c:'#e65100',bg:'#fff3e0'},
-    {n:maxYield.toFixed(2)+'%',l:'최고 대출수익률',c:'#c62828',bg:'#fce4ec'},
-  ].map(function(s){return'<div class="stat-box" style="background:'+s.bg+'"><div class="stat-n" style="color:'+s.c+'">'+s.n+'</div><div class="stat-l">'+s.l+'</div></div>';}).join('');
-
-  document.getElementById('sim-body').innerHTML = results.map(function(r){
-    var nl=r.yl.noLoan; var wl=r.yl.withLoan;
-    var nc=nl>=5?'yield-high':nl>=4?'yield-mid':'yield-low';
-    var wc=wl>=5?'yield-high':wl>=4?'yield-mid':'yield-low';
-    return'<tr><td style="font-weight:500">'+r.p.ho+'</td><td style="font-size:11px;color:#888">'+r.p.floor+'</td>'
-      +'<td style="font-size:11px">'+r.p.area+'㎡</td>'
-      +'<td style="font-size:12px">'+fmt(r.p.price)+'</td>'
-      +'<td style="font-size:12px">'+(disc>0?fmt(r.discPrice):'-')+'</td>'
-      +'<td style="font-size:12px">'+fmt(r.dep)+'만</td><td style="font-size:12px">'+fmt(r.mon)+'만</td>'
-      +'<td style="font-size:12px">'+fmtM(r.yl.realInvest)+'</td>'
-      +'<td class="'+nc+'">'+nl.toFixed(2)+'%</td>'
-      +'<td class="'+wc+'">'+wl.toFixed(2)+'%</td></tr>';
-  }).join('');
-}
-
-// ═══ 층별 현황도
-var curMapFloor = '';
-function initFloorMap(){
-  var props = getCurProps();
-  var floors = [...new Set(props.map(function(p){return p.floor;}))];
-  if(!curMapFloor) curMapFloor = floors[0]||'';
-  
-  document.getElementById('map-floor-tabs').innerHTML = floors.map(function(f){
-    return'<button class="floor-tab'+(f===curMapFloor?' on':'')+'" onclick="switchMapFloor(\''+f+'\',this)">'+f+'</button>';
-  }).join('');
-  renderFloorMap();
-}
-
-function switchMapFloor(f, btn){
-  curMapFloor = f;
-  document.querySelectorAll('#map-floor-tabs .floor-tab').forEach(function(t){t.classList.remove('on');});
-  btn.classList.add('on');
-  renderFloorMap();
-}
-
-function renderFloorMap(){
-  var props = getCurProps();
-  var fp = props.filter(function(p){return p.floor===curMapFloor;});
-  document.getElementById('floor-map').innerHTML = fp.map(function(p){
-    var sc = statusColor(p.status||'미분양');
-    return'<div onclick="showHoDetail(\''+p.ho+'\')" style="background:'+sc[0]+';border:1px solid '+sc[1]+';border-radius:10px;padding:10px 8px;cursor:pointer;min-width:80px;text-align:center;transition:transform .1s" onmouseover="this.style.transform=\'scale(1.05)\'" onmouseout="this.style.transform=\'scale(1)\'">'
-      +'<div style="font-size:13px;font-weight:600;color:'+sc[1]+'">'+p.ho+'</div>'
-      +'<div style="font-size:10px;color:'+sc[1]+';margin-top:2px">'+p.area+'㎡</div>'
-      +'<div style="font-size:10px;color:'+sc[1]+';margin-top:1px">'+(p.tenant||p.status||'미분양')+'</div>'
-      +'</div>';
-  }).join('');
-}
-
-function showHoDetail(ho){
-  var props = getCurProps();
-  var p = props.find(function(x){return x.ho===ho;});
-  if(!p) return;
-  var sc = statusColor(p.status||'미분양');
-  document.getElementById('ho-detail-content').innerHTML=
-    '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:1rem">'
-    +'<div><h3 style="margin:0;font-size:16px">'+p.ho+' <span class="bdg" style="background:'+sc[0]+';color:'+sc[1]+'">'+( p.status||'미분양')+'</span></h3>'
-    +'<p style="margin:4px 0 0;font-size:12px;color:#888">'+p.floor+'</p></div>'
-    +'<button onclick="document.getElementById(\'ho-detail-card\').style.display=\'none\'" style="background:none;border:none;cursor:pointer;font-size:18px;color:#666">✕</button></div>'
-    +'<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px">'
-    +[['전용면적',p.area+'㎡'],['분양면적',p.supArea+'㎡'],['공급금액',fmtM(p.price)],['총분양가',fmtM(p.total)],
-      ['입점업종',p.tenant||'—'],['보증금',p.deposit?fmt(p.deposit)+'만':'—'],['월세',p.monthly?fmt(p.monthly)+'만':'—'],['현수익률',p.yieldCur?p.yieldCur.toFixed(2)+'%':'—']]
-    .map(function(v){return'<div class="stat-box"><div style="font-size:13px;font-weight:500">'+v[1]+'</div><div class="stat-l">'+v[0]+'</div></div>';}).join('')+'</div>';
-  document.getElementById('ho-detail-card').style.display='block';
-}
-
-// ═══ AI 인식
-var _aiImgB64 = null;
-function onAIDrop(e){
-  e.preventDefault();
-  var file = e.dataTransfer.files[0];
-  if(file) processAIImg(file);
-}
-function onAIImgSelect(input){
-  if(input.files[0]) processAIImg(input.files[0]);
-}
-function processAIImg(file){
-  var reader = new FileReader();
-  reader.onload = function(e){
-    _aiImgB64 = e.target.result.split(',')[1];
-    document.getElementById('ai-preview-img').src = e.target.result;
-    document.getElementById('ai-img-preview').style.display='block';
-    document.getElementById('ai-btn').style.display='block';
-    document.getElementById('ai-status').style.display='none';
-  };
-  reader.readAsDataURL(file);
-}
-
-async function runAIRecognize(){
-  if(!_aiImgB64){alert('이미지를 먼저 선택해 주세요.');return;}
-  var apiKey = localStorage.getItem('sd_api_key');
-  if(!apiKey){
-    apiKey = prompt('Anthropic API 키를 입력하세요:','sk-ant-...');
-    if(!apiKey) return;
-    localStorage.setItem('sd_api_key', apiKey.trim());
-  }
-  apiKey = apiKey.trim();
-
-  var btn = document.getElementById('ai-btn');
-  btn.disabled=true; btn.textContent='⏳ AI 인식 중...';
-  var statusEl = document.getElementById('ai-status');
-  statusEl.style.cssText='display:block;background:#e3f2fd;color:#1565c0;padding:10px 14px;border-radius:8px;font-size:13px';
-  statusEl.textContent='⏳ AI가 인포메이션 보드를 분석하고 있습니다...';
-
-  var props = getCurProps();
-  var hoList = props.map(function(p){return p.ho;}).join(', ');
-
-  try{
-    var res = await fetch('https://api.anthropic.com/v1/messages',{
-      method:'POST',
-      headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
-      body:JSON.stringify({
-        model:'claude-sonnet-4-5-20250929',
-        max_tokens:2000,
-        system:'당신은 상가 인포메이션 보드에서 호실별 입점업종을 추출하는 전문가입니다. 반드시 순수 JSON만 출력하세요.',
-        messages:[{role:'user',content:[
-          {type:'image',source:{type:'base64',media_type:'image/jpeg',data:_aiImgB64}},
-          {type:'text',text:'이 인포메이션 보드 이미지에서 호실번호와 입점업종을 추출해서 JSON으로 출력하세요.\n현재 등록된 호실 목록: '+hoList+'\n출력 형식: [{"ho":"호실번호","tenant":"업종명"}]\n호실번호가 목록에 없는 경우도 포함. 없는 값은 제외. 순수 JSON만 출력.'}
-        ]}]
-      })
-    });
-    var data = await res.json();
-    if(!res.ok) throw new Error('API 오류: '+(data.error&&data.error.message||res.status));
-    var text = (data.content||[]).map(function(b){return b.text||'';}).join('').replace(/```json|```/gi,'').trim();
-    var results = JSON.parse(text.match(/\[[\s\S]*\]/)[0]);
-    showAIResults(results);
-    statusEl.style.cssText='display:block;background:#e8f5e9;color:#2e7d32;padding:10px 14px;border-radius:8px;font-size:13px';
-    statusEl.textContent='✅ '+results.length+'개 호실 인식 완료';
-  }catch(e){
-    statusEl.style.cssText='display:block;background:#ffebee;color:#c62828;padding:10px 14px;border-radius:8px;font-size:13px';
-    statusEl.textContent='❌ 오류: '+e.message;
-  }
-  btn.disabled=false; btn.textContent='🤖 AI 입점업종 자동 인식';
-}
-
-var _aiResults = [];
-function showAIResults(results){
-  _aiResults = results;
-  var props = getCurProps();
-  var html = results.map(function(r){
-    var p = props.find(function(x){return x.ho===r.ho;});
-    var cur = p ? (p.tenant||'없음') : '호실없음';
-    return'<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:0.5px solid #f0f0f0">'
-      +'<span style="font-weight:600;min-width:60px">'+r.ho+'</span>'
-      +'<span style="font-size:12px;color:#aaa;min-width:80px">현재: '+cur+'</span>'
-      +'<span style="font-size:12px;color:#1a1a1a">→ <strong>'+r.tenant+'</strong></span>'
-      +'<input type="checkbox" id="ai-chk-'+r.ho+'" checked style="margin-left:auto">'
-      +'</div>';
-  }).join('');
-  document.getElementById('ai-result-list').innerHTML=html;
-  document.getElementById('ai-result-card').style.display='block';
-}
-
-function applyAIResult(){
-  var props = getCurProps();
-  var applied=0;
-  _aiResults.forEach(function(r){
-    var chk = document.getElementById('ai-chk-'+r.ho);
-    if(!chk||!chk.checked) return;
-    var p = props.find(function(x){return x.ho===r.ho;});
-    if(p){p.tenant=r.tenant; applied++;}
-  });
-  saveBldgs();
-  renderDash(); renderTable(); renderFloorMap();
-  alert('✅ '+applied+'개 호실 입점업종 업데이트 완료!');
-  document.getElementById('ai-result-card').style.display='none';
-}
-
-// ═══ 건물 추가
-function openAddBldg(){
-  document.getElementById('bldg-modal').classList.add('open');
-}
-
-function addBldg(){
-  var name = document.getElementById('new-bldg-name').value.trim();
-  var file = document.getElementById('new-bldg-file').files[0];
-  if(!name){alert('건물명을 입력해 주세요.');return;}
-  if(!file){alert('엑셀 파일을 선택해 주세요.');return;}
-  
-  var st = document.getElementById('bldg-parse-status');
-  st.style.cssText='display:block;background:#e3f2fd;color:#1565c0;border-radius:8px;padding:8px 12px';
-  st.textContent='⏳ 파일 파싱 중...';
-
-  // xlsx 라이브러리 동적 로드
-  if(!window.XLSX){
-    var script = document.createElement('script');
-    script.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
-    script.onload = function(){ parseNewBldgFile(name, file, st); };
-    document.head.appendChild(script);
-  } else {
-    parseNewBldgFile(name, file, st);
-  }
-}
-
-function parseNewBldgFile(name, file, st){
-  var reader = new FileReader();
-  reader.onload = function(e){
-    try{
-      var wb = XLSX.read(e.target.result, {type:'binary'});
-      var ws = wb.Sheets[wb.SheetNames[0]];
-      var rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:null});
-      
-      var props = [];
-      var curFloor = '';
-      for(var i=2; i<rows.length; i++){
-        var r = rows[i];
-        var b=r[1],c=r[2],d=r[3],e2=r[4],f=r[5],g=r[6];
-        var k=r[10],l=r[11],m=r[12],n=r[13],o=r[14];
-        var p=r[15],q=r[16],rv=r[17],s=r[18],t=r[19];
-        if(b&&typeof b==='string'&&b.includes('층')&&!b.includes('소계')) curFloor=b.trim();
-        if(!c||typeof d!=='number'||!k||typeof k!=='number'||k<=0) continue;
-        if(b&&typeof b==='string'&&b.includes('소계')) continue;
-        props.push({floor:curFloor,ho:String(c),area:Math.round(d*100)/100,areaPy:Math.round((e2||0)*1000)/1000,
-          supArea:Math.round((f||0)*100)/100,supAreaPy:Math.round((g||0)*1000)/1000,
-          price:Math.round(k),land:Math.round(l||0),bldg:Math.round(m||0),vat:Math.round(n||0),total:Math.round(o||0),
-          status:String(p||'미분양').trim(),tenant:String(q||'').trim(),
-          deposit:typeof rv==='number'?Math.round(rv):0,monthly:typeof s==='number'?Math.round(s):0,
-          yieldCur:typeof t==='number'?Math.round(t*10000)/100:0});
-      }
-      
-      if(props.length===0){
-        st.style.background='#ffebee';st.style.color='#c62828';
-        st.textContent='❌ 데이터를 찾을 수 없습니다. 엑셀 포맷을 확인해 주세요.';
-        return;
-      }
-      
-      var newBldg = {id:'bldg_'+Date.now(), name:name, props:props};
-      BUILDINGS.push(newBldg);
-      saveBldgs();
-      renderBldgTabs();
-      selectBldg(newBldg.id);
-      document.getElementById('bldg-modal').classList.remove('open');
-      document.getElementById('new-bldg-name').value='';
-      document.getElementById('new-bldg-file').value='';
-      st.textContent='';st.style.display='none';
-      alert('✅ '+name+' 건물 추가 완료! ('+props.length+'개 호실)');
-    }catch(err){
-      st.style.background='#ffebee';st.style.color='#c62828';
-      st.textContent='❌ 파싱 오류: '+err.message;
-    }
-  };
-  reader.readAsBinaryString(file);
-}
-</script>
-</body>
-</html>
