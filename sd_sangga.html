@@ -39,18 +39,15 @@ input[type=range]{width:100%;accent-color:#1a1a1a}
 .print-area{display:none}
 @media print{
   body *{visibility:hidden}
-  #est-card-main,#est-card-main *,
-  #est-card-leased,#est-card-leased *{visibility:visible}
-  #est-card-main,#est-card-leased{
+  #est-card-main, #est-card-main *{visibility:visible}
+  #est-card-main{
     position:fixed;top:0;left:0;width:100%;
-    padding:16px!important;margin:0!important;
+    padding:0!important;margin:0!important;
     border:none!important;box-shadow:none!important;
-    overflow:visible!important;
   }
-  .est-tbl{font-size:11px!important;width:100%!important}
+  .est-tbl{font-size:11px!important}
   .est-tbl th,.est-tbl td{padding:5px 7px!important}
-  div[style*="overflow-x:auto"]{overflow:visible!important}
-  @page{size:A4 portrait;margin:8mm}
+  @page{size:A4 portrait;margin:10mm 8mm}
 }
 .est-card{border:1px solid #e0e0e0;border-radius:12px;padding:1.5rem;background:#fff;margin-bottom:1rem}
 .est-title{font-size:18px;font-weight:600;margin-bottom:1.5rem;color:#1a1a1a;border-bottom:2px solid #1a1a1a;padding-bottom:10px}
@@ -1111,50 +1108,255 @@ function toggleHoL(ho){selHosL.has(ho)?selHosL.delete(ho):selHosL.add(ho);initCh
 function clearSelHoL(){selHosL.clear();initChipsL();}
 
 // 임대완료 분양호실 견적서 생성
+
+// ═══ 견적서 생성
+function genEstimate(type){
+  var props = getCurProps();
+  var bldg = BUILDINGS.find(function(b){return b.id===curBldgId;});
+  var bldgName = bldg ? bldg.name : '';
+  var estEl = document.getElementById('est-date');
+  var estDate = estEl ? estEl.value.replace(/-/g,'.') : '';
+  if(!estDate){var d=new Date();estDate=d.getFullYear()+'.'+(d.getMonth()+1)+'.'+d.getDate();}
+
+  if(type==='leased'){
+    var sel=[...selHosL];
+    if(!sel.length){alert('호실을 선택해 주세요.');return;}
+    var selProps=sel.map(function(ho){return props.find(function(p){return p.ho===ho;});}).filter(Boolean);
+    var discL=parseFloat(document.getElementById('r-l-discount').value);
+    var loanL=parseFloat(document.getElementById('r-l-loan').value);
+    var rateL=parseFloat(document.getElementById('r-l-rate').value);
+    var html=buildLeasedEstimate(selProps,bldgName,estDate,discL,loanL,rateL);
+    document.getElementById('est-preview-l').innerHTML=html;
+    document.getElementById('print-content').innerHTML=html;
+    return;
+  }
+
+  if(type==='sale'){
+    var sel=[...selHos];
+    if(!sel.length){alert('호실을 선택해 주세요.');return;}
+    var selProps=sel.map(function(ho){return props.find(function(p){return p.ho===ho;});}).filter(Boolean);
+    var discount=parseFloat(document.getElementById('r-discount').value)/100;
+    var contractRate=parseFloat(document.getElementById('r-contract').value)/100;
+    var depRate=parseFloat(document.getElementById('r-deprate').value)/100;
+    var yRate=parseFloat(document.getElementById('r-yield').value)/100;
+    var loanRate=parseFloat(document.getElementById('r-loan').value);
+    var intRate=parseFloat(document.getElementById('r-rate').value);
+    var html=buildSaleEstimate(selProps,bldgName,estDate,discount,contractRate,depRate,yRate,loanRate,intRate);
+    document.getElementById('est-preview').innerHTML=html;
+    document.getElementById('print-content').innerHTML=html;
+    return;
+  }
+
+  if(type==='rent'){
+    var sel=[...selHos2];
+    if(!sel.length){alert('호실을 선택해 주세요.');return;}
+    var selProps=sel.map(function(ho){return props.find(function(p){return p.ho===ho;});}).filter(Boolean);
+    var depRate2=parseFloat(document.getElementById('r2-deprate').value)/100;
+    var yRate2=parseFloat(document.getElementById('r2-yield').value)/100;
+    var loanRate2=parseFloat(document.getElementById('r2-loan').value);
+    var intRate2=parseFloat(document.getElementById('r2-rate').value);
+    var html=buildRentEstimate(selProps,bldgName,estDate,depRate2,yRate2,loanRate2,intRate2);
+    document.getElementById('est-preview2').innerHTML=html;
+    document.getElementById('print-content').innerHTML=html;
+  }
+}
+
+function buildSaleEstimate(selProps,bldgName,estDate,discount,contractRate,depRate,yRate,loanRate,intRate){
+  var contractDate=(document.getElementById('est-contract-date')||{value:''}).value.replace(/-/g,'.');
+  var balanceDate=(document.getElementById('est-balance-date')||{value:''}).value.replace(/-/g,'.');
+  var midDate=(document.getElementById('est-mid-date')||{value:''}).value.replace(/-/g,'.');
+  var midRatePct=parseFloat((document.getElementById('est-mid-rate')||{value:'0'}).value)||0;
+  var midRate=midRatePct/100;
+  var balanceRate=Math.round((1-contractRate-midRate)*100);
+  var discPct=(discount*100).toFixed(0);
+  var photos=[window._bldgPhoto1||'',window._bldgPhoto2||'',window._bldgPhoto3||''].filter(Boolean);
+  var totDP=0,totDV=0,totDT=0,totArea=0,totAPy=0,totSup=0,totSPy=0;
+  selProps.forEach(function(p){
+    var dp=Math.round(p.price*(1-discount)),dv=Math.round(p.vat*(1-discount));
+    totDP+=dp;totDV+=dv;totDT+=dp+dv;totArea+=p.area;totAPy+=p.areaPy;totSup+=p.supArea;totSPy+=p.supAreaPy;
+  });
+  var discAmt=Math.round(totDP/(1-discount)*discount);
+  var rows1=selProps.map(function(p,i){
+    var dp=Math.round(p.price*(1-discount)),dv=Math.round(p.vat*(1-discount)),dt=dp+dv;
+    var pyM=p.supAreaPy>0?fmt(Math.round(dp/p.supAreaPy)):'—';
+    return'<tr><td>'+( i+1)+'</td><td style="font-size:14px;font-weight:700">'+p.ho+'</td>'
+      +'<td>'+p.area+'</td><td>'+p.areaPy.toFixed(3)+'</td>'
+      +'<td>'+p.supArea+'</td><td>'+p.supAreaPy.toFixed(3)+'</td>'
+      +'<td>'+fmt(Math.round(p.land*(1-discount)))+'</td><td>'+fmt(Math.round(p.bldg*(1-discount)))+'</td>'
+      +'<td>'+pyM+'</td>'
+      +'<td style="font-size:15px;font-weight:700">'+fmt(dp)+'</td>'
+      +'<td>'+fmt(dv)+'</td>'
+      +'<td style="font-size:15px;font-weight:700">'+fmt(dt)+'</td></tr>';
+  }).join('');
+  rows1+='<tr style="background:#1a2744;color:#fff;font-weight:700"><td colspan="2">합계</td>'
+    +'<td>'+totArea.toFixed(2)+'</td><td>'+totAPy.toFixed(3)+'</td>'
+    +'<td>'+totSup.toFixed(2)+'</td><td>'+totSPy.toFixed(3)+'</td>'
+    +'<td colspan="2"></td><td style="color:#f0c040">'+(totSPy>0?fmt(Math.round(totDP/totSPy)):'—')+'</td>'
+    +'<td style="font-size:15px">'+fmt(totDP)+'</td><td style="color:#ccc">'+fmt(totDV)+'</td>'
+    +'<td style="font-size:15px">'+fmt(totDT)+'</td></tr>';
+  var totDep=0,totMon=0,totNI=0,totLI=0,totIntr=0,totNet=0;
+  var rows2=selProps.map(function(p,i){
+    var dp=Math.round(p.price*(1-discount));
+    var cm=calcMonthly(dp,depRate*100,yRate*100);
+    var yl=calcYield(dp,cm.dep,cm.mon,loanRate*100,intRate*100);
+    var rentPM=p.area>0?(cm.mon*10000/p.area).toFixed(0):'—';
+    var ni=dp-cm.dep*10000;
+    totDep+=cm.dep;totMon+=cm.mon;totNI+=ni;totLI+=yl.realInvest;totIntr+=yl.interest;totNet+=yl.netMon;
+    var nc=yl.noLoan>=5?'#2e7d32':yl.noLoan>=4?'#e65100':'#c62828';
+    var wc=yl.withLoan>=5?'#2e7d32':yl.withLoan>=4?'#e65100':'#c62828';
+    return'<tr><td>'+( i+1)+'</td><td style="font-size:14px;font-weight:700">'+p.ho+'</td>'
+      +'<td style="font-size:15px;font-weight:700;color:#1565c0">'+fmt(cm.dep)+'</td>'
+      +'<td style="font-size:15px;font-weight:700;color:#c62828">'+fmt(cm.mon)+'</td>'
+      +'<td style="font-size:12px;color:#555">'+rentPM+'원</td>'
+      +'<td>'+fmt(ni)+'</td>'
+      +'<td style="font-size:15px;font-weight:700;color:'+nc+'">'+yl.noLoan.toFixed(2)+'%</td>'
+      +'<td>'+fmt(Math.round(dp*loanRate/100))+'</td>'
+      +'<td>'+fmt(Math.round(yl.realInvest))+'</td>'
+      +'<td>'+fmt(Math.round(yl.interest))+'</td>'
+      +'<td>'+fmt(Math.round(yl.netMon))+'</td>'
+      +'<td style="font-size:15px;font-weight:700;color:'+wc+'">'+yl.withLoan.toFixed(2)+'%</td></tr>';
+  }).join('');
+  var avgNL=selProps.reduce(function(s,p){var dp=Math.round(p.price*(1-discount));var cm=calcMonthly(dp,depRate*100,yRate*100);return s+calcYield(dp,cm.dep,cm.mon,loanRate*100,intRate*100).noLoan;},0)/selProps.length;
+  var avgWL=selProps.reduce(function(s,p){var dp=Math.round(p.price*(1-discount));var cm=calcMonthly(dp,depRate*100,yRate*100);return s+calcYield(dp,cm.dep,cm.mon,loanRate*100,intRate*100).withLoan;},0)/selProps.length;
+  rows2+='<tr style="background:#1a2744;color:#fff;font-weight:700"><td colspan="2">합계</td>'
+    +'<td style="color:#7ec8e3;font-size:14px">'+fmt(totDep)+'</td>'
+    +'<td style="color:#ff9999;font-size:14px">'+fmt(totMon)+'</td><td></td>'
+    +'<td>'+fmt(totNI)+'</td>'
+    +'<td style="color:#90ee90;font-size:15px">'+avgNL.toFixed(2)+'%</td>'
+    +'<td></td><td>'+fmt(Math.round(totLI))+'</td><td>'+fmt(Math.round(totIntr))+'</td>'
+    +'<td>'+fmt(Math.round(totNet))+'</td>'
+    +'<td style="color:#90ee90;font-size:15px">'+avgWL.toFixed(2)+'%</td></tr>';
+  var totC=0,totCV=0,totM=0,totMV=0,totB=0,totBV=0;
+  var rows3=selProps.map(function(p,i){
+    var dp=Math.round(p.price*(1-discount)),dv=Math.round(p.vat*(1-discount));
+    var ca=Math.round(dp*contractRate),cv=Math.round(dv*contractRate);
+    var ma=Math.round(dp*midRate),mv=Math.round(dv*midRate);
+    var ba=dp-ca-ma,bv=dv-cv-mv;
+    totC+=ca;totCV+=cv;totM+=ma;totMV+=mv;totB+=ba;totBV+=bv;
+    var mc=midRate>0?'<td>'+fmt(ma)+'</td><td style="color:#888">'+fmt(mv)+'</td><td style="font-weight:700">'+fmt(ma+mv)+'</td>'
+                   :'<td colspan="3" style="color:#aaa;text-align:center;font-size:12px">— 중도금 없음 —</td>';
+    return'<tr><td>'+( i+1)+'</td><td style="font-size:14px;font-weight:700">'+p.ho+'</td>'
+      +'<td>'+fmt(ca)+'</td><td style="color:#888">'+fmt(cv)+'</td><td style="font-weight:700">'+fmt(ca+cv)+'</td>'
+      +mc
+      +'<td>'+fmt(ba)+'</td><td style="color:#888">'+fmt(bv)+'</td><td style="font-weight:700">'+fmt(ba+bv)+'</td></tr>';
+  }).join('');
+  rows3+='<tr style="background:#1a2744;color:#fff;font-weight:700"><td colspan="2">합계</td>'
+    +'<td>'+fmt(totC)+'</td><td style="color:#ccc">'+fmt(totCV)+'</td><td style="color:#f0c040">'+fmt(totC+totCV)+'</td>'
+    +(midRate>0?'<td>'+fmt(totM)+'</td><td style="color:#ccc">'+fmt(totMV)+'</td><td style="color:#f0c040">'+fmt(totM+totMV)+'</td>':'<td colspan="3"></td>')
+    +'<td>'+fmt(totB)+'</td><td style="color:#ccc">'+fmt(totBV)+'</td><td style="color:#f0c040">'+fmt(totB+totBV)+'</td></tr>';
+  var cols=photos.length||1;
+  var photoHtml=photos.length>0
+    ?'<div style="display:grid;grid-template-columns:repeat('+cols+',1fr);gap:8px;margin-bottom:1.5rem">'+photos.map(function(src){return'<img src="'+src+'" style="width:100%;height:150px;object-fit:cover;border-radius:8px">';}).join('')+'</div>'
+    :'<div style="height:70px;background:#e8ecf0;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#aaa;font-size:12px;margin-bottom:1.5rem">건물 사진을 업로드하면 표시됩니다</div>';
+  var sch_hdr='<tr style="background:#1a2744"><th>NO</th><th>호수</th>'
+    +'<th colspan="3">계약금 '+(contractRate*100).toFixed(0)+'%'+(contractDate?' ('+contractDate+')':'')+' </th>'
+    +(midRate>0?'<th colspan="3">중도금 '+midRatePct+'%'+(midDate?' ('+midDate+')':'')+' </th>':'<th colspan="3" style="color:#556">중 도 금</th>')
+    +'<th colspan="3">잔금 '+balanceRate+'%'+(balanceDate?' ('+balanceDate+')':'')+' </th></tr>'
+    +'<tr style="background:#2d3f61;color:#b0bec5;font-size:11px"><td></td><td></td>'
+    +'<td>공급가</td><td>부가세</td><td>합계</td><td>공급가</td><td>부가세</td><td>합계</td><td>공급가</td><td>부가세</td><td>합계</td></tr>';
+  return'<div class="est-card" id="est-card-main" style="max-width:920px;margin:0 auto;font-family:-apple-system,BlinkMacSystemFont,sans-serif">'
+    +'<div style="background:#1a2744;color:#fff;border-radius:10px 10px 0 0;padding:18px 24px;margin:-1.5rem -1.5rem 1.5rem;display:flex;justify-content:space-between;align-items:flex-start">'
+    +'<div><div style="font-size:12px;color:#90caf9;margin-bottom:4px">송도제일공인중개사사무소</div>'
+    +'<div style="font-size:22px;font-weight:700">'+bldgName+' 분양견적서</div>'
+    +(discount>0?'<div style="margin-top:8px;display:flex;gap:8px"><span style="background:#c62828;color:#fff;padding:4px 12px;border-radius:12px;font-size:13px;font-weight:700">할인율 '+discPct+'%</span><span style="background:rgba(255,255,255,0.2);color:#fff;padding:4px 12px;border-radius:12px;font-size:13px">할인금액 '+fmt(discAmt)+'원</span></div>':'')
+    +'</div><div style="font-size:14px;color:#90caf9;white-space:nowrap;font-weight:500">견적일: '+estDate+'</div></div>'
+    +photoHtml
+    +'<div style="background:#1a2744;color:#fff;padding:10px 16px;border-radius:8px;font-size:14px;font-weight:700;margin-bottom:10px">■ 분양 견적 가격'+(discount>0?' <span style="font-size:12px;font-weight:400;color:#90caf9">('+discPct+'% 할인 적용)</span>':'')+'</div>'
+    +'<div style="overflow-x:auto;margin-bottom:2rem"><table class="est-tbl"><thead>'
+    +'<tr style="background:#1a2744"><th>NO</th><th>호수</th><th colspan="2">전용면적</th><th colspan="2">분양면적</th><th>토지가격</th><th>건물가격</th><th>평단가</th><th style="background:#1e3a6f">공급가격</th><th>부가세</th><th style="background:#1e3a6f">총분양가</th></tr>'
+    +'<tr style="background:#2d3f61;color:#b0bec5;font-size:11px"><td></td><td></td><td>㎡</td><td>평</td><td>㎡</td><td>평</td><td></td><td></td><td></td><td></td><td></td><td></td></tr>'
+    +'</thead><tbody>'+rows1+'</tbody></table></div>'
+    +'<div style="background:#1a2744;color:#fff;padding:10px 16px;border-radius:8px;font-size:14px;font-weight:700;margin-bottom:10px">■ 예상 임대가 및 수익률 <span style="font-size:11px;font-weight:400;color:#90caf9">(단위:만원 | 대출비율 '+loanRate+'% | 이자율 '+intRate+'%)</span></div>'
+    +'<div style="overflow-x:auto;margin-bottom:2rem"><table class="est-tbl"><thead>'
+    +'<tr style="background:#1a2744"><th>NO</th><th>호수</th><th colspan="3" style="background:#1e3a6f">임대가</th><th colspan="2" style="background:#1a3a2a">대출없는 조건</th><th colspan="4" style="background:#3a1a1a">대출 실행 '+loanRate+'% | 이자율 '+intRate+'%</th><th style="background:#3a1a1a"></th></tr>'
+    +'<tr style="background:#2d3f61;color:#b0bec5;font-size:11px"><td></td><td></td><td>보증금</td><td>월세</td><td>㎡당임대료</td><td>실투자금</td><td>연수익률</td><td>대출금</td><td>실지금</td><td>월이자</td><td>순월세</td><td>연수익률</td></tr>'
+    +'</thead><tbody>'+rows2+'</tbody></table></div>'
+    +'<div style="background:#1a2744;color:#fff;padding:10px 16px;border-radius:8px;font-size:14px;font-weight:700;margin-bottom:10px">■ 분양대금 납부 일정</div>'
+    +'<div style="overflow-x:auto;margin-bottom:2rem"><table class="est-tbl"><thead>'+sch_hdr+'</thead><tbody>'+rows3+'</tbody></table></div>'
+    +'<div style="background:#f0f4ff;border:1px solid #c5cae9;border-radius:10px;padding:16px 20px"><div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">'
+    +'<div><div style="font-size:12px;color:#666;margin-bottom:4px">■ 분양 계좌번호</div><div style="font-size:16px;font-weight:700">수협은행 1010-1152-5134</div><div style="font-size:12px;color:#888">주식회사 에스개발</div></div>'
+    +'<div><div style="font-size:12px;color:#666;margin-bottom:4px">■ 상담문의</div><div style="font-size:16px;font-weight:700">송도제일공인중개사사무소</div><div style="font-size:12px;color:#888">032-851-6688</div></div>'
+    +'</div></div></div>';
+}
+
+function buildRentEstimate(selProps,bldgName,estDate,depRate,yRate,loanRate,intRate){
+  var photos=[window._bldgPhoto1||'',window._bldgPhoto2||'',window._bldgPhoto3||''].filter(Boolean);
+  var cols=photos.length||1;
+  var photoHtml=photos.length>0
+    ?'<div style="display:grid;grid-template-columns:repeat('+cols+',1fr);gap:8px;margin-bottom:1.5rem">'+photos.map(function(src){return'<img src="'+src+'" style="width:100%;height:150px;object-fit:cover;border-radius:8px">';}).join('')+'</div>'
+    :'';
+  var rows=selProps.map(function(p,i){
+    var cm=calcMonthly(p.price,depRate*100,yRate*100);
+    var yl=calcYield(p.price,cm.dep,cm.mon,loanRate*100,intRate*100);
+    var rentPM=p.area>0?(cm.mon*10000/p.area).toFixed(0):'—';
+    var ni=p.price-cm.dep*10000;
+    var nc=yl.noLoan>=5?'#2e7d32':yl.noLoan>=4?'#e65100':'#c62828';
+    var wc=yl.withLoan>=5?'#2e7d32':yl.withLoan>=4?'#e65100':'#c62828';
+    return'<tr><td>'+( i+1)+'</td><td style="font-weight:700">'+p.ho+'</td>'
+      +'<td>'+p.area+'㎡ ('+p.areaPy.toFixed(2)+'평)</td>'
+      +'<td>'+fmt(p.price)+'</td>'
+      +'<td style="font-size:15px;font-weight:700;color:#1565c0">'+fmt(cm.dep)+'만원</td>'
+      +'<td style="font-size:15px;font-weight:700;color:#c62828">'+fmt(cm.mon)+'만원</td>'
+      +'<td>'+fmt(ni)+'</td>'
+      +'<td style="font-size:15px;font-weight:700;color:'+nc+'">'+yl.noLoan.toFixed(2)+'%</td>'
+      +'<td>'+fmt(Math.round(p.price*loanRate/100))+'</td>'
+      +'<td>'+fmt(Math.round(yl.interest))+'</td>'
+      +'<td>'+fmt(Math.round(yl.netMon))+'</td>'
+      +'<td style="font-size:15px;font-weight:700;color:'+wc+'">'+yl.withLoan.toFixed(2)+'%</td></tr>';
+  }).join('');
+  return'<div class="est-card" id="est-card-main" style="max-width:920px;margin:0 auto">'
+    +'<div style="background:#1a2744;color:#fff;border-radius:10px 10px 0 0;padding:18px 24px;margin:-1.5rem -1.5rem 1.5rem;display:flex;justify-content:space-between">'
+    +'<div><div style="font-size:12px;color:#90caf9">송도제일공인중개사사무소</div>'
+    +'<div style="font-size:22px;font-weight:700">'+bldgName+' 임대 견적서</div></div>'
+    +'<div style="font-size:14px;color:#90caf9;font-weight:500">견적일: '+estDate+'</div></div>'
+    +photoHtml
+    +'<p style="font-size:12px;color:#888;margin:0 0 10px">적용수익률 '+(yRate*100).toFixed(1)+'% | 보증금비율 '+(depRate*100).toFixed(0)+'% | 대출비율 '+loanRate+'% | 이자율 '+intRate+'%</p>'
+    +'<div style="overflow-x:auto"><table class="est-tbl"><thead>'
+    +'<tr style="background:#1a2744"><th>NO</th><th>호수</th><th>전용면적</th><th>공급금액</th><th>보증금</th><th>월세</th><th>실투자금</th><th>무대출수익률</th><th>대출금</th><th>월이자</th><th>순월세</th><th>대출수익률</th></tr>'
+    +'</thead><tbody>'+rows+'</tbody></table></div>'
+    +'<div style="margin-top:1rem;padding:12px 16px;background:#f0f4ff;border-radius:8px;font-size:12px">'
+    +'<strong>수협은행 1010-1152-5134</strong> 주식회사 에스개발 &nbsp;|&nbsp; <strong>송도제일공인중개사사무소</strong> 032-851-6688'
+    +'</div></div>';
+}
+
 function buildLeasedEstimate(selProps, bldgName, estDate, discountPct, loanRate, intRate){
   var photos = [window._bldgPhoto1||'',window._bldgPhoto2||'',window._bldgPhoto3||''].filter(Boolean);
   var discount = discountPct/100;
-
-  // 합계 계산
   var totDP=0,totDV=0,totDT=0,totArea=0,totAPy=0,totSup=0,totSPy=0;
   selProps.forEach(function(p){
-    var dp=Math.round(p.price*(1-discount));
-    var dv=Math.round(p.vat*(1-discount));
+    var dp=Math.round(p.price*(1-discount)),dv=Math.round(p.vat*(1-discount));
     totDP+=dp;totDV+=dv;totDT+=dp+dv;
     totArea+=p.area;totAPy+=p.areaPy;totSup+=p.supArea;totSPy+=p.supAreaPy;
   });
   var discAmt=Math.round(totDP/(1-discount)*discount);
 
-  // ── 섹션1 분양가격
+  // 섹션1 분양가격
   var rows1=selProps.map(function(p,i){
-    var dp=Math.round(p.price*(1-discount));
-    var dv=Math.round(p.vat*(1-discount));
-    var dt=dp+dv;
+    var dp=Math.round(p.price*(1-discount)),dv=Math.round(p.vat*(1-discount)),dt=dp+dv;
     var pyM=p.supAreaPy>0?fmt(Math.round(dp/p.supAreaPy)):'—';
     return'<tr>'
-      +'<td>'+( i+1)+'</td><td style="font-weight:700">'+p.ho+'</td>'
+      +'<td style="font-size:13px">'+( i+1)+'</td><td style="font-size:14px;font-weight:700">'+p.ho+'</td>'
       +'<td>'+p.area+'</td><td>'+p.areaPy.toFixed(3)+'</td>'
       +'<td>'+p.supArea+'</td><td>'+p.supAreaPy.toFixed(3)+'</td>'
-      +'<td>'+fmt(Math.round(p.land*(1-discount)))+'</td>'
-      +'<td>'+fmt(Math.round(p.bldg*(1-discount)))+'</td>'
+      +'<td>'+fmt(Math.round(p.land*(1-discount)))+'</td><td>'+fmt(Math.round(p.bldg*(1-discount)))+'</td>'
       +'<td>'+pyM+'</td>'
-      +'<td style="font-weight:700;font-size:15px">'+fmt(dp)+'</td>'
-      +'<td>'+fmt(dv)+'</td>'
-      +'<td style="font-weight:700;font-size:15px">'+fmt(dt)+'</td>'
+      +'<td style="font-size:15px;font-weight:700">'+fmt(dp)+'</td>'
+      +'<td style="font-size:13px">'+fmt(dv)+'</td>'
+      +'<td style="font-size:15px;font-weight:700">'+fmt(dt)+'</td>'
       +'</tr>';
   }).join('');
   rows1+='<tr style="background:#1a3a2a;color:#fff;font-weight:700">'
-    +'<td colspan="2">합계</td>'
+    +'<td colspan="2" style="font-size:13px">합계</td>'
     +'<td>'+totArea.toFixed(2)+'</td><td>'+totAPy.toFixed(3)+'</td>'
     +'<td>'+totSup.toFixed(2)+'</td><td>'+totSPy.toFixed(3)+'</td>'
     +'<td colspan="2"></td>'
     +'<td style="color:#f0c040">'+(totSPy>0?fmt(Math.round(totDP/totSPy)):'—')+'</td>'
-    +'<td style="font-size:15px">'+fmt(totDP)+'</td>'
-    +'<td style="color:#ccc">'+fmt(totDV)+'</td>'
-    +'<td style="font-size:15px">'+fmt(totDT)+'</td>'
+    +'<td style="color:#fff;font-size:15px">'+fmt(totDP)+'</td>'
+    +'<td style="color:#ccc;font-size:13px">'+fmt(totDV)+'</td>'
+    +'<td style="color:#fff;font-size:15px">'+fmt(totDT)+'</td>'
     +'</tr>';
 
-  // ── 섹션2 확정 임대가/수익률
+  // 섹션2 확정 임대가/수익률
   var totDep=0,totMon=0,totNI=0,totLI=0,totIntr=0,totNet=0;
   var rows2=selProps.map(function(p,i){
     var dp=Math.round(p.price*(1-discount));
@@ -1167,16 +1369,16 @@ function buildLeasedEstimate(selProps, bldgName, estDate, discountPct, loanRate,
     var wc=yl.withLoan>=5?'#2e7d32':yl.withLoan>=4?'#e65100':'#c62828';
     var sc=statusColor(p.status||'');
     return'<tr>'
-      +'<td>'+( i+1)+'</td><td style="font-weight:700">'+p.ho+'</td>'
+      +'<td style="font-size:13px">'+( i+1)+'</td><td style="font-size:14px;font-weight:700">'+p.ho+'</td>'
       +'<td style="font-size:15px;font-weight:700;color:#1565c0">'+fmt(p.deposit)+'</td>'
       +'<td style="font-size:15px;font-weight:700;color:#c62828">'+fmt(p.monthly)+'</td>'
       +'<td style="font-size:12px;color:#555">'+rentPM+'원</td>'
-      +'<td>'+fmt(ni)+'</td>'
+      +'<td style="font-size:14px">'+fmt(ni)+'</td>'
       +'<td style="font-size:15px;font-weight:700;color:'+nc+'">'+yl.noLoan.toFixed(2)+'%</td>'
-      +'<td>'+fmt(Math.round(dp*loanRate/100))+'</td>'
-      +'<td>'+fmt(Math.round(yl.realInvest))+'</td>'
-      +'<td>'+fmt(Math.round(yl.interest))+'</td>'
-      +'<td>'+fmt(Math.round(yl.netMon))+'</td>'
+      +'<td style="font-size:13px">'+fmt(Math.round(dp*loanRate/100))+'</td>'
+      +'<td style="font-size:14px">'+fmt(Math.round(yl.realInvest))+'</td>'
+      +'<td style="font-size:13px">'+fmt(Math.round(yl.interest))+'</td>'
+      +'<td style="font-size:14px">'+fmt(Math.round(yl.netMon))+'</td>'
       +'<td style="font-size:15px;font-weight:700;color:'+wc+'">'+yl.withLoan.toFixed(2)+'%</td>'
       +'<td><span style="background:'+sc[0]+';color:'+sc[1]+';padding:2px 8px;border-radius:10px;font-size:11px">'+p.tenant+'</span></td>'
       +'</tr>';
@@ -1184,62 +1386,51 @@ function buildLeasedEstimate(selProps, bldgName, estDate, discountPct, loanRate,
   var avgNL=selProps.reduce(function(s,p){var dp=Math.round(p.price*(1-discount));return s+calcYield(dp,p.deposit,p.monthly,loanRate,intRate).noLoan;},0)/selProps.length;
   var avgWL=selProps.reduce(function(s,p){var dp=Math.round(p.price*(1-discount));return s+calcYield(dp,p.deposit,p.monthly,loanRate,intRate).withLoan;},0)/selProps.length;
   rows2+='<tr style="background:#1a3a2a;color:#fff;font-weight:700">'
-    +'<td colspan="2">합계</td>'
+    +'<td colspan="2" style="font-size:13px">합계</td>'
     +'<td style="color:#7ec8e3;font-size:14px">'+fmt(totDep)+'</td>'
     +'<td style="color:#ff9999;font-size:14px">'+fmt(totMon)+'</td>'
-    +'<td></td><td>'+fmt(totNI)+'</td>'
+    +'<td></td><td style="font-size:14px">'+fmt(totNI)+'</td>'
     +'<td style="color:#90ee90;font-size:15px">'+avgNL.toFixed(2)+'%</td>'
-    +'<td></td><td>'+fmt(Math.round(totLI))+'</td>'
-    +'<td>'+fmt(Math.round(totIntr))+'</td><td>'+fmt(Math.round(totNet))+'</td>'
+    +'<td></td><td style="font-size:13px">'+fmt(Math.round(totLI))+'</td>'
+    +'<td style="font-size:13px">'+fmt(Math.round(totIntr))+'</td>'
+    +'<td style="font-size:13px">'+fmt(Math.round(totNet))+'</td>'
     +'<td style="color:#90ee90;font-size:15px">'+avgWL.toFixed(2)+'%</td>'
-    +'<td></td>'
-    +'</tr>';
+    +'<td></td></tr>';
 
-  // 사진
   var cols=photos.length||1;
   var photoHtml=photos.length>0
     ?'<div style="display:grid;grid-template-columns:repeat('+cols+',1fr);gap:8px;margin-bottom:1.5rem">'
       +photos.map(function(src){return'<img src="'+src+'" style="width:100%;height:150px;object-fit:cover;border-radius:8px">';}).join('')+'</div>'
-    :'<div style="height:80px;background:#e8ecf0;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#aaa;font-size:12px;margin-bottom:1.5rem">건물 사진을 업로드하면 표시됩니다</div>';
+    :'<div style="height:70px;background:#e8ecf0;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#aaa;font-size:12px;margin-bottom:1.5rem">건물 사진을 업로드하면 표시됩니다</div>';
 
   return'<div class="est-card" id="est-card-leased" style="max-width:920px;margin:0 auto;font-family:-apple-system,BlinkMacSystemFont,sans-serif">'
     +'<div style="background:#1a3a2a;color:#fff;border-radius:10px 10px 0 0;padding:18px 24px;margin:-1.5rem -1.5rem 1.5rem;display:flex;justify-content:space-between;align-items:flex-start">'
-    +'<div>'
-    +'<div style="font-size:12px;color:#90caf9;margin-bottom:4px">송도제일공인중개사사무소</div>'
+    +'<div><div style="font-size:12px;color:#90caf9;margin-bottom:4px">송도제일공인중개사사무소</div>'
     +'<div style="font-size:22px;font-weight:700">'+bldgName+' 임대완료 분양호실 견적서</div>'
     +(discountPct>0?'<div style="margin-top:8px;display:flex;gap:8px">'
       +'<span style="background:#c62828;color:#fff;padding:4px 12px;border-radius:12px;font-size:13px;font-weight:700">할인율 '+discountPct+'%</span>'
-      +'<span style="background:rgba(255,255,255,0.15);color:#fff;padding:4px 12px;border-radius:12px;font-size:13px">할인금액 '+fmt(discAmt)+'원</span>'
+      +'<span style="background:rgba(255,255,255,0.2);color:#fff;padding:4px 12px;border-radius:12px;font-size:13px">할인금액 '+fmt(discAmt)+'원</span>'
       +'</div>':'')
-    +'</div>'
-    +'<div style="font-size:14px;color:#90caf9;white-space:nowrap;font-weight:500">견적일: '+estDate+'</div>'
-    +'</div>'
+    +'</div><div style="font-size:14px;color:#90caf9;white-space:nowrap;font-weight:500">견적일: '+estDate+'</div></div>'
     +photoHtml
-    +'<div style="background:#1a3a2a;color:#fff;padding:10px 16px;border-radius:8px;font-size:14px;font-weight:700;margin-bottom:10px">■ 분양 견적 가격'
-    +(discountPct>0?' <span style="font-size:12px;font-weight:400;color:#90caf9">('+discountPct+'% 할인 적용)</span>':'')+'</div>'
-    +'<div style="overflow-x:auto;margin-bottom:2rem">'
-    +'<table class="est-tbl"><thead>'
+    +'<div style="background:#1a3a2a;color:#fff;padding:10px 16px;border-radius:8px;font-size:14px;font-weight:700;margin-bottom:10px">■ 분양 견적 가격'+(discountPct>0?' <span style="font-size:12px;font-weight:400;color:#90caf9">('+discountPct+'% 할인 적용)</span>':'')+'</div>'
+    +'<div style="overflow-x:auto;margin-bottom:2rem"><table class="est-tbl"><thead>'
     +'<tr style="background:#1a3a2a"><th>NO</th><th>호수</th><th colspan="2">전용면적</th><th colspan="2">분양면적</th><th>토지가격</th><th>건물가격</th><th>평단가</th><th style="background:#1e4a3a">공급가격</th><th>부가세</th><th style="background:#1e4a3a">총분양가</th></tr>'
     +'<tr style="background:#2a4a3a;color:#b0bec5;font-size:11px"><td></td><td></td><td>㎡</td><td>평</td><td>㎡</td><td>평</td><td></td><td></td><td></td><td></td><td></td><td></td></tr>'
     +'</thead><tbody>'+rows1+'</tbody></table></div>'
-    +'<div style="background:#e8f5e9;border:0.5px solid #a5d6a7;border-radius:8px;padding:10px 14px;margin-bottom:10px;font-size:13px;color:#2e7d32;font-weight:600">'
-    +'✅ 확정 임대가 기준 견적 — 대출비율 '+loanRate+'% · 이자율 '+intRate+'% &nbsp;|&nbsp; 평균 확정수익률 <strong>'+avgNL.toFixed(2)+'%</strong> (무대출) / <strong>'+avgWL.toFixed(2)+'%</strong> (대출60%)</div>'
-    +'<div style="background:#1a3a2a;color:#fff;padding:10px 16px;border-radius:8px;font-size:14px;font-weight:700;margin-bottom:10px">■ 확정 임대가 및 수익률'
-    +' <span style="font-size:11px;font-weight:400;color:#90caf9">(단위:만원 | 대출비율 '+loanRate+'% | 이자율 '+intRate+'%)</span></div>'
-    +'<div style="overflow-x:auto;margin-bottom:2rem">'
-    +'<table class="est-tbl"><thead>'
-    +'<tr style="background:#1a3a2a">'
-    +'<th>NO</th><th>호수</th>'
+    +'<div style="background:#e8f5e9;border:1px solid #a5d6a7;border-radius:8px;padding:10px 14px;margin-bottom:10px;font-size:13px;color:#1b5e20;font-weight:600">'
+    +'✅ 확정 임대가 기준 &nbsp;|&nbsp; 대출비율 '+loanRate+'% · 이자율 '+intRate+'% &nbsp;|&nbsp; 평균 무대출수익률 <strong>'+avgNL.toFixed(2)+'%</strong> · 대출수익률 <strong>'+avgWL.toFixed(2)+'%</strong></div>'
+    +'<div style="background:#1a3a2a;color:#fff;padding:10px 16px;border-radius:8px;font-size:14px;font-weight:700;margin-bottom:10px">■ 확정 임대가 및 수익률 <span style="font-size:11px;font-weight:400;color:#90caf9">(단위:만원 | 대출비율 '+loanRate+'% | 이자율 '+intRate+'%)</span></div>'
+    +'<div style="overflow-x:auto;margin-bottom:2rem"><table class="est-tbl"><thead>'
+    +'<tr style="background:#1a3a2a"><th>NO</th><th>호수</th>'
     +'<th colspan="3" style="background:#1e4a6f">확정 임대가</th>'
     +'<th colspan="2" style="background:#1a3a2a">대출없는 조건</th>'
     +'<th colspan="4" style="background:#3a1a1a">대출 실행 조건 '+loanRate+'% | 이자율 '+intRate+'%</th>'
-    +'<th style="background:#3a1a1a"></th><th>입점업종</th>'
-    +'</tr>'
-    +'<tr style="background:#2a4a3a;color:#b0bec5;font-size:11px">'
-    +'<td></td><td></td><td>보증금</td><td>월세</td><td>㎡당임대료</td>'
+    +'<th style="background:#3a1a1a"></th><th>입점업종</th></tr>'
+    +'<tr style="background:#2a4a3a;color:#b0bec5;font-size:11px"><td></td><td></td>'
+    +'<td>보증금</td><td>월세</td><td>㎡당임대료</td>'
     +'<td>실투자금</td><td>연수익률</td>'
-    +'<td>대출금</td><td>실지금</td><td>월이자</td><td>순월세</td><td>연수익률</td><td></td>'
-    +'</tr>'
+    +'<td>대출금</td><td>실지금</td><td>월이자</td><td>순월세</td><td>연수익률</td><td></td></tr>'
     +'</thead><tbody>'+rows2+'</tbody></table></div>'
     +'<div style="background:#f0f4ff;border:1px solid #c5cae9;border-radius:10px;padding:16px 20px">'
     +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">'
@@ -1249,8 +1440,7 @@ function buildLeasedEstimate(selProps, bldgName, estDate, discountPct, loanRate,
     +'<div><div style="font-size:12px;color:#666;margin-bottom:4px">■ 상담문의</div>'
     +'<div style="font-size:16px;font-weight:700">송도제일공인중개사사무소</div>'
     +'<div style="font-size:12px;color:#888">032-851-6688</div></div>'
-    +'</div></div>'
-    +'</div>';
+    +'</div></div></div>';
 }
 
 
