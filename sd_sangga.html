@@ -571,16 +571,19 @@ function initBuildings(){
     if(loaded && loaded.length > 0){
       BUILDINGS = loaded;
     }
-    // 에스파이브 기본 건물 처리
     var es5 = BUILDINGS.find(function(b){return b.id==='es5';});
     if(!es5){
-      // Firebase에 없으면 기본 데이터로 추가
       BUILDINGS.unshift({id:'es5', name:'송도에스파이브시티', props: JSON.parse(JSON.stringify(ES5_PROPS))});
       es5 = BUILDINGS[0];
     }
-    // 항상 ES5_PROPS 기반으로 복원 (delta 방식)
-    var baseProps = JSON.parse(JSON.stringify(ES5_PROPS));
-    if(es5.deltas && es5.deltas.length > 0){
+    // Firebase에 전체 props가 저장된 경우 우선 사용 (225개 보장)
+    if(es5.props && es5.props.length >= 200){
+      // Firebase props 그대로 사용 (소장님이 입력한 전체 데이터)
+      // status 빈값 보정
+      es5.props.forEach(function(p){ if(!p.status) p.status='미분양'; });
+    } else if(es5.deltas && es5.deltas.length > 0){
+      // delta 방식: ES5_PROPS에 수정값 적용
+      var baseProps = JSON.parse(JSON.stringify(ES5_PROPS));
       var deltaMap = {};
       es5.deltas.forEach(function(d){ deltaMap[d.ho]=d; });
       baseProps.forEach(function(p){
@@ -592,14 +595,18 @@ function initBuildings(){
           p.yieldCur= deltaMap[p.ho].yieldCur;
         }
       });
+      es5.props = baseProps;
+    } else {
+      // 둘 다 없으면 ES5_PROPS 기본값
+      es5.props = JSON.parse(JSON.stringify(ES5_PROPS));
+      es5.props.forEach(function(p){ if(!p.status) p.status='미분양'; });
     }
-    // props는 항상 ES5_PROPS 기반 (225개 보장)
-    es5.props = baseProps;
     renderBldgTabs();
     selectBldg(BUILDINGS[0].id);
   }).catch(function(e){
     console.warn('[SD상가] Firebase 로드 실패, 기본 데이터 사용:', e);
-    BUILDINGS = [{id:'es5', name:'송도에스파이브시티', props: ES5_PROPS}];
+    BUILDINGS = [{id:'es5', name:'송도에스파이브시티', props: JSON.parse(JSON.stringify(ES5_PROPS))}];
+    BUILDINGS[0].props.forEach(function(p){ if(!p.status) p.status='미분양'; });
     renderBldgTabs();
     selectBldg('es5');
   });
