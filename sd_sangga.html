@@ -975,8 +975,11 @@ input[type=range]{width:100%;accent-color:#1a1a1a}
       <p style="margin:3px 0 0;font-size:11px;color:#888">최대 15장 업로드 · 가로 1600px 자동 압축 · 드래그로 순서 변경 가능</p>
     </div>
     <div style="display:flex;gap:6px">
+      <label class="btn-s" style="cursor:pointer;background:#7b1fa2;color:#fff;border-color:#7b1fa2;font-size:11px">
+        📄 PDF에서 추출 <input type="file" id="photo-pdf-input" accept=".pdf" style="display:none" onchange="onPhotoPdfUpload(this)">
+      </label>
       <label class="btn-s" style="cursor:pointer;background:#1565c0;color:#fff;border-color:#1565c0;font-size:11px">
-        📸 사진 업로드 (최대 15장) <input type="file" id="photo-input" accept="image/*" multiple style="display:none" onchange="onPhotoUpload(this)">
+        🖼️ 이미지 업로드 <input type="file" id="photo-input" accept="image/*" multiple style="display:none" onchange="onPhotoUpload(this)">
       </label>
       <button onclick="savePhotos()" class="btn-s" style="background:#2e7d32;color:#fff;border-color:#2e7d32;font-size:11px">💾 저장</button>
       <button onclick="clearPhotos()" class="btn-s" style="font-size:11px">🗑️ 초기화</button>
@@ -987,6 +990,11 @@ input[type=range]{width:100%;accent-color:#1a1a1a}
     <button id="photo-view-grid-btn" onclick="setPhotoView('grid')" class="btn-s" style="font-size:11px;background:#1a1a1a;color:#fff;border-color:#1a1a1a">▦ 그리드</button>
     <button id="photo-view-slide-btn" onclick="setPhotoView('slide')" class="btn-s" style="font-size:11px">▷ 슬라이드</button>
     <span id="photo-count" style="font-size:12px;color:#888;align-self:center;margin-left:4px"></span>
+  </div>
+  <!-- PDF 썸네일 트레이 (조감도용) -->
+  <div id="photo-pdf-tray" style="display:none;background:#f0f0f0;border-radius:10px;padding:10px;margin-bottom:12px">
+    <p style="font-size:11px;color:#666;margin:0 0 6px">📄 PDF 썸네일 — 클릭하면 사진 목록에 추가됩니다 (최대 15장)</p>
+    <div id="photo-pdf-thumbs" style="display:flex;gap:8px;flex-wrap:wrap;max-height:180px;overflow-y:auto"></div>
   </div>
   <!-- 그리드 뷰 -->
   <div id="photo-grid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px"></div>
@@ -2941,6 +2949,94 @@ function loadPhotos(){
       }
     });
   }).catch(function(){});
+}
+
+// PDF → 조감도&사진 탭 추출
+function onPhotoPdfUpload(input){
+  if(!input.files[0]) return;
+  var file=input.files[0];
+  var reader=new FileReader();
+  reader.onload=function(e){
+    var typedArray=new Uint8Array(e.target.result);
+    if(typeof pdfjsLib==='undefined'){
+      var s=document.createElement('script');
+      s.src='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+      s.onload=function(){
+        pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+        renderPhotoPdfThumbs(typedArray);
+      };
+      document.head.appendChild(s);
+    } else {
+      renderPhotoPdfThumbs(typedArray);
+    }
+  };
+  reader.readAsArrayBuffer(file);
+  input.value='';
+}
+
+function renderPhotoPdfThumbs(typedArray){
+  pdfjsLib.getDocument({data:typedArray}).promise.then(function(pdf){
+    var tray=document.getElementById('photo-pdf-tray');
+    var wrap=document.getElementById('photo-pdf-thumbs');
+    if(tray) tray.style.display='block';
+    if(wrap) wrap.innerHTML='<div style="font-size:11px;color:#1565c0;padding:4px">로딩 중... ('+pdf.numPages+'페이지)</div>';
+    var thumbs=[];
+    var loaded=0;
+    for(var p=1;p<=pdf.numPages;p++){
+      (function(pageNum){
+        pdf.getPage(pageNum).then(function(page){
+          // 썸네일용 (작게)
+          var vpSmall=page.getViewport({scale:0.25});
+          var cvSmall=document.createElement('canvas');
+          cvSmall.width=vpSmall.width; cvSmall.height=vpSmall.height;
+          page.render({canvasContext:cvSmall.getContext('2d'),viewport:vpSmall}).promise.then(function(){
+            var thumbUrl=cvSmall.toDataURL('image/jpeg',0.7);
+            // 실제 추가용 고해상도 (1600px 기준)
+            var scale=Math.min(1600/page.getViewport({scale:1}).width, 2);
+            var vpHi=page.getViewport({scale:scale});
+            var cvHi=document.createElement('canvas');
+            cvHi.width=vpHi.width; cvHi.height=vpHi.height;
+            page.render({canvasContext:cvHi.getContext('2d'),viewport:vpHi}).promise.then(function(){
+              var hiUrl=cvHi.toDataURL('image/jpeg',0.82);
+              thumbs[pageNum]={thumb:thumbUrl, hi:hiUrl, page:pageNum};
+              loaded++;
+              if(loaded===pdf.numPages){
+                // 모두 로드됐으면 트레이에 표시
+                if(wrap){
+                  wrap.innerHTML='';
+                  thumbs.filter(Boolean).forEach(function(t){
+                    var div=document.createElement('div');
+                    div.style.cssText='position:relative;cursor:pointer;border-radius:6px;overflow:hidden;border:2px solid transparent;transition:border-color .15s';
+                    div.title='페이지 '+t.page+' 클릭 시 추가';
+                    var img=document.createElement('img');
+                    img.src=t.thumb;
+                    img.style.cssText='display:block;height:80px;width:auto;border-radius:4px';
+                    var badge=document.createElement('div');
+                    badge.textContent='p'+t.page;
+                    badge.style.cssText='position:absolute;bottom:2px;right:2px;background:rgba(0,0,0,0.6);color:#fff;font-size:9px;padding:1px 4px;border-radius:3px';
+                    div.appendChild(img);
+                    div.appendChild(badge);
+                    div.onmouseenter=function(){this.style.borderColor='#1565c0';};
+                    div.onmouseleave=function(){this.style.borderColor='transparent';};
+                    div.onclick=(function(hiUrl, pageNum){
+                      return function(){
+                        if(_photos.length>=15){alert('최대 15장입니다.');return;}
+                        _photos.push({url:hiUrl, caption:'p'+pageNum});
+                        updatePhotoCount();
+                        renderPhotoGrid();
+                        showToast('p'+pageNum+' 추가됨 ('+_photos.length+'/15)');
+                      };
+                    })(t.hi, t.page);
+                    wrap.appendChild(div);
+                  });
+                }
+              }
+            });
+          });
+        });
+      })(p);
+    }
+  });
 }
 
 function clearPhotos(){
