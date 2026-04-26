@@ -732,6 +732,8 @@ function initBuildings(){
     selectBldg(BUILDINGS[0].id);
     loadBldgPhotos();
     loadRentPhotos();
+    loadAcct();
+    loadStaff();
   }).catch(function(e){
     console.warn('[SD상가] Firebase 로드 실패, 기본 데이터 사용:', e);
     BUILDINGS = [{id:'es5', name:'송도에스파이브시티', props: JSON.parse(JSON.stringify(ES5_PROPS))}];
@@ -1453,6 +1455,16 @@ function makeUnitCard(p){
     + '<span style="font-size:12px;color:#aaa">만원</span>'
     + '<button data-ho="'+p.ho+'" onclick="clearUnitMonFix(this.dataset.ho)" style="padding:2px 8px;font-size:11px;border:1px solid #ddd;border-radius:6px;cursor:pointer;color:#999">지우기</button>'
     + '</div></div>'
+    // 랜트프리 per 호실
+    + '<div style="margin-bottom:10px">'
+    + '<div style="display:flex;justify-content:space-between;margin-bottom:4px">'
+    + '<label style="font-size:11px;color:#666;font-weight:600">📅 랜트프리 (개월)</label>'
+    + '<span id="rf-disp-'+p.ho+'" style="font-size:13px;font-weight:800;color:#e65100;min-width:50px;text-align:right">'
+    +(_unitData[p.ho]&&_unitData[p.ho].rentFree!=null?_unitData[p.ho].rentFree:0)+'개월</span></div>'
+    + '<input type="range" min="0" max="12" step="1" data-ho="'+p.ho+'" '
+    + 'value="'+(_unitData[p.ho]&&_unitData[p.ho].rentFree||0)+'" style="width:100%" '
+    + 'oninput="onUnitRF(this)">'
+    + '</div>'
 
     // 수익률 결과 표시
     + '<div id="unit-result-'+p.ho+'" style="background:linear-gradient(135deg,#1a2744,#253a61);border-radius:8px;padding:10px;color:#fff">'
@@ -1682,6 +1694,61 @@ function toggleHo2(ho){
   rebuildUnitCards();
 }
 
+
+// ── 계좌 모드 전환
+var _r2SavedAcct = {bank:'수협은행', num:'1010-1152-5134', name:'주식회사 에스개발'};
+function setAcctMode(m){
+  document.getElementById('r2-acct-mode').value = m;
+  document.getElementById('r2-acct-dev-wrap').style.display = m==='developer'?'block':'none';
+  document.getElementById('r2-acct-ll-wrap').style.display  = m==='landlord' ?'block':'none';
+  _btn('r2-acct-dev-btn', m==='developer');
+  _btn('r2-acct-ll-btn',  m==='landlord');
+}
+function saveAcct(){
+  var bank = document.getElementById('r2-acct-dev-bank').value.trim();
+  var num  = document.getElementById('r2-acct-dev-num').value.trim();
+  var name = document.getElementById('r2-acct-dev-name').value.trim();
+  if(!bank||!num){alert('은행명과 계좌번호를 입력해 주세요.');return;}
+  _r2SavedAcct = {bank:bank, num:num, name:name};
+  window.storage.set('sd_rent_acct', JSON.stringify(_r2SavedAcct)).then(function(){
+    document.getElementById('r2-acct-dev-saved').textContent = '✅ 저장됨: '+bank+' '+num+' ('+name+')';
+  });
+}
+function loadAcct(){
+  window.storage.get('sd_rent_acct').then(function(r){
+    if(!r||!r.value) return;
+    try{
+      var d = typeof r.value==='string'?JSON.parse(r.value):r.value;
+      _r2SavedAcct = d;
+      if(d.bank) document.getElementById('r2-acct-dev-bank').value=d.bank;
+      if(d.num)  document.getElementById('r2-acct-dev-num').value=d.num;
+      if(d.name) document.getElementById('r2-acct-dev-name').value=d.name;
+      document.getElementById('r2-acct-dev-saved').textContent='✅ 저장된 계좌: '+d.bank+' '+d.num+' ('+d.name+')';
+    }catch(e){}
+  }).catch(function(){});
+}
+
+// ── 담당자 선택 저장
+function onStaffChange(){
+  var v = document.getElementById('r2-staff-sel').value;
+  window.storage.set('sd_rent_staff', v).catch(function(){});
+}
+function loadStaff(){
+  window.storage.get('sd_rent_staff').then(function(r){
+    if(!r||!r.value) return;
+    var el=document.getElementById('r2-staff-sel');
+    if(el) el.value=r.value;
+  }).catch(function(){});
+}
+
+// ── 호실별 랜트프리
+function onUnitRF(el){
+  var ho=el.dataset.ho; var v=parseInt(el.value||0);
+  if(!_unitData[ho]) _unitData[ho]={};
+  _unitData[ho].rentFree=v;
+  var disp=document.getElementById('rf-disp-'+ho);
+  if(disp) disp.textContent=v+'개월';
+}
 
 // ── 납부일정 잔금 자동계산
 function calc2Schedule(){
@@ -2071,6 +2138,7 @@ function genEstimate(type){
       p._rentPrice = Math.round(p.price*(1-(d.disc||0)/100));
       p._rentDep   = d._dep || Math.round(p._rentPrice/10000*(d.depRate||8)/100/100)*100;
       p._rentMon   = d._mon != null ? d._mon : 0;
+      p._rentFree  = d.rentFree != null ? d.rentFree : null;
     });
 
     var html=buildRentEstimate(selProps2,bldgName,estDate,0,0,tenant2,rentFree2,conPct2,midPct2,balPct2,conDate2,midDate2,balDate2);
@@ -2208,54 +2276,75 @@ function buildSaleEstimate(selProps,bldgName,estDate,discount,contractRate,depRa
 }
 
 function buildRentEstimate(selProps,bldgName,estDate,loanRate,intRate,tenant,rentFree,conPct,midPct,balPct,conDate,midDate,balDate){
-  // 사진: 임대 견적서 전용(_rentPhoto) 우선, 없으면 건물 사진(_bldgPhoto) 사용
-  var photos=[
-    window._rentPhoto1||window._bldgPhoto1||'',
-    window._rentPhoto2||window._bldgPhoto2||'',
-    window._rentPhoto3||window._bldgPhoto3||''
-  ].filter(Boolean);
+  // 사진
+  var photos=[window._rentPhoto1||window._bldgPhoto1||'',window._rentPhoto2||window._bldgPhoto2||'',window._rentPhoto3||window._bldgPhoto3||''].filter(Boolean);
   var cols=Math.min(photos.length,3)||1;
   var photoHtml=photos.length>0
     ?'<div style="display:grid;grid-template-columns:repeat('+cols+',1fr);gap:8px;margin-bottom:1.5rem">'+photos.map(function(src){return'<img src="'+src+'" style="width:100%;height:160px;object-fit:cover;border-radius:8px">';}).join('')+'</div>'
     :'';
 
-  // 각 호별 보증금·월세 (unitData에서 가져옴)
+  // 계좌 설정 읽기
+  var acctMode = document.getElementById('r2-acct-mode') ? document.getElementById('r2-acct-mode').value : 'developer';
+  var acctBank, acctNum, acctName;
+  if(acctMode==='landlord'){
+    acctBank = (document.getElementById('r2-acct-bank')||{value:''}).value||'수협은행';
+    acctNum  = (document.getElementById('r2-acct-num') ||{value:''}).value||'1010-1152-5134';
+    acctName = (document.getElementById('r2-acct-name')||{value:''}).value||'주식회사 에스개발';
+  } else {
+    acctBank = _r2SavedAcct.bank||'수협은행';
+    acctNum  = _r2SavedAcct.num ||'1010-1152-5134';
+    acctName = _r2SavedAcct.name||'주식회사 에스개발';
+  }
+
+  // 담당자 설정 읽기
+  var staffSel = document.getElementById('r2-staff-sel');
+  var staffVal = staffSel ? staffSel.value : 'mun';
+  var staffMap = {
+    mun:  {name:'문형은 대표',  tel:'010-6401-9345'},
+    choi: {name:'최지훈 부장',  tel:'010-9996-9181'},
+    lee:  {name:'이서정 실장',  tel:'010-6402-9345'}
+  };
+  var staff = staffMap[staffVal]||staffMap.mun;
+
+  // 각 호별 계산
   var rows=selProps.map(function(p,i){
     var dep=p._rentDep!=null?p._rentDep:0;
     var mon=p._rentMon!=null?p._rentMon:0;
+    var rf = p._rentFree!=null ? p._rentFree : (rentFree||0);
     var ni=(p._rentPrice||p.price)-dep*10000;
-    // 납부일정
     var cAmt=Math.round(dep*conPct/100/100)*100;
     var mAmt=Math.round(dep*midPct/100/100)*100;
     var bAmt=dep-cAmt-mAmt;
-    return {p:p,dep:dep,mon:mon,ni:ni,cAmt:cAmt,mAmt:mAmt,bAmt:bAmt,i:i};
+    return {p:p,dep:dep,mon:mon,ni:ni,cAmt:cAmt,mAmt:mAmt,bAmt:bAmt,i:i,rf:rf};
   });
 
-  // 임대가격 테이블
-  var totDep=0,totMon=0;
+  // ── 임대가격 테이블
+  var totArea=0,totSupArea=0,totPrice=0,totDep=0,totMon=0;
   var rows1html=rows.map(function(r){
+    totArea   += r.p.area||0;
+    totSupArea+= r.p.supArea||0;
+    totPrice  += r.p._rentPrice||r.p.price;
     totDep+=r.dep; totMon+=r.mon;
     return '<tr>'
       +'<td>'+(r.i+1)+'</td>'
       +'<td style="font-weight:700">'+r.p.ho+'</td>'
       +'<td>'+r.p.area+'㎡</td><td>'+r.p.areaPy.toFixed(3)+'평</td>'
       +'<td>'+r.p.supArea+'㎡</td><td>'+r.p.supAreaPy.toFixed(3)+'평</td>'
-      +'<td>'+fmt(r.p.price)+'</td><td style="font-weight:700;color:#c62828">'+fmt(r.p._rentPrice||r.p.price)+'</td>'
+      +'<td>'+fmt(r.p._rentPrice||r.p.price)+'</td>'
       +'<td style="font-size:15px;font-weight:700;color:#1565c0">'+fmt(r.dep)+'만원</td>'
-      +'<td style="font-size:15px;font-weight:700;color:#c62828">'+fmt(r.mon)+'만원</td>'
-      +(tenant?'<td style="font-size:12px;color:#1565c0;font-weight:600">'+tenant+'</td>':'<td>—</td>')
+      +'<td style="font-size:15px;font-weight:700;color:#1a56db">'+fmt(r.mon)+'만원</td>'
       +'</tr>';
   }).join('');
   rows1html+='<tr style="background:#0d1f3d;color:#fff;font-weight:700;border-top:2px solid #4a90d9">'
     +'<td colspan="2">합계</td>'
-    +'<td colspan="4"></td>'
-    +'<td>—</td>'
+    +'<td colspan="2" style="color:#b0c4ff">'+totArea.toFixed(2)+'㎡</td>'
+    +'<td colspan="2" style="color:#b0c4ff">'+totSupArea.toFixed(2)+'㎡</td>'
+    +'<td style="color:#ffe082">'+fmt(totPrice)+'</td>'
     +'<td style="color:#7ec8ff">'+fmt(totDep)+'만원</td>'
-    +'<td style="color:#ffb3b3">'+fmt(totMon)+'만원</td>'
-    +'<td></td>'
+    +'<td style="color:#90caf9">'+fmt(totMon)+'만원</td>'
     +'</tr>';
 
-  // 납부일정 테이블
+  // ── 납부일정 테이블
   var totC=0,totM=0,totB=0;
   var rows2html=rows.map(function(r){
     totC+=r.cAmt; totM+=r.mAmt; totB+=r.bAmt;
@@ -2265,7 +2354,7 @@ function buildRentEstimate(selProps,bldgName,estDate,loanRate,intRate,tenant,ren
       +'<td style="font-weight:700">'+fmt(r.cAmt)+'만원</td>'
       +(midPct>0?'<td>'+fmt(r.mAmt)+'만원</td>':'<td style="color:#aaa;font-size:12px">없음</td>')
       +'<td style="font-weight:700">'+fmt(r.bAmt)+'만원</td>'
-      +(rentFree>0?'<td style="color:#e65100;font-weight:700">'+rentFree+'개월</td>':'<td>—</td>')
+      +(r.rf>0?'<td style="color:#e65100;font-weight:700">'+r.rf+'개월</td>':'<td style="color:#aaa">—</td>')
       +'</tr>';
   }).join('');
   rows2html+='<tr style="background:#0d1f3d;color:#fff;font-weight:700;border-top:2px solid #4a90d9">'
@@ -2273,42 +2362,51 @@ function buildRentEstimate(selProps,bldgName,estDate,loanRate,intRate,tenant,ren
     +'<td style="color:#7ec8ff">'+fmt(totC)+'만원</td>'
     +(midPct>0?'<td style="color:#ccc">'+fmt(totM)+'만원</td>':'<td></td>')
     +'<td style="color:#ffe082">'+fmt(totB)+'만원</td>'
-    +'<td></td>'
-    +'</tr>';
+    +'<td></td></tr>';
 
   // 납부일정 헤더
   var sch2hdr='<tr style="background:#1a2744"><th>NO</th><th>호수</th>'
     +'<th>계약금 '+conPct+'%'+(conDate?' ('+conDate+')':'')+' </th>'
     +(midPct>0?'<th>중도금 '+midPct+'%'+(midDate?' ('+midDate+')':'')+' </th>':'<th style="color:#778">중도금</th>')
     +'<th>잔금 '+balPct+'%'+(balDate?' ('+balDate+')':'')+' </th>'
-    +(rentFree>0?'<th>랜트프리</th>':'<th></th>')
-    +'</tr>';
+    +'<th>랜트프리</th></tr>';
 
   return '<div class="est-card" id="est-card-rent" style="max-width:1100px;margin:0 auto;font-family:-apple-system,BlinkMacSystemFont,sans-serif">'
-    +'<div style="background:#1a2744;color:#fff;border-radius:10px 10px 0 0;padding:18px 24px;margin:-1.5rem -1.5rem 1.5rem;display:flex;justify-content:space-between;align-items:flex-start">'
-    +'<div><div style="font-size:12px;color:#90caf9;margin-bottom:4px">송도제일공인중개사사무소</div>'
+    // ── 헤더
+    +'<div style="background:#1a2744;color:#fff;border-radius:10px 10px 0 0;padding:18px 24px;margin:-1.5rem -1.5rem 1.5rem;display:flex;justify-content:space-between;align-items:center">'
+    +'<div>'
+    +'<div style="font-size:12px;color:#90caf9;margin-bottom:4px">송도제일공인중개사사무소</div>'
     +'<div style="font-size:22px;font-weight:700">'+bldgName+' 임대 견적서</div>'
-    +(tenant?'<div style="margin-top:8px"><span style="background:#FFD600;color:#1a1a1a;padding:4px 12px;border-radius:20px;font-size:13px;font-weight:700">★ 입점 추천 업종: '+tenant+'</span></div>':'')
     +'</div>'
-    +'<div style="font-size:14px;color:#90caf9;font-weight:500;white-space:nowrap">견적일: '+estDate+'</div></div>'
+    // 업종 + 견적일 (우측)
+    +'<div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px">'
+    +(tenant?'<span style="background:#FFD600;color:#1a1a1a;padding:6px 18px;border-radius:20px;font-size:16px;font-weight:800;letter-spacing:0.02em">★ '+tenant+'</span>':'')
+    +'<span style="font-size:14px;color:#90caf9;font-weight:500">견적일: '+estDate+'</span>'
+    +'</div>'
+    +'</div>'
+    // 사진
     +photoHtml
+    // 임대가격 테이블
     +'<div style="background:#1a2744;color:#fff;padding:10px 16px;border-radius:8px;font-size:14px;font-weight:700;margin-bottom:10px">■ 임대 견적 가격</div>'
     +'<div style="overflow-x:auto;margin-bottom:2rem"><table class="est-tbl"><thead>'
-    +'<tr style="background:#1a2744"><th>NO</th><th>호수</th><th colspan="2">전용면적</th><th colspan="2">분양면적</th><th>분양가</th><th style="background:#1e3a6f">보증금</th><th style="background:#3a1a0a;background:#4a1a00">월세</th><th>입점업종</th></tr>'
-    +'<tr style="background:#2d3f61;color:#b0bec5;font-size:11px"><td></td><td></td><td>㎡</td><td>평</td><td>㎡</td><td>평</td><td></td><td></td><td></td><td></td></tr>'
+    +'<tr style="background:#1a2744"><th>NO</th><th>호수</th><th colspan="2">전용면적</th><th colspan="2">분양면적</th><th>분양가(임대가)</th><th style="background:#1e3a6f">보증금</th><th style="background:#1a2f5e">월세</th></tr>'
+    +'<tr style="background:#2d3f61;color:#b0bec5;font-size:11px"><td></td><td></td><td>㎡</td><td>평</td><td>㎡</td><td>평</td><td></td><td></td><td></td></tr>'
     +'</thead><tbody>'+rows1html+'</tbody></table></div>'
+    // 납부일정 테이블
     +'<div style="background:#1a2744;color:#fff;padding:10px 16px;border-radius:8px;font-size:14px;font-weight:700;margin-bottom:10px">■ 보증금 납부일정</div>'
     +'<div style="overflow-x:auto;margin-bottom:2rem"><table class="est-tbl"><thead>'
     +sch2hdr
     +'</thead><tbody>'+rows2html+'</tbody></table></div>'
+    // footer
     +'<div style="background:#f0f4ff;border:1px solid #c5cae9;border-radius:10px;padding:16px 20px">'
     +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">'
     +'<div><div style="font-size:12px;color:#666;margin-bottom:4px">■ 보증금 입금계좌</div>'
-    +'<div style="font-size:16px;font-weight:700">수협은행 1010-1152-5134</div>'
-    +'<div style="font-size:12px;color:#888">주식회사 에스개발</div></div>'
+    +'<div style="font-size:16px;font-weight:700">'+acctBank+' '+acctNum+'</div>'
+    +'<div style="font-size:12px;color:#888">'+acctName+'</div></div>'
     +'<div><div style="font-size:12px;color:#666;margin-bottom:4px">■ 상담문의</div>'
-    +'<div style="font-size:16px;font-weight:700">송도제일공인중개사사무소</div>'
-    +'<div style="font-size:12px;color:#888">032-851-6688</div></div>'
+    +'<div style="font-size:16px;font-weight:700">송도제일공인중개사사무소 &nbsp;<span style="font-size:13px;color:#555;font-weight:500">032-851-6688</span></div>'
+    +'<div style="font-size:13px;color:#1a2744;font-weight:600;margin-top:3px">'+staff.name+' &nbsp; '+staff.tel+'</div>'
+    +'</div>'
     +'</div></div></div>';
 }
 
