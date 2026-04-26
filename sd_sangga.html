@@ -459,6 +459,46 @@ input[type=range]{width:100%;accent-color:#1a1a1a}
         <button onclick="clearRentPhotos()" class="btn-s" style="font-size:11px">🗑️ 초기화</button>
       </div>
     </div>
+
+    <!-- 계좌 설정 -->
+    <div style="border-top:0.5px solid #f0f0f0;padding-top:12px;margin-top:4px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <p style="font-size:11px;color:#aaa;margin:0">🏦 보증금 입금계좌</p>
+        <div style="display:flex;gap:6px;align-items:center">
+          <div style="display:flex;border:0.5px solid #ddd;border-radius:6px;overflow:hidden">
+            <button id="r2-acct-dev-btn" onclick="setAcctMode('developer')" style="padding:3px 10px;font-size:11px;background:#1a1a1a;color:#fff;border:none;cursor:pointer">시행사</button>
+            <button id="r2-acct-ll-btn"  onclick="setAcctMode('landlord')"  style="padding:3px 10px;font-size:11px;background:#fff;color:#666;border:none;cursor:pointer">임대인</button>
+          </div>
+          <button onclick="saveAcct()" class="btn-s" style="font-size:11px;background:#1565c0;color:#fff;border-color:#1565c0">💾 저장</button>
+        </div>
+      </div>
+      <input type="hidden" id="r2-acct-mode" value="developer">
+      <div id="r2-acct-dev-wrap">
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:4px">
+          <input type="text" id="r2-acct-dev-bank" class="fi" placeholder="은행명" style="font-size:12px;width:90px">
+          <input type="text" id="r2-acct-dev-num"  class="fi" placeholder="계좌번호" style="font-size:12px;width:155px">
+          <input type="text" id="r2-acct-dev-name" class="fi" placeholder="예금주" style="font-size:12px;width:110px">
+        </div>
+        <div id="r2-acct-dev-saved" style="font-size:11px;color:#1565c0;min-height:14px"></div>
+      </div>
+      <div id="r2-acct-ll-wrap" style="display:none">
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <input type="text" id="r2-acct-bank" class="fi" placeholder="은행명" style="font-size:12px;width:90px">
+          <input type="text" id="r2-acct-num"  class="fi" placeholder="계좌번호" style="font-size:12px;width:155px">
+          <input type="text" id="r2-acct-name" class="fi" placeholder="예금주" style="font-size:12px;width:110px">
+        </div>
+      </div>
+    </div>
+
+    <!-- 담당자 설정 -->
+    <div style="border-top:0.5px solid #f0f0f0;padding-top:12px;margin-top:4px">
+      <p style="font-size:11px;color:#aaa;margin:0 0 8px">👤 견적 담당자 선택</p>
+      <select id="r2-staff-sel" class="fi" style="font-size:12px;width:280px" onchange="onStaffChange()">
+        <option value="mun">문형은 대표 · 010-6401-9345</option>
+        <option value="choi">최지훈 부장 · 010-9996-9181</option>
+        <option value="lee">이서정 실장 · 010-6402-9345</option>
+      </select>
+    </div>
   </div>
 
   <!-- ② 호실 선택 + 단일/복수 -->
@@ -2319,17 +2359,19 @@ function buildRentEstimate(selProps,bldgName,estDate,loanRate,intRate,tenant,ren
   });
 
   // ── 임대가격 테이블
-  var totArea=0,totSupArea=0,totPrice=0,totDep=0,totMon=0;
+  var totArea=0,totSupArea=0,totAreaPy=0,totSupAreaPy=0,totPrice=0,totDep=0,totMon=0;
   var rows1html=rows.map(function(r){
-    totArea   += r.p.area||0;
-    totSupArea+= r.p.supArea||0;
+    totArea      += r.p.area||0;
+    totAreaPy    += r.p.areaPy||0;
+    totSupArea   += r.p.supArea||0;
+    totSupAreaPy += r.p.supAreaPy||0;
     totPrice  += r.p._rentPrice||r.p.price;
     totDep+=r.dep; totMon+=r.mon;
     return '<tr>'
       +'<td>'+(r.i+1)+'</td>'
       +'<td style="font-weight:700">'+r.p.ho+'</td>'
-      +'<td>'+r.p.area+'㎡</td><td>'+r.p.areaPy.toFixed(3)+'평</td>'
-      +'<td>'+r.p.supArea+'㎡</td><td>'+r.p.supAreaPy.toFixed(3)+'평</td>'
+      +'<td>'+r.p.area+'㎡</td><td>'+r.p.areaPy.toFixed(2)+'평</td>'
+      +'<td>'+r.p.supArea+'㎡</td><td>'+r.p.supAreaPy.toFixed(2)+'평</td>'
       +'<td>'+fmt(r.p._rentPrice||r.p.price)+'</td>'
       +'<td style="font-size:15px;font-weight:700;color:#1565c0">'+fmt(r.dep)+'만원</td>'
       +'<td style="font-size:15px;font-weight:700;color:#1a56db">'+fmt(r.mon)+'만원</td>'
@@ -2337,8 +2379,10 @@ function buildRentEstimate(selProps,bldgName,estDate,loanRate,intRate,tenant,ren
   }).join('');
   rows1html+='<tr style="background:#0d1f3d;color:#fff;font-weight:700;border-top:2px solid #4a90d9">'
     +'<td colspan="2">합계</td>'
-    +'<td colspan="2" style="color:#b0c4ff">'+totArea.toFixed(2)+'㎡</td>'
-    +'<td colspan="2" style="color:#b0c4ff">'+totSupArea.toFixed(2)+'㎡</td>'
+    +'<td style="color:#b0c4ff">'+totArea.toFixed(2)+'㎡</td>'
+    +'<td style="color:#b0c4ff">'+totAreaPy.toFixed(2)+'평</td>'
+    +'<td style="color:#b0c4ff">'+totSupArea.toFixed(2)+'㎡</td>'
+    +'<td style="color:#b0c4ff">'+totSupAreaPy.toFixed(2)+'평</td>'
     +'<td style="color:#ffe082">'+fmt(totPrice)+'</td>'
     +'<td style="color:#7ec8ff">'+fmt(totDep)+'만원</td>'
     +'<td style="color:#90caf9">'+fmt(totMon)+'만원</td>'
@@ -2374,13 +2418,16 @@ function buildRentEstimate(selProps,bldgName,estDate,loanRate,intRate,tenant,ren
   return '<div class="est-card" id="est-card-rent" style="max-width:1100px;margin:0 auto;font-family:-apple-system,BlinkMacSystemFont,sans-serif">'
     // ── 헤더
     +'<div style="background:#1a2744;color:#fff;border-radius:10px 10px 0 0;padding:18px 24px;margin:-1.5rem -1.5rem 1.5rem;display:flex;justify-content:space-between;align-items:center">'
-    +'<div>'
-    +'<div style="font-size:12px;color:#90caf9;margin-bottom:4px">송도제일공인중개사사무소</div>'
+    // 좌측: 사무소명 + (제목 + 업종 나란히)
+    +'<div style="flex:1">'
+    +'<div style="font-size:12px;color:#90caf9;margin-bottom:6px">송도제일공인중개사사무소</div>'
+    +'<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">'
     +'<div style="font-size:22px;font-weight:700">'+bldgName+' 임대 견적서</div>'
+    +(tenant?'<span style="background:#FFD600;color:#1a1a1a;padding:5px 16px;border-radius:20px;font-size:15px;font-weight:800;letter-spacing:0.02em;white-space:nowrap">★ '+tenant+'</span>':'')
     +'</div>'
-    // 업종 + 견적일 (우측)
-    +'<div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px">'
-    +(tenant?'<span style="background:#FFD600;color:#1a1a1a;padding:6px 18px;border-radius:20px;font-size:16px;font-weight:800;letter-spacing:0.02em">★ '+tenant+'</span>':'')
+    +'</div>'
+    // 우측: 견적일만
+    +'<div style="white-space:nowrap;align-self:flex-start">'
     +'<span style="font-size:14px;color:#90caf9;font-weight:500">견적일: '+estDate+'</span>'
     +'</div>'
     +'</div>'
