@@ -173,9 +173,12 @@ input[type=range]{width:100%;accent-color:#1a1a1a}
               <button id="disc-amt-btn" onclick="setDiscMode('amt')" style="padding:2px 8px;font-size:10px;background:#fff;color:#666;border:none;cursor:pointer">정액</button>
             </div>
           </div>
-          <div id="disc-pct-wrap" style="display:flex;align-items:center;gap:8px">
-            <input type="range" id="r-discount" min="0" max="20" value="0" step="0.5" oninput="updSlider('discount')">
-            <span class="slider-val" id="v-discount">0%</span>
+          <div id="disc-pct-wrap" style="display:flex;flex-direction:column;gap:4px">
+            <div style="display:flex;align-items:center;gap:8px">
+              <input type="range" id="r-discount" min="0" max="20" value="0" step="0.5" style="flex:1" oninput="updSlider('discount');updateSaleDiscDisplay()">
+              <span class="slider-val" id="v-discount">0%</span>
+            </div>
+            <div id="sale-disc-display" style="font-size:12px;color:#e53935;font-weight:600;min-height:16px"></div>
           </div>
           <div id="disc-amt-wrap" style="display:none;align-items:center;gap:8px">
             <input type="number" id="r-discount-amt" class="fi" placeholder="할인금액 (만원)" style="font-size:12px" oninput="updDiscAmt()">
@@ -296,8 +299,49 @@ input[type=range]{width:100%;accent-color:#1a1a1a}
       <p style="font-size:11px;color:#aaa;margin:0">💾 저장 버튼을 누르면 다음에도 자동으로 불러옵니다. 업로드 순서대로 좌→우 배치.</p>
     </div>
 
+    <!-- 분양 납부 계좌 + 담당자 -->
+    <div class="card" style="padding:14px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+        <!-- 납부 계좌 -->
+        <div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+            <p style="font-size:12px;font-weight:700;margin:0">🏦 분양 납부계좌</p>
+            <button onclick="saveSaleAcct()" class="btn-s" style="font-size:11px;background:#1565c0;color:#fff;border-color:#1565c0">💾 저장</button>
+          </div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:4px">
+            <input type="text" id="sale-acct-bank" class="fi" placeholder="은행명" style="font-size:12px;width:85px">
+            <input type="text" id="sale-acct-num"  class="fi" placeholder="계좌번호" style="font-size:12px;width:150px">
+            <input type="text" id="sale-acct-name" class="fi" placeholder="예금주" style="font-size:12px;width:110px">
+          </div>
+          <div id="sale-acct-saved" style="font-size:11px;color:#1565c0;min-height:14px"></div>
+        </div>
+        <!-- 담당자 -->
+        <div>
+          <p style="font-size:12px;font-weight:700;margin:0 0 8px">👤 견적 담당자</p>
+          <select id="sale-staff-sel" class="fi" style="font-size:12px;width:100%" onchange="onSaleStaffChange()">
+            <option value="mun">문형은 대표 · 010-6401-9345</option>
+            <option value="choi">최지훈 부장 · 010-9996-9181</option>
+            <option value="lee">이서정 실장 · 010-6402-9345</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
     <div class="card">
-      <p class="sec">🏢 호실 선택 <span style="font-size:11px;color:#aaa;font-weight:400">— 분양 미확정 호실</span></p>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <p class="sec" style="margin:0">🏢 호실 선택 <span style="font-size:11px;color:#aaa;font-weight:400">— 분양 미확정 호실</span></p>
+        <div style="display:flex;align-items:center;gap:8px">
+          <div style="display:flex;border:0.5px solid #ddd;border-radius:6px;overflow:hidden">
+            <button id="sale-mode-single-btn" onclick="setSaleMode('single')" style="padding:4px 12px;font-size:12px;background:#1a1a1a;color:#fff;border:none;cursor:pointer">단일 호실</button>
+            <button id="sale-mode-multi-btn"  onclick="setSaleMode('multi')"  style="padding:4px 12px;font-size:12px;background:#fff;color:#666;border:none;cursor:pointer">복수 호실</button>
+          </div>
+          <div id="sale-multi-count-wrap" style="display:none;align-items:center;gap:6px">
+            <span style="font-size:12px;color:#666">호실 수:</span>
+            <input type="number" id="sale-multi-count" class="fi" value="2" min="2" max="10" style="width:50px;font-size:13px;font-weight:700;text-align:center" oninput="onSaleMultiCountChange()">
+            <span style="font-size:11px;color:#aaa">개</span>
+          </div>
+        </div>
+      </div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px" id="floor-filter-tabs"></div>
       <div id="ho-chips" style="max-height:200px;overflow-y:auto;padding:4px 0"></div>
       <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
@@ -306,6 +350,13 @@ input[type=range]{width:100%;accent-color:#1a1a1a}
         <span id="sel-cnt" style="font-size:12px;color:#1565c0;font-weight:500;align-self:center"></span>
       </div>
     </div>
+  <!-- 호실별 조건 카드 (동적) -->
+  <div id="sale-unit-cards" style="display:none"></div>
+  <!-- 합계 패널 (복수 호실) -->
+  <div id="sale-summary-panel" style="display:none;background:#0d1f3d;border-radius:12px;padding:16px 20px;margin-bottom:1rem;color:#fff">
+    <div style="font-size:13px;font-weight:700;color:#90caf9;margin-bottom:10px">📊 전체 합계</div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px" id="sale-summary-grid"></div>
+  </div>
     <div style="display:flex;gap:8px;margin-bottom:1rem;flex-wrap:wrap">
       <button onclick="genEstimate('sale')" class="btn-p" style="flex:1">📄 분양 견적서 생성</button>
       <button onclick="printEstimate()" class="btn-s" style="background:#1a2744;color:#fff;border-color:#1a2744">🖨️ 인쇄/PDF</button>
@@ -331,9 +382,12 @@ input[type=range]{width:100%;accent-color:#1a1a1a}
               <button id="l-disc-amt-btn" onclick="setDiscModeL('amt')" style="padding:2px 8px;font-size:10px;background:#fff;color:#666;border:none;cursor:pointer">정액</button>
             </div>
           </div>
-          <div id="l-disc-pct-wrap" style="display:flex;align-items:center;gap:8px">
-            <input type="range" id="r-l-discount" min="0" max="20" value="0" step="0.5" oninput="updSliderL('discount')">
-            <span class="slider-val" id="v-l-discount">0%</span>
+          <div id="l-disc-pct-wrap" style="display:flex;flex-direction:column;gap:4px">
+            <div style="display:flex;align-items:center;gap:8px">
+              <input type="range" id="r-l-discount" min="0" max="20" value="0" step="0.5" style="flex:1" oninput="updSliderL('discount');updateLeasedDiscDisplay()">
+              <span class="slider-val" id="v-l-discount">0%</span>
+            </div>
+            <div id="leased-disc-display" style="font-size:12px;color:#e53935;font-weight:600;min-height:16px"></div>
           </div>
           <div id="l-disc-amt-wrap" style="display:none;align-items:center;gap:8px">
             <input type="number" id="r-l-discount-amt" class="fi" placeholder="할인금액 (만원)" style="font-size:12px" oninput="updDiscAmtL()">
@@ -381,14 +435,34 @@ input[type=range]{width:100%;accent-color:#1a1a1a}
       </div>
     </div>
     <div class="card">
-      <p class="sec">🏢 호실 선택 <span style="font-size:11px;color:#aaa;font-weight:400">— 임대 확정 호실만</span></p>
-      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px" id="floor-filter-tabs-l"></div>
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <p class="sec" style="margin:0">🏢 호실 선택 <span style="font-size:11px;color:#aaa;font-weight:400">— 임대 확정 호실만</span></p>
+        <div style="display:flex;align-items:center;gap:8px">
+          <div style="display:flex;border:0.5px solid #ddd;border-radius:6px;overflow:hidden">
+            <button id="leased-mode-single-btn" onclick="setLeasedMode('single')" style="padding:4px 12px;font-size:12px;background:#1a1a1a;color:#fff;border:none;cursor:pointer">단일 호실</button>
+            <button id="leased-mode-multi-btn"  onclick="setLeasedMode('multi')"  style="padding:4px 12px;font-size:12px;background:#fff;color:#666;border:none;cursor:pointer">복수 호실</button>
+          </div>
+          <div id="leased-multi-count-wrap" style="display:none;align-items:center;gap:6px">
+            <span style="font-size:12px;color:#666">호실 수:</span>
+            <input type="number" id="leased-multi-count" class="fi" value="2" min="2" max="10" style="width:50px;font-size:13px;font-weight:700;text-align:center" oninput="onLeasedMultiCountChange()">
+            <span style="font-size:11px;color:#aaa">개</span>
+          </div>
+        </div>
+      </div>
       <div id="ho-chips-l" style="max-height:200px;overflow-y:auto;padding:4px 0"></div>
       <div style="margin-top:10px;display:flex;gap:8px">
         <button onclick="clearSelHoL()" class="btn-s" style="font-size:11px">선택 초기화</button>
         <span id="sel-cnt-l" style="font-size:12px;color:#1565c0;font-weight:500;align-self:center"></span>
       </div>
     </div>
+  <!-- 호실별 조건 카드 (동적) -->
+  <div id="leased-unit-cards" style="display:none"></div>
+  <!-- 합계 패널 -->
+  <div id="leased-summary-panel" style="display:none;background:#0d1f3d;border-radius:12px;padding:16px 20px;margin-bottom:1rem;color:#fff">
+    <div style="font-size:13px;font-weight:700;color:#90caf9;margin-bottom:10px">📊 전체 합계</div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px" id="leased-summary-grid"></div>
+  </div>
     <div style="display:flex;gap:8px;margin-bottom:1rem;flex-wrap:wrap">
       <button onclick="genEstimate('leased')" class="btn-p" style="flex:1">📄 임대완료 분양호실 견적서 생성</button>
       <button onclick="printEstimateL()" class="btn-s" style="background:#1a2744;color:#fff;border-color:#1a2744">🖨️ 인쇄/PDF</button>
@@ -1788,6 +1862,394 @@ function onUnitRF(el){
   _unitData[ho].rentFree=v;
   var disp=document.getElementById('rf-disp-'+ho);
   if(disp) disp.textContent=v+'개월';
+}
+
+// ══════════════════════════════════════════
+// 분양견적서 TAB1 단일/복수 모드
+// ══════════════════════════════════════════
+var _saleMode  = 'single';
+var _saleCount = 2;
+var _leasedMode  = 'single';
+var _leasedCount = 2;
+var _saleUnitData   = {}; // {ho: {disc, depRate, monYield, monFix}}
+var _leasedUnitData = {}; // {ho: {disc}}
+var _saleSavedAcct  = {bank:'', num:'', name:''};
+
+// ── 분양 단일/복수
+function setSaleMode(m){
+  _saleMode = m;
+  _btn('sale-mode-single-btn', m==='single');
+  _btn('sale-mode-multi-btn',  m==='multi');
+  var cw=document.getElementById('sale-multi-count-wrap');
+  if(cw) cw.style.display=m==='multi'?'flex':'none';
+  rebuildSaleCards();
+}
+function onSaleMultiCountChange(){
+  var v=parseInt(document.getElementById('sale-multi-count').value||2);
+  _saleCount=Math.max(2,Math.min(10,v));
+  rebuildSaleCards();
+}
+
+// ── 임대완료 단일/복수
+function setLeasedMode(m){
+  _leasedMode = m;
+  _btn('leased-mode-single-btn', m==='single');
+  _btn('leased-mode-multi-btn',  m==='multi');
+  var cw=document.getElementById('leased-multi-count-wrap');
+  if(cw) cw.style.display=m==='multi'?'flex':'none';
+  rebuildLeasedCards();
+}
+function onLeasedMultiCountChange(){
+  var v=parseInt(document.getElementById('leased-multi-count').value||2);
+  _leasedCount=Math.max(2,Math.min(10,v));
+  rebuildLeasedCards();
+}
+
+// ── 할인율 실시간 표시
+function updateSaleDiscDisplay(){
+  var disc=parseFloat(document.getElementById('r-discount').value||0);
+  var selList=[...selHos];
+  var props2=getCurProps();
+  var selProps=selList.map(function(ho){return props2.find(function(p){return p.ho===ho;});}).filter(Boolean);
+  var el=document.getElementById('sale-disc-display');
+  if(!el) return;
+  if(!disc||!selProps.length){el.textContent='';return;}
+  var tags=selProps.slice(0,_saleMode==='multi'?_saleCount:1).map(function(p){
+    var d=Math.round(p.price*disc/100);
+    var after=p.price-d;
+    return '<span style="margin-right:8px">'+p.ho+': <strong style="color:#e53935">-'+fmt(Math.round(d/10000))+'만</strong> → '+fmt(Math.round(after/10000))+'만</span>';
+  }).join('');
+  el.innerHTML=tags;
+}
+function updateLeasedDiscDisplay(){
+  var disc=parseFloat(document.getElementById('r-l-discount').value||0);
+  var selList=[...selHosL];
+  var props2=getCurProps();
+  var selProps=selList.map(function(ho){return props2.find(function(p){return p.ho===ho;});}).filter(Boolean);
+  var el=document.getElementById('leased-disc-display');
+  if(!el) return;
+  if(!disc||!selProps.length){el.textContent='';return;}
+  var tags=selProps.slice(0,_leasedMode==='multi'?_leasedCount:1).map(function(p){
+    var d=Math.round(p.price*disc/100);
+    var after=p.price-d;
+    return '<span style="margin-right:8px">'+p.ho+': <strong style="color:#e53935">-'+fmt(Math.round(d/10000))+'만</strong> → '+fmt(Math.round(after/10000))+'만</span>';
+  }).join('');
+  el.innerHTML=tags;
+}
+
+// ── 분양 호실별 카드 생성
+function rebuildSaleCards(){
+  var wrap=document.getElementById('sale-unit-cards');
+  var sumP=document.getElementById('sale-summary-panel');
+  if(!wrap||!sumP) return;
+  var sel=[...selHos];
+  var props2=getCurProps();
+  var hoList=_saleMode==='multi'?sel.slice(0,_saleCount):sel.slice(0,1);
+  var selProps=hoList.map(function(ho){return props2.find(function(p){return p.ho===ho;});}).filter(Boolean);
+  if(!selProps.length){wrap.style.display='none';sumP.style.display='none';return;}
+  wrap.style.display='block';
+  sumP.style.display=selProps.length>1?'block':'none';
+  selProps.forEach(function(p){
+    if(!_saleUnitData[p.ho]) _saleUnitData[p.ho]={disc:0,depRate:5,monYield:4.5,monFix:null};
+  });
+  var cols=selProps.length+(selProps.length>1?1:0);
+  wrap.innerHTML='<div style="display:grid;grid-template-columns:repeat('+cols+',1fr);gap:12px;margin-bottom:1rem">'
+    +selProps.map(function(p){return makeSaleUnitCard(p);}).join('')
+    +(selProps.length>1?makeSaleSumCard(selProps):'')
+    +'</div>';
+  updateAllSaleUnits(selProps);
+}
+
+// ── 분양 단일 카드
+function makeSaleUnitCard(p){
+  var d=_saleUnitData[p.ho]||{disc:0,depRate:5,monYield:4.5};
+  return '<div id="sale-card-'+p.ho+'" style="background:#fff;border:1.5px solid #e3e8f0;border-radius:12px;padding:14px;box-shadow:0 2px 8px rgba(0,0,0,0.06)">'
+    +'<div style="background:#1a2744;color:#fff;border-radius:8px;padding:8px 12px;margin-bottom:12px;display:flex;justify-content:space-between">'
+    +'<span style="font-size:15px;font-weight:700">'+p.ho+'</span><span style="font-size:11px;color:#90caf9">'+p.floor+'</span></div>'
+    // 공급가
+    +'<div style="margin-bottom:10px;padding:8px;background:#f8faff;border-radius:8px">'
+    +'<div style="font-size:11px;color:#888;margin-bottom:2px">공급가</div>'
+    +'<div style="font-size:14px;font-weight:700;color:#1a2744">'+fmt(p.price)+'</div>'
+    +'</div>'
+    // 할인율
+    +'<div style="margin-bottom:12px"><div style="display:flex;justify-content:space-between;margin-bottom:4px">'
+    +'<label style="font-size:11px;color:#666;font-weight:600">📉 할인율</label>'
+    +'<div><span id="su-disc-pct-'+p.ho+'" style="font-size:13px;font-weight:800;color:#e53935">'+d.disc+'%</span>'
+    +' → <span id="su-disc-price-'+p.ho+'" style="font-size:12px;font-weight:700;color:#c62828"></span></div></div>'
+    +'<input type="range" min="0" max="20" step="0.5" value="'+d.disc+'" style="width:100%" '
+    +'data-ho="'+p.ho+'" oninput="onSaleUnitDisc(this)"></div>'
+    // 보증금
+    +'<div style="margin-bottom:12px"><div style="display:flex;justify-content:space-between;margin-bottom:4px">'
+    +'<label style="font-size:11px;color:#666;font-weight:600">💰 보증금 비율</label>'
+    +'<div><span id="su-dep-pct-'+p.ho+'" style="font-size:13px;font-weight:800;color:#1565c0">'+d.depRate+'%</span>'
+    +' → <span id="su-dep-amt-'+p.ho+'" style="font-size:13px;font-weight:800;color:#1565c0"></span></div></div>'
+    +'<input type="range" min="0.5" max="10" step="0.1" value="'+d.depRate+'" style="width:100%" '
+    +'data-ho="'+p.ho+'" oninput="onSaleUnitDep(this)"></div>'
+    // 수익률 → 월세
+    +'<div style="margin-bottom:12px"><div style="display:flex;justify-content:space-between;margin-bottom:4px">'
+    +'<label style="font-size:11px;color:#666;font-weight:600">🏷️ 수익률 기준 월세</label>'
+    +'<div><span id="su-yield-'+p.ho+'" style="font-size:13px;font-weight:800;color:#e65100">'+d.monYield+'%</span>'
+    +' → <span id="su-mon-'+p.ho+'" style="font-size:13px;font-weight:800;color:#1a56db"></span></div></div>'
+    +'<input type="range" min="2" max="10" step="0.1" value="'+d.monYield+'" style="width:100%" '
+    +'data-ho="'+p.ho+'" oninput="onSaleUnitYield(this)"></div>'
+    // 월세 직접 입력
+    +'<div style="margin-bottom:10px"><label style="font-size:11px;color:#666;font-weight:600">✏️ 월세 직접 입력</label>'
+    +'<div style="display:flex;align-items:center;gap:6px;margin-top:4px">'
+    +'<input type="number" id="su-mon-fix-'+p.ho+'" step="5" placeholder="—" '
+    +'style="width:90px;padding:4px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px;font-weight:700;color:#1a56db;text-align:center" '
+    +'data-ho="'+p.ho+'" oninput="onSaleUnitMonFix(this)">'
+    +'<span style="font-size:12px;color:#aaa">만원</span>'
+    +'<button data-ho="'+p.ho+'" onclick="clearSaleUnitMonFix(this.dataset.ho)" style="padding:2px 8px;font-size:11px;border:1px solid #ddd;border-radius:6px;cursor:pointer;color:#999">지우기</button>'
+    +'</div></div>'
+    // 수익률 결과
+    +'<div id="su-result-'+p.ho+'" style="background:linear-gradient(135deg,#1a2744,#253a61);border-radius:8px;padding:10px;color:#fff;text-align:center">'
+    +'<div style="font-size:11px;color:#90caf9;margin-bottom:4px">무대출 수익률</div>'
+    +'<div style="font-size:26px;font-weight:900;color:#ffe082">—%</div>'
+    +'</div></div>';
+}
+
+// ── 분양 합계 카드
+function makeSaleSumCard(selProps){
+  return '<div id="sale-card-sum" style="background:linear-gradient(135deg,#0d1f3d,#1a3060);border:1.5px solid #4a90d9;border-radius:12px;padding:14px;color:#fff">'
+    +'<div style="background:rgba(255,255,255,0.1);border-radius:8px;padding:8px 12px;margin-bottom:12px"><span style="font-size:15px;font-weight:700">📊 합계</span></div>'
+    +'<div style="padding:8px;background:rgba(255,255,255,0.05);border-radius:8px;margin-bottom:8px"><div style="font-size:11px;color:#90caf9;margin-bottom:2px">보증금 합계</div><div id="sale-sum-dep" style="font-size:20px;font-weight:900;color:#7ec8ff">—</div></div>'
+    +'<div style="padding:8px;background:rgba(255,255,255,0.05);border-radius:8px;margin-bottom:8px"><div style="font-size:11px;color:#90caf9;margin-bottom:2px">월세 합계</div><div id="sale-sum-mon" style="font-size:20px;font-weight:900;color:#90caf9">—</div></div>'
+    +'<div style="background:rgba(255,224,130,0.1);border-radius:8px;padding:10px"><div style="font-size:11px;color:#ffe082;margin-bottom:4px">평균 수익률</div><div id="sale-sum-yield" style="font-size:26px;font-weight:900;color:#ffe082">—%</div></div>'
+    +'</div>';
+}
+
+// ── 슬라이더 이벤트
+function onSaleUnitDisc(el){
+  var ho=el.dataset.ho; var v=parseFloat(el.value);
+  _saleUnitData[ho].disc=v; updateSaleUnit(ho); updateSaleSummary();
+}
+function onSaleUnitDep(el){
+  var ho=el.dataset.ho; var v=parseFloat(el.value);
+  _saleUnitData[ho].depRate=v; updateSaleUnit(ho); updateSaleSummary();
+}
+function onSaleUnitYield(el){
+  var ho=el.dataset.ho; var v=parseFloat(el.value);
+  _saleUnitData[ho].monYield=v; _saleUnitData[ho].monFix=null;
+  var mf=document.getElementById('su-mon-fix-'+ho); if(mf) mf.value='';
+  updateSaleUnit(ho); updateSaleSummary();
+}
+function onSaleUnitMonFix(el){
+  var ho=el.dataset.ho; var v=parseFloat(el.value||0);
+  _saleUnitData[ho].monFix=v||null; updateSaleUnit(ho); updateSaleSummary();
+}
+function clearSaleUnitMonFix(ho){
+  _saleUnitData[ho].monFix=null;
+  var el=document.getElementById('su-mon-fix-'+ho); if(el) el.value='';
+  updateSaleUnit(ho); updateSaleSummary();
+}
+
+// ── 단일 카드 값 업데이트
+function updateSaleUnit(ho){
+  var props2=getCurProps();
+  var p=props2.find(function(x){return x.ho===ho;}); if(!p) return;
+  var d=_saleUnitData[ho]; if(!d) return;
+  var disc=d.disc||0;
+  var pr=Math.round(p.price*(1-disc/100));
+  var depR=d.depRate||5;
+  var dep=Math.round(pr/10000*depR/100/100)*100; // 100만원 단위
+  var yr=d.monYield||4.5;
+  var ni=pr-dep*10000;
+  var monCalc=ni>0?Math.max(0,Math.round(ni*yr/100/12/10000/5)*5):0;
+  var mon=d.monFix!=null?d.monFix:monCalc;
+  d._dep=dep; d._mon=mon; d._pr=pr;
+  var yld=ni>0&&mon?(mon*10000*12/ni*100):0;
+  var yc=yld>=5?'#69f0ae':yld>=4?'#ffcc02':'#ff6b6b';
+  var el;
+  el=document.getElementById('su-disc-pct-'+ho);   if(el) el.textContent=disc.toFixed(1)+'%';
+  el=document.getElementById('su-disc-price-'+ho); if(el) el.textContent=disc>0?fmt(Math.round(pr/10000))+'만':'—';
+  el=document.getElementById('su-dep-pct-'+ho);    if(el) el.textContent=depR.toFixed(1)+'%';
+  el=document.getElementById('su-dep-amt-'+ho);    if(el) el.textContent=fmt(dep)+'만';
+  el=document.getElementById('su-yield-'+ho);      if(el) el.textContent=yr.toFixed(1)+'%';
+  el=document.getElementById('su-mon-'+ho);        if(el) el.textContent=fmt(mon)+'만';
+  el=document.getElementById('su-result-'+ho);
+  if(el) el.innerHTML='<div style="font-size:11px;color:#90caf9;margin-bottom:4px">무대출 수익률</div>'
+    +'<div style="font-size:26px;font-weight:900;color:'+yc+'">'+yld.toFixed(2)+'%</div>';
+}
+function updateAllSaleUnits(selProps){
+  selProps.forEach(function(p){updateSaleUnit(p.ho);});
+  updateSaleSummary();
+}
+function updateSaleSummary(){
+  var sel=[...selHos];
+  var props2=getCurProps();
+  var hoList=_saleMode==='multi'?sel.slice(0,_saleCount):sel.slice(0,1);
+  var selProps=hoList.map(function(ho){return props2.find(function(p){return p.ho===ho;});}).filter(Boolean);
+  if(selProps.length<2) return;
+  var totDep=0,totMon=0,yvals=[];
+  selProps.forEach(function(p){
+    var d=_saleUnitData[p.ho]||{}; if(!d._dep) return;
+    totDep+=d._dep; totMon+=d._mon||0;
+    var ni=d._pr-d._dep*10000;
+    if(ni>0&&d._mon) yvals.push(d._mon*10000*12/ni*100);
+  });
+  var avg=yvals.length?(yvals.reduce(function(a,b){return a+b;},0)/yvals.length):0;
+  var yc=avg>=5?'#69f0ae':avg>=4?'#ffcc02':'#ff6b6b';
+  var sd=document.getElementById('sale-sum-dep');
+  var sm=document.getElementById('sale-sum-mon');
+  var sy=document.getElementById('sale-sum-yield');
+  if(sd) sd.textContent=fmt(totDep)+'만원';
+  if(sm) sm.textContent=fmt(totMon)+'만원';
+  if(sy){sy.textContent=avg.toFixed(2)+'%'; sy.style.color=yc;}
+}
+
+// ── 임대완료 호실별 카드 (할인율만)
+function rebuildLeasedCards(){
+  var wrap=document.getElementById('leased-unit-cards');
+  var sumP=document.getElementById('leased-summary-panel');
+  if(!wrap||!sumP) return;
+  var sel=[...selHosL];
+  var props2=getCurProps();
+  var hoList=_leasedMode==='multi'?sel.slice(0,_leasedCount):sel.slice(0,1);
+  var selProps=hoList.map(function(ho){return props2.find(function(p){return p.ho===ho;});}).filter(Boolean);
+  if(!selProps.length){wrap.style.display='none';sumP.style.display='none';return;}
+  wrap.style.display='block';
+  sumP.style.display=selProps.length>1?'block':'none';
+  selProps.forEach(function(p){
+    if(!_leasedUnitData[p.ho]) _leasedUnitData[p.ho]={disc:0};
+  });
+  var cols=selProps.length+(selProps.length>1?1:0);
+  wrap.innerHTML='<div style="display:grid;grid-template-columns:repeat('+cols+',1fr);gap:12px;margin-bottom:1rem">'
+    +selProps.map(function(p){return makeLeasedUnitCard(p);}).join('')
+    +(selProps.length>1?makeLeasedSumCard(selProps):'')
+    +'</div>';
+  selProps.forEach(function(p){updateLeasedUnit(p.ho);});
+}
+
+function makeLeasedUnitCard(p){
+  var d=_leasedUnitData[p.ho]||{disc:0};
+  return '<div id="leased-card-'+p.ho+'" style="background:#fff;border:1.5px solid #e3e8f0;border-radius:12px;padding:14px;box-shadow:0 2px 8px rgba(0,0,0,0.06)">'
+    +'<div style="background:#1a2744;color:#fff;border-radius:8px;padding:8px 12px;margin-bottom:12px;display:flex;justify-content:space-between">'
+    +'<span style="font-size:15px;font-weight:700">'+p.ho+'</span><span style="font-size:11px;color:#90caf9">'+p.floor+'</span></div>'
+    +'<div style="margin-bottom:10px;padding:8px;background:#f8faff;border-radius:8px">'
+    +'<div style="font-size:11px;color:#888;margin-bottom:2px">공급가</div>'
+    +'<div style="font-size:14px;font-weight:700;color:#1a2744">'+fmt(p.price)+'</div>'
+    +'</div>'
+    +'<div style="margin-bottom:12px"><div style="display:flex;justify-content:space-between;margin-bottom:4px">'
+    +'<label style="font-size:11px;color:#666;font-weight:600">📉 할인율</label>'
+    +'<div><span id="lu-disc-pct-'+p.ho+'" style="font-size:13px;font-weight:800;color:#e53935">'+d.disc+'%</span>'
+    +' → <span id="lu-disc-price-'+p.ho+'" style="font-size:12px;font-weight:700;color:#c62828"></span></div></div>'
+    +'<input type="range" min="0" max="20" step="0.5" value="'+d.disc+'" style="width:100%" '
+    +'data-ho="'+p.ho+'" oninput="onLeasedUnitDisc(this)"></div>'
+    +'<div style="margin-bottom:8px;padding:8px;background:#f0f7ff;border-radius:8px">'
+    +'<div style="font-size:11px;color:#888;margin-bottom:2px">확정 보증금 / 월세</div>'
+    +'<div style="font-size:14px;font-weight:700;color:#1565c0">'+fmt(p.deposit)+'만 / '+fmt(p.monthly)+'만원</div>'
+    +'</div>'
+    +'<div id="lu-result-'+p.ho+'" style="background:linear-gradient(135deg,#1a2744,#253a61);border-radius:8px;padding:10px;color:#fff;text-align:center">'
+    +'<div style="font-size:11px;color:#90caf9;margin-bottom:4px">무대출 수익률</div>'
+    +'<div style="font-size:26px;font-weight:900;color:#ffe082">—%</div>'
+    +'</div></div>';
+}
+function makeLeasedSumCard(selProps){
+  return '<div style="background:linear-gradient(135deg,#0d1f3d,#1a3060);border:1.5px solid #4a90d9;border-radius:12px;padding:14px;color:#fff">'
+    +'<div style="background:rgba(255,255,255,0.1);border-radius:8px;padding:8px 12px;margin-bottom:12px"><span style="font-size:15px;font-weight:700">📊 합계</span></div>'
+    +'<div style="padding:8px;background:rgba(255,255,255,0.05);border-radius:8px;margin-bottom:8px"><div style="font-size:11px;color:#90caf9;margin-bottom:2px">보증금 합계</div><div id="leased-sum-dep" style="font-size:20px;font-weight:900;color:#7ec8ff">—</div></div>'
+    +'<div style="padding:8px;background:rgba(255,255,255,0.05);border-radius:8px;margin-bottom:8px"><div style="font-size:11px;color:#90caf9;margin-bottom:2px">월세 합계</div><div id="leased-sum-mon" style="font-size:20px;font-weight:900;color:#90caf9">—</div></div>'
+    +'<div style="background:rgba(255,224,130,0.1);border-radius:8px;padding:10px"><div style="font-size:11px;color:#ffe082;margin-bottom:4px">평균 수익률</div><div id="leased-sum-yield" style="font-size:26px;font-weight:900;color:#ffe082">—%</div></div>'
+    +'</div>';
+}
+function onLeasedUnitDisc(el){
+  var ho=el.dataset.ho; var v=parseFloat(el.value);
+  _leasedUnitData[ho].disc=v; updateLeasedUnit(ho);
+  // 합계 업데이트
+  var sel=[...selHosL]; var props2=getCurProps();
+  var hoList=_leasedMode==='multi'?sel.slice(0,_leasedCount):sel.slice(0,1);
+  var selProps=hoList.map(function(ho){return props2.find(function(p){return p.ho===ho;});}).filter(Boolean);
+  if(selProps.length>=2){
+    var totDep=0,totMon=0,yvals=[];
+    selProps.forEach(function(p){
+      var d=_leasedUnitData[p.ho]||{disc:0};
+      var pr=Math.round(p.price*(1-d.disc/100));
+      var ni=pr-p.deposit*10000;
+      totDep+=p.deposit; totMon+=p.monthly;
+      if(ni>0&&p.monthly) yvals.push(p.monthly*10000*12/ni*100);
+    });
+    var avg=yvals.length?(yvals.reduce(function(a,b){return a+b;},0)/yvals.length):0;
+    var yc=avg>=5?'#69f0ae':avg>=4?'#ffcc02':'#ff6b6b';
+    var sd=document.getElementById('leased-sum-dep');
+    var sm=document.getElementById('leased-sum-mon');
+    var sy=document.getElementById('leased-sum-yield');
+    if(sd) sd.textContent=fmt(totDep)+'만원';
+    if(sm) sm.textContent=fmt(totMon)+'만원';
+    if(sy){sy.textContent=avg.toFixed(2)+'%'; sy.style.color=yc;}
+  }
+}
+function updateLeasedUnit(ho){
+  var props2=getCurProps();
+  var p=props2.find(function(x){return x.ho===ho;}); if(!p) return;
+  var d=_leasedUnitData[ho]||{disc:0};
+  var disc=d.disc||0;
+  var pr=Math.round(p.price*(1-disc/100));
+  var ni=pr-p.deposit*10000;
+  var yld=ni>0&&p.monthly?(p.monthly*10000*12/ni*100):0;
+  var yc=yld>=5?'#69f0ae':yld>=4?'#ffcc02':'#ff6b6b';
+  var el;
+  el=document.getElementById('lu-disc-pct-'+ho);   if(el) el.textContent=disc.toFixed(1)+'%';
+  el=document.getElementById('lu-disc-price-'+ho); if(el) el.textContent=disc>0?fmt(Math.round(pr/10000))+'만':'—';
+  el=document.getElementById('lu-result-'+ho);
+  if(el) el.innerHTML='<div style="font-size:11px;color:#90caf9;margin-bottom:4px">무대출 수익률</div>'
+    +'<div style="font-size:26px;font-weight:900;color:'+yc+'">'+yld.toFixed(2)+'%</div>';
+}
+
+// ── toggleHo / toggleHoL에 카드 재생성 연결
+var _origToggleHo = typeof toggleHo === 'function' ? toggleHo : null;
+function toggleHo(ho){
+  selHos.has(ho)?selHos.delete(ho):selHos.add(ho);
+  initChips();
+  updateSaleDiscDisplay();
+  rebuildSaleCards();
+}
+var _origToggleHoL = typeof toggleHoL === 'function' ? toggleHoL : null;
+function toggleHoL(ho){
+  selHosL.has(ho)?selHosL.delete(ho):selHosL.add(ho);
+  initChipsL();
+  updateLeasedDiscDisplay();
+  rebuildLeasedCards();
+}
+
+// ── 분양 계좌 저장/불러오기
+function saveSaleAcct(){
+  var bank=(document.getElementById('sale-acct-bank')||{value:''}).value.trim();
+  var num =(document.getElementById('sale-acct-num') ||{value:''}).value.trim();
+  var name=(document.getElementById('sale-acct-name')||{value:''}).value.trim();
+  if(!bank||!num){alert('은행명과 계좌번호를 입력해 주세요.');return;}
+  _saleSavedAcct={bank:bank,num:num,name:name};
+  window.storage.set('sd_sale_acct',JSON.stringify(_saleSavedAcct)).then(function(){
+    var el=document.getElementById('sale-acct-saved');
+    if(el) el.textContent='✅ 저장됨: '+bank+' '+num+(name?' ('+name+')':'');
+  });
+}
+function loadSaleAcct(){
+  window.storage.get('sd_sale_acct').then(function(r){
+    if(!r||!r.value) return;
+    try{
+      var d=typeof r.value==='string'?JSON.parse(r.value):r.value;
+      _saleSavedAcct=d;
+      var bEl=document.getElementById('sale-acct-bank');
+      var nEl=document.getElementById('sale-acct-num');
+      var aEl=document.getElementById('sale-acct-name');
+      var sEl=document.getElementById('sale-acct-saved');
+      if(bEl&&d.bank) bEl.value=d.bank;
+      if(nEl&&d.num)  nEl.value=d.num;
+      if(aEl&&d.name) aEl.value=d.name;
+      if(sEl) sEl.textContent='✅ 저장된 계좌: '+d.bank+' '+d.num+(d.name?' ('+d.name+')':'');
+    }catch(e){}
+  }).catch(function(){});
+}
+function onSaleStaffChange(){
+  var v=(document.getElementById('sale-staff-sel')||{value:'mun'}).value;
+  window.storage.set('sd_sale_staff',v).catch(function(){});
+}
+function loadSaleStaff(){
+  window.storage.get('sd_sale_staff').then(function(r){
+    if(!r||!r.value) return;
+    var el=document.getElementById('sale-staff-sel');
+    if(el) el.value=r.value;
+  }).catch(function(){});
 }
 
 // ── 납부일정 잔금 자동계산
