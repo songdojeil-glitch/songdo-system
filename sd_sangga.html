@@ -401,37 +401,155 @@ input[type=range]{width:100%;accent-color:#1a1a1a}
 <div id="tc2" class="tc">
   <div class="card">
     <p class="sec">⚙️ 임대 조건 설정</p>
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:14px">
-      <div>
-        <label class="fl">보증금 비율</label>
-        <div style="display:flex;align-items:center;gap:8px">
-          <input type="range" id="r2-deprate" min="3" max="20" value="5" step="1" oninput="updSlider2('deprate')">
-          <span class="slider-val" id="v2-deprate">5%</span>
+
+    <!-- 보증금 모드 -->
+    <div style="margin-bottom:14px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+        <label class="fl" style="margin:0">💰 보증금</label>
+        <div style="display:flex;border:0.5px solid #ddd;border-radius:6px;overflow:hidden">
+          <button id="r2-dep-pct-btn" onclick="setDepMode2('pct')" style="padding:3px 10px;font-size:11px;background:#1a1a1a;color:#fff;border:none;cursor:pointer">비율%</button>
+          <button id="r2-dep-amt-btn" onclick="setDepMode2('amt')" style="padding:3px 10px;font-size:11px;background:#fff;color:#666;border:none;cursor:pointer">직접입력</button>
         </div>
       </div>
-      <div>
-        <label class="fl">적용 수익률</label>
-        <div style="display:flex;align-items:center;gap:8px">
-          <input type="range" id="r2-yield" min="3" max="8" value="4.5" step="0.1" oninput="updSlider2('yield')">
+      <div id="r2-dep-pct-wrap" style="display:flex;align-items:center;gap:8px">
+        <input type="range" id="r2-deprate" min="3" max="20" value="5" step="1" oninput="updSlider2('deprate');calcRent2Derived()">
+        <span class="slider-val" id="v2-deprate">5%</span>
+        <span style="font-size:11px;color:#aaa" id="v2-dep-calc">— 호실 선택 후 표시</span>
+      </div>
+      <div id="r2-dep-amt-wrap" style="display:none;align-items:center;gap:8px;flex-wrap:wrap">
+        <input type="number" id="r2-dep-amt" class="fi" placeholder="보증금 (만원)" step="100" style="font-size:12px;width:140px" oninput="calcRent2Derived()">
+        <span style="font-size:11px;color:#aaa">100만원 단위</span>
+      </div>
+    </div>
+
+    <!-- 월세 모드 3가지 -->
+    <div style="margin-bottom:14px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+        <label class="fl" style="margin:0">🏷️ 월세</label>
+        <div style="display:flex;border:0.5px solid #ddd;border-radius:6px;overflow:hidden">
+          <button id="r2-mon-yield-btn" onclick="setMonMode2('yield')" style="padding:3px 9px;font-size:11px;background:#1a1a1a;color:#fff;border:none;cursor:pointer">수익률</button>
+          <button id="r2-mon-step-btn"  onclick="setMonMode2('step')"  style="padding:3px 9px;font-size:11px;background:#fff;color:#666;border:none;cursor:pointer">5만단위</button>
+          <button id="r2-mon-fix-btn"   onclick="setMonMode2('fix')"   style="padding:3px 9px;font-size:11px;background:#fff;color:#666;border:none;cursor:pointer">정액</button>
+        </div>
+      </div>
+      <!-- 수익률 연동 모드 -->
+      <div id="r2-mon-yield-wrap">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+          <input type="range" id="r2-yield" min="3" max="8" value="4.5" step="0.1" oninput="updSlider2('yield');calcRent2Derived()">
           <span class="slider-val" id="v2-yield">4.5%</span>
         </div>
+        <div id="r2-derived-mon" style="font-size:12px;color:#1565c0;font-weight:600;min-height:20px"></div>
       </div>
+      <!-- 5만원 단위 조정 모드 -->
+      <div id="r2-mon-step-wrap" style="display:none">
+        <div style="display:flex;align-items:center;gap:8px">
+          <button onclick="adjMon2(-5)" style="padding:4px 12px;border:1px solid #ddd;border-radius:6px;cursor:pointer;font-size:14px">−5</button>
+          <span id="r2-mon-step-val" style="min-width:80px;text-align:center;font-size:16px;font-weight:700;color:#c62828">— 만원</span>
+          <button onclick="adjMon2(5)"  style="padding:4px 12px;border:1px solid #ddd;border-radius:6px;cursor:pointer;font-size:14px">+5</button>
+        </div>
+        <div id="r2-derived-yield-step" style="font-size:12px;color:#888;margin-top:4px;min-height:20px"></div>
+      </div>
+      <!-- 정액 입력 모드 -->
+      <div id="r2-mon-fix-wrap" style="display:none">
+        <div style="display:flex;align-items:center;gap:8px">
+          <input type="number" id="r2-mon-fix-amt" class="fi" placeholder="월세 (만원)" step="5" style="font-size:12px;width:140px" oninput="calcRent2Derived()">
+          <span style="font-size:11px;color:#aaa">만원</span>
+        </div>
+        <div id="r2-derived-yield-fix" style="font-size:12px;color:#888;margin-top:4px;min-height:20px"></div>
+      </div>
+    </div>
+
+    <!-- 대출/이자율 -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
       <div>
         <label class="fl">대출 비율</label>
         <div style="display:flex;align-items:center;gap:8px">
-          <input type="range" id="r2-loan" min="0" max="80" value="60" step="10" oninput="updSlider2('loan')">
+          <input type="range" id="r2-loan" min="0" max="80" value="60" step="10" oninput="updSlider2('loan');calcRent2Derived()">
           <span class="slider-val" id="v2-loan">60%</span>
         </div>
       </div>
       <div>
         <label class="fl">이자율</label>
         <div style="display:flex;align-items:center;gap:8px">
-          <input type="range" id="r2-rate" min="2" max="8" value="4" step="0.1" oninput="updSlider2('rate')">
+          <input type="range" id="r2-rate" min="2" max="8" value="4" step="0.1" oninput="updSlider2('rate');calcRent2Derived()">
           <span class="slider-val" id="v2-rate">4.0%</span>
         </div>
       </div>
     </div>
+
+    <!-- 입점업종 + 랜트프리 -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;border-top:0.5px solid #f0f0f0;padding-top:12px">
+      <div>
+        <label class="fl">🏪 입점 추천 업종</label>
+        <input type="text" id="r2-tenant" class="fi" placeholder="예: 산부인과병원, 카페" style="font-size:12px">
+      </div>
+      <div>
+        <label class="fl">📅 랜트프리 기간 (개월)</label>
+        <input type="number" id="r2-rentfree" class="fi" placeholder="예: 4" min="0" max="24" style="font-size:12px">
+      </div>
+    </div>
+
+    <!-- 납부 일정: 금액+날짜 -->
+    <div style="border-top:0.5px solid #f0f0f0;padding-top:12px">
+      <p style="font-size:11px;color:#aaa;margin:0 0 10px">📋 보증금 납부 일정</p>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
+        <div>
+          <label class="fl">계약금 비율 (%)</label>
+          <div style="display:flex;align-items:center;gap:6px">
+            <input type="number" id="r2-contract-pct" class="fi" value="10" min="5" max="50" step="5" style="font-size:12px;width:70px" oninput="calc2Schedule()">
+            <span style="font-size:11px;color:#aaa">%</span>
+          </div>
+          <label class="fl" style="margin-top:6px">납부일</label>
+          <input type="date" id="r2-contract-date" class="fi">
+        </div>
+        <div>
+          <label class="fl">중도금 비율 (%)</label>
+          <div style="display:flex;align-items:center;gap:6px">
+            <input type="number" id="r2-mid-pct" class="fi" value="10" min="0" max="50" step="5" style="font-size:12px;width:70px" oninput="calc2Schedule()">
+            <span style="font-size:11px;color:#aaa">%</span>
+          </div>
+          <label class="fl" style="margin-top:6px">납부일</label>
+          <input type="date" id="r2-mid-date" class="fi">
+        </div>
+        <div>
+          <label class="fl">잔금 비율 (%)</label>
+          <div style="display:flex;align-items:center;gap:6px">
+            <span id="r2-balance-pct-display" style="font-size:14px;font-weight:700;color:#1565c0">80%</span>
+            <span style="font-size:11px;color:#aaa">(자동계산)</span>
+          </div>
+          <label class="fl" style="margin-top:6px">납부일</label>
+          <input type="date" id="r2-balance-date" class="fi">
+        </div>
+      </div>
+    </div>
+
+    <!-- 사진 업로드 (임대 견적서 전용) -->
+    <div style="border-top:0.5px solid #f0f0f0;padding-top:12px;margin-top:4px">
+      <p style="font-size:11px;color:#aaa;margin:0 0 10px">📷 임대 견적서 사진 (최대 3장)</p>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">
+        <div id="r2-photo-slot-1">
+          <label class="fl">사진 1</label>
+          <input type="file" id="r2-photo-1" accept="image/*" onchange="onRentPhoto(1,this)" style="font-size:11px;width:100%">
+          <div id="r2-photo-preview-1" style="margin-top:4px"></div>
+        </div>
+        <div id="r2-photo-slot-2">
+          <label class="fl">사진 2</label>
+          <input type="file" id="r2-photo-2" accept="image/*" onchange="onRentPhoto(2,this)" style="font-size:11px;width:100%">
+          <div id="r2-photo-preview-2" style="margin-top:4px"></div>
+        </div>
+        <div id="r2-photo-slot-3">
+          <label class="fl">사진 3</label>
+          <input type="file" id="r2-photo-3" accept="image/*" onchange="onRentPhoto(3,this)" style="font-size:11px;width:100%">
+          <div id="r2-photo-preview-3" style="margin-top:4px"></div>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <button onclick="saveRentPhotos()" class="btn-s" style="font-size:11px;background:#1565c0;color:#fff;border-color:#1565c0">💾 사진 저장</button>
+        <button onclick="clearRentPhotos()" class="btn-s" style="font-size:11px">🗑️ 사진 초기화</button>
+      </div>
+    </div>
   </div>
+
   <div class="card">
     <p class="sec">🏢 호실 선택</p>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px" id="floor-filter-tabs2"></div>
@@ -443,7 +561,8 @@ input[type=range]{width:100%;accent-color:#1a1a1a}
   </div>
   <div style="display:flex;gap:8px;margin-bottom:1rem">
     <button onclick="genEstimate('rent')" class="btn-p" style="flex:1">📄 임대 견적서 생성</button>
-    <button onclick="window.print()" class="btn-s">🖨️ 인쇄/PDF</button>
+    <button onclick="printRentEst()" class="btn-s" style="background:#1a2744;color:#fff;border-color:#1a2744">🖨️ 인쇄/PDF</button>
+    <button onclick="saveRentEstImage()" class="btn-s" style="background:#2e7d32;color:#fff;border-color:#2e7d32">🖼️ 이미지 저장</button>
   </div>
   <div id="est-preview2"></div>
 </div>
@@ -672,6 +791,7 @@ function initBuildings(){
     renderBldgTabs();
     selectBldg(BUILDINGS[0].id);
     loadBldgPhotos();
+    loadRentPhotos();
   }).catch(function(e){
     console.warn('[SD상가] Firebase 로드 실패, 기본 데이터 사용:', e);
     BUILDINGS = [{id:'es5', name:'송도에스파이브시티', props: JSON.parse(JSON.stringify(ES5_PROPS))}];
@@ -1246,6 +1366,234 @@ function updSlider(k){
   var v=parseFloat(document.getElementById('r-'+k).value);
   document.getElementById('v-'+k).textContent=k==='yield'||k==='rate'?v.toFixed(1)+'%':v+'%';
 }
+// ── 임대견적서 보증금 모드
+var _r2DepMode = 'pct'; // 'pct' | 'amt'
+function setDepMode2(m){
+  _r2DepMode = m;
+  document.getElementById('r2-dep-pct-wrap').style.display = m==='pct'?'flex':'none';
+  document.getElementById('r2-dep-amt-wrap').style.display = m==='amt'?'flex':'none';
+  document.getElementById('r2-dep-pct-btn').style.background = m==='pct'?'#1a1a1a':'#fff';
+  document.getElementById('r2-dep-pct-btn').style.color = m==='pct'?'#fff':'#666';
+  document.getElementById('r2-dep-amt-btn').style.background = m==='amt'?'#1a1a1a':'#fff';
+  document.getElementById('r2-dep-amt-btn').style.color = m==='amt'?'#fff':'#666';
+  calcRent2Derived();
+}
+
+// ── 임대견적서 월세 모드
+var _r2MonMode = 'yield'; // 'yield' | 'step' | 'fix'
+var _r2MonStep = 0; // 5만원 단위 현재값
+function setMonMode2(m){
+  _r2MonMode = m;
+  ['yield','step','fix'].forEach(function(x){
+    document.getElementById('r2-mon-'+x+'-wrap').style.display = x===m?'block':'none';
+    var btn = document.getElementById('r2-mon-'+x+'-btn');
+    btn.style.background = x===m?'#1a1a1a':'#fff';
+    btn.style.color = x===m?'#fff':'#666';
+  });
+  calcRent2Derived();
+}
+
+// ── 보증금 가져오기
+function getRent2Deposit(price){
+  if(_r2DepMode==='amt'){
+    var v=parseFloat(document.getElementById('r2-dep-amt').value||0);
+    return Math.round(v/100)*100; // 100만원 단위
+  }
+  var r=parseFloat(document.getElementById('r2-deprate').value)/100;
+  return Math.round(price/10000*r/100)*100; // 분양가 기준 % → 만원
+}
+
+// ── 월세 가져오기
+function getRent2Monthly(price, dep){
+  if(_r2MonMode==='yield'){
+    var yr=parseFloat(document.getElementById('r2-yield').value)/100;
+    var annualIncome = (price - dep*10000) * yr; // 순투자금 기준
+    return Math.round(annualIncome/12/10000/5)*5; // 5만원 단위
+  }
+  if(_r2MonMode==='step'){
+    return _r2MonStep;
+  }
+  if(_r2MonMode==='fix'){
+    return parseFloat(document.getElementById('r2-mon-fix-amt').value||0);
+  }
+  return 0;
+}
+
+// ── 종속값 표시
+function calcRent2Derived(){
+  var selList = typeof selHos2!=='undefined' ? [...selHos2] : [];
+  var props2 = typeof allProps!=='undefined' ? allProps : [];
+  var selProps = selList.map(function(ho){return props2.find(function(p){return p.ho===ho;});}).filter(Boolean);
+
+  // ── 보증금 미리보기 (비율 모드)
+  var depCalcEl = document.getElementById('v2-dep-calc');
+  if(depCalcEl){
+    if(_r2DepMode==='pct' && selProps.length>0){
+      var depAmts = selProps.map(function(p){return getRent2Deposit(p.price);});
+      var avgDep = Math.round(depAmts.reduce(function(a,b){return a+b;},0)/depAmts.length);
+      depCalcEl.textContent = '→ 평균 '+fmt(avgDep)+'만원';
+    } else if(_r2DepMode==='pct'){
+      depCalcEl.textContent = '— 호실 선택 후 표시';
+    } else {
+      depCalcEl.textContent = '';
+    }
+  }
+
+  var loanRate = parseFloat(document.getElementById('r2-loan').value)||60;
+  var intRate  = parseFloat(document.getElementById('r2-rate').value)||4;
+
+  // ── 공통 카드 렌더러
+  function makeCard(rows, avgLabel, avgVal, color){
+    if(!rows.length) return '';
+    var rowsHtml = rows.map(function(r){
+      return '<tr style="font-size:12px">'
+        +'<td style="padding:3px 8px;font-weight:700;color:#333">'+r.ho+'</td>'
+        +'<td style="padding:3px 8px;color:#1565c0;font-weight:600">'+fmt(r.dep)+'만</td>'
+        +'<td style="padding:3px 8px;color:#c62828;font-weight:600">'+fmt(r.mon)+'만</td>'
+        +'<td style="padding:3px 8px;color:'+r.nc+';font-weight:700">'+r.nl+'%</td>'
+        +'<td style="padding:3px 8px;color:'+r.wc+';font-weight:700">'+r.wl+'%</td>'
+        +'</tr>';
+    }).join('');
+    return '<div style="background:#f8faff;border:1px solid #c5cae9;border-radius:8px;padding:8px 4px;margin-top:6px">'
+      +'<table style="width:100%;border-collapse:collapse"><thead>'
+      +'<tr style="font-size:11px;color:#888;border-bottom:1px solid #e0e0e0">'
+      +'<th style="padding:2px 8px;text-align:left">호수</th>'
+      +'<th style="padding:2px 8px;text-align:left">보증금</th>'
+      +'<th style="padding:2px 8px;text-align:left">'+avgLabel+'</th>'
+      +'<th style="padding:2px 8px;text-align:left">무대출수익률</th>'
+      +'<th style="padding:2px 8px;text-align:left">대출수익률</th>'
+      +'</tr></thead><tbody>'+rowsHtml+'</tbody></table>'
+      +'<div style="text-align:right;font-size:12px;color:'+color+';font-weight:700;padding:4px 8px 0">평균 '+avgVal+'</div>'
+      +'</div>';
+  }
+
+  function yieldColor(v){ return v>=5?'#2e7d32':v>=4?'#e65100':'#c62828'; }
+
+  // ── 수익률 모드: 보증금 + 수익률 고정 → 월세 표시
+  if(_r2MonMode==='yield'){
+    var rows=[], totMon=0;
+    selProps.forEach(function(p){
+      var dep = getRent2Deposit(p.price);
+      var mon = getRent2Monthly(p.price, dep);
+      var yl  = calcYield(p.price, dep, mon, loanRate, intRate);
+      var nl=yl.noLoan, wl=yl.withLoan;
+      totMon += mon;
+      rows.push({ho:p.ho, dep:dep, mon:mon,
+        nl:nl.toFixed(2), nc:yieldColor(nl),
+        wl:wl.toFixed(2), wc:yieldColor(wl)});
+    });
+    var avgMon = rows.length ? Math.round(totMon/rows.length) : 0;
+    var html = selProps.length===0
+      ? '<span style="color:#aaa;font-size:12px">호실 선택 후 표시</span>'
+      : makeCard(rows, '월세(산출)', fmt(avgMon)+'만원', '#1565c0');
+    document.getElementById('r2-derived-mon').innerHTML = html;
+  }
+
+  // ── 5만단위 모드: 보증금 + 월세 고정 → 수익률 표시
+  if(_r2MonMode==='step'){
+    var mon2 = _r2MonStep;
+    var rows2=[], totNl=0, totWl=0;
+    selProps.forEach(function(p){
+      var dep = getRent2Deposit(p.price);
+      if(!mon2){ rows2.push({ho:p.ho,dep:dep,mon:0,nl:'—',nc:'#aaa',wl:'—',wc:'#aaa'}); return; }
+      var yl = calcYield(p.price, dep, mon2, loanRate, intRate);
+      totNl+=yl.noLoan; totWl+=yl.withLoan;
+      rows2.push({ho:p.ho, dep:dep, mon:mon2,
+        nl:yl.noLoan.toFixed(2), nc:yieldColor(yl.noLoan),
+        wl:yl.withLoan.toFixed(2), wc:yieldColor(yl.withLoan)});
+    });
+    var avgNl2 = rows2.length&&mon2 ? (totNl/rows2.length).toFixed(2) : '—';
+    var avgWl2 = rows2.length&&mon2 ? (totWl/rows2.length).toFixed(2) : '—';
+    var html2 = selProps.length===0
+      ? '<span style="color:#aaa;font-size:12px">호실 선택 후 표시</span>'
+      : makeCard(rows2, '월세', avgNl2+'% / 대출 '+avgWl2+'%', '#c62828');
+    document.getElementById('r2-derived-yield-step').innerHTML = html2;
+  }
+
+  // ── 정액 모드: 보증금 + 월세 고정 → 수익률 표시
+  if(_r2MonMode==='fix'){
+    var monFix = parseFloat(document.getElementById('r2-mon-fix-amt').value||0);
+    var rows3=[], totNl3=0, totWl3=0;
+    selProps.forEach(function(p){
+      var dep = getRent2Deposit(p.price);
+      if(!monFix){ rows3.push({ho:p.ho,dep:dep,mon:0,nl:'—',nc:'#aaa',wl:'—',wc:'#aaa'}); return; }
+      var yl = calcYield(p.price, dep, monFix, loanRate, intRate);
+      totNl3+=yl.noLoan; totWl3+=yl.withLoan;
+      rows3.push({ho:p.ho, dep:dep, mon:monFix,
+        nl:yl.noLoan.toFixed(2), nc:yieldColor(yl.noLoan),
+        wl:yl.withLoan.toFixed(2), wc:yieldColor(yl.withLoan)});
+    });
+    var avgNl3 = rows3.length&&monFix ? (totNl3/rows3.length).toFixed(2) : '—';
+    var avgWl3 = rows3.length&&monFix ? (totWl3/rows3.length).toFixed(2) : '—';
+    var html3 = selProps.length===0
+      ? '<span style="color:#aaa;font-size:12px">호실 선택 후 표시</span>'
+      : makeCard(rows3, '월세', avgNl3+'% / 대출 '+avgWl3+'%', '#c62828');
+    document.getElementById('r2-derived-yield-fix').innerHTML = html3;
+  }
+}
+
+// ── 5만원 단위 조정
+function adjMon2(delta){
+  _r2MonStep = Math.max(0, (_r2MonStep||0)+delta);
+  document.getElementById('r2-mon-step-val').textContent = _r2MonStep+'만원';
+  calcRent2Derived();
+}
+
+// ── 납부일정 잔금 자동계산
+function calc2Schedule(){
+  var c=parseFloat(document.getElementById('r2-contract-pct').value||10);
+  var m=parseFloat(document.getElementById('r2-mid-pct').value||10);
+  var b=Math.max(0,100-c-m);
+  document.getElementById('r2-balance-pct-display').textContent=b+'%';
+}
+
+// ── 임대 견적서 전용 사진
+window._rentPhoto1=''; window._rentPhoto2=''; window._rentPhoto3='';
+function onRentPhoto(n, input){
+  if(!input.files||!input.files[0]) return;
+  var reader=new FileReader();
+  reader.onload=function(e){
+    window['_rentPhoto'+n]=e.target.result;
+    var prev=document.getElementById('r2-photo-preview-'+n);
+    if(prev) prev.innerHTML='<img src="'+e.target.result+'" style="width:100%;height:70px;object-fit:cover;border-radius:6px;margin-top:4px">';
+  };
+  reader.readAsDataURL(input.files[0]);
+}
+function saveRentPhotos(){
+  var saves=[1,2,3].map(function(n){return window.storage.set('sd_rent_photo'+n,window['_rentPhoto'+n]||'');});
+  Promise.all(saves).then(function(){alert('✅ 임대 견적서 사진 저장됨');}).catch(function(){alert('❌ 저장 실패');});
+}
+function loadRentPhotos(){
+  [1,2,3].forEach(function(n){
+    window.storage.get('sd_rent_photo'+n).then(function(r){
+      if(!r||!r.value) return;
+      var url=typeof r.value==='string'?r.value:'';
+      if(url){
+        window['_rentPhoto'+n]=url;
+        var prev=document.getElementById('r2-photo-preview-'+n);
+        if(prev) prev.innerHTML='<img src="'+url+'" style="width:100%;height:70px;object-fit:cover;border-radius:6px;margin-top:4px">';
+      }
+    }).catch(function(){});
+  });
+}
+function clearRentPhotos(){
+  [1,2,3].forEach(function(n){window['_rentPhoto'+n]='';var prev=document.getElementById('r2-photo-preview-'+n);if(prev)prev.innerHTML='';});
+}
+
+// ── 임대 견적서 인쇄/저장
+function printRentEst(){
+  var el=document.getElementById('est-preview2');
+  if(!el||!el.innerHTML.trim()){alert('먼저 견적서를 생성해 주세요.');return;}
+  if(!window.html2canvas){var s=document.createElement('script');s.src='https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';s.onload=function(){doPrintImage(el,'임대견적서');};document.head.appendChild(s);}
+  else{doPrintImage(el,'임대견적서');}
+}
+function saveRentEstImage(){
+  var el=document.getElementById('est-preview2');
+  if(!el||!el.innerHTML.trim()){alert('먼저 견적서를 생성해 주세요.');return;}
+  if(!window.html2canvas){var s=document.createElement('script');s.src='https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';s.onload=function(){doSaveImageNamed(el,'임대견적서');};document.head.appendChild(s);}
+  else{doSaveImageNamed(el,'임대견적서');}
+}
+
 function updSlider2(k){
   var v=parseFloat(document.getElementById('r2-'+k).value);
   document.getElementById('v2-'+k).textContent=k==='yield'||k==='rate'?v.toFixed(1)+'%':v+'%';
@@ -1396,7 +1744,7 @@ function initChips2(){
   }).join('');
   document.getElementById('sel-cnt2').textContent = selHos2.size ? selHos2.size+'개 선택됨' : '';
 }
-function toggleHo2(ho){selHos2.has(ho)?selHos2.delete(ho):selHos2.add(ho);initChips2();}
+function toggleHo2(ho){selHos2.has(ho)?selHos2.delete(ho):selHos2.add(ho);initChips2();calcRent2Derived();}
 function clearSelHo2(){selHos2.clear();initChips2();}
 
 // ═══ 견적서 생성
@@ -1523,12 +1871,18 @@ function genEstimate(type){
   if(type==='rent'){
     var sel=[...selHos2];
     if(!sel.length){alert('호실을 선택해 주세요.');return;}
-    var selProps=sel.map(function(ho){return props.find(function(p){return p.ho===ho;});}).filter(Boolean);
-    var depRate2=parseFloat(document.getElementById('r2-deprate').value)/100;
-    var yRate2=parseFloat(document.getElementById('r2-yield').value)/100;
+    var selProps2=sel.map(function(ho){return props.find(function(p){return p.ho===ho;});}).filter(Boolean);
     var loanRate2=parseFloat(document.getElementById('r2-loan').value);
     var intRate2=parseFloat(document.getElementById('r2-rate').value);
-    var html=buildRentEstimate(selProps,bldgName,estDate,depRate2,yRate2,loanRate2,intRate2);
+    var tenant2=document.getElementById('r2-tenant').value.trim();
+    var rentFree2=parseInt(document.getElementById('r2-rentfree').value||0)||0;
+    var conPct2=parseFloat(document.getElementById('r2-contract-pct').value||10);
+    var midPct2=parseFloat(document.getElementById('r2-mid-pct').value||10);
+    var balPct2=Math.max(0,100-conPct2-midPct2);
+    var conDate2=(document.getElementById('r2-contract-date').value||'').replace(/-/g,'.');
+    var midDate2=(document.getElementById('r2-mid-date').value||'').replace(/-/g,'.');
+    var balDate2=(document.getElementById('r2-balance-date').value||'').replace(/-/g,'.');
+    var html=buildRentEstimate(selProps2,bldgName,estDate,loanRate2,intRate2,tenant2,rentFree2,conPct2,midPct2,balPct2,conDate2,midDate2,balDate2);
     document.getElementById('est-preview2').innerHTML=html;
     document.getElementById('print-content').innerHTML=html;
   }
@@ -1641,7 +1995,7 @@ function buildSaleEstimate(selProps,bldgName,estDate,discount,contractRate,depRa
     +'<div style="background:#1a2744;color:#fff;border-radius:10px 10px 0 0;padding:18px 24px;margin:-1.5rem -1.5rem 1.5rem;display:flex;justify-content:space-between;align-items:flex-start">'
     +'<div><div style="font-size:12px;color:#90caf9;margin-bottom:4px">송도제일공인중개사사무소</div>'
     +'<div style="font-size:22px;font-weight:700">'+bldgName+' 분양견적서</div>'
-    +(discount>0?'<div style="margin-top:10px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">'  +'<span style="background:#FFD600;color:#1a1a1a;padding:5px 14px;border-radius:20px;font-size:14px;font-weight:800;letter-spacing:0.03em;box-shadow:0 2px 6px rgba(255,214,0,0.5)">🏷️ 할인율 '+discPct+'%</span>'  +'<span style="background:#e53935;color:#fff;padding:5px 14px;border-radius:20px;font-size:14px;font-weight:800;letter-spacing:0.03em;box-shadow:0 2px 6px rgba(229,57,53,0.5)">💰 할인금액 '+fmt(discAmt)+'만원</span>'  +'<span style="background:rgba(255,255,255,0.15);color:#ffe082;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:600;border:1px solid rgba(255,214,0,0.4)">분양가 할인 적용</span>'  +'</div>':'')
+    +(discount>0?'<div style="margin-top:8px;display:flex;gap:8px"><span style="background:#c62828;color:#fff;padding:4px 12px;border-radius:12px;font-size:13px;font-weight:700">할인율 '+discPct+'%</span><span style="background:rgba(255,255,255,0.2);color:#fff;padding:4px 12px;border-radius:12px;font-size:13px">할인금액 '+fmt(discAmt)+'원</span></div>':'')
     +'</div><div style="font-size:14px;color:#90caf9;white-space:nowrap;font-weight:500">견적일: '+estDate+'</div></div>'
     +photoHtml
     +'<div style="background:#1a2744;color:#fff;padding:10px 16px;border-radius:8px;font-size:14px;font-weight:700;margin-bottom:10px">■ 분양 견적 가격'+(discount>0?' <span style="font-size:12px;font-weight:400;color:#90caf9">('+discPct+'% 할인 적용)</span>':'')+'</div>'
@@ -1662,44 +2016,109 @@ function buildSaleEstimate(selProps,bldgName,estDate,discount,contractRate,depRa
     +'</div></div></div>';
 }
 
-function buildRentEstimate(selProps,bldgName,estDate,depRate,yRate,loanRate,intRate){
-  var photos=[window._bldgPhoto1||'',window._bldgPhoto2||'',window._bldgPhoto3||''].filter(Boolean);
-  var cols=photos.length||1;
+function buildRentEstimate(selProps,bldgName,estDate,loanRate,intRate,tenant,rentFree,conPct,midPct,balPct,conDate,midDate,balDate){
+  // 사진: 임대 견적서 전용(_rentPhoto) 우선, 없으면 건물 사진(_bldgPhoto) 사용
+  var photos=[
+    window._rentPhoto1||window._bldgPhoto1||'',
+    window._rentPhoto2||window._bldgPhoto2||'',
+    window._rentPhoto3||window._bldgPhoto3||''
+  ].filter(Boolean);
+  var cols=Math.min(photos.length,3)||1;
   var photoHtml=photos.length>0
-    ?'<div style="display:grid;grid-template-columns:repeat('+cols+',1fr);gap:8px;margin-bottom:1.5rem">'+photos.map(function(src){return'<img src="'+src+'" style="width:100%;height:150px;object-fit:cover;border-radius:8px">';}).join('')+'</div>'
+    ?'<div style="display:grid;grid-template-columns:repeat('+cols+',1fr);gap:8px;margin-bottom:1.5rem">'+photos.map(function(src){return'<img src="'+src+'" style="width:100%;height:160px;object-fit:cover;border-radius:8px">';}).join('')+'</div>'
     :'';
+
+  // 각 호별 보증금·월세 계산
   var rows=selProps.map(function(p,i){
-    var cm=calcMonthly(p.price,depRate*100,yRate*100);
-    var yl=calcYield(p.price,cm.dep,cm.mon,loanRate,intRate);
-    var rentPM=p.area>0?(cm.mon*10000/p.area).toFixed(0):'—';
-    var ni=p.price-cm.dep*10000;
-    var nc=yl.noLoan>=5?'#2e7d32':yl.noLoan>=4?'#e65100':'#c62828';
-    var wc=yl.withLoan>=5?'#2e7d32':yl.withLoan>=4?'#e65100':'#c62828';
-    return'<tr><td>'+( i+1)+'</td><td style="font-weight:700">'+p.ho+'</td>'
-      +'<td>'+p.area+'㎡ ('+p.areaPy.toFixed(2)+'평)</td>'
-      +'<td>'+fmt(p.price)+'</td>'
-      +'<td style="font-size:15px;font-weight:700;color:#1565c0">'+fmt(cm.dep)+'만원</td>'
-      +'<td style="font-size:15px;font-weight:700;color:#c62828">'+fmt(cm.mon)+'만원</td>'
-      +'<td>'+fmt(ni)+'</td>'
-      +'<td style="font-size:15px;font-weight:700;color:'+nc+'">'+yl.noLoan.toFixed(2)+'%</td>'
-      +'<td>'+fmt(Math.round(p.price*loanRate/100))+'</td>'
-      +'<td>'+fmt(Math.round(yl.interest))+'</td>'
-      +'<td>'+fmt(Math.round(yl.netMon))+'</td>'
-      +'<td style="font-size:15px;font-weight:700;color:'+wc+'">'+yl.withLoan.toFixed(2)+'%</td></tr>';
+    var dep=getRent2Deposit(p.price);
+    var mon=getRent2Monthly(p.price,dep);
+    var ni=p.price-dep*10000;
+    // 납부일정
+    var cAmt=Math.round(dep*conPct/100/100)*100;
+    var mAmt=Math.round(dep*midPct/100/100)*100;
+    var bAmt=dep-cAmt-mAmt;
+    return {p:p,dep:dep,mon:mon,ni:ni,cAmt:cAmt,mAmt:mAmt,bAmt:bAmt,i:i};
+  });
+
+  // 임대가격 테이블
+  var totDep=0,totMon=0;
+  var rows1html=rows.map(function(r){
+    totDep+=r.dep; totMon+=r.mon;
+    return '<tr>'
+      +'<td>'+(r.i+1)+'</td>'
+      +'<td style="font-weight:700">'+r.p.ho+'</td>'
+      +'<td>'+r.p.area+'㎡</td><td>'+r.p.areaPy.toFixed(3)+'평</td>'
+      +'<td>'+r.p.supArea+'㎡</td><td>'+r.p.supAreaPy.toFixed(3)+'평</td>'
+      +'<td style="font-weight:700">'+fmt(r.p.price)+'</td>'
+      +'<td style="font-size:15px;font-weight:700;color:#1565c0">'+fmt(r.dep)+'만원</td>'
+      +'<td style="font-size:15px;font-weight:700;color:#c62828">'+fmt(r.mon)+'만원</td>'
+      +(tenant?'<td style="font-size:12px;color:#1565c0;font-weight:600">'+tenant+'</td>':'<td>—</td>')
+      +'</tr>';
   }).join('');
-  return'<div class="est-card" id="est-card-main" style="max-width:1100px;margin:0 auto">'
-    +'<div style="background:#1a2744;color:#fff;border-radius:10px 10px 0 0;padding:18px 24px;margin:-1.5rem -1.5rem 1.5rem;display:flex;justify-content:space-between">'
-    +'<div><div style="font-size:12px;color:#90caf9">송도제일공인중개사사무소</div>'
-    +'<div style="font-size:22px;font-weight:700">'+bldgName+' 임대 견적서</div></div>'
-    +'<div style="font-size:14px;color:#90caf9;font-weight:500">견적일: '+estDate+'</div></div>'
+  rows1html+='<tr style="background:#0d1f3d;color:#fff;font-weight:700;border-top:2px solid #4a90d9">'
+    +'<td colspan="2">합계</td>'
+    +'<td colspan="4"></td>'
+    +'<td>—</td>'
+    +'<td style="color:#7ec8ff">'+fmt(totDep)+'만원</td>'
+    +'<td style="color:#ffb3b3">'+fmt(totMon)+'만원</td>'
+    +'<td></td>'
+    +'</tr>';
+
+  // 납부일정 테이블
+  var totC=0,totM=0,totB=0;
+  var rows2html=rows.map(function(r){
+    totC+=r.cAmt; totM+=r.mAmt; totB+=r.bAmt;
+    return '<tr>'
+      +'<td>'+(r.i+1)+'</td>'
+      +'<td style="font-weight:700">'+r.p.ho+'</td>'
+      +'<td style="font-weight:700">'+fmt(r.cAmt)+'만원</td>'
+      +(midPct>0?'<td>'+fmt(r.mAmt)+'만원</td>':'<td style="color:#aaa;font-size:12px">없음</td>')
+      +'<td style="font-weight:700">'+fmt(r.bAmt)+'만원</td>'
+      +(rentFree>0?'<td style="color:#e65100;font-weight:700">'+rentFree+'개월</td>':'<td>—</td>')
+      +'</tr>';
+  }).join('');
+  rows2html+='<tr style="background:#0d1f3d;color:#fff;font-weight:700;border-top:2px solid #4a90d9">'
+    +'<td colspan="2">합계</td>'
+    +'<td style="color:#7ec8ff">'+fmt(totC)+'만원</td>'
+    +(midPct>0?'<td style="color:#ccc">'+fmt(totM)+'만원</td>':'<td></td>')
+    +'<td style="color:#ffe082">'+fmt(totB)+'만원</td>'
+    +'<td></td>'
+    +'</tr>';
+
+  // 납부일정 헤더
+  var sch2hdr='<tr style="background:#1a2744"><th>NO</th><th>호수</th>'
+    +'<th>계약금 '+conPct+'%'+(conDate?' ('+conDate+')':'')+' </th>'
+    +(midPct>0?'<th>중도금 '+midPct+'%'+(midDate?' ('+midDate+')':'')+' </th>':'<th style="color:#778">중도금</th>')
+    +'<th>잔금 '+balPct+'%'+(balDate?' ('+balDate+')':'')+' </th>'
+    +(rentFree>0?'<th>랜트프리</th>':'<th></th>')
+    +'</tr>';
+
+  return '<div class="est-card" id="est-card-rent" style="max-width:1100px;margin:0 auto;font-family:-apple-system,BlinkMacSystemFont,sans-serif">'
+    +'<div style="background:#1a2744;color:#fff;border-radius:10px 10px 0 0;padding:18px 24px;margin:-1.5rem -1.5rem 1.5rem;display:flex;justify-content:space-between;align-items:flex-start">'
+    +'<div><div style="font-size:12px;color:#90caf9;margin-bottom:4px">송도제일공인중개사사무소</div>'
+    +'<div style="font-size:22px;font-weight:700">'+bldgName+' 임대 견적서</div>'
+    +(tenant?'<div style="margin-top:8px"><span style="background:#FFD600;color:#1a1a1a;padding:4px 12px;border-radius:20px;font-size:13px;font-weight:700">★ 입점 추천 업종: '+tenant+'</span></div>':'')
+    +'</div>'
+    +'<div style="font-size:14px;color:#90caf9;font-weight:500;white-space:nowrap">견적일: '+estDate+'</div></div>'
     +photoHtml
-    +'<p style="font-size:12px;color:#888;margin:0 0 10px">적용수익률 '+(yRate*100).toFixed(1)+'% | 보증금비율 '+(depRate*100).toFixed(0)+'% | 대출비율 '+loanRate+'% | 이자율 '+intRate+'%</p>'
-    +'<div style="overflow-x:auto"><table class="est-tbl"><thead>'
-    +'<tr style="background:#1a2744"><th>NO</th><th>호수</th><th>전용면적</th><th>공급금액</th><th>보증금</th><th>월세</th><th>실투자금</th><th>무대출수익률</th><th>대출금</th><th>월이자</th><th>순월세</th><th>대출수익률</th></tr>'
-    +'</thead><tbody>'+rows+'</tbody></table></div>'
-    +'<div style="margin-top:1rem;padding:12px 16px;background:#f0f4ff;border-radius:8px;font-size:12px">'
-    +'<strong>수협은행 1010-1152-5134</strong> 주식회사 에스개발 &nbsp;|&nbsp; <strong>송도제일공인중개사사무소</strong> 032-851-6688'
-    +'</div></div>';
+    +'<div style="background:#1a2744;color:#fff;padding:10px 16px;border-radius:8px;font-size:14px;font-weight:700;margin-bottom:10px">■ 임대 견적 가격</div>'
+    +'<div style="overflow-x:auto;margin-bottom:2rem"><table class="est-tbl"><thead>'
+    +'<tr style="background:#1a2744"><th>NO</th><th>호수</th><th colspan="2">전용면적</th><th colspan="2">분양면적</th><th>분양가</th><th style="background:#1e3a6f">보증금</th><th style="background:#3a1a0a;background:#4a1a00">월세</th><th>입점업종</th></tr>'
+    +'<tr style="background:#2d3f61;color:#b0bec5;font-size:11px"><td></td><td></td><td>㎡</td><td>평</td><td>㎡</td><td>평</td><td></td><td></td><td></td><td></td></tr>'
+    +'</thead><tbody>'+rows1html+'</tbody></table></div>'
+    +'<div style="background:#1a2744;color:#fff;padding:10px 16px;border-radius:8px;font-size:14px;font-weight:700;margin-bottom:10px">■ 보증금 납부일정</div>'
+    +'<div style="overflow-x:auto;margin-bottom:2rem"><table class="est-tbl"><thead>'
+    +sch2hdr
+    +'</thead><tbody>'+rows2html+'</tbody></table></div>'
+    +'<div style="background:#f0f4ff;border:1px solid #c5cae9;border-radius:10px;padding:16px 20px">'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">'
+    +'<div><div style="font-size:12px;color:#666;margin-bottom:4px">■ 보증금 입금계좌</div>'
+    +'<div style="font-size:16px;font-weight:700">수협은행 1010-1152-5134</div>'
+    +'<div style="font-size:12px;color:#888">주식회사 에스개발</div></div>'
+    +'<div><div style="font-size:12px;color:#666;margin-bottom:4px">■ 상담문의</div>'
+    +'<div style="font-size:16px;font-weight:700">송도제일공인중개사사무소</div>'
+    +'<div style="font-size:12px;color:#888">032-851-6688</div></div>'
+    +'</div></div></div>';
 }
 
 function buildLeasedEstimate(selProps, bldgName, estDate, discountPct, loanRate, intRate, contractRateL, midRatePctL){
@@ -1831,10 +2250,9 @@ function buildLeasedEstimate(selProps, bldgName, estDate, discountPct, loanRate,
     +'<div style="background:#1a2744;color:#fff;border-radius:10px 10px 0 0;padding:18px 24px;margin:-1.5rem -1.5rem 1.5rem;display:flex;justify-content:space-between;align-items:flex-start">'
     +'<div><div style="font-size:12px;color:#90caf9;margin-bottom:4px">송도제일공인중개사사무소</div>'
     +'<div style="font-size:22px;font-weight:700">'+bldgName+' 임대완료 분양호실 견적서</div>'
-    +(discountPct>0?'<div style="margin-top:10px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">'
-      +'<span style="background:#FFD600;color:#1a1a1a;padding:5px 14px;border-radius:20px;font-size:14px;font-weight:800;letter-spacing:0.03em;box-shadow:0 2px 6px rgba(255,214,0,0.5)">🏷️ 할인율 '+discountPct+'%</span>'
-      +'<span style="background:#e53935;color:#fff;padding:5px 14px;border-radius:20px;font-size:14px;font-weight:800;letter-spacing:0.03em;box-shadow:0 2px 6px rgba(229,57,53,0.5)">💰 할인금액 '+fmt(discAmt)+'만원</span>'
-      +'<span style="background:rgba(255,255,255,0.15);color:#ffe082;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:600;border:1px solid rgba(255,214,0,0.4)">분양가 할인 적용</span>'
+    +(discountPct>0?'<div style="margin-top:8px;display:flex;gap:8px">'
+      +'<span style="background:#c62828;color:#fff;padding:4px 12px;border-radius:12px;font-size:13px;font-weight:700">할인율 '+discountPct+'%</span>'
+      +'<span style="background:rgba(255,255,255,0.2);color:#fff;padding:4px 12px;border-radius:12px;font-size:13px">할인금액 '+fmt(discAmt)+'원</span>'
       +'</div>':'')
     +'</div><div style="font-size:14px;color:#90caf9;white-space:nowrap;font-weight:500">견적일: '+estDate+'</div></div>'
     +photoHtml
