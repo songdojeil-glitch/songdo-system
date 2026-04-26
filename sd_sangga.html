@@ -65,7 +65,176 @@ input[type=range]{width:100%;accent-color:#1a1a1a}
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-storage-compat.js"></script>
-<script src="firebase-storage.js"></script>
+<script>
+/* ============================================================
+ * firebase-storage.js — 인라인 병합 (GitHub Pages 단일 파일 배포용)
+ * ============================================================ */
+var FIREBASE_CONFIG = {
+  apiKey:            "AIzaSyCMYoUBhRv_NkKeHmPqgXoqqXUjVsjEJPs",
+  authDomain:        "songdojeil-202604.firebaseapp.com",
+  databaseURL:       "https://songdojeil-202604-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId:         "songdojeil-202604",
+  storageBucket:     "songdojeil-202604.firebasestorage.app",
+  messagingSenderId: "567683904975",
+  appId:             "1:567683904975:web:65a652a8e7b9a81e034eba"
+};
+(function() {
+  try {
+    if (!firebase.apps || !firebase.apps.length) {
+      firebase.initializeApp(FIREBASE_CONFIG);
+    }
+  } catch (e) { console.error('[SD] Firebase 초기화 실패:', e); }
+})();
+window.storage = (function() {
+  var ROOT = 'sd';
+  function getDb() { return firebase.database(); }
+  function ref(key) { return getDb().ref(ROOT + '/' + key); }
+  return {
+    get: async function(key, shared) {
+      try {
+        var snap = await ref(key).once('value');
+        var val = snap.val();
+        if (val === null || val === undefined) return null;
+        return { key: key, value: val, shared: !!shared };
+      } catch (e) { console.error('[SD] storage.get 오류 (' + key + '):', e); return null; }
+    },
+    set: async function(key, value, shared) {
+      try {
+        await ref(key).set(value);
+        return { key: key, value: value, shared: !!shared };
+      } catch (e) { console.error('[SD] storage.set 오류 (' + key + '):', e); return null; }
+    },
+    delete: async function(key, shared) {
+      try {
+        await ref(key).remove();
+        return { key: key, deleted: true, shared: !!shared };
+      } catch (e) { console.error('[SD] storage.delete 오류 (' + key + '):', e); return null; }
+    },
+    list: async function(prefix, shared) {
+      try {
+        var snap = await getDb().ref(ROOT).once('value');
+        var all = snap.val() || {};
+        var keys = Object.keys(all).filter(function(k) { return !prefix || k.startsWith(prefix); });
+        return { keys: keys, prefix: prefix, shared: !!shared };
+      } catch (e) { console.error('[SD] storage.list 오류:', e); return { keys: [] }; }
+    },
+    onChange: function(key, callback) { ref(key).on('value', function(snap) { callback(snap.val()); }); },
+    offChange: function(key) { ref(key).off(); }
+  };
+})();
+window.sdImage = (function() {
+  function getStorage() {
+    if (!firebase.storage) throw new Error('firebase-storage-compat.js가 로드되지 않았습니다.');
+    return firebase.storage();
+  }
+  function compressImage(file) {
+    return new Promise(function(resolve, reject) {
+      var maxSide = 1600, quality = 0.85;
+      if (!file.type.match(/^image\//)) { reject(new Error('이미지 파일이 아닙니다: ' + file.name)); return; }
+      var reader = new FileReader();
+      reader.onerror = function() { reject(new Error('파일 읽기 실패')); };
+      reader.onload = function(e) {
+        var img = new Image();
+        img.onerror = function() { reject(new Error('이미지 디코딩 실패')); };
+        img.onload = function() {
+          var w = img.width, h = img.height;
+          if (w > maxSide || h > maxSide) {
+            if (w >= h) { h = Math.round(h * maxSide / w); w = maxSide; }
+            else { w = Math.round(w * maxSide / h); h = maxSide; }
+          }
+          var canvas = document.createElement('canvas');
+          canvas.width = w; canvas.height = h;
+          canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+          canvas.toBlob(function(blob) {
+            if (!blob) { reject(new Error('압축 실패')); return; }
+            resolve(blob);
+          }, 'image/jpeg', quality);
+        };
+        img.src = e.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+  function makeThumbnail(blob) {
+    return new Promise(function(resolve, reject) {
+      var size = 400, quality = 0.7;
+      var reader = new FileReader();
+      reader.onerror = function() { reject(new Error('썸네일 읽기 실패')); };
+      reader.onload = function(e) {
+        var img = new Image();
+        img.onerror = function() { reject(new Error('썸네일 디코딩 실패')); };
+        img.onload = function() {
+          var canvas = document.createElement('canvas');
+          canvas.width = size; canvas.height = size;
+          var ctx = canvas.getContext('2d');
+          var r = Math.max(size / img.width, size / img.height);
+          var nw = img.width * r, nh = img.height * r;
+          ctx.drawImage(img, (size - nw) / 2, (size - nh) / 2, nw, nh);
+          canvas.toBlob(function(out) {
+            if (!out) { reject(new Error('썸네일 생성 실패')); return; }
+            resolve(out);
+          }, 'image/jpeg', quality);
+        };
+        img.src = e.target.result;
+      };
+      reader.readAsDataURL(blob);
+    });
+  }
+  async function upload(file, folder, propId, onProgress) {
+    if (!file) throw new Error('파일이 없습니다.');
+    if (!folder) folder = 'misc';
+    if (!propId) propId = 'general';
+    var compressed = await compressImage(file);
+    var thumb = await makeThumbnail(compressed);
+    var ts = Date.now(), rnd = Math.random().toString(36).slice(2, 8);
+    var safeName = (file.name || 'image').replace(/[^\w.가-힣-]/g, '_').replace(/\.[^.]+$/, '');
+    var fileName = ts + '_' + rnd + '_' + safeName + '.jpg';
+    var basePath = 'images/' + folder + '/' + propId;
+    var mainPath = basePath + '/' + fileName;
+    var thumbPath = basePath + '/thumbs/' + fileName;
+    var storage = getStorage();
+    var mainRef = storage.ref(mainPath), thumbRef = storage.ref(thumbPath);
+    var mainTask = mainRef.put(compressed, { contentType: 'image/jpeg' });
+    if (typeof onProgress === 'function') mainTask.on('state_changed', function(snap) { onProgress(Math.round((snap.bytesTransferred / snap.totalBytes) * 70)); });
+    await mainTask;
+    var thumbTask = thumbRef.put(thumb, { contentType: 'image/jpeg' });
+    if (typeof onProgress === 'function') thumbTask.on('state_changed', function(snap) { onProgress(70 + Math.round((snap.bytesTransferred / snap.totalBytes) * 30)); });
+    await thumbTask;
+    var url = await mainRef.getDownloadURL();
+    var thumbUrl = await thumbRef.getDownloadURL();
+    return { url, thumbUrl, path: mainPath, thumbPath, name: safeName, size: compressed.size, uploadedAt: new Date().toISOString() };
+  }
+  async function remove(path, thumbPath) {
+    if (!path) return;
+    var storage = getStorage();
+    await storage.ref(path).delete().catch(function(e) { if (e.code !== 'storage/object-not-found') throw e; });
+    if (!thumbPath) { var parts = path.split('/'); var fname = parts.pop(); thumbPath = parts.join('/') + '/thumbs/' + fname; }
+    await storage.ref(thumbPath).delete().catch(function(e) { if (e.code !== 'storage/object-not-found') throw e; });
+  }
+  async function removeAll(folder, propId) {
+    if (!folder || !propId) return;
+    var storage = getStorage();
+    var baseRef = storage.ref('images/' + folder + '/' + propId);
+    var list = await baseRef.listAll();
+    var deletes = [];
+    list.items.forEach(function(item) { deletes.push(item.delete()); });
+    list.prefixes.forEach(function(pref) { pref.listAll().then(function(sub) { sub.items.forEach(function(item) { deletes.push(item.delete()); }); }); });
+    await Promise.all(deletes);
+  }
+  return { upload, remove, removeAll, _compress: compressImage, _thumb: makeThumbnail };
+})();
+document.addEventListener('DOMContentLoaded', function() {
+  try {
+    var connRef = firebase.database().ref('.info/connected');
+    connRef.on('value', function(snap) {
+      var el = document.getElementById('fb-status');
+      if (!el) return;
+      if (snap.val() === true) { el.textContent = '🟢 실시간 연결됨'; el.style.color = '#4caf7d'; }
+      else { el.textContent = '🔴 연결 끊김 (오프라인)'; el.style.color = '#e85c5c'; }
+    });
+  } catch(e) { console.warn('[SD] fb-status 연결 표시 실패:', e); }
+});
+</script>
 </head>
 <body>
 <script>
