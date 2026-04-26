@@ -2722,20 +2722,45 @@ function saveFpSlots(){
     if(el) labels[i]=el.value;
   }
   window.storage.set('sd_fp_labels',JSON.stringify(labels)).catch(function(){});
-  // 이미지는 슬롯별 개별 저장 (용량 분산)
   var keys=Object.keys(_fpSlotData);
   if(!keys.length){alert('저장할 이미지가 없습니다.');return;}
-  var saved=0;
-  keys.forEach(function(idx){
-    window.storage.set('sd_fp_img_'+idx, _fpSlotData[idx]).then(function(){
-      saved++;
-      if(saved===keys.length) showToast('도면 저장 완료 ('+saved+'장)');
-    }).catch(function(){});
+  showToast('저장 중... ('+keys.length+'장)');
+  var saved=0, failed=0;
+  keys.forEach(function(slotIdx){
+    // 저장 전 1800px로 리사이즈해서 용량 감소 (도면 가독성 유지)
+    resizeDataUrl(_fpSlotData[slotIdx], 1800, 0.82, function(resized){
+      window.storage.set('sd_fp_img_'+slotIdx, resized).then(function(r){
+        if(!r){ failed++; console.warn('슬롯'+slotIdx+' 저장 실패 (용량 초과 가능)'); }
+        else saved++;
+        if(saved+failed===keys.length){
+          if(failed>0) showToast('⚠️ '+saved+'장 저장, '+failed+'장 실패 (용량 초과)');
+          else showToast('✅ 도면 저장 완료 ('+saved+'장)');
+        }
+      }).catch(function(e){
+        failed++;
+        console.error('슬롯'+slotIdx+' 저장 오류:', e);
+        if(saved+failed===keys.length)
+          showToast('⚠️ '+saved+'장 저장, '+failed+'장 실패');
+      });
+    });
   });
 }
 
+// DataURL 리사이즈 헬퍼
+function resizeDataUrl(dataUrl, maxW, quality, callback){
+  var img=new Image();
+  img.onload=function(){
+    var w=img.width, h=img.height;
+    if(w>maxW){ h=Math.round(h*maxW/w); w=maxW; }
+    var cv=document.createElement('canvas');
+    cv.width=w; cv.height=h;
+    cv.getContext('2d').drawImage(img,0,0,w,h);
+    callback(cv.toDataURL('image/jpeg',quality));
+  };
+  img.src=dataUrl;
+}
+
 function loadFpSlots(){
-  // 라벨 로드
   window.storage.get('sd_fp_labels').then(function(r){
     if(!r||!r.value) return;
     try{
@@ -2746,12 +2771,13 @@ function loadFpSlots(){
       });
     }catch(e){}
   }).catch(function(){});
-  // 이미지 로드
   for(var i=0;i<15;i++){
     (function(idx){
       window.storage.get('sd_fp_img_'+idx).then(function(r){
         if(r&&r.value) setFpSlot(idx,r.value);
-      }).catch(function(){});
+      }).catch(function(e){
+        // 키 없음은 정상 (저장 안 된 슬롯)
+      });
     })(i);
   }
 }
@@ -3130,6 +3156,22 @@ function getFpLabelForHo(ho){
   var slotIdx=floorNum+2;
   var el=document.getElementById('fp-label-'+slotIdx);
   return el?el.value:'지상'+floorNum+'층 도면';
+}
+
+// ── 토스트 알림
+function showToast(msg, duration){
+  duration = duration||2500;
+  var el=document.getElementById('_toast_el');
+  if(!el){
+    el=document.createElement('div');
+    el.id='_toast_el';
+    el.style.cssText='position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:rgba(26,39,68,0.95);color:#fff;padding:10px 20px;border-radius:20px;font-size:13px;font-weight:600;z-index:9999;pointer-events:none;transition:opacity .3s;white-space:nowrap;box-shadow:0 4px 16px rgba(0,0,0,0.3)';
+    document.body.appendChild(el);
+  }
+  el.textContent=msg;
+  el.style.opacity='1';
+  clearTimeout(el._timer);
+  el._timer=setTimeout(function(){ el.style.opacity='0'; }, duration);
 }
 
 // ── 납부일정 잔금 자동계산
