@@ -943,28 +943,35 @@ input[type=range]{width:100%;accent-color:#1a1a1a}
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
     <div>
       <h3 style="margin:0;font-size:15px;font-weight:700">📋 분양홍보자료</h3>
-      <p style="margin:3px 0 0;font-size:11px;color:#888">PDF 파일 업로드 → 내장 뷰어로 바로 확인 · 좌우 페이지 이동</p>
+      <p style="margin:3px 0 0;font-size:11px;color:#888">PDF 업로드 → 페이지별 이미지 변환 저장 · 재방문 시 자동 로드</p>
     </div>
-    <div style="display:flex;gap:6px">
-      <label class="btn-s" style="cursor:pointer;background:#1565c0;color:#fff;border-color:#1565c0;font-size:11px">
+    <div style="display:flex;gap:6px;align-items:center">
+      <label class="btn-s" style="cursor:pointer;background:#7b1fa2;color:#fff;border-color:#7b1fa2;font-size:11px">
         📄 PDF 업로드 <input type="file" id="brochure-input" accept=".pdf" style="display:none" onchange="onBrochureUpload(this)">
       </label>
+      <button onclick="saveBrochurePages()" class="btn-s" style="background:#2e7d32;color:#fff;border-color:#2e7d32;font-size:11px">💾 저장</button>
       <button onclick="clearBrochure()" class="btn-s" style="font-size:11px">🗑️ 초기화</button>
+      <span id="brochure-count" style="font-size:12px;color:#888"></span>
     </div>
   </div>
-  <!-- PDF 뷰어 -->
-  <div id="brochure-viewer-wrap" style="background:#555;border-radius:10px;padding:16px;min-height:500px;display:flex;flex-direction:column;align-items:center;gap:10px">
-    <div id="brochure-placeholder" style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:400px;color:#aaa">
-      <div style="font-size:48px;margin-bottom:12px">📋</div>
-      <div style="font-size:14px">PDF 파일을 업로드하면 여기에 표시됩니다</div>
+  <!-- 진행 상태 -->
+  <div id="brochure-progress" style="display:none;background:#e3f2fd;border-radius:8px;padding:10px 14px;margin-bottom:10px;font-size:12px;color:#1565c0"></div>
+  <!-- 뷰어 영역 -->
+  <div id="brochure-viewer-wrap" style="background:#333;border-radius:10px;min-height:400px;display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative;overflow:hidden">
+    <div id="brochure-placeholder" style="display:flex;flex-direction:column;align-items:center;color:#aaa;gap:10px">
+      <div style="font-size:48px">📋</div>
+      <div style="font-size:14px">PDF를 업로드하면 페이지별로 저장됩니다</div>
     </div>
-    <canvas id="brochure-canvas" style="display:none;max-width:100%;border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,0.4)"></canvas>
-    <div id="brochure-nav" style="display:none;align-items:center;gap:12px;background:rgba(0,0,0,0.5);padding:8px 16px;border-radius:20px">
-      <button onclick="brochurePage(-1)" style="background:none;border:none;color:#fff;font-size:20px;cursor:pointer">◀</button>
-      <span id="brochure-page-info" style="color:#fff;font-size:13px;min-width:80px;text-align:center">1 / 1</span>
-      <button onclick="brochurePage(1)"  style="background:none;border:none;color:#fff;font-size:20px;cursor:pointer">▶</button>
-    </div>
+    <!-- 메인 뷰어 이미지 -->
+    <img id="brochure-main-img" src="" style="display:none;max-width:100%;max-height:76vh;object-fit:contain;border-radius:4px">
+    <!-- 좌우 화살표 -->
+    <button onclick="brochurePage(-1)" id="brochure-prev" style="display:none;position:absolute;left:8px;top:50%;transform:translateY(-50%);background:rgba(0,0,0,0.5);color:#fff;border:none;border-radius:50%;width:44px;height:44px;font-size:20px;cursor:pointer;z-index:2">◀</button>
+    <button onclick="brochurePage(1)"  id="brochure-next" style="display:none;position:absolute;right:8px;top:50%;transform:translateY(-50%);background:rgba(0,0,0,0.5);color:#fff;border:none;border-radius:50%;width:44px;height:44px;font-size:20px;cursor:pointer;z-index:2">▶</button>
+    <!-- 페이지 정보 -->
+    <div id="brochure-nav" style="display:none;position:absolute;bottom:10px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.55);color:#fff;padding:5px 16px;border-radius:16px;font-size:13px;pointer-events:none"></div>
   </div>
+  <!-- 썸네일 스트립 -->
+  <div id="brochure-thumbs" style="display:flex;gap:6px;flex-wrap:nowrap;overflow-x:auto;padding:8px 0;margin-top:8px;min-height:70px"></div>
 </div>
 
 <!-- TAB8 조감도&사진 -->
@@ -2968,93 +2975,188 @@ function getFpForFloor(ho){
 }
 
 // ══════════════════════════════════════════
-// TAB7 분양홍보자료 PDF 뷰어
+// TAB7 분양홍보자료 — 페이지별 이미지 저장
 // ══════════════════════════════════════════
-var _brochurePdf=null, _brochurePage=1;
+var _brochurePages = []; // {url, pageNum}
+var _brochureIdx   = 0;
 
 function initBrochureTab(){
-  // 이미 로드됐으면 skip
+  renderBrochureViewer();
 }
 
+// PDF 업로드 → 페이지별 고해상도 이미지 변환
 function onBrochureUpload(input){
   if(!input.files[0]) return;
   var file=input.files[0];
-  // Firebase에 base64로 저장 (PDF는 용량이 크므로 5MB 제한 안내)
+  var prog=document.getElementById('brochure-progress');
+  if(prog){ prog.style.display='block'; prog.textContent='📄 PDF 분석 중...'; }
   var reader=new FileReader();
   reader.onload=function(e){
-    var b64=btoa(String.fromCharCode.apply(null,new Uint8Array(e.target.result)));
-    var dataUrl='data:application/pdf;base64,'+b64;
-    // 5MB 이하만 Firebase에 저장
-    if(dataUrl.length < 6*1024*1024){
-      window.storage.set('sd_brochure_pdf', dataUrl).then(function(){
-        showToast('✅ 분양홍보자료 저장됨');
-      }).catch(function(){ showToast('⚠️ 용량 초과로 저장 불가 (세션 중만 유지)'); });
-    } else {
-      showToast('⚠️ PDF 용량 초과 (5MB 이상) — 세션 중만 유지됩니다');
-    }
-    loadBrochurePdf(dataUrl);
+    var typedArray=new Uint8Array(e.target.result);
+    if(typeof pdfjsLib==='undefined'){
+      var s=document.createElement('script');
+      s.src='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+      s.onload=function(){
+        pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+        renderBrochurePdf(typedArray);
+      };
+      document.head.appendChild(s);
+    } else { renderBrochurePdf(typedArray); }
   };
   reader.readAsArrayBuffer(file);
   input.value='';
 }
 
+function renderBrochurePdf(typedArray){
+  pdfjsLib.getDocument({data:typedArray}).promise.then(function(pdf){
+    var total=pdf.numPages;
+    var prog=document.getElementById('brochure-progress');
+    _brochurePages=[];
+    var rendered=0;
+    if(prog) prog.textContent='🔄 페이지 변환 중... (0/'+total+')';
+    for(var p=1;p<=total;p++){
+      (function(pageNum){
+        pdf.getPage(pageNum).then(function(page){
+          var origVp=page.getViewport({scale:1});
+          // 홍보자료: 1800px 기준 고품질
+          var scale=Math.min(1800/origVp.width, 2.5);
+          var vp=page.getViewport({scale:scale});
+          var cv=document.createElement('canvas');
+          cv.width=vp.width; cv.height=vp.height;
+          page.render({canvasContext:cv.getContext('2d'),viewport:vp}).promise.then(function(){
+            var url=cv.toDataURL('image/jpeg',0.88);
+            _brochurePages[pageNum-1]={url:url, pageNum:pageNum};
+            rendered++;
+            if(prog) prog.textContent='🔄 페이지 변환 중... ('+rendered+'/'+total+')';
+            if(rendered===total){
+              if(prog){ prog.textContent='✅ '+total+'페이지 변환 완료 — 💾 저장 버튼을 눌러 저장하세요'; }
+              _brochureIdx=0;
+              renderBrochureViewer();
+              updateBrochureCount();
+            }
+          });
+        });
+      })(p);
+    }
+  });
+}
+
+// 뷰어 렌더링
+function renderBrochureViewer(){
+  var ph  =document.getElementById('brochure-placeholder');
+  var img =document.getElementById('brochure-main-img');
+  var prev=document.getElementById('brochure-prev');
+  var next=document.getElementById('brochure-next');
+  var nav =document.getElementById('brochure-nav');
+  var thumbs=document.getElementById('brochure-thumbs');
+  if(!_brochurePages.length){
+    if(ph)  ph.style.display='flex';
+    if(img) img.style.display='none';
+    if(prev) prev.style.display='none';
+    if(next) next.style.display='none';
+    if(nav)  nav.style.display='none';
+    if(thumbs) thumbs.innerHTML='';
+    return;
+  }
+  var p=_brochurePages[_brochureIdx];
+  if(!p) return;
+  if(ph)  ph.style.display='none';
+  if(img){ img.src=p.url; img.style.display='block'; }
+  if(prev) prev.style.display='block';
+  if(next) next.style.display='block';
+  if(nav){
+    nav.style.display='block';
+    nav.textContent=(_brochureIdx+1)+' / '+_brochurePages.length;
+  }
+  // 썸네일 스트립
+  if(thumbs){
+    thumbs.innerHTML=_brochurePages.map(function(pg,i){
+      var active=i===_brochureIdx;
+      return '<div onclick="brochureGoTo('+i+')" style="flex-shrink:0;cursor:pointer;border-radius:4px;overflow:hidden;border:2px solid '+(active?'#64b5f6':'transparent')+';transition:border-color .15s">'
+        +'<img src="'+pg.url+'" style="height:60px;width:auto;display:block">'
+        +'<div style="background:rgba(0,0,0,0.6);color:#fff;font-size:9px;text-align:center;padding:1px">p'+pg.pageNum+'</div>'
+        +'</div>';
+    }).join('');
+    // 현재 썸네일로 스크롤
+    var activeTh=thumbs.children[_brochureIdx];
+    if(activeTh) activeTh.scrollIntoView({behavior:'smooth',inline:'center',block:'nearest'});
+  }
+}
+
+function brochurePage(d){
+  if(!_brochurePages.length) return;
+  _brochureIdx=(_brochureIdx+d+_brochurePages.length)%_brochurePages.length;
+  renderBrochureViewer();
+}
+function brochureGoTo(i){ _brochureIdx=i; renderBrochureViewer(); }
+
+function updateBrochureCount(){
+  var el=document.getElementById('brochure-count');
+  if(el) el.textContent=_brochurePages.length?_brochurePages.length+'페이지':'';
+}
+
+// 저장 (페이지별 분산 저장)
+function saveBrochurePages(){
+  if(!_brochurePages.length){alert('저장할 내용이 없습니다.');return;}
+  var total=_brochurePages.length;
+  showToast('저장 중... ('+total+'페이지)');
+  window.storage.set('sd_brochure_count',String(total)).catch(function(){});
+  var saved=0, failed=0;
+  _brochurePages.forEach(function(pg,i){
+    window.storage.set('sd_brochure_p'+i, pg.url).then(function(r){
+      if(!r) failed++; else saved++;
+      if(saved+failed===total){
+        if(failed>0) showToast('⚠️ '+saved+'/'+total+'페이지 저장 ('+failed+'개 용량초과)');
+        else showToast('✅ 분양홍보자료 '+total+'페이지 저장 완료');
+        var prog=document.getElementById('brochure-progress');
+        if(prog) prog.textContent='✅ '+saved+'페이지 저장 완료';
+      }
+    }).catch(function(){
+      failed++;
+      if(saved+failed===total) showToast('⚠️ '+saved+'/'+total+'페이지 저장');
+    });
+  });
+}
+
+// 로드
 function loadBrochureFromStorage(){
-  window.storage.get('sd_brochure_pdf').then(function(r){
-    if(r&&r.value) loadBrochurePdf(r.value);
+  window.storage.get('sd_brochure_count').then(function(r){
+    if(!r||!r.value) return;
+    var total=parseInt(r.value)||0;
+    if(!total) return;
+    _brochurePages=[];
+    var loaded=0;
+    for(var i=0;i<total;i++){
+      (function(idx){
+        window.storage.get('sd_brochure_p'+idx).then(function(pr){
+          if(pr&&pr.value) _brochurePages[idx]={url:pr.value,pageNum:idx+1};
+          loaded++;
+          if(loaded===total){
+            _brochureIdx=0;
+            renderBrochureViewer();
+            updateBrochureCount();
+          }
+        }).catch(function(){ loaded++; });
+      })(i);
+    }
   }).catch(function(){});
 }
 
+// 초기화
 function clearBrochure(){
-  _brochurePdf=null; _brochurePage=1;
-  window.storage.set('sd_brochure_pdf','').catch(function(){});
-  var ph=document.getElementById('brochure-placeholder');
-  var cv=document.getElementById('brochure-canvas');
-  var nav=document.getElementById('brochure-nav');
-  if(ph) ph.style.display='flex';
-  if(cv) cv.style.display='none';
-  if(nav) nav.style.display='none';
+  if(!confirm('분양홍보자료를 초기화할까요?')) return;
+  _brochurePages=[]; _brochureIdx=0;
+  window.storage.get('sd_brochure_count').then(function(r){
+    var cnt=parseInt((r&&r.value)||0);
+    for(var i=0;i<cnt;i++) window.storage.set('sd_brochure_p'+i,'').catch(function(){});
+    window.storage.set('sd_brochure_count','0').catch(function(){});
+  }).catch(function(){});
+  renderBrochureViewer();
+  updateBrochureCount();
+  var prog=document.getElementById('brochure-progress');
+  if(prog) prog.style.display='none';
   showToast('분양홍보자료 초기화됨');
 }
-
-function loadBrochurePdf(url){
-  if(typeof pdfjsLib==='undefined'){
-    var s=document.createElement('script');
-    s.src='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
-    s.onload=function(){
-      pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-      _loadBrochure(url);
-    };
-    document.head.appendChild(s);
-  } else { _loadBrochure(url); }
-}
-
-function _loadBrochure(url){
-  pdfjsLib.getDocument(url).promise.then(function(pdf){
-    _brochurePdf=pdf; _brochurePage=1;
-    document.getElementById('brochure-placeholder').style.display='none';
-    document.getElementById('brochure-canvas').style.display='block';
-    document.getElementById('brochure-nav').style.display='flex';
-    renderBrochurePage(1);
-  });
-}
-
-function renderBrochurePage(n){
-  if(!_brochurePdf) return;
-  n=Math.max(1,Math.min(n,_brochurePdf.numPages));
-  _brochurePage=n;
-  _brochurePdf.getPage(n).then(function(page){
-    var cv=document.getElementById('brochure-canvas');
-    var scale=Math.min(cv.parentElement.clientWidth/page.getViewport({scale:1}).width*0.9, 2);
-    var vp=page.getViewport({scale:scale});
-    cv.width=vp.width; cv.height=vp.height;
-    page.render({canvasContext:cv.getContext('2d'),viewport:vp});
-    document.getElementById('brochure-page-info').textContent=n+' / '+_brochurePdf.numPages;
-  });
-}
-
-function brochurePage(d){ renderBrochurePage(_brochurePage+d); }
-
-
 // ══════════════════════════════════════════
 // TAB8 조감도&사진
 // ══════════════════════════════════════════
