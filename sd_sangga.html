@@ -1057,12 +1057,24 @@ document.addEventListener('DOMContentLoaded', function(){
     retry = retry||0;
     if(window.storage && typeof window.storage.get === 'function'){
       initBuildings();
+      if(typeof loadPhotos==='function') loadPhotos();
+      if(typeof loadFpSlots==='function') loadFpSlots();
+      if(typeof loadBrochureFromStorage==='function') loadBrochureFromStorage();
+      if(typeof loadSaleAcct==='function') loadSaleAcct();
+      if(typeof loadStaff==='function') loadStaff();
+      if(typeof loadAcct==='function') loadAcct();
     } else if(retry < 20){
       setTimeout(function(){ waitStorage(retry+1); }, 200);
     } else {
       BUILDINGS = [{id:'es5', name:'송도에스파이브시티', props: ES5_PROPS}];
       renderBldgTabs();
       selectBldg('es5');
+      if(typeof loadPhotos==='function') loadPhotos();
+      if(typeof loadFpSlots==='function') loadFpSlots();
+      if(typeof loadBrochureFromStorage==='function') loadBrochureFromStorage();
+      if(typeof loadSaleAcct==='function') loadSaleAcct();
+      if(typeof loadStaff==='function') loadStaff();
+      if(typeof loadAcct==='function') loadAcct();
     }
   }
   waitStorage();
@@ -2967,9 +2979,41 @@ function initBrochureTab(){
 function onBrochureUpload(input){
   if(!input.files[0]) return;
   var file=input.files[0];
-  var url=URL.createObjectURL(file);
-  loadBrochurePdf(url);
+  // Firebase에 base64로 저장 (PDF는 용량이 크므로 5MB 제한 안내)
+  var reader=new FileReader();
+  reader.onload=function(e){
+    var b64=btoa(String.fromCharCode.apply(null,new Uint8Array(e.target.result)));
+    var dataUrl='data:application/pdf;base64,'+b64;
+    // 5MB 이하만 Firebase에 저장
+    if(dataUrl.length < 6*1024*1024){
+      window.storage.set('sd_brochure_pdf', dataUrl).then(function(){
+        showToast('✅ 분양홍보자료 저장됨');
+      }).catch(function(){ showToast('⚠️ 용량 초과로 저장 불가 (세션 중만 유지)'); });
+    } else {
+      showToast('⚠️ PDF 용량 초과 (5MB 이상) — 세션 중만 유지됩니다');
+    }
+    loadBrochurePdf(dataUrl);
+  };
+  reader.readAsArrayBuffer(file);
   input.value='';
+}
+
+function loadBrochureFromStorage(){
+  window.storage.get('sd_brochure_pdf').then(function(r){
+    if(r&&r.value) loadBrochurePdf(r.value);
+  }).catch(function(){});
+}
+
+function clearBrochure(){
+  _brochurePdf=null; _brochurePage=1;
+  window.storage.set('sd_brochure_pdf','').catch(function(){});
+  var ph=document.getElementById('brochure-placeholder');
+  var cv=document.getElementById('brochure-canvas');
+  var nav=document.getElementById('brochure-nav');
+  if(ph) ph.style.display='flex';
+  if(cv) cv.style.display='none';
+  if(nav) nav.style.display='none';
+  showToast('분양홍보자료 초기화됨');
 }
 
 function loadBrochurePdf(url){
@@ -3009,12 +3053,7 @@ function renderBrochurePage(n){
 }
 
 function brochurePage(d){ renderBrochurePage(_brochurePage+d); }
-function clearBrochure(){
-  _brochurePdf=null; _brochurePage=1;
-  document.getElementById('brochure-placeholder').style.display='flex';
-  document.getElementById('brochure-canvas').style.display='none';
-  document.getElementById('brochure-nav').style.display='none';
-}
+
 
 // ══════════════════════════════════════════
 // TAB8 조감도&사진
