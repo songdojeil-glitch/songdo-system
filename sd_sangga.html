@@ -1443,13 +1443,10 @@ function genEstimate(type){
     var sel=[...selHosL];
     if(!sel.length){alert('호실을 선택해 주세요.');return;}
     var selProps=sel.map(function(ho){return props.find(function(p){return p.ho===ho;});}).filter(Boolean);
+    var discL=parseFloat(document.getElementById('r-l-discount').value);
     var loanL=parseFloat(document.getElementById('r-l-loan').value);
     var rateL=parseFloat(document.getElementById('r-l-rate').value);
-    var contractRateL=parseFloat((document.getElementById('r-l-contract')||{value:'10'}).value)/100;
-    var midRatePctL=parseFloat((document.getElementById('r-l-mid')||{value:'0'}).value)||0;
-    var estDateL=(document.getElementById('est-l-date')||{value:''}).value.replace(/-/g,'.');
-    if(!estDateL){var d2=new Date();estDateL=d2.getFullYear()+'.'+(d2.getMonth()+1)+'.'+d2.getDate();}
-    var html=buildLeasedEstimate(selProps,bldgName,estDateL,0,loanL,rateL,contractRateL,midRatePctL);
+    var html=buildLeasedEstimate(selProps,bldgName,estDate,discL,loanL,rateL);
     document.getElementById('est-preview-l').innerHTML=html;
     document.getElementById('print-content').innerHTML=html;
     return;
@@ -1653,24 +1650,12 @@ function buildRentEstimate(selProps,bldgName,estDate,depRate,yRate,loanRate,intR
     +'</div></div>';
 }
 
-function buildLeasedEstimate(selProps, bldgName, estDate, discountPct, loanRate, intRate, contractRateL, midRatePctL){
-  contractRateL = contractRateL||0.1;
-  midRatePctL   = midRatePctL||0;
-  var midRateL  = midRatePctL/100;
-  var balanceRateL = Math.round((1-contractRateL-midRateL)*100);
-  var contractDateL=(document.getElementById('est-l-contract-date')||{value:''}).value.replace(/-/g,'.');
-  var midDateL=(document.getElementById('est-l-mid-date')||{value:''}).value.replace(/-/g,'.');
-  var balanceDateL=(document.getElementById('est-l-balance-date')||{value:''}).value.replace(/-/g,'.');
+function buildLeasedEstimate(selProps, bldgName, estDate, discountPct, loanRate, intRate){
   var photos = [window._bldgPhoto1||'',window._bldgPhoto2||'',window._bldgPhoto3||''].filter(Boolean);
-  // 할인율 함수 (로컬 정의 - getDiscountL 전역함수 있으면 사용, 없으면 discountPct/100)
-  function getDiscPctL(p){
-    if(typeof getDiscountL==='function') return getDiscountL(p.price);
-    return discountPct/100;
-  }
-  var discount = selProps.length>0 ? getDiscPctL(selProps[0]) : discountPct/100;
+  var discount = discountPct/100;
   var totDP=0,totDV=0,totDT=0,totArea=0,totAPy=0,totSup=0,totSPy=0;
   selProps.forEach(function(p){
-    var d_i=getDiscPctL(p);var dp=Math.round(p.price*(1-d_i)),dv=Math.round(p.vat*(1-d_i));
+    var dp=Math.round(p.price*(1-discount)),dv=Math.round(p.vat*(1-discount));
     totDP+=dp;totDV+=dv;totDT+=dp+dv;
     totArea+=p.area;totAPy+=p.areaPy;totSup+=p.supArea;totSPy+=p.supAreaPy;
   });
@@ -1678,7 +1663,7 @@ function buildLeasedEstimate(selProps, bldgName, estDate, discountPct, loanRate,
 
   // 섹션1 분양가격
   var rows1=selProps.map(function(p,i){
-    var disc_i=getDiscPctL(p);
+    var disc_i=getDiscPct(p);
     var dp=Math.round(p.price*(1-disc_i)),dv=Math.round(p.vat*(1-disc_i)),dt=dp+dv;
     var pyM=p.supAreaPy>0?fmt(Math.round(dp/p.supAreaPy)):'—';
     return'<tr>'
@@ -1706,7 +1691,7 @@ function buildLeasedEstimate(selProps, bldgName, estDate, discountPct, loanRate,
   // 섹션2 확정 임대가/수익률
   var totDep=0,totMon=0,totNI=0,totLI=0,totIntr=0,totNet=0;
   var rows2=selProps.map(function(p,i){
-    var dp=Math.round(p.price*(1-getDiscPctL(p)));
+    var dp=Math.round(p.price*(1-discount));
     var yl=calcYield(dp,p.deposit,p.monthly,loanRate,intRate);
     var rentPM=p.area>0?(p.monthly*10000/p.area).toFixed(0):'—';
     var ni=dp-p.deposit*10000;
@@ -1730,8 +1715,8 @@ function buildLeasedEstimate(selProps, bldgName, estDate, discountPct, loanRate,
       +'<td><span style="background:'+sc[0]+';color:'+sc[1]+';padding:2px 8px;border-radius:10px;font-size:11px">'+p.tenant+'</span></td>'
       +'</tr>';
   }).join('');
-  var avgNL=selProps.reduce(function(s,p){var dp=Math.round(p.price*(1-getDiscPctL(p)));return s+calcYield(dp,p.deposit,p.monthly,loanRate,intRate).noLoan;},0)/selProps.length;
-  var avgWL=selProps.reduce(function(s,p){var dp=Math.round(p.price*(1-getDiscPctL(p)));return s+calcYield(dp,p.deposit,p.monthly,loanRate,intRate).withLoan;},0)/selProps.length;
+  var avgNL=selProps.reduce(function(s,p){var dp=Math.round(p.price*(1-discount));return s+calcYield(dp,p.deposit,p.monthly,loanRate,intRate).noLoan;},0)/selProps.length;
+  var avgWL=selProps.reduce(function(s,p){var dp=Math.round(p.price*(1-discount));return s+calcYield(dp,p.deposit,p.monthly,loanRate,intRate).withLoan;},0)/selProps.length;
   rows2+='<tr style="background:#0a2a1a;color:#ffffff;font-weight:700;border-top:2px solid #4caf50">'
     +'<td colspan="2" style="font-size:13px">합계</td>'
     +'<td style="color:#7ec8e3;font-size:14px">'+fmt(totDep)+'</td>'
@@ -1749,34 +1734,6 @@ function buildLeasedEstimate(selProps, bldgName, estDate, discountPct, loanRate,
     ?'<div style="display:grid;grid-template-columns:repeat('+cols+',1fr);gap:8px;margin-bottom:1.5rem">'
       +photos.map(function(src){return'<img src="'+src+'" style="width:100%;height:150px;object-fit:cover;border-radius:8px">';}).join('')+'</div>'
     :'<div style="height:70px;background:#e8ecf0;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#aaa;font-size:12px;margin-bottom:1.5rem">건물 사진을 업로드하면 표시됩니다</div>';
-
-
-  // ─ 납부일정 계산
-  var totCL=0,totCVL=0,totML=0,totMVL=0,totBL=0,totBVL=0;
-  var rows3L=selProps.map(function(p,i){
-    var dp2=Math.round(p.price*(1-getDiscPctL(p))),dv2=Math.round(p.vat*(1-getDiscPctL(p)));
-    var ca=Math.round(dp2*contractRateL),cv=Math.round(dv2*contractRateL);
-    var ma=Math.round(dp2*midRateL),mv=Math.round(dv2*midRateL);
-    var ba=dp2-ca-ma,bv=dv2-cv-mv;
-    totCL+=ca;totCVL+=cv;totML+=ma;totMVL+=mv;totBL+=ba;totBVL+=bv;
-    var mc2=midRateL>0
-      ?'<td>'+fmt(ma)+'</td><td style="color:#888">'+fmt(mv)+'</td><td style="font-weight:700">'+fmt(ma+mv)+'</td>'
-      :'<td colspan="3" style="color:#aaa;text-align:center;font-size:12px">— 중도금 없음 —</td>';
-    return'<tr><td>'+(i+1)+'</td><td style="font-weight:700">'+p.ho+'</td>'
-      +'<td>'+fmt(ca)+'</td><td style="color:#888">'+fmt(cv)+'</td><td style="font-weight:700">'+fmt(ca+cv)+'</td>'
-      +mc2
-      +'<td>'+fmt(ba)+'</td><td style="color:#888">'+fmt(bv)+'</td><td style="font-weight:700">'+fmt(ba+bv)+'</td></tr>';
-  }).join('');
-  rows3L+='<tr style="background:#0d1f3d;color:#fff;font-weight:700;border-top:2px solid #4a90d9"><td colspan="2">합계</td>'
-    +'<td>'+fmt(totCL)+'</td><td style="color:#ccc">'+fmt(totCVL)+'</td><td style="color:#ffe082">'+fmt(totCL+totCVL)+'</td>'
-    +(midRateL>0?'<td>'+fmt(totML)+'</td><td style="color:#ccc">'+fmt(totMVL)+'</td><td style="color:#ffe082">'+fmt(totML+totMVL)+'</td>':'<td colspan="3"></td>')
-    +'<td>'+fmt(totBL)+'</td><td style="color:#ccc">'+fmt(totBVL)+'</td><td style="color:#ffe082">'+fmt(totBL+totBVL)+'</td></tr>';
-  var sch_hdrL='<tr style="background:#1a2744"><th>NO</th><th>호수</th>'
-    +'<th colspan="3">계약금 '+(contractRateL*100).toFixed(0)+'%'+(contractDateL?' ('+contractDateL+')':'')+' </th>'
-    +(midRateL>0?'<th colspan="3">중도금 '+midRatePctL+'%'+(midDateL?' ('+midDateL+')':'')+' </th>':'<th colspan="3" style="color:#556">중 도 금</th>')
-    +'<th colspan="3">잔금 '+balanceRateL+'%'+(balanceDateL?' ('+balanceDateL+')':'')+' </th></tr>'
-    +'<tr style="background:#2d3f61;color:#b0bec5;font-size:11px"><td></td><td></td>'
-    +'<td>공급가</td><td>부가세</td><td>합계</td><td>공급가</td><td>부가세</td><td>합계</td><td>공급가</td><td>부가세</td><td>합계</td></tr>';
 
   return'<div class="est-card" id="est-card-leased" style="max-width:920px;margin:0 auto;font-family:-apple-system,BlinkMacSystemFont,sans-serif">'
     +'<div style="background:#1a3a2a;color:#fff;border-radius:10px 10px 0 0;padding:18px 24px;margin:-1.5rem -1.5rem 1.5rem;display:flex;justify-content:space-between;align-items:flex-start">'
@@ -1807,8 +1764,6 @@ function buildLeasedEstimate(selProps, bldgName, estDate, discountPct, loanRate,
     +'<td>실투자금</td><td>연수익률</td>'
     +'<td>대출금</td><td>실지금</td><td>월이자</td><td>순월세</td><td>연수익률</td><td></td></tr>'
     +'</thead><tbody>'+rows2+'</tbody></table></div>'
-    +'<div style="background:#1a2744;color:#fff;padding:10px 16px;border-radius:8px;font-size:14px;font-weight:700;margin-bottom:10px">■ 분양대금 납부 일정</div>'
-    +'<div style="overflow-x:auto;margin-bottom:2rem"><table class="est-tbl"><thead>'+sch_hdrL+'</thead><tbody>'+rows3L+'</tbody></table></div>'
     +'<div style="background:#1a2744;color:#fff;padding:10px 16px;border-radius:8px;font-size:14px;font-weight:700;margin-bottom:10px">■ 분양대금 납부 일정</div>'
     +'<div style="overflow-x:auto;margin-bottom:2rem"><table class="est-tbl"><thead>'+sch_hdrL+'</thead><tbody>'+rows3L+'</tbody></table></div>'
     +'<div style="background:#f0f4ff;border:1px solid #c5cae9;border-radius:10px;padding:16px 20px">'
