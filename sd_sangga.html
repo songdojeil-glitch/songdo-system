@@ -62,10 +62,6 @@ input[type=range]{width:100%;accent-color:#1a1a1a}
 .floor-tab.on{background:#1a1a1a;color:#fff;border-color:#1a1a1a}
 .status-badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600}
 </style>
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-storage-compat.js"></script>
-<script src="firebase-storage.js"></script>
 </head>
 <body>
 <script>
@@ -1443,10 +1439,13 @@ function genEstimate(type){
     var sel=[...selHosL];
     if(!sel.length){alert('호실을 선택해 주세요.');return;}
     var selProps=sel.map(function(ho){return props.find(function(p){return p.ho===ho;});}).filter(Boolean);
-    var discL=parseFloat(document.getElementById('r-l-discount').value);
     var loanL=parseFloat(document.getElementById('r-l-loan').value);
     var rateL=parseFloat(document.getElementById('r-l-rate').value);
-    var html=buildLeasedEstimate(selProps,bldgName,estDate,discL,loanL,rateL);
+    var contractRateL=parseFloat((document.getElementById('r-l-contract')||{value:'10'}).value)/100;
+    var midRatePctL=parseFloat((document.getElementById('r-l-mid')||{value:'0'}).value)||0;
+    var estDateL=(document.getElementById('est-l-date')||{value:''}).value.replace(/-/g,'.');
+    if(!estDateL){var d2=new Date();estDateL=d2.getFullYear()+'.'+(d2.getMonth()+1)+'.'+d2.getDate();}
+    var html=buildLeasedEstimate(selProps,bldgName,estDateL,0,loanL,rateL,contractRateL,midRatePctL);
     document.getElementById('est-preview-l').innerHTML=html;
     document.getElementById('print-content').innerHTML=html;
     return;
@@ -1650,12 +1649,24 @@ function buildRentEstimate(selProps,bldgName,estDate,depRate,yRate,loanRate,intR
     +'</div></div>';
 }
 
-function buildLeasedEstimate(selProps, bldgName, estDate, discountPct, loanRate, intRate){
+function buildLeasedEstimate(selProps, bldgName, estDate, discountPct, loanRate, intRate, contractRateL, midRatePctL){
+  contractRateL = contractRateL||0.1;
+  midRatePctL   = midRatePctL||0;
+  var midRateL  = midRatePctL/100;
+  var balanceRateL = Math.round((1-contractRateL-midRateL)*100);
+  var contractDateL=(document.getElementById('est-l-contract-date')||{value:''}).value.replace(/-/g,'.');
+  var midDateL=(document.getElementById('est-l-mid-date')||{value:''}).value.replace(/-/g,'.');
+  var balanceDateL=(document.getElementById('est-l-balance-date')||{value:''}).value.replace(/-/g,'.');
   var photos = [window._bldgPhoto1||'',window._bldgPhoto2||'',window._bldgPhoto3||''].filter(Boolean);
-  var discount = discountPct/100;
+  // 할인율 함수 (로컬 정의 - getDiscountL 전역함수 있으면 사용, 없으면 discountPct/100)
+  function getDiscPctL(p){
+    if(typeof getDiscountL==='function') return getDiscountL(p.price);
+    return discountPct/100;
+  }
+  var discount = selProps.length>0 ? getDiscPctL(selProps[0]) : discountPct/100;
   var totDP=0,totDV=0,totDT=0,totArea=0,totAPy=0,totSup=0,totSPy=0;
   selProps.forEach(function(p){
-    var dp=Math.round(p.price*(1-discount)),dv=Math.round(p.vat*(1-discount));
+    var d_i=getDiscPctL(p);var dp=Math.round(p.price*(1-d_i)),dv=Math.round(p.vat*(1-d_i));
     totDP+=dp;totDV+=dv;totDT+=dp+dv;
     totArea+=p.area;totAPy+=p.areaPy;totSup+=p.supArea;totSPy+=p.supAreaPy;
   });
@@ -1663,7 +1674,7 @@ function buildLeasedEstimate(selProps, bldgName, estDate, discountPct, loanRate,
 
   // 섹션1 분양가격
   var rows1=selProps.map(function(p,i){
-    var disc_i=getDiscPct(p);
+    var disc_i=getDiscPctL(p);
     var dp=Math.round(p.price*(1-disc_i)),dv=Math.round(p.vat*(1-disc_i)),dt=dp+dv;
     var pyM=p.supAreaPy>0?fmt(Math.round(dp/p.supAreaPy)):'—';
     return'<tr>'
@@ -1691,7 +1702,7 @@ function buildLeasedEstimate(selProps, bldgName, estDate, discountPct, loanRate,
   // 섹션2 확정 임대가/수익률
   var totDep=0,totMon=0,totNI=0,totLI=0,totIntr=0,totNet=0;
   var rows2=selProps.map(function(p,i){
-    var dp=Math.round(p.price*(1-discount));
+    var dp=Math.round(p.price*(1-getDiscPctL(p)));
     var yl=calcYield(dp,p.deposit,p.monthly,loanRate,intRate);
     var rentPM=p.area>0?(p.monthly*10000/p.area).toFixed(0):'—';
     var ni=dp-p.deposit*10000;
@@ -1715,8 +1726,8 @@ function buildLeasedEstimate(selProps, bldgName, estDate, discountPct, loanRate,
       +'<td><span style="background:'+sc[0]+';color:'+sc[1]+';padding:2px 8px;border-radius:10px;font-size:11px">'+p.tenant+'</span></td>'
       +'</tr>';
   }).join('');
-  var avgNL=selProps.reduce(function(s,p){var dp=Math.round(p.price*(1-discount));return s+calcYield(dp,p.deposit,p.monthly,loanRate,intRate).noLoan;},0)/selProps.length;
-  var avgWL=selProps.reduce(function(s,p){var dp=Math.round(p.price*(1-discount));return s+calcYield(dp,p.deposit,p.monthly,loanRate,intRate).withLoan;},0)/selProps.length;
+  var avgNL=selProps.reduce(function(s,p){var dp=Math.round(p.price*(1-getDiscPctL(p)));return s+calcYield(dp,p.deposit,p.monthly,loanRate,intRate).noLoan;},0)/selProps.length;
+  var avgWL=selProps.reduce(function(s,p){var dp=Math.round(p.price*(1-getDiscPctL(p)));return s+calcYield(dp,p.deposit,p.monthly,loanRate,intRate).withLoan;},0)/selProps.length;
   rows2+='<tr style="background:#0a2a1a;color:#ffffff;font-weight:700;border-top:2px solid #4caf50">'
     +'<td colspan="2" style="font-size:13px">합계</td>'
     +'<td style="color:#7ec8e3;font-size:14px">'+fmt(totDep)+'</td>'
@@ -1734,6 +1745,34 @@ function buildLeasedEstimate(selProps, bldgName, estDate, discountPct, loanRate,
     ?'<div style="display:grid;grid-template-columns:repeat('+cols+',1fr);gap:8px;margin-bottom:1.5rem">'
       +photos.map(function(src){return'<img src="'+src+'" style="width:100%;height:150px;object-fit:cover;border-radius:8px">';}).join('')+'</div>'
     :'<div style="height:70px;background:#e8ecf0;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#aaa;font-size:12px;margin-bottom:1.5rem">건물 사진을 업로드하면 표시됩니다</div>';
+
+
+  // ─ 납부일정 계산
+  var totCL=0,totCVL=0,totML=0,totMVL=0,totBL=0,totBVL=0;
+  var rows3L=selProps.map(function(p,i){
+    var dp2=Math.round(p.price*(1-getDiscPctL(p))),dv2=Math.round(p.vat*(1-getDiscPctL(p)));
+    var ca=Math.round(dp2*contractRateL),cv=Math.round(dv2*contractRateL);
+    var ma=Math.round(dp2*midRateL),mv=Math.round(dv2*midRateL);
+    var ba=dp2-ca-ma,bv=dv2-cv-mv;
+    totCL+=ca;totCVL+=cv;totML+=ma;totMVL+=mv;totBL+=ba;totBVL+=bv;
+    var mc2=midRateL>0
+      ?'<td>'+fmt(ma)+'</td><td style="color:#888">'+fmt(mv)+'</td><td style="font-weight:700">'+fmt(ma+mv)+'</td>'
+      :'<td colspan="3" style="color:#aaa;text-align:center;font-size:12px">— 중도금 없음 —</td>';
+    return'<tr><td>'+(i+1)+'</td><td style="font-weight:700">'+p.ho+'</td>'
+      +'<td>'+fmt(ca)+'</td><td style="color:#888">'+fmt(cv)+'</td><td style="font-weight:700">'+fmt(ca+cv)+'</td>'
+      +mc2
+      +'<td>'+fmt(ba)+'</td><td style="color:#888">'+fmt(bv)+'</td><td style="font-weight:700">'+fmt(ba+bv)+'</td></tr>';
+  }).join('');
+  rows3L+='<tr style="background:#0d1f3d;color:#fff;font-weight:700;border-top:2px solid #4a90d9"><td colspan="2">합계</td>'
+    +'<td>'+fmt(totCL)+'</td><td style="color:#ccc">'+fmt(totCVL)+'</td><td style="color:#ffe082">'+fmt(totCL+totCVL)+'</td>'
+    +(midRateL>0?'<td>'+fmt(totML)+'</td><td style="color:#ccc">'+fmt(totMVL)+'</td><td style="color:#ffe082">'+fmt(totML+totMVL)+'</td>':'<td colspan="3"></td>')
+    +'<td>'+fmt(totBL)+'</td><td style="color:#ccc">'+fmt(totBVL)+'</td><td style="color:#ffe082">'+fmt(totBL+totBVL)+'</td></tr>';
+  var sch_hdrL='<tr style="background:#1a2744"><th>NO</th><th>호수</th>'
+    +'<th colspan="3">계약금 '+(contractRateL*100).toFixed(0)+'%'+(contractDateL?' ('+contractDateL+')':'')+' </th>'
+    +(midRateL>0?'<th colspan="3">중도금 '+midRatePctL+'%'+(midDateL?' ('+midDateL+')':'')+' </th>':'<th colspan="3" style="color:#556">중 도 금</th>')
+    +'<th colspan="3">잔금 '+balanceRateL+'%'+(balanceDateL?' ('+balanceDateL+')':'')+' </th></tr>'
+    +'<tr style="background:#2d3f61;color:#b0bec5;font-size:11px"><td></td><td></td>'
+    +'<td>공급가</td><td>부가세</td><td>합계</td><td>공급가</td><td>부가세</td><td>합계</td><td>공급가</td><td>부가세</td><td>합계</td></tr>';
 
   return'<div class="est-card" id="est-card-leased" style="max-width:920px;margin:0 auto;font-family:-apple-system,BlinkMacSystemFont,sans-serif">'
     +'<div style="background:#1a3a2a;color:#fff;border-radius:10px 10px 0 0;padding:18px 24px;margin:-1.5rem -1.5rem 1.5rem;display:flex;justify-content:space-between;align-items:flex-start">'
@@ -1766,6 +1805,8 @@ function buildLeasedEstimate(selProps, bldgName, estDate, discountPct, loanRate,
     +'</thead><tbody>'+rows2+'</tbody></table></div>'
     +'<div style="background:#1a2744;color:#fff;padding:10px 16px;border-radius:8px;font-size:14px;font-weight:700;margin-bottom:10px">■ 분양대금 납부 일정</div>'
     +'<div style="overflow-x:auto;margin-bottom:2rem"><table class="est-tbl"><thead>'+sch_hdrL+'</thead><tbody>'+rows3L+'</tbody></table></div>'
+    +'<div style="background:#1a2744;color:#fff;padding:10px 16px;border-radius:8px;font-size:14px;font-weight:700;margin-bottom:10px">■ 분양대금 납부 일정</div>'
+    +'<div style="overflow-x:auto;margin-bottom:2rem"><table class="est-tbl"><thead>'+sch_hdrL+'</thead><tbody>'+rows3L+'</tbody></table></div>'
     +'<div style="background:#f0f4ff;border:1px solid #c5cae9;border-radius:10px;padding:16px 20px">'
     +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">'
     +'<div><div style="font-size:12px;color:#666;margin-bottom:4px">■ 분양 계좌번호</div>'
@@ -1776,6 +1817,48 @@ function buildLeasedEstimate(selProps, bldgName, estDate, discountPct, loanRate,
     +'<div style="font-size:12px;color:#888">032-851-6688</div></div>'
     +'</div></div></div>';
 }
+</script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-storage-compat.js"></script>
+<script>
+/* firebase-storage.js — 인라인 병합 */
+var FIREBASE_CONFIG = {
+  apiKey:            "AIzaSyCMYoUBhRv_NkKeHmPqgXoqqXUjVsjEJPs",
+  authDomain:        "songdojeil-202604.firebaseapp.com",
+  databaseURL:       "https://songdojeil-202604-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId:         "songdojeil-202604",
+  storageBucket:     "songdojeil-202604.firebasestorage.app",
+  messagingSenderId: "567683904975",
+  appId:             "1:567683904975:web:65a652a8e7b9a81e034eba"
+};
+(function(){
+  try{ if(!firebase.apps||!firebase.apps.length) firebase.initializeApp(FIREBASE_CONFIG); }
+  catch(e){ console.error('[SD] Firebase 초기화 실패:',e); }
+})();
+window.storage=(function(){
+  var ROOT='sd';
+  function ref(k){return firebase.database().ref(ROOT+'/'+k);}
+  return{
+    get:async function(k,s){try{var sn=await ref(k).once('value');var v=sn.val();if(v===null||v===undefined)return null;return{key:k,value:v,shared:!!s};}catch(e){console.error('[SD] get:',e);return null;}},
+    set:async function(k,v,s){try{await ref(k).set(v);return{key:k,value:v,shared:!!s};}catch(e){console.error('[SD] set:',e);return null;}},
+    delete:async function(k,s){try{await ref(k).remove();return{key:k,deleted:true,shared:!!s};}catch(e){console.error('[SD] del:',e);return null;}},
+    list:async function(p,s){try{var sn=await firebase.database().ref(ROOT).once('value');var all=sn.val()||{};var keys=Object.keys(all).filter(function(k){return!p||k.startsWith(p);});return{keys:keys,prefix:p,shared:!!s};}catch(e){return{keys:[]};}}
+  };
+})();
+window.sdImage=(function(){
+  function getStorage(){if(!firebase.storage)throw new Error('firebase-storage-compat.js 없음');return firebase.storage();}
+  function compressImage(file){return new Promise(function(resolve,reject){var maxSide=1600,quality=0.85;if(!file.type.match(/^image\//)){reject(new Error('이미지 아님'));return;}var reader=new FileReader();reader.onerror=function(){reject(new Error('읽기 실패'));};reader.onload=function(e){var img=new Image();img.onerror=function(){reject(new Error('디코딩 실패'));};img.onload=function(){var w=img.width,h=img.height;if(w>maxSide||h>maxSide){if(w>=h){h=Math.round(h*maxSide/w);w=maxSide;}else{w=Math.round(w*maxSide/h);h=maxSide;}}var canvas=document.createElement('canvas');canvas.width=w;canvas.height=h;canvas.getContext('2d').drawImage(img,0,0,w,h);canvas.toBlob(function(blob){if(!blob){reject(new Error('압축 실패'));return;}resolve(blob);},'image/jpeg',quality);};img.src=e.target.result;};reader.readAsDataURL(file);});}
+  function makeThumbnail(blob){return new Promise(function(resolve,reject){var size=400,quality=0.7;var reader=new FileReader();reader.onerror=function(){reject(new Error('썸네일 읽기 실패'));};reader.onload=function(e){var img=new Image();img.onerror=function(){reject(new Error('썸네일 디코딩 실패'));};img.onload=function(){var canvas=document.createElement('canvas');canvas.width=size;canvas.height=size;var ctx=canvas.getContext('2d');var r=Math.max(size/img.width,size/img.height);var nw=img.width*r,nh=img.height*r;ctx.drawImage(img,(size-nw)/2,(size-nh)/2,nw,nh);canvas.toBlob(function(out){if(!out){reject(new Error('썸네일 실패'));return;}resolve(out);},'image/jpeg',quality);};img.src=e.target.result;};reader.readAsDataURL(blob);});}
+  async function upload(file,folder,propId,onProgress){if(!file)throw new Error('파일 없음');if(!folder)folder='misc';if(!propId)propId='general';var compressed=await compressImage(file);var thumb=await makeThumbnail(compressed);var ts=Date.now(),rnd=Math.random().toString(36).slice(2,8);var safeName=(file.name||'image').replace(/[^\w.가-힣-]/g,'_').replace(/\.[^.]+$/,'');var fileName=ts+'_'+rnd+'_'+safeName+'.jpg';var basePath='images/'+folder+'/'+propId;var mainPath=basePath+'/'+fileName;var thumbPath=basePath+'/thumbs/'+fileName;var storage=getStorage();var mainRef=storage.ref(mainPath),thumbRef=storage.ref(thumbPath);var mt=mainRef.put(compressed,{contentType:'image/jpeg'});if(typeof onProgress==='function')mt.on('state_changed',function(sn){onProgress(Math.round(sn.bytesTransferred/sn.totalBytes*70));});await mt;var tt=thumbRef.put(thumb,{contentType:'image/jpeg'});if(typeof onProgress==='function')tt.on('state_changed',function(sn){onProgress(70+Math.round(sn.bytesTransferred/sn.totalBytes*30));});await tt;var url=await mainRef.getDownloadURL();var thumbUrl=await thumbRef.getDownloadURL();return{url,thumbUrl,path:mainPath,thumbPath,name:safeName,size:compressed.size,uploadedAt:new Date().toISOString()};}
+  async function remove(path,thumbPath){if(!path)return;var storage=getStorage();await storage.ref(path).delete().catch(function(e){if(e.code!=='storage/object-not-found')throw e;});if(!thumbPath){var parts=path.split('/');var fname=parts.pop();thumbPath=parts.join('/')+'/thumbs/'+fname;}await storage.ref(thumbPath).delete().catch(function(e){if(e.code!=='storage/object-not-found')throw e;});}
+  async function removeAll(folder,propId){if(!folder||!propId)return;var storage=getStorage();var baseRef=storage.ref('images/'+folder+'/'+propId);var list=await baseRef.listAll();var deletes=[];list.items.forEach(function(item){deletes.push(item.delete());});list.prefixes.forEach(function(pref){pref.listAll().then(function(sub){sub.items.forEach(function(item){deletes.push(item.delete());});});});await Promise.all(deletes);}
+  return{upload,remove,removeAll};
+})();
+document.addEventListener('DOMContentLoaded',function(){
+  try{var connRef=firebase.database().ref('.info/connected');connRef.on('value',function(snap){var el=document.getElementById('fb-status');if(!el)return;if(snap.val()===true){el.textContent='🟢 실시간 연결됨';el.style.color='#4caf7d';}else{el.textContent='🔴 연결 끊김';el.style.color='#e85c5c';}});}
+  catch(e){console.warn('[SD] fb-status 실패:',e);}
+});
 </script>
 </body>
 </html>
