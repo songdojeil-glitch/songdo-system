@@ -1878,18 +1878,54 @@ function selAllHo(type){
 function clearSelHo(){selHos.clear();initChips();}
 
 var selHos2 = new Set();
+var _floorFilter2 = ''; // TAB2 전용 층 필터
+
 function initChips2(){
   var props = getCurProps();
-  var filtered = curFloorFilter ? props.filter(function(p){return p.floor===curFloorFilter;}) : props;
-  document.getElementById('ho-chips2').innerHTML = filtered.map(function(p){
-    var sc=statusColor(p.status||'미분양');
-    var cls='ho-chip'+(selHos2.has(p.ho)?' sel-임대':'');
-    return'<span class="'+cls+'" onclick="toggleHo2(\''+p.ho+'\')" style="border-color:'+sc[1]+';'+(selHos2.has(p.ho)?'':'color:'+sc[1]+';')+'">'+p.ho+(p.tenant?' <span style="font-size:10px">('+p.tenant+')</span>':'')+'</span>';
-  }).join('');
-  document.getElementById('sel-cnt2').textContent = selHos2.size ? selHos2.size+'개 선택됨' : '';
+
+  // 층 필터 탭 렌더링
+  var ftWrap = document.getElementById('floor-filter-tabs2');
+  if(ftWrap){
+    var floors = [...new Set(props.map(function(p){return p.floor;}))];
+    ftWrap.innerHTML =
+      '<button class="floor-tab'+(_floorFilter2===''?' on':'')+'" onclick="_setFloor2(\'\')">전체</button>'
+      + floors.map(function(f){
+          return '<button class="floor-tab'+(_floorFilter2===f?' on':'')+'" onclick="_setFloor2(\''+f+'\')">'+f.replace('지상','')+'층</button>';
+        }).join('');
+  }
+
+  // 호실 칩 렌더링
+  var filtered = _floorFilter2 ? props.filter(function(p){return p.floor===_floorFilter2;}) : props;
+  var chipsEl = document.getElementById('ho-chips2');
+  if(chipsEl){
+    chipsEl.innerHTML = filtered.map(function(p){
+      var sc=statusColor(p.status||'미분양');
+      var sel=selHos2.has(p.ho);
+      var cls='ho-chip'+(sel?' sel-임대':'');
+      return '<span class="'+cls+'" onclick="toggleHo2(\''+p.ho+'\')" style="border-color:'+sc[1]+';'+(sel?'':'color:'+sc[1]+';')+'">'
+        +p.ho+(p.tenant?' <span style="font-size:10px">('+p.tenant+')</span>':'')+'</span>';
+    }).join('');
+  }
+
+  // 선택 카운트
+  var cntEl=document.getElementById('sel-cnt2');
+  if(cntEl) cntEl.textContent = selHos2.size ? selHos2.size+'개 선택됨' : '';
 }
-function toggleHo2(ho){selHos2.has(ho)?selHos2.delete(ho):selHos2.add(ho);initChips2();renderDepSliders();renderMonSliders();calcRent2Derived();}
-function clearSelHo2(){selHos2.clear();initChips2();}
+
+function _setFloor2(f){
+  _floorFilter2=f;
+  initChips2();
+}
+// toggleHo2 구버전 제거됨
+function clearSelHo2(){
+  selHos2.clear();
+  _unitData={};
+  var wrap=document.getElementById('r2-unit-cards');
+  var sumP=document.getElementById('r2-summary-panel');
+  if(wrap) wrap.style.display='none';
+  if(sumP) sumP.style.display='none';
+  initChips2();
+}
 
 // ═══ 견적서 생성
 
