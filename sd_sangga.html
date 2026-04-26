@@ -2066,9 +2066,19 @@ function updateSaleUnit(ho){
   el=document.getElementById('su-dep-amt-'+ho);    if(el) el.textContent=fmt(dep)+'만';
   el=document.getElementById('su-yield-'+ho);      if(el) el.textContent=yr.toFixed(1)+'%';
   el=document.getElementById('su-mon-'+ho);        if(el) el.textContent=fmt(mon)+'만';
+  // 대출 수익률
+  var loanRateCard=parseFloat((document.getElementById('r-loan')||{value:'60'}).value)||60;
+  var intRateCard=parseFloat((document.getElementById('r-rate')||{value:'4'}).value)||4;
+  var ylCard=calcYield(pr,dep,mon,loanRateCard,intRateCard);
+  var wc2=ylCard.withLoan>=5?'#69f0ae':ylCard.withLoan>=4?'#ffcc02':'#ff6b6b';
   el=document.getElementById('su-result-'+ho);
-  if(el) el.innerHTML='<div style="font-size:11px;color:#90caf9;margin-bottom:4px">무대출 수익률</div>'
-    +'<div style="font-size:26px;font-weight:900;color:'+yc+'">'+yld.toFixed(2)+'%</div>';
+  if(el) el.innerHTML='<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px">'
+    +'<div style="text-align:center"><div style="font-size:10px;color:#90caf9;margin-bottom:3px">무대출</div>'
+    +'<div style="font-size:22px;font-weight:900;color:'+yc+'">'+yld.toFixed(2)+'%</div></div>'
+    +'<div style="text-align:center;border-left:1px solid rgba(255,255,255,0.15);padding-left:4px">'
+    +'<div style="font-size:10px;color:#90caf9;margin-bottom:3px">대출 '+loanRateCard+'%</div>'
+    +'<div style="font-size:22px;font-weight:900;color:'+wc2+'">'+ylCard.withLoan.toFixed(2)+'%</div></div>'
+    +'</div>';
 }
 function updateAllSaleUnits(selProps){
   selProps.forEach(function(p){updateSaleUnit(p.ho);});
@@ -2604,14 +2614,21 @@ function genEstimate(type){
   if(type==='sale'){
     var sel=[...selHos];
     if(!sel.length){alert('호실을 선택해 주세요.');return;}
-    var selProps=sel.map(function(ho){return props.find(function(p){return p.ho===ho;});}).filter(Boolean);
+    var hoList=_saleMode==='multi'?sel.slice(0,_saleCount):sel.slice(0,1);
+    var selProps=hoList.map(function(ho){return props.find(function(p){return p.ho===ho;});}).filter(Boolean);
+    if(!selProps.length){alert('유효한 호실을 선택해 주세요.');return;}
+    // 호실별 카드값 적용
+    selProps.forEach(function(p){
+      var d=_saleUnitData[p.ho]||{disc:0,depRate:5,monYield:4.5,monFix:null};
+      p._saleDisc    = d.disc||0;
+      p._salePrice   = Math.round(p.price*(1-d.disc/100));
+      p._saleDep     = d._dep  || Math.round(p._salePrice/10000*(d.depRate||5)/100/100)*100;
+      p._saleMon     = d.monFix!=null ? d.monFix : (d._mon||0);
+    });
     var contractRate=parseFloat(document.getElementById('r-contract').value)/100;
-    var midRatePctVal=parseFloat(document.getElementById('r-mid').value)||0;
-    var depRate=parseFloat(document.getElementById('r-deprate').value)/100;
-    var yRate=parseFloat(document.getElementById('r-yield').value)/100;
     var loanRate=parseFloat(document.getElementById('r-loan').value);
     var intRate=parseFloat(document.getElementById('r-rate').value);
-    var html=buildSaleEstimate(selProps,bldgName,estDate,0,contractRate,depRate,yRate,loanRate,intRate);
+    var html=buildSaleEstimate(selProps,bldgName,estDate,contractRate,loanRate,intRate);
     document.getElementById('est-preview').innerHTML=html;
     document.getElementById('print-content').innerHTML=html;
     return;
@@ -2649,62 +2666,73 @@ function genEstimate(type){
   }
 }
 
-function buildSaleEstimate(selProps,bldgName,estDate,discount,contractRate,depRate,yRate,loanRate,intRate){
+function buildSaleEstimate(selProps,bldgName,estDate,contractRate,loanRate,intRate){
   var contractDate=(document.getElementById('est-contract-date')||{value:''}).value.replace(/-/g,'.');
   var balanceDate=(document.getElementById('est-balance-date')||{value:''}).value.replace(/-/g,'.');
   var midDate=(document.getElementById('est-mid-date')||{value:''}).value.replace(/-/g,'.');
   var midRatePct=parseFloat((document.getElementById('r-mid')||{value:'0'}).value)||0;
-  // 할인: 호별로 getDiscount 사용 (% 또는 정액)
-  function getDiscPct(p){ return typeof getDiscount==='function'?getDiscount(p.price):discount; }
-  // 보증금: getDepositAmt 사용
-  function getDepAmt(dp){ return typeof getDepositAmt==='function'?getDepositAmt(dp):Math.round(dp/10000*depRate/10)*10; }
   var midRate=midRatePct/100;
   var balanceRate=Math.round((1-contractRate-midRate)*100);
-  var discPct=(discount*100).toFixed(0);
+
+  // 계좌/담당자
+  var sAcct=_saleSavedAcct||{bank:'수협은행',num:'1010-1152-5134',name:'주식회사 에스개발'};
+  var staffMap={mun:{name:'문형은 대표',tel:'010-6401-9345'},choi:{name:'최지훈 부장',tel:'010-9996-9181'},lee:{name:'이서정 실장',tel:'010-6402-9345'}};
+  var staffSel=document.getElementById('sale-staff-sel');
+  var staff=staffMap[staffSel?staffSel.value:'mun']||staffMap.mun;
+
+  // 사진
   var photos=[window._bldgPhoto1||'',window._bldgPhoto2||'',window._bldgPhoto3||''].filter(Boolean);
-  var totDP=0,totDV=0,totDT=0,totArea=0,totAPy=0,totSup=0,totSPy=0;
-  selProps.forEach(function(p){
-    var d_i=getDiscPct(p);
-    var dp=Math.round(p.price*(1-d_i)),dv=Math.round(p.vat*(1-d_i));
-    totDP+=dp;totDV+=dv;totDT+=dp+dv;totArea+=p.area;totAPy+=p.areaPy;totSup+=p.supArea;totSPy+=p.supAreaPy;
-  });
-  var refDisc=selProps.length>0?getDiscPct(selProps[0]):discount;
-  var discAmt=Math.round(totDP/(1-refDisc)*refDisc);
-  var discPct=(refDisc*100).toFixed(1);
+  var cols=photos.length||1;
+  var photoHtml=photos.length>0
+    ?'<div style="display:grid;grid-template-columns:repeat('+cols+',1fr);gap:8px;margin-bottom:1.5rem">'+photos.map(function(src){return'<img src="'+src+'" style="width:100%;height:150px;object-fit:cover;border-radius:8px">';}).join('')+'</div>'
+    :'';
+
+  // ── 분양 가격 테이블
+  var totDP=0,totDV=0,totDT=0,totArea=0,totAPy=0,totSup=0,totSPy=0,totLand=0,totBldg=0,totOrig=0;
   var rows1=selProps.map(function(p,i){
-    var disc_i=getDiscPct(p);
-    var dp=Math.round(p.price*(1-disc_i)),dv=Math.round(p.vat*(1-disc_i)),dt=dp+dv;
+    var disc_i=p._saleDisc||0;
+    var dp=p._salePrice||Math.round(p.price*(1-disc_i/100));
+    var dv=Math.round(p.vat*(1-disc_i/100));
+    var dt=dp+dv;
+    var land=Math.round(p.land*(1-disc_i/100));
+    var bldg=Math.round(p.bldg*(1-disc_i/100));
     var pyM=p.supAreaPy>0?fmt(Math.round(dp/p.supAreaPy)):'—';
-    return'<tr><td>'+( i+1)+'</td><td style="font-size:14px;font-weight:700">'+p.ho+'</td>'
-      +'<td>'+p.area+'</td><td>'+p.areaPy.toFixed(3)+'</td>'
-      +'<td>'+p.supArea+'</td><td>'+p.supAreaPy.toFixed(3)+'</td>'
-      +'<td>'+fmt(Math.round(p.land*(1-discount)))+'</td><td>'+fmt(Math.round(p.bldg*(1-discount)))+'</td>'
+    totDP+=dp;totDV+=dv;totDT+=dt;totArea+=p.area;totAPy+=p.areaPy;
+    totSup+=p.supArea;totSPy+=p.supAreaPy;totLand+=land;totBldg+=bldg;totOrig+=p.price;
+    return'<tr><td>'+(i+1)+'</td><td style="font-size:14px;font-weight:700">'+p.ho+'</td>'
+      +'<td>'+p.area.toFixed(2)+'</td><td>'+p.areaPy.toFixed(2)+'</td>'
+      +'<td>'+p.supArea.toFixed(2)+'</td><td>'+p.supAreaPy.toFixed(2)+'</td>'
+      +'<td>'+fmt(land)+'</td><td>'+fmt(bldg)+'</td>'
       +'<td>'+pyM+'</td>'
       +'<td style="font-size:15px;font-weight:700">'+fmt(dp)+'</td>'
       +'<td>'+fmt(dv)+'</td>'
       +'<td style="font-size:15px;font-weight:700">'+fmt(dt)+'</td></tr>';
   }).join('');
-  rows1+='<tr style="background:#0d1f3d;color:#ffffff;font-weight:700;border-top:2px solid #4a90d9"><td colspan="2">합계</td>'
-    +'<td>'+totArea.toFixed(2)+'</td><td>'+totAPy.toFixed(3)+'</td>'
-    +'<td>'+totSup.toFixed(2)+'</td><td>'+totSPy.toFixed(3)+'</td>'
-    +'<td colspan="2"></td><td style="color:#ffe082">'+(totSPy>0?fmt(Math.round(totDP/totSPy)):'—')+'</td>'
-    +'<td style="font-size:15px">'+fmt(totDP)+'</td><td style="color:#ccc">'+fmt(totDV)+'</td>'
-    +'<td style="font-size:15px">'+fmt(totDT)+'</td></tr>';
+  rows1+='<tr style="background:#0d1f3d;color:#fff;font-weight:700;border-top:2px solid #4a90d9">'
+    +'<td colspan="2">합계</td>'
+    +'<td>'+totArea.toFixed(2)+'</td><td>'+totAPy.toFixed(2)+'</td>'
+    +'<td>'+totSup.toFixed(2)+'</td><td>'+totSPy.toFixed(2)+'</td>'
+    +'<td style="color:#b0c4ff">'+fmt(totLand)+'</td><td style="color:#b0c4ff">'+fmt(totBldg)+'</td>'
+    +'<td style="color:#ffe082">'+(totSPy>0?fmt(Math.round(totDP/totSPy)):'—')+'</td>'
+    +'<td style="font-size:15px;color:#7ec8ff">'+fmt(totDP)+'</td>'
+    +'<td style="color:#ccc">'+fmt(totDV)+'</td>'
+    +'<td style="font-size:15px;color:#ffe082">'+fmt(totDT)+'</td></tr>';
+
+  // ── 임대가/수익률 테이블 (호실별 카드값 사용)
   var totDep=0,totMon=0,totNI=0,totLI=0,totIntr=0,totNet=0;
   var rows2=selProps.map(function(p,i){
-    var disc_i=getDiscPct(p);
-    var dp=Math.round(p.price*(1-disc_i));
-    var cm = calcMonthly(dp,depRate*100,yRate*100);
-    if(typeof depMode!=='undefined'&&depMode==='amt'){ cm.dep=getDepAmt(dp); }
-    var yl=calcYield(dp,cm.dep,cm.mon,loanRate,intRate);
-    var rentPM=p.area>0?(cm.mon*10000/p.area).toFixed(0):'—';
-    var ni=dp-cm.dep*10000;
-    totDep+=cm.dep;totMon+=cm.mon;totNI+=ni;totLI+=yl.realInvest;totIntr+=yl.interest;totNet+=yl.netMon;
+    var dp=p._salePrice||p.price;
+    var dep=p._saleDep||0;
+    var mon=p._saleMon||0;
+    var yl=calcYield(dp,dep,mon,loanRate,intRate);
+    var rentPM=p.area>0&&mon?(mon*10000/p.area).toFixed(0):'—';
+    var ni=dp-dep*10000;
+    totDep+=dep;totMon+=mon;totNI+=ni;totLI+=yl.realInvest;totIntr+=yl.interest;totNet+=yl.netMon;
     var nc=yl.noLoan>=5?'#2e7d32':yl.noLoan>=4?'#e65100':'#c62828';
     var wc=yl.withLoan>=5?'#2e7d32':yl.withLoan>=4?'#e65100':'#c62828';
-    return'<tr><td>'+( i+1)+'</td><td style="font-size:14px;font-weight:700">'+p.ho+'</td>'
-      +'<td style="font-size:15px;font-weight:700;color:#1565c0">'+fmt(cm.dep)+'</td>'
-      +'<td style="font-size:15px;font-weight:700;color:#c62828">'+fmt(cm.mon)+'</td>'
+    return'<tr><td>'+(i+1)+'</td><td style="font-size:14px;font-weight:700">'+p.ho+'</td>'
+      +'<td style="font-size:15px;font-weight:700;color:#1565c0">'+fmt(dep)+'</td>'
+      +'<td style="font-size:15px;font-weight:700;color:#1a56db">'+fmt(mon)+'</td>'
       +'<td style="font-size:12px;color:#555">'+rentPM+'원</td>'
       +'<td>'+fmt(ni)+'</td>'
       +'<td style="font-size:15px;font-weight:700;color:'+nc+'">'+yl.noLoan.toFixed(2)+'%</td>'
@@ -2714,66 +2742,101 @@ function buildSaleEstimate(selProps,bldgName,estDate,discount,contractRate,depRa
       +'<td>'+fmt(Math.round(yl.netMon))+'</td>'
       +'<td style="font-size:15px;font-weight:700;color:'+wc+'">'+yl.withLoan.toFixed(2)+'%</td></tr>';
   }).join('');
-  var avgNL=selProps.reduce(function(s,p){var dp=Math.round(p.price*(1-discount));var cm=calcMonthly(dp,depRate*100,yRate*100);return s+calcYield(dp,cm.dep,cm.mon,loanRate,intRate).noLoan;},0)/selProps.length;
-  var avgWL=selProps.reduce(function(s,p){var dp=Math.round(p.price*(1-discount));var cm=calcMonthly(dp,depRate*100,yRate*100);return s+calcYield(dp,cm.dep,cm.mon,loanRate,intRate).withLoan;},0)/selProps.length;
-  rows2+='<tr style="background:#0d1f3d;color:#ffffff;font-weight:700;border-top:2px solid #4a90d9"><td colspan="2">합계</td>'
+  var avgNL=selProps.length?selProps.reduce(function(s,p){
+    var dp=p._salePrice||p.price,dep=p._saleDep||0,mon=p._saleMon||0;
+    return s+calcYield(dp,dep,mon,loanRate,intRate).noLoan;
+  },0)/selProps.length:0;
+  var avgWL=selProps.length?selProps.reduce(function(s,p){
+    var dp=p._salePrice||p.price,dep=p._saleDep||0,mon=p._saleMon||0;
+    return s+calcYield(dp,dep,mon,loanRate,intRate).withLoan;
+  },0)/selProps.length:0;
+  rows2+='<tr style="background:#0d1f3d;color:#fff;font-weight:700;border-top:2px solid #4a90d9"><td colspan="2">합계</td>'
     +'<td style="color:#7ec8e3;font-size:14px">'+fmt(totDep)+'</td>'
-    +'<td style="color:#ff9999;font-size:14px">'+fmt(totMon)+'</td><td></td>'
+    +'<td style="color:#90caf9;font-size:14px">'+fmt(totMon)+'</td><td></td>'
     +'<td>'+fmt(totNI)+'</td>'
     +'<td style="color:#69f0ae;font-size:15px">'+avgNL.toFixed(2)+'%</td>'
     +'<td></td><td>'+fmt(Math.round(totLI))+'</td><td>'+fmt(Math.round(totIntr))+'</td>'
     +'<td>'+fmt(Math.round(totNet))+'</td>'
     +'<td style="color:#69f0ae;font-size:15px">'+avgWL.toFixed(2)+'%</td></tr>';
+
+  // ── 납부일정 테이블
   var totC=0,totCV=0,totM=0,totMV=0,totB=0,totBV=0;
   var rows3=selProps.map(function(p,i){
-    var dp=Math.round(p.price*(1-discount)),dv=Math.round(p.vat*(1-discount));
+    var dp=p._salePrice||Math.round(p.price),dv=Math.round(p.vat*(1-(p._saleDisc||0)/100));
     var ca=Math.round(dp*contractRate),cv=Math.round(dv*contractRate);
     var ma=Math.round(dp*midRate),mv=Math.round(dv*midRate);
     var ba=dp-ca-ma,bv=dv-cv-mv;
     totC+=ca;totCV+=cv;totM+=ma;totMV+=mv;totB+=ba;totBV+=bv;
     var mc=midRate>0?'<td>'+fmt(ma)+'</td><td style="color:#888">'+fmt(mv)+'</td><td style="font-weight:700">'+fmt(ma+mv)+'</td>'
                    :'<td colspan="3" style="color:#aaa;text-align:center;font-size:12px">— 중도금 없음 —</td>';
-    return'<tr><td>'+( i+1)+'</td><td style="font-size:14px;font-weight:700">'+p.ho+'</td>'
+    return'<tr><td>'+(i+1)+'</td><td style="font-size:14px;font-weight:700">'+p.ho+'</td>'
       +'<td>'+fmt(ca)+'</td><td style="color:#888">'+fmt(cv)+'</td><td style="font-weight:700">'+fmt(ca+cv)+'</td>'
       +mc
       +'<td>'+fmt(ba)+'</td><td style="color:#888">'+fmt(bv)+'</td><td style="font-weight:700">'+fmt(ba+bv)+'</td></tr>';
   }).join('');
-  rows3+='<tr style="background:#0d1f3d;color:#ffffff;font-weight:700;border-top:2px solid #4a90d9"><td colspan="2">합계</td>'
+  rows3+='<tr style="background:#0d1f3d;color:#fff;font-weight:700;border-top:2px solid #4a90d9"><td colspan="2">합계</td>'
     +'<td>'+fmt(totC)+'</td><td style="color:#ccc">'+fmt(totCV)+'</td><td style="color:#ffe082">'+fmt(totC+totCV)+'</td>'
     +(midRate>0?'<td>'+fmt(totM)+'</td><td style="color:#ccc">'+fmt(totMV)+'</td><td style="color:#ffe082">'+fmt(totM+totMV)+'</td>':'<td colspan="3"></td>')
     +'<td>'+fmt(totB)+'</td><td style="color:#ccc">'+fmt(totBV)+'</td><td style="color:#ffe082">'+fmt(totB+totBV)+'</td></tr>';
-  var cols=photos.length||1;
-  var photoHtml=photos.length>0
-    ?'<div style="display:grid;grid-template-columns:repeat('+cols+',1fr);gap:8px;margin-bottom:1.5rem">'+photos.map(function(src){return'<img src="'+src+'" style="width:100%;height:150px;object-fit:cover;border-radius:8px">';}).join('')+'</div>'
-    :'<div style="height:70px;background:#e8ecf0;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#aaa;font-size:12px;margin-bottom:1.5rem">건물 사진을 업로드하면 표시됩니다</div>';
+
+  // ── 납부일정 헤더
   var sch_hdr='<tr style="background:#1a2744"><th>NO</th><th>호수</th>'
     +'<th colspan="3">계약금 '+(contractRate*100).toFixed(0)+'%'+(contractDate?' ('+contractDate+')':'')+' </th>'
     +(midRate>0?'<th colspan="3">중도금 '+midRatePct+'%'+(midDate?' ('+midDate+')':'')+' </th>':'<th colspan="3" style="color:#556">중 도 금</th>')
     +'<th colspan="3">잔금 '+balanceRate+'%'+(balanceDate?' ('+balanceDate+')':'')+' </th></tr>'
     +'<tr style="background:#2d3f61;color:#b0bec5;font-size:11px"><td></td><td></td>'
     +'<td>공급가</td><td>부가세</td><td>합계</td><td>공급가</td><td>부가세</td><td>합계</td><td>공급가</td><td>부가세</td><td>합계</td></tr>';
+
+  // ── 할인 정보 배지
+  var discBadge='';
+  var anyDisc=selProps.some(function(p){return (p._saleDisc||0)>0;});
+  if(anyDisc){
+    var totOrigPrice=selProps.reduce(function(s,p){return s+p.price;},0);
+    var totDiscAmt=totOrigPrice-totDP;
+    var avgDiscPct=totOrigPrice>0?(totDiscAmt/totOrigPrice*100):0;
+    discBadge='<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">'
+      +'<span style="background:#c62828;color:#fff;padding:5px 14px;border-radius:14px;font-size:13px;font-weight:700">할인율 '+avgDiscPct.toFixed(1)+'%</span>'
+      +'<span style="background:rgba(255,200,100,0.25);color:#ffe082;padding:5px 14px;border-radius:14px;font-size:13px;font-weight:700">원분양가 '+fmt(totOrigPrice)+'</span>'
+      +'<span style="background:rgba(255,100,100,0.2);color:#ffb3b3;padding:5px 14px;border-radius:14px;font-size:13px;font-weight:700">할인금액 -'+fmt(totDiscAmt)+'</span>'
+      +'</div>';
+  }
+
   return'<div class="est-card" id="est-card-main" style="max-width:1100px;margin:0 auto;font-family:-apple-system,BlinkMacSystemFont,sans-serif">'
+    // ── 헤더
     +'<div style="background:#1a2744;color:#fff;border-radius:10px 10px 0 0;padding:18px 24px;margin:-1.5rem -1.5rem 1.5rem;display:flex;justify-content:space-between;align-items:flex-start">'
-    +'<div><div style="font-size:12px;color:#90caf9;margin-bottom:4px">송도제일공인중개사사무소</div>'
+    +'<div>'
+    +'<div style="font-size:12px;color:#90caf9;margin-bottom:4px">송도제일공인중개사사무소</div>'
     +'<div style="font-size:22px;font-weight:700">'+bldgName+' 분양견적서</div>'
-    +(discount>0?'<div style="margin-top:8px;display:flex;gap:8px"><span style="background:#c62828;color:#fff;padding:4px 12px;border-radius:12px;font-size:13px;font-weight:700">할인율 '+discPct+'%</span><span style="background:rgba(255,255,255,0.2);color:#fff;padding:4px 12px;border-radius:12px;font-size:13px">할인금액 '+fmt(discAmt)+'원</span></div>':'')
-    +'</div><div style="font-size:14px;color:#90caf9;white-space:nowrap;font-weight:500">견적일: '+estDate+'</div></div>'
+    +discBadge
+    +'</div>'
+    +'<div style="font-size:14px;color:#90caf9;white-space:nowrap;font-weight:500">견적일: '+estDate+'</div></div>'
+    // ── 사진
     +photoHtml
-    +'<div style="background:#1a2744;color:#fff;padding:10px 16px;border-radius:8px;font-size:14px;font-weight:700;margin-bottom:10px">■ 분양 견적 가격'+(discount>0?' <span style="font-size:12px;font-weight:400;color:#90caf9">('+discPct+'% 할인 적용)</span>':'')+'</div>'
+    // ── 분양가격 테이블
+    +'<div style="background:#1a2744;color:#fff;padding:10px 16px;border-radius:8px;font-size:14px;font-weight:700;margin-bottom:10px">■ 분양 견적 가격'+(anyDisc?' <span style="font-size:11px;font-weight:400;color:#ffb3b3">할인 적용가</span>':'')+'</div>'
     +'<div style="overflow-x:auto;margin-bottom:2rem"><table class="est-tbl"><thead>'
     +'<tr style="background:#1a2744"><th>NO</th><th>호수</th><th colspan="2">전용면적</th><th colspan="2">분양면적</th><th>토지가격</th><th>건물가격</th><th>평단가</th><th style="background:#1e3a6f">공급가격</th><th>부가세</th><th style="background:#1e3a6f">총분양가</th></tr>'
     +'<tr style="background:#2d3f61;color:#b0bec5;font-size:11px"><td></td><td></td><td>㎡</td><td>평</td><td>㎡</td><td>평</td><td></td><td></td><td></td><td></td><td></td><td></td></tr>'
     +'</thead><tbody>'+rows1+'</tbody></table></div>'
+    // ── 수익률 테이블
     +'<div style="background:#1a2744;color:#fff;padding:10px 16px;border-radius:8px;font-size:14px;font-weight:700;margin-bottom:10px">■ 예상 임대가 및 수익률 <span style="font-size:11px;font-weight:400;color:#90caf9">(단위:만원 | 대출비율 '+loanRate+'% | 이자율 '+intRate+'%)</span></div>'
     +'<div style="overflow-x:auto;margin-bottom:2rem"><table class="est-tbl"><thead>'
     +'<tr style="background:#1a2744"><th>NO</th><th>호수</th><th colspan="3" style="background:#1e3a6f">임대가</th><th colspan="2" style="background:#1a2744">대출없는 조건</th><th colspan="4" style="background:#1a2040">대출 실행 '+loanRate+'% | 이자율 '+intRate+'%</th><th style="background:#1a2040"></th></tr>'
     +'<tr style="background:#2d3f61;color:#b0bec5;font-size:11px"><td></td><td></td><td>보증금</td><td>월세</td><td>평당임대료</td><td>실투자금</td><td>연수익률</td><td>대출금</td><td>실지금</td><td>월이자</td><td>순월세</td><td>연수익률</td></tr>'
     +'</thead><tbody>'+rows2+'</tbody></table></div>'
+    // ── 납부일정
     +'<div style="background:#1a2744;color:#fff;padding:10px 16px;border-radius:8px;font-size:14px;font-weight:700;margin-bottom:10px">■ 분양대금 납부 일정</div>'
     +'<div style="overflow-x:auto;margin-bottom:2rem"><table class="est-tbl"><thead>'+sch_hdr+'</thead><tbody>'+rows3+'</tbody></table></div>'
-    +'<div style="background:#f0f4ff;border:1px solid #c5cae9;border-radius:10px;padding:16px 20px"><div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">'
-    +'<div><div style="font-size:12px;color:#666;margin-bottom:4px">■ 분양 계좌번호</div><div style="font-size:16px;font-weight:700">수협은행 1010-1152-5134</div><div style="font-size:12px;color:#888">주식회사 에스개발</div></div>'
-    +'<div><div style="font-size:12px;color:#666;margin-bottom:4px">■ 상담문의</div><div style="font-size:16px;font-weight:700">송도제일공인중개사사무소</div><div style="font-size:12px;color:#888">032-851-6688</div></div>'
+    // ── footer
+    +'<div style="background:#f0f4ff;border:1px solid #c5cae9;border-radius:10px;padding:16px 20px">'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">'
+    +'<div><div style="font-size:12px;color:#666;margin-bottom:4px">■ 분양 계좌번호</div>'
+    +'<div style="font-size:16px;font-weight:700">'+sAcct.bank+' '+sAcct.num+'</div>'
+    +'<div style="font-size:12px;color:#888">'+sAcct.name+'</div></div>'
+    +'<div><div style="font-size:12px;color:#666;margin-bottom:4px">■ 상담문의</div>'
+    +'<div style="font-size:16px;font-weight:700">송도제일공인중개사사무소 &nbsp;<span style="font-size:13px;color:#555;font-weight:500">032-851-6688</span></div>'
+    +'<div style="font-size:13px;color:#1a2744;font-weight:600;margin-top:3px">'+staff.name+' &nbsp; '+staff.tel+'</div>'
+    +'</div>'
     +'</div></div></div>';
 }
 
