@@ -2600,6 +2600,7 @@ function loadSaleStaff(){
 var _fpSlotData = {}; // {slotIdx: dataURL}
 var _fpDragSrc  = null; // 드래그 중인 썸네일 dataURL
 var _fpPdfDoc   = null; // PDF.js document
+var _fpPdfHiRes = {}; // 페이지별 고해상도 dataURL
 var _fpFileInput = null; // 클릭된 슬롯 인덱스
 
 function initFloorPlanTab(){
@@ -2630,14 +2631,14 @@ function openFpViewer(idx){
     // 최초 1회 생성
     overlay=document.createElement('div');
     overlay.id='fp-viewer-overlay';
-    overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.92);z-index:9998;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:16px';
+    overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.92);z-index:9998;display:flex;flex-direction:column;align-items:stretch;overflow:hidden';
     overlay.onclick=function(e){ if(e.target===overlay) closeFpViewer(); };
     // 상단 바
     var topBar=document.createElement('div');
-    topBar.style.cssText='display:flex;align-items:center;gap:16px;width:96%;max-width:2400px';
+    topBar.style.cssText='display:flex;align-items:center;gap:12px;padding:10px 16px;background:rgba(0,0,0,0.6);flex-shrink:0';
     var titleEl=document.createElement('div');
     titleEl.id='fp-viewer-title';
-    titleEl.style.cssText='flex:1;color:#fff;font-size:15px;font-weight:700';
+    titleEl.style.cssText='flex:1;color:#fff;font-size:14px;font-weight:700';
     var editBtn=document.createElement('button');
     editBtn.textContent='✏️ 교체';
     editBtn.style.cssText='padding:6px 14px;background:#1565c0;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:12px';
@@ -2662,17 +2663,17 @@ function openFpViewer(idx){
     topBar.appendChild(closeBtn);
     // 이미지
     var imgWrap=document.createElement('div');
-    imgWrap.style.cssText='position:relative;display:flex;align-items:center;justify-content:center;width:96%;max-width:2400px';
+    imgWrap.style.cssText='flex:1;overflow-y:auto;overflow-x:hidden;display:flex;align-items:flex-start;justify-content:center;padding:8px 0';
     var prevBtn=document.createElement('button');
     prevBtn.textContent='◀';
-    prevBtn.style.cssText='position:absolute;left:-36px;background:rgba(255,255,255,0.15);color:#fff;border:none;border-radius:50%;width:40px;height:40px;font-size:18px;cursor:pointer';
+    prevBtn.style.cssText='position:fixed;left:12px;top:50%;transform:translateY(-50%);background:rgba(0,0,0,0.5);color:#fff;border:none;border-radius:50%;width:48px;height:48px;font-size:22px;cursor:pointer;z-index:9999';
     prevBtn.onclick=function(){ fpViewerNav(-1); };
     var img=document.createElement('img');
     img.id='fp-viewer-img';
-    img.style.cssText='max-width:94vw;max-height:86vh;border-radius:8px;object-fit:contain;box-shadow:0 8px 32px rgba(0,0,0,0.5)';
+    img.style.cssText='width:100%;height:auto;display:block;border-radius:6px;box-shadow:0 4px 20px rgba(0,0,0,0.5)';
     var nextBtn=document.createElement('button');
     nextBtn.textContent='▶';
-    nextBtn.style.cssText='position:absolute;right:-36px;background:rgba(255,255,255,0.15);color:#fff;border:none;border-radius:50%;width:40px;height:40px;font-size:18px;cursor:pointer';
+    nextBtn.style.cssText='position:fixed;right:12px;top:50%;transform:translateY(-50%);background:rgba(0,0,0,0.5);color:#fff;border:none;border-radius:50%;width:48px;height:48px;font-size:22px;cursor:pointer;z-index:9999';
     nextBtn.onclick=function(){ fpViewerNav(1); };
     imgWrap.appendChild(prevBtn);
     imgWrap.appendChild(img);
@@ -2680,7 +2681,7 @@ function openFpViewer(idx){
     // 하단 썸네일 바
     var thumbBar=document.createElement('div');
     thumbBar.id='fp-viewer-thumbs';
-    thumbBar.style.cssText='display:flex;gap:6px;flex-wrap:nowrap;overflow-x:auto;max-width:96%;padding:4px 0';
+    thumbBar.style.cssText='display:flex;gap:6px;flex-wrap:nowrap;overflow-x:auto;padding:8px 12px;background:rgba(0,0,0,0.6);flex-shrink:0';
     overlay.appendChild(topBar);
     overlay.appendChild(imgWrap);
     overlay.appendChild(thumbBar);
@@ -2797,33 +2798,68 @@ function renderPdfThumbs(typedArray){
     var tray=document.getElementById('fp-tray');
     var wrap=document.getElementById('fp-thumbs');
     if(tray) tray.style.display='block';
-    if(wrap) wrap.innerHTML='';
+    if(wrap) wrap.innerHTML='<div style="color:#90caf9;font-size:11px;padding:4px">로딩 중... ('+pdf.numPages+'페이지, 고해상도 렌더링)</div>';
     var total=pdf.numPages;
+    var rendered=0;
+    // 페이지별 고해상도 dataURL 캐시
+    _fpPdfHiRes={};
     for(var p=1;p<=total;p++){
       (function(pageNum){
         pdf.getPage(pageNum).then(function(page){
-          var vp=page.getViewport({scale:0.3});
-          var cv=document.createElement('canvas');
-          cv.width=vp.width; cv.height=vp.height;
-          cv.style.cssText='border-radius:4px;cursor:grab;border:2px solid transparent';
-          cv.title='페이지 '+pageNum;
-          page.render({canvasContext:cv.getContext('2d'),viewport:vp}).promise.then(function(){
-            var dataUrl=cv.toDataURL('image/jpeg',0.8);
-            cv.draggable=true;
-            cv.ondragstart=function(){ _fpDragSrc=dataUrl; };
-            cv.onclick=function(){
-              // 첫 번째 빈 슬롯에 자동 배치
-              for(var i=0;i<15;i++){
-                if(!_fpSlotData[i]){ setFpSlot(i,dataUrl); break; }
+          var origVp=page.getViewport({scale:1});
+          // 트레이 썸네일용 (작게, 빠르게)
+          var thumbScale=0.3;
+          var thumbVp=page.getViewport({scale:thumbScale});
+          var thumbCv=document.createElement('canvas');
+          thumbCv.width=thumbVp.width; thumbCv.height=thumbVp.height;
+          page.render({canvasContext:thumbCv.getContext('2d'),viewport:thumbVp}).promise.then(function(){
+            var thumbUrl=thumbCv.toDataURL('image/jpeg',0.75);
+            // 슬롯 배치용 고해상도 (A4 도면 기준 scale:3.0 → 약 2500~3500px)
+            var hiScale=Math.min(3.0, 3500/origVp.width);
+            var hiVp=page.getViewport({scale:hiScale});
+            var hiCv=document.createElement('canvas');
+            hiCv.width=hiVp.width; hiCv.height=hiVp.height;
+            page.render({canvasContext:hiCv.getContext('2d'),viewport:hiVp}).promise.then(function(){
+              var hiUrl=hiCv.toDataURL('image/jpeg',0.92); // 고품질 JPEG
+              _fpPdfHiRes[pageNum]=hiUrl;
+              rendered++;
+              // 트레이에 썸네일 추가
+              if(wrap){
+                if(rendered===1) wrap.innerHTML=''; // 로딩 메시지 제거
+                var div=document.createElement('div');
+                div.style.cssText='position:relative;cursor:pointer;flex-shrink:0';
+                var img=document.createElement('img');
+                img.src=thumbUrl;
+                img.style.cssText='height:90px;width:auto;display:block;border-radius:4px;border:2px solid transparent;transition:border-color .15s';
+                img.title='p'+pageNum+' ('+Math.round(hiVp.width)+'×'+Math.round(hiVp.height)+'px)';
+                var badge=document.createElement('div');
+                badge.textContent='p'+pageNum;
+                badge.style.cssText='position:absolute;bottom:3px;right:3px;background:rgba(0,0,0,0.65);color:#fff;font-size:9px;padding:1px 5px;border-radius:3px;pointer-events:none';
+                div.appendChild(img);
+                div.appendChild(badge);
+                div.onmouseenter=function(){ img.style.borderColor='#64b5f6'; };
+                div.onmouseleave=function(){ img.style.borderColor='transparent'; };
+                // 드래그: 고해상도 사용
+                div.draggable=true;
+                div.ondragstart=(function(pn){ return function(){ _fpDragSrc=_fpPdfHiRes[pn]; }; })(pageNum);
+                // 클릭: 고해상도로 슬롯 배치
+                div.onclick=(function(pn){ return function(){
+                  for(var i=0;i<15;i++){
+                    if(!_fpSlotData[i]){ setFpSlot(i,_fpPdfHiRes[pn]); break; }
+                  }
+                  showToast('p'+pn+' 배치됨');
+                }; })(pageNum);
+                wrap.appendChild(div);
               }
-            };
-            if(wrap) wrap.appendChild(cv);
+              if(rendered===total) showToast('✅ '+total+'페이지 고해상도 렌더링 완료');
+            });
           });
         });
       })(p);
     }
   });
 }
+
 
 function onFpDrop(e, idx){
   e.preventDefault();
@@ -2843,9 +2879,12 @@ function saveFpSlots(){
   showToast('저장 중... ('+keys.length+'장)');
   var saved=0, failed=0;
   keys.forEach(function(slotIdx){
-    // 저장 전 1800px로 리사이즈해서 용량 감소 (도면 가독성 유지)
-    resizeDataUrl(_fpSlotData[slotIdx], 1800, 0.82, function(resized){
-      window.storage.set('sd_fp_img_'+slotIdx, resized).then(function(r){
+    // 용량 체크 후 저장 (3MB 초과 시만 리사이즈)
+    var dataUrl=_fpSlotData[slotIdx];
+    var approxBytes=dataUrl.length*0.75;
+    var needResize=approxBytes>3*1024*1024;
+    var doSave=function(url){
+      window.storage.set('sd_fp_img_'+slotIdx, url).then(function(r){
         if(!r){ failed++; console.warn('슬롯'+slotIdx+' 저장 실패 (용량 초과 가능)'); }
         else saved++;
         if(saved+failed===keys.length){
@@ -2854,11 +2893,11 @@ function saveFpSlots(){
         }
       }).catch(function(e){
         failed++;
-        console.error('슬롯'+slotIdx+' 저장 오류:', e);
-        if(saved+failed===keys.length)
-          showToast('⚠️ '+saved+'장 저장, '+failed+'장 실패');
+        if(saved+failed===keys.length) showToast('⚠️ '+saved+'장 저장, '+failed+'장 실패');
       });
-    });
+    };
+    if(needResize) resizeDataUrl(dataUrl,2400,0.88,doSave);
+    else doSave(dataUrl);
   });
 }
 
