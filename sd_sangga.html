@@ -404,96 +404,130 @@ input[type=range]{width:100%;accent-color:#1a1a1a}
 
     <!-- 보증금 모드 -->
     <div style="margin-bottom:14px">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-        <label class="fl" style="margin:0">💰 보증금</label>
-        <div style="display:flex;border:0.5px solid #ddd;border-radius:6px;overflow:hidden">
-          <button id="r2-dep-pct-btn" onclick="setDepMode2('pct')" style="padding:3px 10px;font-size:11px;background:#1a1a1a;color:#fff;border:none;cursor:pointer">비율%</button>
-          <button id="r2-dep-amt-btn" onclick="setDepMode2('amt')" style="padding:3px 10px;font-size:11px;background:#fff;color:#666;border:none;cursor:pointer">직접입력</button>
-        </div>
-      </div>
-      <div id="r2-dep-pct-wrap">
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
-          <input type="range" id="r2-deprate" min="3" max="20" value="5" step="1" style="flex:1" oninput="updSlider2('deprate');calcRent2Derived()">
-          <span class="slider-val" id="v2-deprate">5%</span>
-        </div>
-        <div id="v2-dep-calc-wrap" style="display:flex;gap:6px;flex-wrap:wrap;min-height:20px"></div>
-      </div>
-      <div id="r2-dep-amt-wrap" style="display:none;flex-direction:column;gap:8px">
-        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <label class="fl" style="margin:0;font-size:13px;font-weight:700">💰 보증금</label>
+        <div style="display:flex;gap:6px;align-items:center">
           <div style="display:flex;border:0.5px solid #ddd;border-radius:6px;overflow:hidden">
-            <button id="r2-dep-split-each-btn" onclick="setDepSplitMode('each')" style="padding:2px 9px;font-size:11px;background:#1a1a1a;color:#fff;border:none;cursor:pointer">호실별</button>
-            <button id="r2-dep-split-total-btn" onclick="setDepSplitMode('total')" style="padding:2px 9px;font-size:11px;background:#fff;color:#666;border:none;cursor:pointer">전체→안분</button>
+            <button id="r2-dep-pct-btn" onclick="setDepMode2('pct')" style="padding:3px 10px;font-size:11px;background:#1a1a1a;color:#fff;border:none;cursor:pointer">비율%</button>
+            <button id="r2-dep-amt-btn" onclick="setDepMode2('amt')" style="padding:3px 10px;font-size:11px;background:#fff;color:#666;border:none;cursor:pointer">직접입력</button>
           </div>
-          <span style="font-size:11px;color:#aaa">100만원 단위</span>
+          <!-- 비율% 모드에서 개별/전체 안분 선택 -->
+          <div id="r2-dep-split-toggle" style="display:flex;border:0.5px solid #ddd;border-radius:6px;overflow:hidden">
+            <button id="r2-dep-split-ind-btn" onclick="setDepSplit2('ind')" style="padding:3px 9px;font-size:11px;background:#1a1a1a;color:#fff;border:none;cursor:pointer" title="각 호실 비율 개별 설정 → 합산">개별합산</button>
+            <button id="r2-dep-split-tot-btn" onclick="setDepSplit2('tot')" style="padding:3px 9px;font-size:11px;background:#fff;color:#666;border:none;cursor:pointer" title="전체 보증금 설정 → 공급가 비율로 안분">전체안분</button>
+          </div>
         </div>
-        <!-- 전체 안분 입력 -->
-        <div id="r2-dep-total-wrap" style="display:none;align-items:center;gap:8px">
-          <input type="number" id="r2-dep-total" class="fi" placeholder="전체 보증금 합계 (만원)" step="100" style="font-size:12px;width:180px" oninput="calcRent2Derived()">
-          <span style="font-size:11px;color:#aaa">→ 공급가 비율로 안분</span>
+      </div>
+
+      <!-- 비율% 모드 -->
+      <div id="r2-dep-pct-wrap">
+        <!-- 개별합산: 전체 비율 1개 슬라이더 (호실 선택 시 호실별 슬라이더로 확장) -->
+        <div id="r2-dep-ind-wrap">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+            <input type="range" id="r2-deprate" min="3" max="30" value="5" step="1" style="flex:1" oninput="updSlider2('deprate');calcRent2Derived()">
+            <span class="slider-val" id="v2-deprate">5%</span>
+            <span id="v2-dep-global" style="font-size:12px;color:#aaa">— 호실 선택 후 표시</span>
+          </div>
+          <div id="r2-dep-ind-sliders" style="display:none"></div>
         </div>
-        <!-- 호실별 입력 (동적 생성) -->
-        <div id="r2-dep-each-wrap"></div>
+        <!-- 전체안분: 전체 금액 1개 입력 + 슬라이더 -->
+        <div id="r2-dep-tot-wrap" style="display:none">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+            <input type="number" id="r2-dep-tot-val" class="fi" placeholder="전체 보증금 합계 (만원)" step="100" style="font-size:13px;width:180px;font-weight:700" oninput="calcRent2Derived()">
+            <span style="font-size:11px;color:#aaa">만원 → 공급가 비율 안분</span>
+          </div>
+          <div id="r2-dep-tot-preview" style="min-height:20px"></div>
+        </div>
+      </div>
+
+      <!-- 직접입력 모드 -->
+      <div id="r2-dep-amt-wrap" style="display:none;flex-direction:column;gap:6px">
+        <div id="r2-dep-amt-ind-wrap">
+          <div style="font-size:11px;color:#888;margin-bottom:4px">호실별 개별 입력 (선택 후 표시)</div>
+          <div id="r2-dep-amt-ind-inputs"></div>
+          <div id="r2-dep-amt-ind-sum" style="font-size:12px;color:#1565c0;font-weight:700;margin-top:4px;min-height:16px"></div>
+        </div>
       </div>
     </div>
 
     <!-- 월세 모드 3가지 -->
     <div style="margin-bottom:14px">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-        <label class="fl" style="margin:0">🏷️ 월세</label>
-        <div style="display:flex;border:0.5px solid #ddd;border-radius:6px;overflow:hidden">
-          <button id="r2-mon-yield-btn" onclick="setMonMode2('yield')" style="padding:3px 9px;font-size:11px;background:#1a1a1a;color:#fff;border:none;cursor:pointer">수익률</button>
-          <button id="r2-mon-step-btn"  onclick="setMonMode2('step')"  style="padding:3px 9px;font-size:11px;background:#fff;color:#666;border:none;cursor:pointer">5만단위</button>
-          <button id="r2-mon-fix-btn"   onclick="setMonMode2('fix')"   style="padding:3px 9px;font-size:11px;background:#fff;color:#666;border:none;cursor:pointer">정액</button>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <label class="fl" style="margin:0;font-size:13px;font-weight:700">🏷️ 월세</label>
+        <div style="display:flex;gap:6px;align-items:center">
+          <div style="display:flex;border:0.5px solid #ddd;border-radius:6px;overflow:hidden">
+            <button id="r2-mon-yield-btn" onclick="setMonMode2('yield')" style="padding:3px 9px;font-size:11px;background:#1a1a1a;color:#fff;border:none;cursor:pointer">수익률</button>
+            <button id="r2-mon-step-btn"  onclick="setMonMode2('step')"  style="padding:3px 9px;font-size:11px;background:#fff;color:#666;border:none;cursor:pointer">5만단위</button>
+            <button id="r2-mon-fix-btn"   onclick="setMonMode2('fix')"   style="padding:3px 9px;font-size:11px;background:#fff;color:#666;border:none;cursor:pointer">정액</button>
+          </div>
+          <!-- 개별합산/전체안분 -->
+          <div id="r2-mon-split-toggle" style="display:flex;border:0.5px solid #ddd;border-radius:6px;overflow:hidden">
+            <button id="r2-mon-split-ind-btn" onclick="setMonSplit2('ind')" style="padding:3px 9px;font-size:11px;background:#1a1a1a;color:#fff;border:none;cursor:pointer">개별합산</button>
+            <button id="r2-mon-split-tot-btn" onclick="setMonSplit2('tot')" style="padding:3px 9px;font-size:11px;background:#fff;color:#666;border:none;cursor:pointer">전체안분</button>
+          </div>
         </div>
       </div>
-      <!-- 수익률 연동 모드 -->
+
+      <!-- 수익률 모드 -->
       <div id="r2-mon-yield-wrap">
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
-          <input type="range" id="r2-yield" min="3" max="8" value="4.5" step="0.1" style="flex:1" oninput="updSlider2('yield');calcRent2Derived()">
-          <span class="slider-val" id="v2-yield">4.5%</span>
+        <!-- 개별합산: 전체 수익률 1개 bar (호실별 독립 가능) -->
+        <div id="r2-mon-yield-ind-wrap">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+            <input type="range" id="r2-yield" min="2" max="10" value="4.5" step="0.1" style="flex:1" oninput="updSlider2('yield');calcRent2Derived()">
+            <span class="slider-val" id="v2-yield">4.5%</span>
+            <span id="v2-mon-global" style="font-size:12px;color:#aaa">— 호실 선택 후 표시</span>
+          </div>
+          <div id="r2-mon-ind-sliders" style="display:none"></div>
         </div>
-        <div id="v2-mon-calc-wrap" style="display:flex;gap:6px;flex-wrap:wrap;min-height:20px;margin-bottom:4px"></div>
-        <div id="r2-derived-mon" style="font-size:12px;color:#1565c0;font-weight:600;min-height:20px"></div>
+        <!-- 전체안분 수익률 -->
+        <div id="r2-mon-yield-tot-wrap" style="display:none">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+            <input type="number" id="r2-mon-tot-val" class="fi" placeholder="전체 월세 합계 (만원)" step="5" style="font-size:13px;width:180px;font-weight:700" oninput="calcRent2Derived()">
+            <span style="font-size:11px;color:#aaa">만원 → 공급가 비율 안분</span>
+          </div>
+          <div id="r2-mon-tot-preview" style="min-height:20px"></div>
+        </div>
+        <div id="r2-derived-mon" style="min-height:20px;margin-top:4px"></div>
       </div>
-      <!-- 5만원 단위 조정 모드 -->
+
+      <!-- 5만단위 모드 -->
       <div id="r2-mon-step-wrap" style="display:none">
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
-          <div style="display:flex;border:0.5px solid #ddd;border-radius:6px;overflow:hidden">
-            <button id="r2-mon-step-each-btn" onclick="setMonSplitMode('step','each')" style="padding:2px 9px;font-size:11px;background:#1a1a1a;color:#fff;border:none;cursor:pointer">호실별</button>
-            <button id="r2-mon-step-total-btn" onclick="setMonSplitMode('step','total')" style="padding:2px 9px;font-size:11px;background:#fff;color:#666;border:none;cursor:pointer">전체→안분</button>
+        <div id="r2-mon-step-ind-wrap">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
+            <button onclick="adjMon2(-5)" style="padding:5px 14px;border:1px solid #ddd;border-radius:6px;cursor:pointer;font-size:15px;font-weight:700">−5</button>
+            <span id="r2-mon-step-val" style="min-width:90px;text-align:center;font-size:18px;font-weight:800;color:#c62828">0만원</span>
+            <button onclick="adjMon2(5)" style="padding:5px 14px;border:1px solid #ddd;border-radius:6px;cursor:pointer;font-size:15px;font-weight:700">+5</button>
+            <span style="font-size:11px;color:#aaa">전체 월세</span>
+            <span id="v2-step-global" style="font-size:12px;color:#aaa"></span>
           </div>
+          <div id="r2-mon-step-ind-sliders" style="display:none"></div>
         </div>
-        <!-- 전체 안분 -->
-        <div id="r2-mon-step-total-wrap">
+        <div id="r2-mon-step-tot-wrap" style="display:none">
           <div style="display:flex;align-items:center;gap:8px">
-            <button onclick="adjMon2(-5)" style="padding:4px 12px;border:1px solid #ddd;border-radius:6px;cursor:pointer;font-size:14px">−5</button>
-            <span id="r2-mon-step-val" style="min-width:80px;text-align:center;font-size:16px;font-weight:700;color:#c62828">— 만원</span>
-            <button onclick="adjMon2(5)"  style="padding:4px 12px;border:1px solid #ddd;border-radius:6px;cursor:pointer;font-size:14px">+5</button>
-            <span style="font-size:11px;color:#aaa">전체 월세 (공급가 안분)</span>
+            <input type="number" id="r2-mon-step-tot-val" class="fi" placeholder="전체 월세 합계 (만원)" step="5" style="font-size:13px;width:180px;font-weight:700" oninput="calcRent2Derived()">
+            <span style="font-size:11px;color:#aaa">만원 → 공급가 비율 안분</span>
           </div>
         </div>
-        <!-- 호실별 -->
-        <div id="r2-mon-step-each-wrap" style="display:none" id="r2-mon-each-wrap-step"></div>
-        <div id="r2-derived-yield-step" style="font-size:12px;color:#888;margin-top:4px;min-height:20px"></div>
+        <div id="r2-derived-yield-step" style="min-height:20px;margin-top:4px"></div>
       </div>
-      <!-- 정액 입력 모드 -->
+
+      <!-- 정액 모드 -->
       <div id="r2-mon-fix-wrap" style="display:none">
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
-          <div style="display:flex;border:0.5px solid #ddd;border-radius:6px;overflow:hidden">
-            <button id="r2-mon-fix-each-btn" onclick="setMonSplitMode('fix','each')" style="padding:2px 9px;font-size:11px;background:#1a1a1a;color:#fff;border:none;cursor:pointer">호실별</button>
-            <button id="r2-mon-fix-total-btn" onclick="setMonSplitMode('fix','total')" style="padding:2px 9px;font-size:11px;background:#fff;color:#666;border:none;cursor:pointer">전체→안분</button>
+        <div id="r2-mon-fix-ind-wrap">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+            <input type="number" id="r2-mon-fix-amt" class="fi" placeholder="전체 월세 (만원)" step="5" style="font-size:13px;width:160px;font-weight:700" oninput="calcRent2Derived()">
+            <span style="font-size:11px;color:#aaa">만원</span>
+            <span id="v2-fix-global" style="font-size:12px;color:#aaa"></span>
           </div>
+          <div id="r2-mon-fix-ind-sliders" style="display:none"></div>
         </div>
-        <!-- 전체 안분 -->
-        <div id="r2-mon-fix-total-wrap">
+        <div id="r2-mon-fix-tot-wrap" style="display:none">
           <div style="display:flex;align-items:center;gap:8px">
-            <input type="number" id="r2-mon-fix-amt" class="fi" placeholder="전체 월세 합계 (만원)" step="5" style="font-size:12px;width:160px" oninput="calcRent2Derived()">
-            <span style="font-size:11px;color:#aaa">만원 → 공급가 안분</span>
+            <input type="number" id="r2-mon-fixtot-val" class="fi" placeholder="전체 월세 합계 (만원)" step="5" style="font-size:13px;width:180px;font-weight:700" oninput="calcRent2Derived()">
+            <span style="font-size:11px;color:#aaa">만원 → 공급가 비율 안분</span>
           </div>
         </div>
-        <!-- 호실별 -->
-        <div id="r2-mon-fix-each-wrap" style="display:none"></div>
-        <div id="r2-derived-yield-fix" style="font-size:12px;color:#888;margin-top:4px;min-height:20px"></div>
+        <div id="r2-derived-yield-fix" style="min-height:20px;margin-top:4px"></div>
       </div>
     </div>
 
@@ -1412,41 +1446,36 @@ function updSlider(k){
 }
 // ── 임대견적서 보증금 모드
 // ─── 임대견적 상태 변수 ───────────────────────────
-var _r2DepMode = 'pct';       // 'pct' | 'amt'
-var _r2DepSplitMode = 'each'; // 'each' | 'total'  (amt 모드에서)
-var _r2MonMode = 'yield';     // 'yield' | 'step' | 'fix'
-var _r2MonStepSplit = 'total';// 'each' | 'total'
-var _r2MonFixSplit  = 'total';// 'each' | 'total'
-var _r2MonStep = 0;
-var _r2DiscMode = 'pct';      // 'pct' | 'amt'
-// 호실별 보증금/월세 저장
-var _r2DepEach  = {}; // {ho: 만원}
-var _r2MonEach  = {}; // {ho: 만원}
+var _r2DepMode   = 'pct';  // 'pct' | 'amt'
+var _r2DepSplit  = 'ind';  // 'ind'(개별합산) | 'tot'(전체안분)
+var _r2MonMode   = 'yield';// 'yield' | 'step' | 'fix'
+var _r2MonSplit  = 'ind';  // 'ind' | 'tot'
+var _r2DepRates  = {};     // {ho: 비율%} 개별 비율
+var _r2MonVals   = {};     // {ho: 만원} 개별 월세
+var _r2MonStep   = 0;
+var _r2DiscMode  = 'pct';
+var _r2TotPrice  = 0;
 
 // ── 보증금 모드 전환
 function setDepMode2(m){
   _r2DepMode = m;
   document.getElementById('r2-dep-pct-wrap').style.display = m==='pct'?'block':'none';
   document.getElementById('r2-dep-amt-wrap').style.display = m==='amt'?'flex':'none';
-  document.getElementById('r2-dep-pct-btn').style.background = m==='pct'?'#1a1a1a':'#fff';
-  document.getElementById('r2-dep-pct-btn').style.color     = m==='pct'?'#fff':'#666';
-  document.getElementById('r2-dep-amt-btn').style.background = m==='amt'?'#1a1a1a':'#fff';
-  document.getElementById('r2-dep-amt-btn').style.color     = m==='amt'?'#fff':'#666';
-  renderDepEachInputs();
-  calcRent2Derived();
+  _btn('r2-dep-pct-btn', m==='pct');
+  _btn('r2-dep-amt-btn', m==='amt');
+  renderDepSliders(); calcRent2Derived();
 }
 
-// ── 보증금 분할 모드 (호실별/전체안분)
-function setDepSplitMode(m){
-  _r2DepSplitMode = m;
-  document.getElementById('r2-dep-total-wrap').style.display = m==='total'?'flex':'none';
-  document.getElementById('r2-dep-each-wrap').style.display  = m==='each' ?'block':'none';
-  document.getElementById('r2-dep-split-each-btn').style.background  = m==='each' ?'#1a1a1a':'#fff';
-  document.getElementById('r2-dep-split-each-btn').style.color       = m==='each' ?'#fff':'#666';
-  document.getElementById('r2-dep-split-total-btn').style.background = m==='total'?'#1a1a1a':'#fff';
-  document.getElementById('r2-dep-split-total-btn').style.color      = m==='total'?'#fff':'#666';
-  renderDepEachInputs();
-  calcRent2Derived();
+// ── 보증금 분할 전환 (개별합산/전체안분)
+function setDepSplit2(s){
+  _r2DepSplit = s;
+  _btn('r2-dep-split-ind-btn', s==='ind');
+  _btn('r2-dep-split-tot-btn', s==='tot');
+  var indW = document.getElementById('r2-dep-ind-wrap');
+  var totW = document.getElementById('r2-dep-tot-wrap');
+  if(indW) indW.style.display = s==='ind'?'block':'none';
+  if(totW) totW.style.display = s==='tot'?'block':'none';
+  renderDepSliders(); calcRent2Derived();
 }
 
 // ── 월세 모드 전환
@@ -1454,26 +1483,24 @@ function setMonMode2(m){
   _r2MonMode = m;
   ['yield','step','fix'].forEach(function(x){
     document.getElementById('r2-mon-'+x+'-wrap').style.display = x===m?'block':'none';
-    var btn = document.getElementById('r2-mon-'+x+'-btn');
-    btn.style.background = x===m?'#1a1a1a':'#fff';
-    btn.style.color      = x===m?'#fff':'#666';
+    _btn('r2-mon-'+x+'-btn', x===m);
   });
-  renderMonEachInputs();
-  calcRent2Derived();
+  renderMonSliders(); calcRent2Derived();
 }
 
-// ── 월세 분할 모드 (step/fix 각각)
-function setMonSplitMode(mode, split){
-  if(mode==='step') _r2MonStepSplit = split;
-  if(mode==='fix')  _r2MonFixSplit  = split;
-  ['each','total'].forEach(function(s){
-    var el = document.getElementById('r2-mon-'+mode+'-'+s+'-wrap');
-    if(el) el.style.display = s===split?'block':'none';
-    var btn = document.getElementById('r2-mon-'+mode+'-'+s+'-btn');
-    if(btn){ btn.style.background=s===split?'#1a1a1a':'#fff'; btn.style.color=s===split?'#fff':'#666'; }
+// ── 월세 분할 전환
+function setMonSplit2(s){
+  _r2MonSplit = s;
+  _btn('r2-mon-split-ind-btn', s==='ind');
+  _btn('r2-mon-split-tot-btn', s==='tot');
+  // 각 모드별 ind/tot 영역 토글
+  ['yield','step','fix'].forEach(function(m){
+    var iw=document.getElementById('r2-mon-'+m+'-ind-wrap');
+    var tw=document.getElementById('r2-mon-'+m+'-tot-wrap');
+    if(iw) iw.style.display=s==='ind'?'block':'none';
+    if(tw) tw.style.display=s==='tot'?'block':'none';
   });
-  renderMonEachInputs();
-  calcRent2Derived();
+  renderMonSliders(); calcRent2Derived();
 }
 
 // ── 할인율 모드
@@ -1481,10 +1508,7 @@ function setDiscMode2(m){
   _r2DiscMode = m;
   document.getElementById('r2-disc-pct-wrap').style.display = m==='pct'?'flex':'none';
   document.getElementById('r2-disc-amt-wrap').style.display = m==='amt'?'flex':'none';
-  document.getElementById('r2-disc-pct-btn').style.background = m==='pct'?'#1a1a1a':'#fff';
-  document.getElementById('r2-disc-pct-btn').style.color     = m==='pct'?'#fff':'#666';
-  document.getElementById('r2-disc-amt-btn').style.background = m==='amt'?'#1a1a1a':'#fff';
-  document.getElementById('r2-disc-amt-btn').style.color     = m==='amt'?'#fff':'#666';
+  _btn('r2-disc-pct-btn', m==='pct'); _btn('r2-disc-amt-btn', m==='amt');
   calcRent2Derived();
 }
 function updR2Disc(){
@@ -1492,222 +1516,323 @@ function updR2Disc(){
   document.getElementById('v2-disc').textContent=v.toFixed(1)+'%';
 }
 
-// ── 할인 적용 공급가 가져오기
+// ── 버튼 활성화 헬퍼
+function _btn(id, active){
+  var el=document.getElementById(id); if(!el) return;
+  el.style.background = active?'#1a1a1a':'#fff';
+  el.style.color      = active?'#fff':'#666';
+}
+
+// ── 할인 적용 공급가
 function getR2Price(p){
   if(_r2DiscMode==='pct'){
     var d=parseFloat(document.getElementById('r2-disc').value||0)/100;
     return Math.round(p.price*(1-d));
-  } else {
-    var dAmt=parseFloat(document.getElementById('r2-disc-amt').value||0)*10000;
-    return Math.max(0, p.price - dAmt);
   }
+  var dAmt=parseFloat(document.getElementById('r2-disc-amt').value||0)*10000;
+  return Math.max(0, p.price-dAmt);
 }
 
-// ── 보증금 가져오기 (호별)
+// ── 보증금 (호별)
 function getRent2Deposit(price, ho){
+  if(_r2DepSplit==='tot'){
+    var tot=parseFloat(document.getElementById('r2-dep-tot-val').value||0);
+    if(!tot||!_r2TotPrice) return 0;
+    return Math.round(tot*price/_r2TotPrice/100)*100;
+  }
+  // ind
   if(_r2DepMode==='pct'){
-    var r=parseFloat(document.getElementById('r2-deprate').value)/100;
+    var globalR=parseFloat(document.getElementById('r2-deprate').value||5);
+    var r=(_r2DepRates[ho]!==undefined)?_r2DepRates[ho]:globalR;
     return Math.round(price/10000*r/100)*100;
   }
-  // amt 모드
-  if(_r2DepSplitMode==='each'){
-    return _r2DepEach[ho]||0;
-  } else {
-    // 전체 안분: 전체 합계를 공급가 비율로 안분
-    var total=parseFloat(document.getElementById('r2-dep-total').value||0);
-    if(!total||!_r2TotPrice) return 0;
-    return Math.round(total * price / _r2TotPrice / 100)*100;
-  }
+  // amt 직접입력
+  var el=document.getElementById('r2-dep-amt-ind-'+ho);
+  return el?Math.round(parseFloat(el.value||0)/100)*100:0;
 }
 
-// ── 월세 가져오기 (호별)
-var _r2TotPrice = 0; // 선택 호실 공급가 합계 (캐시)
+// ── 월세 (호별)
 function getRent2Monthly(price, dep, ho){
+  if(_r2MonSplit==='tot'){
+    // 전체안분
+    var totEl, totV=0;
+    if(_r2MonMode==='yield'){
+      totEl=document.getElementById('r2-mon-tot-val');
+    } else if(_r2MonMode==='step'){
+      totEl=document.getElementById('r2-mon-step-tot-val');
+    } else {
+      totEl=document.getElementById('r2-mon-fixtot-val');
+    }
+    totV=totEl?parseFloat(totEl.value||0):0;
+    if(!totV||!_r2TotPrice) return 0;
+    return Math.round(totV*price/_r2TotPrice/5)*5;
+  }
+  // ind
   if(_r2MonMode==='yield'){
-    var yr=parseFloat(document.getElementById('r2-yield').value)/100;
-    var ni=(price - dep*10000);
+    var yr=parseFloat(document.getElementById('r2-yield').value||4.5)/100;
+    var ni=price-dep*10000; if(ni<=0) return 0;
     return Math.max(0, Math.round(ni*yr/12/10000/5)*5);
   }
   if(_r2MonMode==='step'){
-    if(_r2MonStepSplit==='each') return _r2MonEach[ho]||0;
-    // 전체 안분
-    var tot2=_r2MonStep||0;
-    if(!tot2||!_r2TotPrice) return 0;
-    return Math.round(tot2*price/_r2TotPrice/5)*5;
+    var indEl=document.getElementById('r2-mon-step-ind-'+ho);
+    if(indEl) return parseFloat(indEl.value||0);
+    return _r2MonStep||0;
   }
   if(_r2MonMode==='fix'){
-    if(_r2MonFixSplit==='each') return _r2MonEach[ho]||0;
-    var tot3=parseFloat(document.getElementById('r2-mon-fix-amt').value||0);
-    if(!tot3||!_r2TotPrice) return 0;
-    return Math.round(tot3*price/_r2TotPrice/5)*5;
+    var indEl2=document.getElementById('r2-mon-fix-ind-'+ho);
+    if(indEl2) return parseFloat(indEl2.value||0);
+    return parseFloat(document.getElementById('r2-mon-fix-amt').value||0);
   }
   return 0;
 }
 
-// ── 호실별 보증금 입력 동적 렌더링
-function renderDepEachInputs(){
-  var wrap=document.getElementById('r2-dep-each-wrap');
-  if(!wrap) return;
-  if(_r2DepMode!=='amt'||_r2DepSplitMode!=='each'){wrap.innerHTML='';return;}
+// ── 현재 선택 호실 목록 가져오기
+function getSelProps2(){
   var selList=typeof selHos2!=='undefined'?[...selHos2]:[];
   var props2=typeof allProps!=='undefined'?allProps:[];
-  var selProps=selList.map(function(ho){return props2.find(function(p){return p.ho===ho;});}).filter(Boolean);
-  if(!selProps.length){wrap.innerHTML='<span style="font-size:12px;color:#aaa">호실 선택 후 표시</span>';return;}
-  wrap.innerHTML=selProps.map(function(p){
-    var v=_r2DepEach[p.ho]||'';
-    return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">'
-      +'<span style="min-width:52px;font-size:13px;font-weight:700;color:#1a2744">'+p.ho+'</span>'
-      +'<input type="number" step="100" style="width:120px;padding:4px 8px;border:1px solid #ddd;border-radius:6px;font-size:12px" '
-      +'<input type="number" step="100" data-ho="'+p.ho+'" style="width:120px;padding:4px 8px;border:1px solid #ddd;border-radius:6px;font-size:12px" '
-      +'value="'+v+'" placeholder="보증금(만원)" oninput="_r2DepEach[this.dataset.ho]=parseFloat(this.value||0);calcRent2Derived()">'
-      +'<span style="font-size:11px;color:#aaa">만원</span>'
-      +'</div>';
-  }).join('');
+  return selList.map(function(ho){return props2.find(function(p){return p.ho===ho;});}).filter(Boolean);
 }
 
-// ── 호실별 월세 입력 동적 렌더링
-function renderMonEachInputs(){
-  var needStep = _r2MonMode==='step' && _r2MonStepSplit==='each';
-  var needFix  = _r2MonMode==='fix'  && _r2MonFixSplit==='each';
-  var wrapId   = needStep?'r2-mon-step-each-wrap':'r2-mon-fix-each-wrap';
-  var wrap     = document.getElementById(wrapId);
-  if(!wrap) return;
-  if(!needStep&&!needFix){if(wrap)wrap.innerHTML='';return;}
-  var selList=typeof selHos2!=='undefined'?[...selHos2]:[];
-  var props2=typeof allProps!=='undefined'?allProps:[];
-  var selProps=selList.map(function(ho){return props2.find(function(p){return p.ho===ho;});}).filter(Boolean);
-  if(!selProps.length){wrap.innerHTML='<span style="font-size:12px;color:#aaa">호실 선택 후 표시</span>';return;}
-  wrap.innerHTML=selProps.map(function(p){
-    var v=_r2MonEach[p.ho]||'';
-    return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">'
-      +'<span style="min-width:52px;font-size:13px;font-weight:700;color:#1a2744">'+p.ho+'</span>'
-      +'<input type="number" step="5" style="width:110px;padding:4px 8px;border:1px solid #ddd;border-radius:6px;font-size:12px" '
-      +'<input type="number" step="5" data-ho="'+p.ho+'" style="width:110px;padding:4px 8px;border:1px solid #ddd;border-radius:6px;font-size:12px" '
-      +'value="'+v+'" placeholder="월세(만원)" oninput="_r2MonEach[this.dataset.ho]=parseFloat(this.value||0);calcRent2Derived()">'
-      +'<span style="font-size:11px;color:#aaa">만원</span>'
-      +'</div>';
-  }).join('');
+// ── 보증금 호실별 슬라이더 렌더 (개별합산 + 비율% 모드, 2개 이상 선택 시)
+function renderDepSliders(){
+  var wrap=document.getElementById('r2-dep-ind-sliders');
+  var wrapAmt=document.getElementById('r2-dep-amt-ind-inputs');
+  var selProps=getSelProps2();
+  var show=selProps.length>=2&&_r2DepSplit==='ind';
+  if(wrap) wrap.style.display = (show&&_r2DepMode==='pct')?'block':'none';
+  if(wrapAmt) wrapAmt.style.display = (selProps.length>=1&&_r2DepMode==='amt')?'block':'none';
+
+  if(wrap && show && _r2DepMode==='pct'){
+    var globalR=parseFloat(document.getElementById('r2-deprate').value||5);
+    wrap.innerHTML=selProps.map(function(p){
+      var r=(_r2DepRates[p.ho]!==undefined)?_r2DepRates[p.ho]:globalR;
+      var dp=getRent2Deposit(getR2Price(p),p.ho);
+      return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'
+        +'<span style="min-width:52px;font-size:12px;font-weight:700;color:#1a2744">'+p.ho+'</span>'
+        +'<input type="range" min="1" max="30" step="1" value="'+r+'" style="flex:1" '
+        +'data-ho="'+p.ho+'" oninput="_r2DepRates[this.dataset.ho]=parseFloat(this.value);this.nextElementSibling.textContent=this.value+\'%\';calcRent2Derived()">'
+        +'<span id="r2-dep-rate-'+p.ho+'" class="slider-val">'+r+'%</span>'
+        +'<span id="r2-dep-amt-'+p.ho+'" style="font-size:12px;color:#1565c0;font-weight:700;min-width:70px">'+fmt(dp)+'만</span>'
+        +'</div>';
+    }).join('');
+  }
+  if(wrapAmt && selProps.length>=1 && _r2DepMode==='amt'){
+    wrapAmt.innerHTML=selProps.map(function(p){
+      var v=_r2DepRates[p.ho+'_amt']||'';
+      return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">'
+        +'<span style="min-width:52px;font-size:12px;font-weight:700;color:#1a2744">'+p.ho+'</span>'
+        +'<input type="number" id="r2-dep-amt-ind-'+p.ho+'" data-ho="'+p.ho+'" step="100" value="'+v+'" '
+        +'style="width:120px;padding:4px 8px;border:1px solid #ddd;border-radius:6px;font-size:12px" placeholder="보증금(만원)" '
+        +'oninput="_r2DepRates[this.dataset.ho+\'_amt\']=parseFloat(this.value||0);calcRent2Derived()">'
+        +'<span style="font-size:11px;color:#aaa">만원</span>'
+        +'</div>';
+    }).join('');
+  }
 }
 
-// ── 종속값 표시
+// ── 월세 호실별 슬라이더 렌더 (개별합산 모드)
+function renderMonSliders(){
+  var selProps=getSelProps2();
+  var show=selProps.length>=2&&_r2MonSplit==='ind';
+  // 5만단위 개별 슬라이더
+  var stepWrap=document.getElementById('r2-mon-step-ind-sliders');
+  if(stepWrap){
+    stepWrap.style.display=(show&&_r2MonMode==='step')?'block':'none';
+    if(show&&_r2MonMode==='step'){
+      stepWrap.innerHTML=selProps.map(function(p){
+        var v=_r2MonVals[p.ho]||0;
+        return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">'
+          +'<span style="min-width:52px;font-size:12px;font-weight:700;color:#1a2744">'+p.ho+'</span>'
+          +'<button data-ho="'+p.ho+'" onclick="_adj2(this.dataset.ho,-5)" style="padding:3px 10px;border:1px solid #ddd;border-radius:6px;cursor:pointer">−5</button>'
+          +'<span id="r2-mon-step-ind-'+p.ho+'-disp" style="min-width:60px;text-align:center;font-size:14px;font-weight:700;color:#c62828">'+v+'만</span>'
+          +'<button data-ho="'+p.ho+'" onclick="_adj2(this.dataset.ho,5)" style="padding:3px 10px;border:1px solid #ddd;border-radius:6px;cursor:pointer">+5</button>'
+          +'<input type="hidden" id="r2-mon-step-ind-'+p.ho+'" value="'+v+'">'
+          +'</div>';
+      }).join('');
+    }
+  }
+  // 정액 개별 입력
+  var fixWrap=document.getElementById('r2-mon-fix-ind-sliders');
+  if(fixWrap){
+    fixWrap.style.display=(show&&_r2MonMode==='fix')?'block':'none';
+    if(show&&_r2MonMode==='fix'){
+      fixWrap.innerHTML=selProps.map(function(p){
+        var v=_r2MonVals[p.ho+'_fix']||'';
+        return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">'
+          +'<span style="min-width:52px;font-size:12px;font-weight:700;color:#1a2744">'+p.ho+'</span>'
+          +'<input type="number" id="r2-mon-fix-ind-'+p.ho+'" step="5" value="'+v+'" '
+          +'style="width:110px;padding:4px 8px;border:1px solid #ddd;border-radius:6px;font-size:12px" placeholder="월세(만원)" '
+          +'oninput="_r2MonVals[this.dataset.ho+\'_fix\']=parseFloat(this.value||0);calcRent2Derived()">'
+          +'<span style="font-size:11px;color:#aaa">만원</span>'
+          +'</div>';
+      }).join('');
+    }
+  }
+}
+
+// ── 개별 5만단위 조정
+function _adj2(ho, delta){
+  var cur=(_r2MonVals[ho]||0)+delta;
+  if(cur<0) cur=0;
+  _r2MonVals[ho]=cur;
+  var el=document.getElementById('r2-mon-step-ind-'+ho);
+  var disp=document.getElementById('r2-mon-step-ind-'+ho+'-disp');
+  if(el) el.value=cur;
+  if(disp) disp.textContent=cur+'만';
+  calcRent2Derived();
+}
+
+// ── calcRent2Derived : 실시간 표시 핵심
 function calcRent2Derived(){
-  var selList = typeof selHos2!=='undefined' ? [...selHos2] : [];
-  var props2  = typeof allProps!=='undefined' ? allProps : [];
-  var selProps = selList.map(function(ho){return props2.find(function(p){return p.ho===ho;});}).filter(Boolean);
+  var selProps=getSelProps2();
+  _r2TotPrice=selProps.reduce(function(s,p){return s+getR2Price(p);},0);
 
-  // 선택 호실 공급가 합계 캐시
-  _r2TotPrice = selProps.reduce(function(s,p){return s+getR2Price(p);},0);
+  var globalR=parseFloat(document.getElementById('r2-deprate').value||5);
 
-  // ── [1] 보증금 슬라이더 실시간 금액 표시
-  var depCalcWrap = document.getElementById('v2-dep-calc-wrap');
-  if(depCalcWrap && _r2DepMode==='pct'){
+  // ──[1] 보증금 비율 슬라이더 실시간 금액 표시
+  var depGlobalEl=document.getElementById('v2-dep-global');
+  if(depGlobalEl && _r2DepMode==='pct' && _r2DepSplit==='ind'){
     if(selProps.length===0){
-      depCalcWrap.innerHTML='<span style="font-size:12px;color:#aaa">— 호실 선택 후 표시</span>';
+      depGlobalEl.textContent='— 호실 선택 후 표시';
+      depGlobalEl.style.color='#aaa';
     } else {
-      depCalcWrap.innerHTML = selProps.map(function(p){
-        var dp=getRent2Deposit(getR2Price(p), p.ho);
-        return '<span style="background:#e3f2fd;color:#1565c0;padding:3px 10px;border-radius:12px;font-size:12px;font-weight:700">'+p.ho+': '+fmt(dp)+'만</span>';
+      var globalDp=Math.round(selProps[0].price/10000*globalR/100)*100;
+      var tags=selProps.map(function(p){
+        var r=(_r2DepRates[p.ho]!==undefined)?_r2DepRates[p.ho]:globalR;
+        var dp=getRent2Deposit(getR2Price(p),p.ho);
+        // 호실별 슬라이더의 금액 span도 업데이트
+        var amtEl=document.getElementById('r2-dep-amt-'+p.ho);
+        if(amtEl) amtEl.textContent=fmt(dp)+'만';
+        return p.ho+': <strong style="color:#1565c0">'+fmt(dp)+'만</strong>';
+      }).join(' &nbsp; ');
+      var totDep=selProps.reduce(function(s,p){return s+getRent2Deposit(getR2Price(p),p.ho);},0);
+      depGlobalEl.innerHTML=tags+(selProps.length>1?' &nbsp;|&nbsp; 합계 <strong style="color:#0d47a1">'+fmt(totDep)+'만</strong>':'');
+      depGlobalEl.style.color='#333';
+    }
+  }
+
+  // 전체안분 보증금 프리뷰
+  var depTotPrev=document.getElementById('r2-dep-tot-preview');
+  if(depTotPrev && _r2DepSplit==='tot'){
+    var tot=parseFloat(document.getElementById('r2-dep-tot-val').value||0);
+    if(!tot||selProps.length===0){
+      depTotPrev.innerHTML='<span style="font-size:12px;color:#aaa">전체 금액 입력 후 표시</span>';
+    } else {
+      depTotPrev.innerHTML=selProps.map(function(p){
+        var dp=getRent2Deposit(getR2Price(p),p.ho);
+        var pct=_r2TotPrice?((getR2Price(p)/_r2TotPrice)*100).toFixed(1):0;
+        return '<span style="background:#e3f2fd;color:#1565c0;padding:3px 10px;border-radius:12px;font-size:12px;font-weight:700;margin-right:4px">'+p.ho+'('+pct+'%): '+fmt(dp)+'만</span>';
       }).join('');
     }
   }
 
-  // ── [2] 월세 수익률 슬라이더 실시간 월세 표시
-  var monCalcWrap = document.getElementById('v2-mon-calc-wrap');
-  if(monCalcWrap && _r2MonMode==='yield'){
+  // ──[2] 수익률 슬라이더 실시간 월세 표시
+  var monGlobalEl=document.getElementById('v2-mon-global');
+  if(monGlobalEl && _r2MonMode==='yield' && _r2MonSplit==='ind'){
     if(selProps.length===0){
-      monCalcWrap.innerHTML='<span style="font-size:12px;color:#aaa">— 호실 선택 후 표시</span>';
+      monGlobalEl.textContent='— 호실 선택 후 표시';
+      monGlobalEl.style.color='#aaa';
     } else {
-      monCalcWrap.innerHTML = selProps.map(function(p){
+      var tags2=selProps.map(function(p){
         var pr=getR2Price(p), dp=getRent2Deposit(pr,p.ho), mn=getRent2Monthly(pr,dp,p.ho);
-        return '<span style="background:#fce4ec;color:#c62828;padding:3px 10px;border-radius:12px;font-size:12px;font-weight:700">'+p.ho+': '+fmt(mn)+'만</span>';
+        return p.ho+': <strong style="color:#c62828">'+fmt(mn)+'만</strong>';
+      }).join(' &nbsp; ');
+      var totMon=selProps.reduce(function(s,p){var pr=getR2Price(p),dp=getRent2Deposit(pr,p.ho);return s+getRent2Monthly(pr,dp,p.ho);},0);
+      monGlobalEl.innerHTML=tags2+(selProps.length>1?' &nbsp;|&nbsp; 합계 <strong style="color:#b71c1c">'+fmt(totMon)+'만</strong>':'');
+      monGlobalEl.style.color='#333';
+    }
+  }
+
+  // 전체안분 월세 프리뷰
+  var monTotPrev=document.getElementById('r2-mon-tot-preview');
+  if(monTotPrev && _r2MonSplit==='tot' && _r2MonMode==='yield'){
+    var totM=parseFloat(document.getElementById('r2-mon-tot-val').value||0);
+    if(!totM||selProps.length===0){
+      monTotPrev.innerHTML='<span style="font-size:12px;color:#aaa">전체 금액 입력 후 표시</span>';
+    } else {
+      monTotPrev.innerHTML=selProps.map(function(p){
+        var pr=getR2Price(p), dp=getRent2Deposit(pr,p.ho), mn=getRent2Monthly(pr,dp,p.ho);
+        var pct=_r2TotPrice?((pr/_r2TotPrice)*100).toFixed(1):0;
+        return '<span style="background:#fce4ec;color:#c62828;padding:3px 10px;border-radius:12px;font-size:12px;font-weight:700;margin-right:4px">'+p.ho+'('+pct+'%): '+fmt(mn)+'만</span>';
       }).join('');
     }
   }
 
-  // ── [7] 무대출 수익률 실시간 표시
-  var yldDisp = document.getElementById('r2-yield-display');
+  // 5만단위 전체합산 표시
+  var stepGlobal=document.getElementById('v2-step-global');
+  if(stepGlobal && _r2MonMode==='step' && _r2MonSplit==='ind' && selProps.length>1){
+    var totStep=selProps.reduce(function(s,p){var pr=getR2Price(p),dp=getRent2Deposit(pr,p.ho);return s+getRent2Monthly(pr,dp,p.ho);},0);
+    stepGlobal.innerHTML='합계 <strong style="color:#b71c1c">'+fmt(totStep)+'만</strong>';
+  }
+
+  // ──[7] 무대출 수익률 표시
+  var yldDisp=document.getElementById('r2-yield-display');
   if(yldDisp){
     if(selProps.length===0){
       yldDisp.innerHTML='<span style="font-size:12px;color:#aaa">호실 선택 후 표시</span>';
     } else {
-      var yHtml = selProps.map(function(p){
-        var pr=getR2Price(p), dp=getRent2Deposit(pr,p.ho), mn=getRent2Monthly(pr,dp,p.ho);
-        if(!mn){return '<span style="font-size:12px;color:#aaa">'+p.ho+': 월세 입력 필요</span>';}
-        var ni=pr-dp*10000; if(ni<=0) return '';
-        var yr=(mn*10000*12/ni*100);
-        var col=yr>=5?'#2e7d32':yr>=4?'#e65100':'#c62828';
-        return '<div style="display:flex;justify-content:space-between;padding:3px 0"><span style="font-size:12px;font-weight:700;color:#333">'+p.ho+'</span>'
-          +'<span style="font-size:13px;font-weight:800;color:'+col+'">'+yr.toFixed(2)+'%</span></div>';
-      }).join('');
-      // 평균
+      function yc(v){return v>=5?'#2e7d32':v>=4?'#e65100':'#c62828';}
+      var rows=selProps.map(function(p){
+        var pr=getR2Price(p),dp=getRent2Deposit(pr,p.ho),mn=getRent2Monthly(pr,dp,p.ho);
+        var ni=pr-dp*10000; var yr=ni>0&&mn?(mn*10000*12/ni*100):0;
+        return '<div style="display:flex;justify-content:space-between;padding:2px 0">'
+          +'<span style="font-size:12px;font-weight:700">'+p.ho+'</span>'
+          +'<span style="font-size:13px;font-weight:800;color:'+yc(yr)+'">'+yr.toFixed(2)+'%</span></div>';
+      });
       var yvals=selProps.map(function(p){
         var pr=getR2Price(p),dp=getRent2Deposit(pr,p.ho),mn=getRent2Monthly(pr,dp,p.ho);
-        var ni=pr-dp*10000; return (mn&&ni>0)?(mn*10000*12/ni*100):null;
+        var ni=pr-dp*10000; return ni>0&&mn?(mn*10000*12/ni*100):null;
       }).filter(function(v){return v!==null;});
-      var avgY=yvals.length?(yvals.reduce(function(a,b){return a+b;},0)/yvals.length):0;
-      var avgCol=avgY>=5?'#2e7d32':avgY>=4?'#e65100':'#c62828';
-      yldDisp.innerHTML = yHtml
-        +(yvals.length>1?'<div style="border-top:1px solid #eee;padding-top:4px;display:flex;justify-content:space-between"><span style="font-size:11px;color:#888">평균</span><span style="font-size:13px;font-weight:800;color:'+avgCol+'">'+avgY.toFixed(2)+'%</span></div>':'');
+      var avg=yvals.length?(yvals.reduce(function(a,b){return a+b;},0)/yvals.length):0;
+      yldDisp.innerHTML=rows.join('')+(yvals.length>1?'<div style="border-top:1px solid #eee;margin-top:2px;padding-top:2px;display:flex;justify-content:space-between"><span style="font-size:11px;color:#888">평균</span><span style="font-size:13px;font-weight:800;color:'+yc(avg)+'">'+avg.toFixed(2)+'%</span></div>':'');
     }
   }
 
-  if(selProps.length===0) return;
+  // 직접입력 합계 표시
+  var amtSum=document.getElementById('r2-dep-amt-ind-sum');
+  if(amtSum && _r2DepMode==='amt'){
+    var s=selProps.reduce(function(sum,p){return sum+getRent2Deposit(getR2Price(p),p.ho);},0);
+    amtSum.textContent=s?'합계: '+fmt(s)+'만원':'';
+  }
 
-  // ── 공통 카드 렌더러
-  function yieldColor(v){return v>=5?'#2e7d32':v>=4?'#e65100':'#c62828';}
-  function makeCard(rows, monLabel){
-    if(!rows.length) return '';
-    var rowsHtml = rows.map(function(r){
+  // 하단 종합 카드 (수익률/월세 요약)
+  function buildSummary(){
+    if(selProps.length===0) return '';
+    function yc(v){return v>=5?'#2e7d32':v>=4?'#e65100':'#c62828';}
+    var rows=selProps.map(function(p,i){
+      var pr=getR2Price(p),dp=getRent2Deposit(pr,p.ho),mn=getRent2Monthly(pr,dp,p.ho);
+      var ni=pr-dp*10000; var yr=ni>0&&mn?(mn*10000*12/ni*100):0;
       return '<tr style="font-size:12px">'
-        +'<td style="padding:3px 8px;font-weight:700;color:#333">'+r.ho+'</td>'
-        +'<td style="padding:3px 8px;color:#1565c0;font-weight:600">'+fmt(r.dep)+'만</td>'
-        +'<td style="padding:3px 8px;color:#c62828;font-weight:600">'+fmt(r.mon)+'만</td>'
-        +'<td style="padding:3px 8px;color:'+r.nc+';font-weight:700">'+r.nl+'%</td>'
+        +'<td style="padding:3px 8px;font-weight:700">'+p.ho+'</td>'
+        +'<td style="padding:3px 8px;color:#1565c0;font-weight:600">'+fmt(dp)+'만</td>'
+        +'<td style="padding:3px 8px;color:#c62828;font-weight:600">'+fmt(mn)+'만</td>'
+        +'<td style="padding:3px 8px;font-weight:700;color:'+yc(yr)+'">'+yr.toFixed(2)+'%</td>'
         +'</tr>';
     }).join('');
-    var totDep=rows.reduce(function(s,r){return s+r.dep;},0);
-    var totMon=rows.reduce(function(s,r){return s+r.mon;},0);
-    var avgNl=rows.length?(rows.reduce(function(s,r){return s+parseFloat(r.nl);},0)/rows.length).toFixed(2):'—';
-    rowsHtml+='<tr style="background:#0d1f3d;color:#fff;font-weight:700">'
-      +'<td style="padding:3px 8px">합계</td>'
-      +'<td style="padding:3px 8px;color:#7ec8ff">'+fmt(totDep)+'만</td>'
-      +'<td style="padding:3px 8px;color:#ffb3b3">'+fmt(totMon)+'만</td>'
-      +'<td style="padding:3px 8px;color:#ffe082">평균 '+avgNl+'%</td>'
-      +'</tr>';
-    return '<div style="background:#f8faff;border:1px solid #c5cae9;border-radius:8px;padding:6px 4px;margin-top:6px">'
+    var totDp=selProps.reduce(function(s,p){return s+getRent2Deposit(getR2Price(p),p.ho);},0);
+    var totMn=selProps.reduce(function(s,p){var pr=getR2Price(p),dp=getRent2Deposit(pr,p.ho);return s+getRent2Monthly(pr,dp,p.ho);},0);
+    var yvals2=selProps.map(function(p){var pr=getR2Price(p),dp=getRent2Deposit(pr,p.ho),mn=getRent2Monthly(pr,dp,p.ho);var ni=pr-dp*10000;return ni>0&&mn?(mn*10000*12/ni*100):null;}).filter(Boolean);
+    var avg2=yvals2.length?(yvals2.reduce(function(a,b){return a+b;},0)/yvals2.length):0;
+    rows+='<tr style="background:#0d1f3d;color:#fff;font-weight:700"><td style="padding:3px 8px">합계</td><td style="padding:3px 8px;color:#7ec8ff">'+fmt(totDp)+'만</td><td style="padding:3px 8px;color:#ffb3b3">'+fmt(totMn)+'만</td><td style="padding:3px 8px;color:#ffe082">평균 '+avg2.toFixed(2)+'%</td></tr>';
+    return '<div style="background:#f8faff;border:1px solid #c5cae9;border-radius:8px;margin-top:6px;overflow:hidden">'
       +'<table style="width:100%;border-collapse:collapse"><thead>'
-      +'<tr style="font-size:11px;color:#888;border-bottom:1px solid #e0e0e0">'
-      +'<th style="padding:2px 8px;text-align:left">호수</th>'
-      +'<th style="padding:2px 8px;text-align:left">보증금</th>'
-      +'<th style="padding:2px 8px;text-align:left">'+monLabel+'</th>'
-      +'<th style="padding:2px 8px;text-align:left">무대출수익률</th>'
-      +'</tr></thead><tbody>'+rowsHtml+'</tbody></table></div>';
+      +'<tr style="background:#1a2744;color:#b0bec5;font-size:11px"><th style="padding:3px 8px;text-align:left">호수</th><th style="padding:3px 8px;text-align:left">보증금</th><th style="padding:3px 8px;text-align:left">월세</th><th style="padding:3px 8px;text-align:left">무대출수익률</th></tr>'
+      +'</thead><tbody>'+rows+'</tbody></table></div>';
   }
 
-  function buildRows(){
-    return selProps.map(function(p){
-      var pr=getR2Price(p), dp=getRent2Deposit(pr,p.ho), mn=getRent2Monthly(pr,dp,p.ho);
-      var ni=pr-dp*10000;
-      var nl=ni>0&&mn?(mn*10000*12/ni*100):0;
-      return {ho:p.ho,dep:dp,mon:mn,nl:nl.toFixed(2),nc:yieldColor(nl)};
-    });
-  }
-
-  if(_r2MonMode==='yield'){
-    document.getElementById('r2-derived-mon').innerHTML = makeCard(buildRows(),'월세(산출)');
-  }
-  if(_r2MonMode==='step'){
-    document.getElementById('r2-derived-yield-step').innerHTML = makeCard(buildRows(),'월세');
-  }
-  if(_r2MonMode==='fix'){
-    document.getElementById('r2-derived-yield-fix').innerHTML = makeCard(buildRows(),'월세');
-  }
+  var derivedMon=document.getElementById('r2-derived-mon');
+  var derivedStep=document.getElementById('r2-derived-yield-step');
+  var derivedFix=document.getElementById('r2-derived-yield-fix');
+  var summary=buildSummary();
+  if(derivedMon && _r2MonMode==='yield') derivedMon.innerHTML=summary;
+  if(derivedStep && _r2MonMode==='step') derivedStep.innerHTML=summary;
+  if(derivedFix  && _r2MonMode==='fix')  derivedFix.innerHTML=summary;
 }
-
-// ── 5만원 단위 조정
+// ── 5만원 단위 조정 (전체)
 function adjMon2(delta){
   _r2MonStep = Math.max(0, (_r2MonStep||0)+delta);
-  document.getElementById('r2-mon-step-val').textContent = _r2MonStep+'만원';
+  var el=document.getElementById('r2-mon-step-val');
+  if(el) el.textContent = _r2MonStep+'만원';
   calcRent2Derived();
 }
 
@@ -1916,7 +2041,7 @@ function initChips2(){
   }).join('');
   document.getElementById('sel-cnt2').textContent = selHos2.size ? selHos2.size+'개 선택됨' : '';
 }
-function toggleHo2(ho){selHos2.has(ho)?selHos2.delete(ho):selHos2.add(ho);initChips2();renderDepEachInputs();renderMonEachInputs();calcRent2Derived();}
+function toggleHo2(ho){selHos2.has(ho)?selHos2.delete(ho):selHos2.add(ho);initChips2();renderDepSliders();renderMonSliders();calcRent2Derived();}
 function clearSelHo2(){selHos2.clear();initChips2();}
 
 // ═══ 견적서 생성
