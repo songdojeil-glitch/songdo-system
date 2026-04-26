@@ -434,6 +434,32 @@ input[type=range]{width:100%;accent-color:#1a1a1a}
         </div>
       </div>
     </div>
+    <!-- 분양 납부 계좌 + 담당자 (임대완료 탭) -->
+    <div class="card" style="padding:14px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+        <div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+            <p style="font-size:12px;font-weight:700;margin:0">🏦 분양 납부계좌</p>
+            <button onclick="saveSaleAcct()" class="btn-s" style="font-size:11px;background:#1565c0;color:#fff;border-color:#1565c0">💾 저장</button>
+          </div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:4px">
+            <input type="text" id="leased-acct-bank" class="fi" placeholder="은행명" style="font-size:12px;width:85px">
+            <input type="text" id="leased-acct-num"  class="fi" placeholder="계좌번호" style="font-size:12px;width:150px">
+            <input type="text" id="leased-acct-name" class="fi" placeholder="예금주" style="font-size:12px;width:110px">
+          </div>
+          <div id="leased-acct-saved" style="font-size:11px;color:#1565c0;min-height:14px"></div>
+        </div>
+        <div>
+          <p style="font-size:12px;font-weight:700;margin:0 0 8px">👤 견적 담당자</p>
+          <select id="leased-staff-sel" class="fi" style="font-size:12px;width:100%" onchange="onSaleStaffChange()">
+            <option value="mun">문형은 대표 · 010-6401-9345</option>
+            <option value="choi">최지훈 부장 · 010-9996-9181</option>
+            <option value="lee">이서정 실장 · 010-6402-9345</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
     <div class="card">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
         <p class="sec" style="margin:0">🏢 호실 선택 <span style="font-size:11px;color:#aaa;font-weight:400">— 임대 확정 호실만</span></p>
@@ -2265,8 +2291,13 @@ function saveSaleAcct(){
   if(!bank||!num){alert('은행명과 계좌번호를 입력해 주세요.');return;}
   _saleSavedAcct={bank:bank,num:num,name:name};
   window.storage.set('sd_sale_acct',JSON.stringify(_saleSavedAcct)).then(function(){
-    var el=document.getElementById('sale-acct-saved');
-    if(el) el.textContent='✅ 저장됨: '+bank+' '+num+(name?' ('+name+')':'');
+    var msg='✅ 저장됨: '+bank+' '+num+(name?' ('+name+')':'');
+    var el=document.getElementById('sale-acct-saved'); if(el) el.textContent=msg;
+    // 임대완료 탭 동기화
+    var lb=document.getElementById('leased-acct-bank'); if(lb) lb.value=bank;
+    var ln=document.getElementById('leased-acct-num');  if(ln) ln.value=num;
+    var la=document.getElementById('leased-acct-name'); if(la) la.value=name;
+    var ls=document.getElementById('leased-acct-saved'); if(ls) ls.textContent=msg;
   });
 }
 function loadSaleAcct(){
@@ -2283,6 +2314,15 @@ function loadSaleAcct(){
       if(nEl&&d.num)  nEl.value=d.num;
       if(aEl&&d.name) aEl.value=d.name;
       if(sEl) sEl.textContent='✅ 저장된 계좌: '+d.bank+' '+d.num+(d.name?' ('+d.name+')':'');
+      // 임대완료 탭에도 동기화
+      var lb=document.getElementById('leased-acct-bank');
+      var ln=document.getElementById('leased-acct-num');
+      var la=document.getElementById('leased-acct-name');
+      var ls=document.getElementById('leased-acct-saved');
+      if(lb&&d.bank) lb.value=d.bank;
+      if(ln&&d.num)  ln.value=d.num;
+      if(la&&d.name) la.value=d.name;
+      if(ls) ls.textContent='✅ 저장된 계좌: '+d.bank+' '+d.num+(d.name?' ('+d.name+')':'');
     }catch(e){}
   }).catch(function(){});
 }
@@ -3038,9 +3078,13 @@ function buildLeasedEstimate(selProps,bldgName,estDate,loanRate,intRate,contract
   var photos=[window._bldgPhoto1||'',window._bldgPhoto2||'',window._bldgPhoto3||''].filter(Boolean);
 
   // 계좌/담당자
-  var sAcct=_saleSavedAcct||{bank:'수협은행',num:'1010-1152-5134',name:'주식회사 에스개발'};
+  // 계좌 (임대완료 탭 입력값 우선, 없으면 저장값)
+  var lAcctBank=(document.getElementById('leased-acct-bank')||{value:''}).value.trim();
+  var lAcctNum =(document.getElementById('leased-acct-num') ||{value:''}).value.trim();
+  var lAcctName=(document.getElementById('leased-acct-name')||{value:''}).value.trim();
+  var sAcct=(lAcctBank&&lAcctNum)?{bank:lAcctBank,num:lAcctNum,name:lAcctName}:(_saleSavedAcct||{bank:'수협은행',num:'1010-1152-5134',name:'주식회사 에스개발'});
   var staffMap={mun:{name:'문형은 대표',tel:'010-6401-9345'},choi:{name:'최지훈 부장',tel:'010-9996-9181'},lee:{name:'이서정 실장',tel:'010-6402-9345'}};
-  var staffSel=document.getElementById('sale-staff-sel');
+  var staffSel=document.getElementById('leased-staff-sel')||document.getElementById('sale-staff-sel');
   var staff=staffMap[staffSel?staffSel.value:'mun']||staffMap.mun;
 
   // 호실별 할인율 (카드값 우선)
