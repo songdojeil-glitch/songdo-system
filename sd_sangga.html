@@ -3459,49 +3459,131 @@ function buildExtraPages(selProps){
   if(opt===1) return '';
 
   var pages='';
-  var pageStyle='page-break-before:always;padding:10mm;box-sizing:border-box;width:210mm;background:#fff;';
+  var A4='page-break-before:always;width:210mm;min-height:297mm;padding:12mm 14mm;box-sizing:border-box;background:#fff;font-family:-apple-system,sans-serif;position:relative;';
 
-  // ── 2페이지: 조감도(상단) + 층도면(하단)
+  // 섹션 헤더 스타일
+  function secHeader(title, color){
+    color=color||'#1a2744';
+    return '<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">'
+      +'<div style="width:4px;height:28px;background:'+color+';border-radius:2px"></div>'
+      +'<span style="font-size:16px;font-weight:800;color:'+color+'">'+title+'</span>'
+      +'</div>';
+  }
+
+  // 이미지 박스 (교체 버튼 포함)
+  function imgBox(url, label, changeKey, idx){
+    var hasImg = url && url.length > 10;
+    var imgHtml = hasImg
+      ? '<img src="'+url+'" style="width:100%;height:100%;object-fit:contain;display:block;border-radius:6px">'
+      : '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:#aaa;font-size:13px;background:#f5f5f5;border-radius:6px">이미지 없음</div>';
+    return '<div style="position:relative;width:100%;height:115mm;border:1.5px solid #e0e7f0;border-radius:8px;overflow:hidden;background:#fafbff;display:flex;align-items:center;justify-content:center">'
+      +imgHtml
+      +'<button onclick="openExtraImgPicker(\''+changeKey+'\','+idx+')" '
+      +'style="position:absolute;top:6px;right:6px;background:rgba(26,39,68,0.75);color:#fff;border:none;border-radius:6px;padding:4px 10px;font-size:11px;cursor:pointer;z-index:10">🔄 교체</button>'
+      +'</div>';
+  }
+
+  // 현재 선택된 추가 이미지 (기본값 + 사용자 교체값)
   var primaryHo = selProps&&selProps.length?selProps[0].ho:'';
-  var fpImg = getFpForFloor(primaryHo);
-  var photoImg = _photos.length?_photos[0].url:null;
+  var fpImg   = window._extraFpImg   !== undefined ? window._extraFpImg   : getFpForFloor(primaryHo);
+  var photoImg= window._extraPhotoImg!== undefined ? window._extraPhotoImg: (_photos.length?_photos[0].url:null);
+  var hoPhoto1= window._extraHoPhoto1!== undefined ? window._extraHoPhoto1: (_photos.length>1?_photos[1].url:(_photos.length>0?_photos[0].url:null));
+  var hoPhoto2= window._extraHoPhoto2!== undefined ? window._extraHoPhoto2: (_photos.length>2?_photos[2].url:(_photos.length>1?_photos[1].url:null));
 
-  var p2top  = photoImg||'';
-  var p2bot  = fpImg||'';
-  var p2topLabel = photoImg?(_photos[0].caption||'조감도'):'조감도';
-  var p2botLabel = fpImg?getFpLabelForHo(primaryHo):'층 도면';
-
-  pages += '<div style="'+pageStyle+'">';
-  pages += '<div style="font-size:10px;color:#aaa;margin-bottom:6px;text-align:center">'+p2topLabel+'</div>';
-  if(p2top){
-    pages += '<img src="'+p2top+'" style="width:100%;height:128mm;object-fit:cover;border-radius:6px;display:block">';
-  } else {
-    pages += '<div style="width:100%;height:128mm;background:#f0f0f0;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#aaa;font-size:13px">조감도를 TAB8에서 업로드해 주세요</div>';
-  }
-  pages += '<div style="font-size:10px;color:#aaa;margin:6px 0;text-align:center">'+p2botLabel+'</div>';
-  if(p2bot){
-    pages += '<img src="'+p2bot+'" style="width:100%;height:128mm;object-fit:cover;border-radius:6px;display:block">';
-  } else {
-    pages += '<div style="width:100%;height:128mm;background:#f0f0f0;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#aaa;font-size:13px">도면을 TAB6에서 업로드해 주세요</div>';
-  }
-  pages += '</div>';
+  // ── 2페이지: 조감도&투시도 + 도면
+  pages += '<div style="'+A4+'">'
+    // 상단 레이블
+    +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;padding-bottom:6px;border-bottom:2px solid #1a2744">'
+    +'<span style="font-size:11px;color:#888">송도제일공인중개사사무소</span>'
+    +'<span style="font-size:11px;color:#888;font-weight:600">건물 현황</span>'
+    +'</div>'
+    // 조감도&투시도
+    +secHeader('📐 조감도 &amp; 투시도','#1565c0')
+    +imgBox(photoImg,'조감도&투시도','photo',0)
+    +'<div style="height:6mm"></div>'
+    // 도면
+    +secHeader('🗺️ 층별 도면','#1a2744')
+    +imgBox(fpImg,'도면','fp',0)
+    +'</div>';
 
   if(opt===3){
-    // ── 3페이지: 호실 사진 2장
-    var pic1 = _photos.length>1?_photos[1]:(_photos.length>0?_photos[0]:null);
-    var pic2 = _photos.length>2?_photos[2]:(_photos.length>1?_photos[1]:null);
-    pages += '<div style="'+pageStyle+'">';
-    [pic1,pic2].forEach(function(pic,i){
-      if(pic){
-        pages += '<div style="font-size:10px;color:#aaa;margin-bottom:4px;text-align:center">'+(pic.caption||'호실 사진'+(i+1))+'</div>';
-        pages += '<img src="'+pic.url+'" style="width:100%;height:128mm;object-fit:cover;border-radius:6px;display:block;margin-bottom:8px">';
-      } else {
-        pages += '<div style="width:100%;height:128mm;background:#f0f0f0;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#aaa;font-size:13px;margin-bottom:8px">호실 사진 '+(i+1)+'</div>';
-      }
-    });
-    pages += '</div>';
+    var fpLabel = getFpLabelForHo(primaryHo)||'층 도면';
+    // ── 3페이지: 호실사진 2장
+    pages += '<div style="'+A4+'">'
+      +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;padding-bottom:6px;border-bottom:2px solid #1a2744">'
+      +'<span style="font-size:11px;color:#888">송도제일공인중개사사무소</span>'
+      +'<span style="font-size:11px;color:#888;font-weight:600">호실 현황 사진</span>'
+      +'</div>'
+      +secHeader('📸 입점 사진 1','#2e7d32')
+      +imgBox(hoPhoto1,'입점사진1','hoPhoto1',1)
+      +'<div style="height:6mm"></div>'
+      +secHeader('📸 입점 사진 2','#2e7d32')
+      +imgBox(hoPhoto2,'입점사진2','hoPhoto2',2)
+      +'</div>';
   }
   return pages;
+}
+
+// ── 이미지 교체 피커
+function openExtraImgPicker(key, idx){
+  // 사용 가능한 이미지 소스: 조감도탭(_photos), 분양홍보탭(_brochurePages)
+  var allImgs = [];
+  _photos.forEach(function(p,i){ allImgs.push({url:p.url, label:'조감도 p'+(i+1)}); });
+  _brochurePages.forEach(function(p,i){ allImgs.push({url:p.url, label:'홍보자료 p'+(i+1)}); });
+  // 도면 슬롯
+  for(var i=0;i<15;i++){
+    if(_fpSlotData[i]){
+      var lb=document.getElementById('fp-label-'+i);
+      allImgs.push({url:_fpSlotData[i], label:'도면 '+(lb?lb.value:'슬롯'+i)});
+    }
+  }
+  if(!allImgs.length){alert('먼저 조감도&사진 탭이나 분양홍보 탭에 이미지를 업로드해 주세요.');return;}
+
+  // 피커 오버레이 생성
+  var ov=document.getElementById('extra-img-picker');
+  if(ov) ov.remove();
+  ov=document.createElement('div');
+  ov.id='extra-img-picker';
+  ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:20px';
+  ov.innerHTML='<div style="background:#fff;border-radius:14px;padding:20px;max-width:900px;width:100%;max-height:80vh;overflow-y:auto">'
+    +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">'
+    +'<span style="font-size:15px;font-weight:700;color:#1a2744">🖼️ 교체할 이미지 선택</span>'
+    +'<button onclick="document.getElementById(\'extra-img-picker\').remove()" style="background:#f5f5f5;border:none;border-radius:6px;padding:6px 12px;cursor:pointer;font-size:13px">✕ 닫기</button>'
+    +'</div>'
+    +'<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px" id="extra-img-grid"></div>'
+    +'</div>';
+  document.body.appendChild(ov);
+
+  var grid=document.getElementById('extra-img-grid');
+  allImgs.forEach(function(img,i){
+    var div=document.createElement('div');
+    div.style.cssText='cursor:pointer;border-radius:8px;overflow:hidden;border:2px solid transparent;transition:border-color .15s';
+    div.onmouseenter=function(){this.style.borderColor='#1565c0';};
+    div.onmouseleave=function(){this.style.borderColor='transparent';};
+    div.onclick=(function(url,k){return function(){
+      if(k==='photo')    window._extraPhotoImg=url;
+      else if(k==='fp')  window._extraFpImg=url;
+      else if(k==='hoPhoto1') window._extraHoPhoto1=url;
+      else if(k==='hoPhoto2') window._extraHoPhoto2=url;
+      document.getElementById('extra-img-picker').remove();
+      // 견적서 재생성 (현재 활성 탭 기준)
+      var activeTab=document.querySelector('.tc.on');
+      var tabId=activeTab?activeTab.id:'';
+      if(tabId==='tc1'){
+        // 분양견적서
+        var lastType='sale';
+      } else if(tabId==='tc2'){
+        var lastType='rent';
+      } else {
+        var lastType='leased';
+      }
+      try{ genEstimate(lastType); }
+      catch(e){ showToast('✅ 이미지 선택됨 — 견적서 생성 버튼을 다시 눌러주세요'); }
+    };})(img.url, key);
+    div.innerHTML='<img src="'+img.url+'" style="width:100%;height:80px;object-fit:cover;display:block">'
+      +'<div style="background:#f8faff;padding:4px 6px;font-size:10px;color:#555;text-align:center">'+img.label+'</div>';
+    grid.appendChild(div);
+  });
 }
 
 function getFpLabelForHo(ho){
