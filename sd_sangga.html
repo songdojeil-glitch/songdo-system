@@ -38,6 +38,8 @@ input[type=range]{width:100%;accent-color:#1a1a1a}
 .ho-chip.sel-임대{background:#1565c0;color:#fff;border-color:#1565c0}
 .print-area{display:none}
 @media print{
+  .extra-img-change-btn{display:none!important;}
+
   body *{visibility:hidden}
   #est-card-main, #est-card-main *{visibility:visible}
   #est-card-main{
@@ -380,7 +382,7 @@ input[type=range]{width:100%;accent-color:#1a1a1a}
       <button onclick="printEstimate()" class="btn-s" style="background:#1a2744;color:#fff;border-color:#1a2744">🖨️ 인쇄/PDF</button>
       <button onclick="saveEstimateImage()" class="btn-s" style="background:#2e7d32;color:#fff;border-color:#2e7d32">🖼️ 이미지 저장</button>
     </div>
-    <div id="est-preview"></div>
+    <div id="est-preview" style="width:100%"></div>
   </div>
 
   <!-- ── 서브탭1: 임대완료 분양호실 ── -->
@@ -527,7 +529,7 @@ input[type=range]{width:100%;accent-color:#1a1a1a}
       <button onclick="printEstimateL()" class="btn-s" style="background:#1a2744;color:#fff;border-color:#1a2744">🖨️ 인쇄/PDF</button>
       <button onclick="saveEstimateImageL()" class="btn-s" style="background:#2e7d32;color:#fff;border-color:#2e7d32">🖼️ 이미지 저장</button>
     </div>
-    <div id="est-preview-l"></div>
+    <div id="est-preview-l" style="width:100%"></div>
   </div>
 </div>
 <!-- TAB2 임대 견적서 -->
@@ -691,7 +693,7 @@ input[type=range]{width:100%;accent-color:#1a1a1a}
     <button onclick="printRentEst()" class="btn-s" style="background:#1a2744;color:#fff;border-color:#1a2744">🖨️ 인쇄/PDF</button>
     <button onclick="saveRentEstImage()" class="btn-s" style="background:#2e7d32;color:#fff;border-color:#2e7d32">🖼️ 이미지 저장</button>
   </div>
-  <div id="est-preview2"></div>
+  <div id="est-preview2" style="width:100%"></div>
 </div>
 
 
@@ -3459,73 +3461,65 @@ function buildExtraPages(selProps){
   if(opt===1) return '';
 
   var pages='';
-  var A4='page-break-before:always;width:210mm;min-height:297mm;padding:12mm 14mm;box-sizing:border-box;background:#fff;font-family:-apple-system,sans-serif;position:relative;';
+  // 1페이지(견적서)와 동일한 max-width:1100px 기준으로 통일
+  var pageStyle='page-break-before:always;width:100%;padding:24px;box-sizing:border-box;background:#fff;font-family:-apple-system,sans-serif;';
 
-  // 섹션 헤더 스타일
   function secHeader(title, color){
     color=color||'#1a2744';
     return '<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">'
-      +'<div style="width:4px;height:28px;background:'+color+';border-radius:2px"></div>'
-      +'<span style="font-size:16px;font-weight:800;color:'+color+'">'+title+'</span>'
+      +'<div style="width:4px;height:28px;background:'+color+';border-radius:2px;flex-shrink:0"></div>'
+      +'<span style="font-size:15px;font-weight:800;color:'+color+'">'+title+'</span>'
       +'</div>';
   }
 
-  // 이미지 박스 (교체 버튼 포함)
-  function imgBox(url, label, changeKey, idx){
-    var hasImg = url && url.length > 10;
-    var imgHtml = hasImg
-      ? '<img src="'+url+'" style="width:100%;height:100%;object-fit:contain;display:block;border-radius:6px">'
-      : '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:#aaa;font-size:13px;background:#f5f5f5;border-radius:6px">이미지 없음</div>';
-    return '<div style="position:relative;width:100%;height:115mm;border:1.5px solid #e0e7f0;border-radius:8px;overflow:hidden;background:#fafbff;display:flex;align-items:center;justify-content:center">'
-      +imgHtml
-      +'<button onclick="openExtraImgPicker(\''+changeKey+'\','+idx+')" '
-      +'style="position:absolute;top:6px;right:6px;background:rgba(26,39,68,0.75);color:#fff;border:none;border-radius:6px;padding:4px 10px;font-size:11px;cursor:pointer;z-index:10">🔄 교체</button>'
+  function imgBox(url, key){
+    var hasImg=url&&url.length>10;
+    return '<div style="position:relative;width:100%;border:1.5px solid #dce6f0;border-radius:10px;overflow:hidden;background:#f8faff;display:flex;align-items:center;justify-content:center;margin-bottom:8px">'
+      +(hasImg
+        ?'<img src="'+url+'" style="width:100%;max-height:420px;object-fit:contain;display:block">'
+        :'<div style="height:240px;display:flex;align-items:center;justify-content:center;color:#bbb;font-size:14px">이미지를 선택해 주세요</div>')
+      +'<button class="extra-img-change-btn" onclick="openExtraImgPicker(\''+key+'\')" '
+      +'style="position:absolute;top:8px;right:8px;background:rgba(26,39,68,0.82);color:#fff;border:none;border-radius:6px;padding:5px 12px;font-size:12px;cursor:pointer;z-index:10">🔄 교체</button>'
       +'</div>';
   }
 
-  // 현재 선택된 추가 이미지 (기본값 + 사용자 교체값)
-  var primaryHo = selProps&&selProps.length?selProps[0].ho:'';
-  var fpImg   = window._extraFpImg   !== undefined ? window._extraFpImg   : getFpForFloor(primaryHo);
-  var photoImg= window._extraPhotoImg!== undefined ? window._extraPhotoImg: (_photos.length?_photos[0].url:null);
-  var hoPhoto1= window._extraHoPhoto1!== undefined ? window._extraHoPhoto1: (_photos.length>1?_photos[1].url:(_photos.length>0?_photos[0].url:null));
-  var hoPhoto2= window._extraHoPhoto2!== undefined ? window._extraHoPhoto2: (_photos.length>2?_photos[2].url:(_photos.length>1?_photos[1].url:null));
+  var primaryHo=selProps&&selProps.length?selProps[0].ho:'';
+  var fpImg   =window._extraFpImg   !==undefined?window._extraFpImg   :getFpForFloor(primaryHo);
+  var photoImg=window._extraPhotoImg!==undefined?window._extraPhotoImg:(_photos.length?_photos[0].url:null);
+  var hoPhoto1=window._extraHoPhoto1!==undefined?window._extraHoPhoto1:(_photos.length>1?_photos[1].url:(_photos[0]?_photos[0].url:null));
+  var hoPhoto2=window._extraHoPhoto2!==undefined?window._extraHoPhoto2:(_photos.length>2?_photos[2].url:(_photos[1]?_photos[1].url:null));
 
-  // ── 2페이지: 조감도&투시도 + 도면
-  pages += '<div style="'+A4+'">'
-    // 상단 레이블
-    +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;padding-bottom:6px;border-bottom:2px solid #1a2744">'
-    +'<span style="font-size:11px;color:#888">송도제일공인중개사사무소</span>'
-    +'<span style="font-size:11px;color:#888;font-weight:600">건물 현황</span>'
+  // ── 2페이지: 조감도&투시도 + 층별도면
+  pages+='<div class="est-card" style="'+pageStyle+'">'
+    +'<div style="background:#1a2744;color:#fff;border-radius:10px 10px 0 0;padding:14px 20px;margin:-24px -24px 20px;display:flex;justify-content:space-between;align-items:center">'
+    +'<span style="font-size:14px;font-weight:700">건물 현황</span>'
+    +'<span style="font-size:12px;color:#90caf9">송도제일공인중개사사무소</span>'
     +'</div>'
-    // 조감도&투시도
     +secHeader('📐 조감도 &amp; 투시도','#1565c0')
-    +imgBox(photoImg,'조감도&투시도','photo',0)
-    +'<div style="height:6mm"></div>'
-    // 도면
-    +secHeader('🗺️ 층별 도면','#1a2744')
-    +imgBox(fpImg,'도면','fp',0)
+    +imgBox(photoImg,'photo')
+    +'<div style="height:16px"></div>'
+    +secHeader('🗺️ '+getFpLabelForHo(primaryHo),'#1a2744')
+    +imgBox(fpImg,'fp')
     +'</div>';
 
   if(opt===3){
-    var fpLabel = getFpLabelForHo(primaryHo)||'층 도면';
-    // ── 3페이지: 호실사진 2장
-    pages += '<div style="'+A4+'">'
-      +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;padding-bottom:6px;border-bottom:2px solid #1a2744">'
-      +'<span style="font-size:11px;color:#888">송도제일공인중개사사무소</span>'
-      +'<span style="font-size:11px;color:#888;font-weight:600">호실 현황 사진</span>'
+    pages+='<div class="est-card" style="'+pageStyle+'">'
+      +'<div style="background:#1a2744;color:#fff;border-radius:10px 10px 0 0;padding:14px 20px;margin:-24px -24px 20px;display:flex;justify-content:space-between;align-items:center">'
+      +'<span style="font-size:14px;font-weight:700">호실 현황 사진</span>'
+      +'<span style="font-size:12px;color:#90caf9">송도제일공인중개사사무소</span>'
       +'</div>'
       +secHeader('📸 입점 사진 1','#2e7d32')
-      +imgBox(hoPhoto1,'입점사진1','hoPhoto1',1)
-      +'<div style="height:6mm"></div>'
+      +imgBox(hoPhoto1,'hoPhoto1')
+      +'<div style="height:16px"></div>'
       +secHeader('📸 입점 사진 2','#2e7d32')
-      +imgBox(hoPhoto2,'입점사진2','hoPhoto2',2)
+      +imgBox(hoPhoto2,'hoPhoto2')
       +'</div>';
   }
   return pages;
 }
 
 // ── 이미지 교체 피커
-function openExtraImgPicker(key, idx){
+function openExtraImgPicker(key){
   // 사용 가능한 이미지 소스: 조감도탭(_photos), 분양홍보탭(_brochurePages)
   var allImgs = [];
   _photos.forEach(function(p,i){ allImgs.push({url:p.url, label:'조감도 p'+(i+1)}); });
@@ -3577,8 +3571,9 @@ function openExtraImgPicker(key, idx){
       } else {
         var lastType='leased';
       }
-      try{ genEstimate(lastType); }
-      catch(e){ showToast('✅ 이미지 선택됨 — 견적서 생성 버튼을 다시 눌러주세요'); }
+      document.getElementById('extra-img-picker').remove();
+      try{ genEstimate(lastType); showToast('✅ 이미지 교체 완료'); }
+      catch(e){ showToast('이미지 선택됨 — 견적서 생성 버튼을 다시 눌러주세요'); }
     };})(img.url, key);
     div.innerHTML='<img src="'+img.url+'" style="width:100%;height:80px;object-fit:cover;display:block">'
       +'<div style="background:#f8faff;padding:4px 6px;font-size:10px;color:#555;text-align:center">'+img.label+'</div>';
