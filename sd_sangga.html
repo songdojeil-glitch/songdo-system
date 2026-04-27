@@ -671,6 +671,21 @@ input[type=range]{width:100%;accent-color:#1a1a1a}
   </div>
 
   <!-- ⑤ 버튼 + 견적서 미리보기 -->
+    <!-- 출력 범위 선택 -->
+    <div style="background:#f8faff;border:1px solid #c5cae9;border-radius:10px;padding:12px 16px;margin-bottom:12px">
+      <p style="font-size:12px;font-weight:700;color:#1a2744;margin:0 0 8px">📑 출력 범위 선택</p>
+      <div style="display:flex;gap:16px;flex-wrap:wrap">
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px">
+          <input type="radio" name="rent-print-opt" value="1" id="rpo1" checked> 1안 — 견적서만
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px">
+          <input type="radio" name="rent-print-opt" value="2" id="rpo2"> 2안 — 견적서 + 조감도 + 층도면
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px">
+          <input type="radio" name="rent-print-opt" value="3" id="rpo3"> 3안 — 2안 + 호실사진 2장
+        </label>
+      </div>
+    </div>
   <div style="display:flex;gap:8px;margin-bottom:1rem">
     <button onclick="genEstimate('rent')" class="btn-p" style="flex:1">📄 임대 견적서 생성</button>
     <button onclick="printRentEst()" class="btn-s" style="background:#1a2744;color:#fff;border-color:#1a2744">🖨️ 인쇄/PDF</button>
@@ -2179,6 +2194,7 @@ function onUnitRF(el){
 // ══════════════════════════════════════════
 var _saleMode  = 'single';
 var _lastEstProps = [];
+var _lastRentProps = [];
 var _saleCount = 2;
 var _leasedMode  = 'single';
 var _leasedCount = 2;
@@ -3420,9 +3436,15 @@ function getLeasedPrintOpt(){
   var el=document.querySelector('input[name="leased-print-opt"]:checked');
   return el?parseInt(el.value):1;
 }
+function getRentPrintOpt(){
+  var el=document.querySelector('input[name="rent-print-opt"]:checked');
+  return el?parseInt(el.value):1;
+}
 
 function buildExtraPages(selProps){
-  var opt=window._leasedPrintMode?getLeasedPrintOpt():getSalePrintOpt();
+  var opt=window._leasedPrintMode?getLeasedPrintOpt()
+            :window._rentPrintMode?getRentPrintOpt()
+            :getSalePrintOpt();
   if(opt===1) return '';
 
   var pages='';
@@ -3541,14 +3563,26 @@ function clearRentPhotos(){
 function printRentEst(){
   var el=document.getElementById('est-preview2');
   if(!el||!el.innerHTML.trim()){alert('먼저 견적서를 생성해 주세요.');return;}
-  if(!window.html2canvas){var s=document.createElement('script');s.src='https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';s.onload=function(){doPrintImage(el,'임대견적서');};document.head.appendChild(s);}
-  else{doPrintImage(el,'임대견적서');}
+  window._rentPrintMode=true;
+  var extra=buildExtraPages(_lastRentProps||[]);
+  window._rentPrintMode=false;
+  var extraEl=null;
+  if(extra){extraEl=document.createElement('div');extraEl.innerHTML=extra;el.appendChild(extraEl);}
+  function done(){if(extraEl)el.removeChild(extraEl);}
+  if(!window.html2canvas){var s=document.createElement('script');s.src='https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';s.onload=function(){doPrintImage(el,'임대견적서');done();};document.head.appendChild(s);}
+  else{doPrintImage(el,'임대견적서');done();}
 }
 function saveRentEstImage(){
   var el=document.getElementById('est-preview2');
   if(!el||!el.innerHTML.trim()){alert('먼저 견적서를 생성해 주세요.');return;}
-  if(!window.html2canvas){var s=document.createElement('script');s.src='https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';s.onload=function(){doSaveImageNamed(el,'임대견적서');};document.head.appendChild(s);}
-  else{doSaveImageNamed(el,'임대견적서');}
+  window._rentPrintMode=true;
+  var extra=buildExtraPages(_lastRentProps||[]);
+  window._rentPrintMode=false;
+  var extraEl=null;
+  if(extra){extraEl=document.createElement('div');extraEl.innerHTML=extra;el.appendChild(extraEl);}
+  function done(){if(extraEl)el.removeChild(extraEl);}
+  if(!window.html2canvas){var s=document.createElement('script');s.src='https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';s.onload=function(){doSaveImageNamed(el,'임대견적서');done();};document.head.appendChild(s);}
+  else{doSaveImageNamed(el,'임대견적서');done();}
 }
 
 function updSlider2(k){
