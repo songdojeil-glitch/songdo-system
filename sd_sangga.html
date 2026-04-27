@@ -1349,31 +1349,8 @@ function doPrintImage(el, fname){
   btns.forEach(function(b){b.style.display='none';});
   var canvases=[], done=0;
   cardArr.forEach(function(card,ci){
-    // html2canvas 캡처 전: cover 이미지를 canvas로 대체
-    var coverImgs=card.querySelectorAll('img');
-    var replaceMap=[];
-    coverImgs.forEach(function(img){
-      var st=img.getAttribute('style')||'';
-      if(st.indexOf('object-fit:cover')<0) return;
-      var wrap=img.parentElement; if(!wrap) return;
-      var ww=wrap.offsetWidth||1060, wh=wrap.offsetHeight||490;
-      var cv2=document.createElement('canvas');
-      cv2.width=ww; cv2.height=wh;
-      var ctx2=cv2.getContext('2d');
-      ctx2.fillStyle='#fff'; ctx2.fillRect(0,0,ww,wh);
-      var iw=img.naturalWidth||ww, ih=img.naturalHeight||wh;
-      var sc=Math.max(ww/iw,wh/ih);
-      var dw=Math.round(iw*sc),dh=Math.round(ih*sc);
-      ctx2.drawImage(img,Math.round((ww-dw)/2),Math.round((wh-dh)/2),dw,dh);
-      var ni=document.createElement('img');
-      ni.src=cv2.toDataURL('image/jpeg',0.95);
-      ni.style.cssText='width:'+ww+'px;height:'+wh+'px;display:block';
-      replaceMap.push({old:img,neu:ni});
-      img.replaceWith(ni);
-    });
     html2canvas(card,{scale:2,useCORS:true,backgroundColor:'#ffffff',logging:false,width:1100,windowWidth:1400}).then(function(cv){
       canvases[ci]=cv;
-      replaceMap.forEach(function(r){r.neu.replaceWith(r.old);});
       done++;
       if(done===cardArr.length){
         cardArr.forEach(function(card,i){
@@ -1490,31 +1467,8 @@ function doSaveImageNamed(el,fname){
   btns.forEach(function(b){b.style.display='none';});
   var canvases=[],done=0;
   cardArr.forEach(function(card,ci){
-    // html2canvas 캡처 전: cover 이미지를 canvas로 대체
-    var coverImgs=card.querySelectorAll('img');
-    var replaceMap=[];
-    coverImgs.forEach(function(img){
-      var st=img.getAttribute('style')||'';
-      if(st.indexOf('object-fit:cover')<0) return;
-      var wrap=img.parentElement; if(!wrap) return;
-      var ww=wrap.offsetWidth||1060, wh=wrap.offsetHeight||490;
-      var cv2=document.createElement('canvas');
-      cv2.width=ww; cv2.height=wh;
-      var ctx2=cv2.getContext('2d');
-      ctx2.fillStyle='#fff'; ctx2.fillRect(0,0,ww,wh);
-      var iw=img.naturalWidth||ww, ih=img.naturalHeight||wh;
-      var sc=Math.max(ww/iw,wh/ih);
-      var dw=Math.round(iw*sc),dh=Math.round(ih*sc);
-      ctx2.drawImage(img,Math.round((ww-dw)/2),Math.round((wh-dh)/2),dw,dh);
-      var ni=document.createElement('img');
-      ni.src=cv2.toDataURL('image/jpeg',0.95);
-      ni.style.cssText='width:'+ww+'px;height:'+wh+'px;display:block';
-      replaceMap.push({old:img,neu:ni});
-      img.replaceWith(ni);
-    });
     html2canvas(card,{scale:2,useCORS:true,backgroundColor:'#ffffff',logging:false,width:1100,windowWidth:1400}).then(function(cv){
       canvases[ci]=cv;
-      replaceMap.forEach(function(r){r.neu.replaceWith(r.old);});
       done++;
       if(done===cardArr.length){
         cardArr.forEach(function(card,i){
@@ -3615,44 +3569,14 @@ function buildExtraPages(selProps){
   }
 
   function imgBox(url, key){
-    var hasImg=url&&url.length>10;
-    // 이미지를 미리 canvas로 변환 (crop center) → html2canvas object-fit 문제 해결
-    var canvasId='imgbox-cv-'+key;
-    if(hasImg){
-      // 이미지를 canvas에 cover 방식으로 그리기
-      var cvEl=document.createElement('canvas');
-      var CW=1060, CH=490; // A4 절반 비율 (1060x490)
-      cvEl.width=CW; cvEl.height=CH;
-      cvEl.id=canvasId;
-      cvEl.style.cssText='width:100%;height:490px;display:block;border-radius:8px';
-      var img2=new Image();
-      img2.onload=function(){
-        var ctx=cvEl.getContext('2d');
-        var iw=img2.naturalWidth, ih=img2.naturalHeight;
-        var scaleW=CW/iw, scaleH=CH/ih;
-        var scale=Math.max(scaleW,scaleH);
-        var dw=Math.round(iw*scale), dh=Math.round(ih*scale);
-        var dx=Math.round((CW-dw)/2), dy=Math.round((CH-dh)/2);
-        ctx.fillStyle='#ffffff';
-        ctx.fillRect(0,0,CW,CH);
-        ctx.drawImage(img2,dx,dy,dw,dh);
-      };
-      img2.crossOrigin='anonymous';
-      img2.src=url;
-      // DOM에 canvas 삽입할 wrapper 반환
-      return '<div style="position:relative;width:100%;height:490px;margin-bottom:10px;border-radius:8px;overflow:hidden">'
-        +'<img src="'+url+'" data-cvkey="'+canvasId+'" '
-        +'style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%) scale(1);'
-        +'min-width:100%;min-height:100%;max-width:none;object-fit:cover;border-radius:8px">'
-        +'<button class="extra-img-change-btn" onclick="openExtraImgPicker(\'+key+\')" '
-        +'style="position:absolute;top:8px;right:8px;background:rgba(26,39,68,0.82);color:#fff;border:none;border-radius:6px;padding:5px 12px;font-size:12px;cursor:pointer;z-index:10">🔄 교체</button>'
-        +'</div>';
-    }
-    return '<div style="width:100%;height:490px;background:#f5f5f5;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#aaa;font-size:14px;margin-bottom:10px">'
-      +'<span>이미지를 선택해 주세요</span>'
-      +'<button class="extra-img-change-btn" onclick="openExtraImgPicker(\'+key+\')" '
-      +'style="position:absolute;top:8px;right:8px;background:rgba(26,39,68,0.82);color:#fff;border:none;border-radius:6px;padding:5px 12px;font-size:12px;cursor:pointer;z-index:10">🔄 교체</button>'
-      +'</div>';
+    var hasImg = url && url.length > 10;
+    return '<div style="position:relative;width:100%;margin-bottom:12px">'
+      + (hasImg
+        ? '<img src="' + url + '" style="width:100%;height:auto;display:block;border-radius:6px">'
+        : '<div style="width:100%;height:180px;background:#f0f0f0;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#aaa;font-size:13px">이미지를 선택해 주세요</div>')
+      + '<button class="extra-img-change-btn" onclick="openExtraImgPicker(\'' + key + '\')" '
+      + 'style="position:absolute;top:8px;right:8px;background:rgba(26,39,68,0.82);color:#fff;border:none;border-radius:6px;padding:5px 12px;font-size:12px;cursor:pointer;z-index:10">🔄 교체</button>'
+      + '</div>';
   }
 
   var primaryHo=selProps&&selProps.length?selProps[0].ho:'';
