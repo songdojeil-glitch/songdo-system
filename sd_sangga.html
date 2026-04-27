@@ -1301,9 +1301,9 @@ function printEstimate(){
   if(!window.html2canvas){
     var s=document.createElement('script');
     s.src='https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
-    s.onload=function(){doPrintImage(el,'분양견적서');};
+    s.onload=function(){doPrintImage(el,makeFname('sale',typeof _lastEstProps!=='undefined'?_lastEstProps:[]));};
     document.head.appendChild(s);
-  } else { doPrintImage(el,'분양견적서'); }
+  } else { doPrintImage(el,makeFname('sale',typeof _lastEstProps!=='undefined'?_lastEstProps:[])); }
 }
 
 // 이미지로 저장 (html2canvas CDN 사용)
@@ -1328,7 +1328,7 @@ function saveEstimateImage(){
     s.onload = function(){ doSaveImage(el); };
     document.head.appendChild(s);
   } else {
-    doSaveImage(el);
+    doSaveImageNamed(el,makeFname('sale',typeof _lastEstProps!=='undefined'?_lastEstProps:[]));
   }
 }
 
@@ -1359,8 +1359,18 @@ function doPrintImage(el, fname){
         });
         btns.forEach(function(b){b.style.display='';});
         var w=window.open('','_blank');
-        var imgs=canvases.map(function(cv){return '<img src="'+cv.toDataURL('image/png')+'" style="max-width:100%;display:block;margin-bottom:20px;box-shadow:0 2px 12px rgba(0,0,0,.2)">';}).join('');
-        w.document.write('<html><head><title>'+fname+'</title><style>body{margin:0;background:#f0f0f0;display:flex;flex-direction:column;align-items:center;padding:20px}@media print{body{background:#fff;padding:0}img{margin-bottom:0!important;box-shadow:none!important}}</style></head><body>'+imgs+'</body></html>');
+        var pageHtmls=canvases.map(function(cv,i){
+          var isLast=i===canvases.length-1;
+          return '<div style="page-break-after:'+(isLast?'avoid':'always')+';page-break-inside:avoid;width:100%">'
+            +'<img src="'+cv.toDataURL('image/jpeg',0.95)+'" style="width:100%;height:auto;display:block">'
+            +'</div>';
+        }).join('');
+        w.document.write('<html><head><title>'+fname+'</title>'
+          +'<style>*{margin:0;padding:0;box-sizing:border-box}'
+          +'body{background:#fff}'
+          +'@media print{@page{margin:5mm;size:A4}img{width:100%!important;height:auto!important}}'
+          +'@media screen{body{background:#555;padding:8px}div{margin-bottom:8px;box-shadow:0 2px 8px rgba(0,0,0,.3)}}'
+          +'</style></head><body>'+pageHtmls+'</body></html>');
         w.document.close();
         setTimeout(function(){w.print();},800);
       }
@@ -1415,9 +1425,9 @@ function printEstimateL(){
   if(!window.html2canvas){
     var s=document.createElement('script');
     s.src='https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
-    s.onload=function(){doPrintImage(el,'임대완료분양견적서');cleanup();};
+    s.onload=function(){doPrintImage(el,makeFname('leased',typeof _lastEstProps!=='undefined'?_lastEstProps:[]));cleanup();};
     document.head.appendChild(s);
-  } else {doPrintImage(el,'임대완료분양견적서');cleanup();}
+  } else {doPrintImage(el,makeFname('leased',typeof _lastEstProps!=='undefined'?_lastEstProps:[]));cleanup();}
 }
 function saveEstimateImageL(){
   var el=document.getElementById('est-preview-l');
@@ -1427,9 +1437,9 @@ function saveEstimateImageL(){
   if(!window.html2canvas){
     var s=document.createElement('script');
     s.src='https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
-    s.onload=function(){doSaveImageNamed(el,'임대완료분양견적서');cleanup();};
+    s.onload=function(){doSaveImageNamed(el,makeFname('leased',typeof _lastEstProps!=='undefined'?_lastEstProps:[]));cleanup();};
     document.head.appendChild(s);
-  } else {doSaveImageNamed(el,'임대완료분양견적서');cleanup();}
+  } else {doSaveImageNamed(el,makeFname('leased',typeof _lastEstProps!=='undefined'?_lastEstProps:[]));cleanup();}
 }
 
 
@@ -1459,22 +1469,44 @@ function doSaveImageNamed(el,fname){
         });
         btns.forEach(function(b){b.style.display='';});
         var pad=40, gap=40;
-        var totalH=canvases.reduce(function(s,cv){return s+cv.height;},0)+pad*2+gap*(canvases.length-1);
+        var W=canvases[0].width, gap=0;
+        var totalH=canvases.reduce(function(s,cv){
+          return s+Math.round(cv.height*(W/cv.width));
+        },0);
         var out=document.createElement('canvas');
-        out.width=canvases[0].width;out.height=totalH;
+        out.width=W; out.height=totalH;
         var ctx=out.getContext('2d');
-        ctx.fillStyle='#ffffff';ctx.fillRect(0,0,out.width,out.height);
-        var y=pad;
-        canvases.forEach(function(cv,i){
-          ctx.drawImage(cv,0,y);
-          y+=cv.height+(i<canvases.length-1?gap:0);
+        ctx.fillStyle='#ffffff';ctx.fillRect(0,0,W,totalH);
+        var y=0;
+        canvases.forEach(function(cv){
+          var h=Math.round(cv.height*(W/cv.width));
+          ctx.drawImage(cv,0,0,cv.width,cv.height,0,y,W,h);
+          y+=h;
         });
         var a=document.createElement('a');
+        a.download=(fname||'견적서')+'_'+new Date().toISOString().slice(0,10)+'.png';
+        a.href=out.toDataURL('image/jpeg',0.95);a.click();
         a.download=fname+'_'+new Date().toISOString().slice(0,10)+'.png';
         a.href=out.toDataURL('image/png');a.click();
       }
     });
   });
+}
+
+// ── 파일명 생성
+function makeFname(type, selProps){
+  var today=new Date().toISOString().slice(0,10).replace(/-/g,'');
+  var bldgName='송도에스파이브시티';
+  if(typeof BUILDINGS!=='undefined'&&BUILDINGS&&BUILDINGS.length&&curBldgId){
+    var b=BUILDINGS.find(function(x){return x.id===curBldgId;});
+    if(b&&b.name) bldgName=b.name;
+  }
+  var props=selProps&&selProps.length?selProps:[];
+  var hoStr='';
+  if(props.length===1) hoStr=props[0].ho;
+  else if(props.length>1) hoStr=props[0].ho+'외'+(props.length-1)+'호';
+  var typeStr=type==='sale'?'분양견적서':type==='rent'?'임대견적서':'임대완료분양견적서';
+  return typeStr+'_'+bldgName+(hoStr?'_'+hoStr:'')+'_'+today;
 }
 
 // ═══ 수익률 시뮬레이터
@@ -3697,8 +3729,8 @@ function printRentEst(){
   var extraEl=null;
   if(extra){extraEl=document.createElement('div');extraEl.innerHTML=extra;el.appendChild(extraEl);}
   function done(){if(extraEl)el.removeChild(extraEl);}
-  if(!window.html2canvas){var s=document.createElement('script');s.src='https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';s.onload=function(){doPrintImage(el,'임대견적서');done();};document.head.appendChild(s);}
-  else{doPrintImage(el,'임대견적서');done();}
+  if(!window.html2canvas){var s=document.createElement('script');s.src='https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';s.onload=function(){doPrintImage(el,makeFname('rent',typeof _lastRentProps!=='undefined'?_lastRentProps:[]));done();};document.head.appendChild(s);}
+  else{doPrintImage(el,makeFname('rent',typeof _lastRentProps!=='undefined'?_lastRentProps:[]));done();}
 }
 function saveRentEstImage(){
   var el=document.getElementById('est-preview2');
@@ -3709,8 +3741,8 @@ function saveRentEstImage(){
   var extraEl=null;
   if(extra){extraEl=document.createElement('div');extraEl.innerHTML=extra;el.appendChild(extraEl);}
   function done(){if(extraEl)el.removeChild(extraEl);}
-  if(!window.html2canvas){var s=document.createElement('script');s.src='https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';s.onload=function(){doSaveImageNamed(el,'임대견적서');done();};document.head.appendChild(s);}
-  else{doSaveImageNamed(el,'임대견적서');done();}
+  if(!window.html2canvas){var s=document.createElement('script');s.src='https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';s.onload=function(){doSaveImageNamed(el,makeFname('rent',typeof _lastRentProps!=='undefined'?_lastRentProps:[]));done();};document.head.appendChild(s);}
+  else{doSaveImageNamed(el,makeFname('rent',typeof _lastRentProps!=='undefined'?_lastRentProps:[]));done();}
 }
 
 function updSlider2(k){
