@@ -1333,22 +1333,38 @@ function saveEstimateImage(){
 }
 
 function doPrintImage(el, fname){
-  var card = el.querySelector('.est-card');
-  if(!card) card = el;
-  var origStyle = card.getAttribute('style')||'';
-  card.style.minWidth='1100px'; card.style.width='1100px'; card.style.overflowX='visible';
-  var autoEls = card.querySelectorAll('[style*="overflow-x:auto"]');
-  var origStyles=[];
-  autoEls.forEach(function(e){origStyles.push(e.style.overflowX);e.style.overflowX='visible';});
-  html2canvas(card,{scale:2,useCORS:true,backgroundColor:'#ffffff',logging:false,width:1100,windowWidth:1400}).then(function(canvas){
-    card.setAttribute('style',origStyle);
-    autoEls.forEach(function(e,i){e.style.overflowX=origStyles[i];});
-    var img = new Image();
-    img.src = canvas.toDataURL('image/png');
-    var w = window.open('','_blank');
-    w.document.write('<html><head><title>'+fname+'</title><style>body{margin:0;background:#f0f0f0;display:flex;justify-content:center;padding:20px}img{max-width:100%;box-shadow:0 2px 12px rgba(0,0,0,.2)}</style></head><body><img src="'+img.src+'"/></body></html>');
-    w.document.close();
-    setTimeout(function(){w.print();},800);
+  var cards = el.querySelectorAll('.est-card');
+  if(!cards.length){ cards=[el]; }
+  var cardArr=Array.from(cards);
+  var origStyles=[], autoEls=[], autoOrig=[];
+  cardArr.forEach(function(card){
+    origStyles.push(card.getAttribute('style')||'');
+    card.style.minWidth='1100px'; card.style.width='1100px'; card.style.overflowX='visible';
+    var ae=card.querySelectorAll('[style*="overflow-x:auto"]');
+    autoEls.push(ae);
+    var ao=[]; ae.forEach(function(e){ao.push(e.style.overflowX);e.style.overflowX='visible';}); autoOrig.push(ao);
+  });
+  // 교체 버튼 숨김
+  var btns=el.querySelectorAll('.extra-img-change-btn');
+  btns.forEach(function(b){b.style.display='none';});
+  var canvases=[], done=0;
+  cardArr.forEach(function(card,ci){
+    html2canvas(card,{scale:2,useCORS:true,backgroundColor:'#ffffff',logging:false,width:1100,windowWidth:1400}).then(function(cv){
+      canvases[ci]=cv;
+      done++;
+      if(done===cardArr.length){
+        cardArr.forEach(function(card,i){
+          card.setAttribute('style',origStyles[i]);
+          autoEls[i].forEach(function(e,j){e.style.overflowX=autoOrig[i][j];});
+        });
+        btns.forEach(function(b){b.style.display='';});
+        var w=window.open('','_blank');
+        var imgs=canvases.map(function(cv){return '<img src="'+cv.toDataURL('image/png')+'" style="max-width:100%;display:block;margin-bottom:20px;box-shadow:0 2px 12px rgba(0,0,0,.2)">';}).join('');
+        w.document.write('<html><head><title>'+fname+'</title><style>body{margin:0;background:#f0f0f0;display:flex;flex-direction:column;align-items:center;padding:20px}@media print{body{background:#fff;padding:0}img{margin-bottom:0!important;box-shadow:none!important}}</style></head><body>'+imgs+'</body></html>');
+        w.document.close();
+        setTimeout(function(){w.print();},800);
+      }
+    });
   });
 }
 
@@ -1418,22 +1434,46 @@ function saveEstimateImageL(){
 
 
 function doSaveImageNamed(el,fname){
-  var card=el.querySelector('.est-card');if(!card)card=el;
-  var origStyle=card.getAttribute('style')||'';
-  card.style.minWidth='1100px';card.style.width='1100px';card.style.overflowX='visible';
-  var autoEls=card.querySelectorAll('[style*="overflow-x:auto"]');var origStyles=[];
-  autoEls.forEach(function(e){origStyles.push(e.style.overflowX);e.style.overflowX='visible';});
-  html2canvas(card,{scale:2,useCORS:true,backgroundColor:'#ffffff',logging:false,width:1100,windowWidth:1400}).then(function(canvas){
-    card.setAttribute('style',origStyle);
-    autoEls.forEach(function(e,i){e.style.overflowX=origStyles[i];});
-    // 상단 여백 40px만 추가
-    var pad=40;
-    var out=document.createElement('canvas');
-    out.width=canvas.width;out.height=canvas.height+pad*2;
-    var ctx=out.getContext('2d');
-    ctx.fillStyle='#ffffff';ctx.fillRect(0,0,out.width,out.height);
-    ctx.drawImage(canvas,0,pad);
-    var a=document.createElement('a');a.download=fname+'_'+new Date().toISOString().slice(0,10)+'.png';a.href=out.toDataURL('image/png');a.click();
+  var cards=el.querySelectorAll('.est-card');
+  if(!cards.length){cards=[el];}
+  var cardArr=Array.from(cards);
+  var origStyles=[],autoEls=[],autoOrig=[];
+  cardArr.forEach(function(card){
+    origStyles.push(card.getAttribute('style')||'');
+    card.style.minWidth='1100px';card.style.width='1100px';card.style.overflowX='visible';
+    var ae=card.querySelectorAll('[style*="overflow-x:auto"]');
+    autoEls.push(ae);
+    var ao=[];ae.forEach(function(e){ao.push(e.style.overflowX);e.style.overflowX='visible';});autoOrig.push(ao);
+  });
+  var btns=el.querySelectorAll('.extra-img-change-btn');
+  btns.forEach(function(b){b.style.display='none';});
+  var canvases=[],done=0;
+  cardArr.forEach(function(card,ci){
+    html2canvas(card,{scale:2,useCORS:true,backgroundColor:'#ffffff',logging:false,width:1100,windowWidth:1400}).then(function(cv){
+      canvases[ci]=cv;
+      done++;
+      if(done===cardArr.length){
+        cardArr.forEach(function(card,i){
+          card.setAttribute('style',origStyles[i]);
+          autoEls[i].forEach(function(e,j){e.style.overflowX=autoOrig[i][j];});
+        });
+        btns.forEach(function(b){b.style.display='';});
+        var pad=40, gap=40;
+        var totalH=canvases.reduce(function(s,cv){return s+cv.height;},0)+pad*2+gap*(canvases.length-1);
+        var out=document.createElement('canvas');
+        out.width=canvases[0].width;out.height=totalH;
+        var ctx=out.getContext('2d');
+        ctx.fillStyle='#ffffff';ctx.fillRect(0,0,out.width,out.height);
+        var y=pad;
+        canvases.forEach(function(cv,i){
+          ctx.drawImage(cv,0,y);
+          y+=cv.height+(i<canvases.length-1?gap:0);
+        });
+        var a=document.createElement('a');
+        a.download=fname+'_'+new Date().toISOString().slice(0,10)+'.png';
+        a.href=out.toDataURL('image/png');a.click();
+      }
+    });
   });
 }
 
