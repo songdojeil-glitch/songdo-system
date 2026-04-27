@@ -1359,19 +1359,27 @@ function doPrintImage(el, fname){
         });
         btns.forEach(function(b){b.style.display='';});
         var w=window.open('','_blank');
+        var W=2100,H=2970; // A4 비율 (210:297)
         var pageHtmls=canvases.map(function(cv,i){
           var isLast=i===canvases.length-1;
-          return '<div style="page-break-after:'+(isLast?'avoid':'always')+';page-break-inside:avoid;width:100%">'
-            +'<img src="'+cv.toDataURL('image/jpeg',0.95)+'" style="width:100%;height:auto;display:block">'
+          // 이미지를 A4 비율 안에 맞게 (letter-boxing)
+          return '<div style="'
+            +'width:210mm;min-height:297mm;'
+            +'page-break-after:'+(isLast?'avoid':'always')+';'
+            +'page-break-inside:avoid;'
+            +'display:flex;align-items:center;justify-content:center;'
+            +'background:#fff;overflow:hidden;'
+            +'">'
+            +'<img src="'+cv.toDataURL('image/jpeg',0.95)+'" '
+            +'style="max-width:100%;max-height:297mm;width:auto;height:auto;display:block">'
             +'</div>';
         }).join('');
         w.document.write('<html><head><title>'+fname+'</title>'
           +'<style>*{margin:0;padding:0;box-sizing:border-box}'
           +'body{background:#fff}'
-          +'@media print{@page{margin:5mm;size:A4}img{width:100%!important;height:auto!important}}'
+          +'@media print{@page{margin:0;size:A4 portrait}body{margin:0}div{page-break-inside:avoid}img{max-width:210mm!important;height:auto!important}}'
           +'@media screen{body{background:#555;padding:8px}div{margin-bottom:8px;box-shadow:0 2px 8px rgba(0,0,0,.3)}}'
           +'</style></head><body>'+pageHtmls+'</body></html>');
-        w.document.close();
         setTimeout(function(){w.print();},800);
       }
     });
@@ -1484,9 +1492,9 @@ function doSaveImageNamed(el,fname){
           y+=h;
         });
         var a=document.createElement('a');
-        a.download=(fname||'견적서')+'_'+new Date().toISOString().slice(0,10)+'.png';
+        a.download=(fname||'견적서')+'.png';
         a.href=out.toDataURL('image/jpeg',0.95);a.click();
-        a.download=fname+'_'+new Date().toISOString().slice(0,10)+'.png';
+        a.download=fname+'.png';
         a.href=out.toDataURL('image/png');a.click();
       }
     });
@@ -2201,21 +2209,17 @@ function updateSummary(){
 // ── toggleHo2 오버라이드 (호실 선택 시 카드 재생성)
 function toggleHo2(ho){
   selHos2.has(ho)?selHos2.delete(ho):selHos2.add(ho);
-  initChips2();
-  // 복수 모드: 정확히 N개 선택 유도
-  if(_rentMode==='multi'){
-    var sel=[...selHos2];
-    var cnt=document.getElementById('sel-cnt2');
-    if(cnt){
-      if(sel.length>_rentCount)
-        cnt.textContent=sel.length+'개 선택됨 ('+_rentCount+'개 사용)';
-      else if(sel.length===_rentCount)
-        cnt.textContent='✅ '+sel.length+'/'+_rentCount+'개 선택';
-      else
-        cnt.textContent=sel.length+'/'+_rentCount+'개 선택됨';
-    }
+  var cnt=selHos2.size;
+  if(cnt<=1 && _rentMode==='multi') setRentMode('single');
+  else if(cnt>=2 && _rentMode==='single'){
+    setRentMode('multi');
+    _rentCount=cnt;
+    var ce=document.getElementById('rent-multi-count'); if(ce) ce.value=cnt;
+  } else if(cnt>=2 && _rentMode==='multi'){
+    _rentCount=cnt;
+    var ce2=document.getElementById('rent-multi-count'); if(ce2) ce2.value=cnt;
   }
-  rebuildUnitCards();
+  initChips2();
 }
 
 
@@ -2657,6 +2661,16 @@ function updateLeasedUnit(ho){
 var _origToggleHo = typeof toggleHo === 'function' ? toggleHo : null;
 function toggleHo(ho){
   selHos.has(ho)?selHos.delete(ho):selHos.add(ho);
+  var cnt=selHos.size;
+  if(cnt<=1 && _saleMode==='multi') setSaleMode('single');
+  else if(cnt>=2 && _saleMode==='single'){
+    setSaleMode('multi');
+    _saleCount=cnt;
+    var ce=document.getElementById('sale-multi-count'); if(ce) ce.value=cnt;
+  } else if(cnt>=2 && _saleMode==='multi'){
+    _saleCount=cnt;
+    var ce2=document.getElementById('sale-multi-count'); if(ce2) ce2.value=cnt;
+  }
   initChips();
   updateSaleDiscDisplay();
   rebuildSaleCards();
@@ -2664,6 +2678,16 @@ function toggleHo(ho){
 var _origToggleHoL = typeof toggleHoL === 'function' ? toggleHoL : null;
 function toggleHoL(ho){
   selHosL.has(ho)?selHosL.delete(ho):selHosL.add(ho);
+  var cnt=selHosL.size;
+  if(cnt<=1 && _leasedMode==='multi') setLeasedMode('single');
+  else if(cnt>=2 && _leasedMode==='single'){
+    setLeasedMode('multi');
+    _leasedCount=cnt;
+    var ce=document.getElementById('leased-multi-count'); if(ce) ce.value=cnt;
+  } else if(cnt>=2 && _leasedMode==='multi'){
+    _leasedCount=cnt;
+    var ce2=document.getElementById('leased-multi-count'); if(ce2) ce2.value=cnt;
+  }
   initChipsL();
   updateLeasedDiscDisplay();
   rebuildLeasedCards();
