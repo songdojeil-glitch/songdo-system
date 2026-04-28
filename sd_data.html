@@ -1,0 +1,1474 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🏙️ 송도 부동산 데이터 관리 시스템</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700;900&family=Oswald:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0a0e1a;
+  --bg2: #111827;
+  --bg3: #1a2235;
+  --card: #1e2d42;
+  --border: #2a3a52;
+  --accent: #00d4ff;
+  --accent2: #ff6b35;
+  --accent3: #00e5a0;
+  --accent4: #ffd700;
+  --text: #e8eef8;
+  --text2: #8899bb;
+  --text3: #556688;
+  --red: #ff4d6d;
+  --green: #00e5a0;
+  --yellow: #ffd700;
+  --blue: #00d4ff;
+  --purple: #b57bee;
+  --font: 'Noto Sans KR', sans-serif;
+  --font2: 'Oswald', sans-serif;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:var(--bg); color:var(--text); font-family:var(--font); font-size:13px; min-height:100vh; }
+
+/* ── 상단 헤더 */
+.header {
+  background: linear-gradient(135deg, #0a0e1a 0%, #0d1f3c 50%, #0a0e1a 100%);
+  border-bottom: 1px solid var(--border);
+  padding: 0 20px;
+  position: sticky; top:0; z-index:100;
+}
+.header-inner {
+  display:flex; align-items:center; gap:16px; height:52px;
+  max-width:1600px; margin:0 auto;
+}
+.logo {
+  font-family:var(--font2); font-size:18px; font-weight:700; color:var(--accent);
+  letter-spacing:1px; white-space:nowrap;
+}
+.logo span { color:var(--text2); font-size:11px; font-weight:400; margin-left:8px; }
+.header-meta { color:var(--text3); font-size:11px; margin-left:auto; }
+.header-badge {
+  background:var(--accent); color:#000; font-size:10px; font-weight:700;
+  padding:2px 8px; border-radius:10px; letter-spacing:0.5px;
+}
+
+/* ── 탭 네비 */
+.tab-nav {
+  background:var(--bg2); border-bottom:1px solid var(--border);
+  display:flex; gap:0; padding:0 20px; overflow-x:auto;
+  scrollbar-width:none;
+}
+.tab-nav::-webkit-scrollbar { display:none; }
+.tab-btn {
+  padding:12px 18px; color:var(--text3); font-size:12px; font-weight:500;
+  border:none; background:none; cursor:pointer; white-space:nowrap;
+  border-bottom:2px solid transparent; transition:all .2s; letter-spacing:0.3px;
+}
+.tab-btn:hover { color:var(--text); }
+.tab-btn.on { color:var(--accent); border-bottom-color:var(--accent); font-weight:700; }
+
+/* ── 메인 레이아웃 */
+.main { max-width:1600px; margin:0 auto; padding:16px 20px; }
+.tc { display:none; }
+.tc.on { display:block; }
+
+/* ── 업로드 바 */
+.upload-bar {
+  background:var(--bg3); border:1px solid var(--border); border-radius:10px;
+  padding:10px 16px; margin-bottom:14px;
+  display:flex; align-items:center; gap:12px; flex-wrap:wrap;
+}
+.upload-bar-title { font-size:11px; color:var(--text2); font-weight:700; }
+.upload-group { display:flex; align-items:center; gap:8px; }
+.upload-label {
+  background:var(--accent); color:#000; font-size:11px; font-weight:700;
+  padding:5px 12px; border-radius:6px; cursor:pointer; white-space:nowrap;
+}
+.upload-label:hover { opacity:.85; }
+.upload-label.rent { background:var(--accent3); }
+.upload-status { font-size:11px; color:var(--text3); }
+.upload-progress { font-size:11px; color:var(--yellow); }
+
+/* ── KPI 카드 행 */
+.kpi-row { display:grid; gap:10px; margin-bottom:14px; }
+.kpi-row-5 { grid-template-columns:repeat(5,1fr); }
+.kpi-row-4 { grid-template-columns:repeat(4,1fr); }
+.kpi-row-3 { grid-template-columns:repeat(3,1fr); }
+.kpi-card {
+  background:var(--card); border:1px solid var(--border); border-radius:10px;
+  padding:14px 16px; position:relative; overflow:hidden;
+}
+.kpi-card::before {
+  content:''; position:absolute; top:0; left:0; right:0; height:2px;
+  background:var(--kpi-color, var(--accent));
+}
+.kpi-label { font-size:10px; color:var(--text3); font-weight:500; margin-bottom:6px; letter-spacing:0.5px; }
+.kpi-val { font-size:22px; font-weight:900; font-family:var(--font2); color:var(--kpi-color, var(--accent)); line-height:1; }
+.kpi-sub { font-size:10px; color:var(--text3); margin-top:4px; }
+.kpi-badge {
+  display:inline-block; font-size:9px; padding:1px 6px; border-radius:8px;
+  background:rgba(0,212,255,.15); color:var(--accent); font-weight:700; margin-top:4px;
+}
+.kpi-badge.up { background:rgba(0,229,160,.15); color:var(--green); }
+.kpi-badge.down { background:rgba(255,77,109,.15); color:var(--red); }
+.kpi-split { display:flex; gap:8px; margin-top:6px; }
+.kpi-split-item { flex:1; text-align:center; }
+.kpi-split-val { font-size:13px; font-weight:700; color:var(--text); }
+.kpi-split-label { font-size:9px; color:var(--text3); }
+
+/* ── 섹션 헤더 */
+.sec-hdr {
+  display:flex; align-items:center; gap:10px; margin-bottom:10px;
+}
+.sec-hdr-bar { width:3px; height:18px; background:var(--accent); border-radius:2px; flex-shrink:0; }
+.sec-hdr-title { font-size:13px; font-weight:700; color:var(--text); }
+.sec-hdr-sub { font-size:11px; color:var(--text3); margin-left:auto; }
+
+/* ── 필터 토글 */
+.filter-row {
+  display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+  background:var(--bg3); border:1px solid var(--border); border-radius:8px;
+  padding:8px 12px; margin-bottom:10px;
+}
+.filter-label { font-size:10px; color:var(--text3); font-weight:700; min-width:50px; }
+.filter-btn {
+  padding:3px 10px; border-radius:12px; font-size:11px; cursor:pointer;
+  border:1px solid var(--border); background:transparent; color:var(--text3);
+  transition:all .15s; font-family:var(--font);
+}
+.filter-btn.on {
+  background:var(--accent); color:#000; border-color:var(--accent); font-weight:700;
+}
+.filter-sep { width:1px; height:16px; background:var(--border); margin:0 2px; }
+
+/* ── 그리드 레이아웃 */
+.grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+.grid-3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px; }
+.grid-12 { display:grid; grid-template-columns:1fr 2fr; gap:12px; }
+.grid-21 { display:grid; grid-template-columns:2fr 1fr; gap:12px; }
+
+/* ── 차트 카드 */
+.chart-card {
+  background:var(--card); border:1px solid var(--border); border-radius:10px;
+  padding:14px 16px;
+}
+.chart-card-title { font-size:11px; color:var(--text2); font-weight:700; margin-bottom:12px; }
+.chart-wrap { position:relative; }
+
+/* ── 공구 카드 그리드 */
+.district-grid {
+  display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-bottom:14px;
+}
+.dist-card {
+  background:var(--card); border:1px solid var(--border); border-radius:10px;
+  padding:12px 14px; cursor:pointer; transition:all .15s;
+  position:relative; overflow:hidden;
+}
+.dist-card:hover { border-color:var(--accent); transform:translateY(-1px); }
+.dist-card::before {
+  content:''; position:absolute; top:0; left:0; right:0; height:3px;
+  background:linear-gradient(90deg, var(--dist-color, var(--accent)), transparent);
+}
+.dist-card-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; }
+.dist-name { font-family:var(--font2); font-size:15px; font-weight:700; color:var(--dist-color, var(--accent)); }
+.dist-cnt { font-size:10px; color:var(--text3); }
+.dist-stats { display:grid; grid-template-columns:1fr 1fr; gap:6px; }
+.dist-stat-item { }
+.dist-stat-label { font-size:9px; color:var(--text3); }
+.dist-stat-val { font-size:13px; font-weight:700; color:var(--text); }
+.dist-turnover {
+  margin-top:8px; padding-top:8px; border-top:1px solid var(--border);
+  display:flex; align-items:center; gap:6px;
+}
+.turnover-bar-wrap { flex:1; background:var(--bg); border-radius:4px; height:6px; overflow:hidden; }
+.turnover-bar { height:6px; border-radius:4px; background:var(--accent3); transition:width .5s; }
+.turnover-val { font-size:10px; color:var(--accent3); font-weight:700; min-width:36px; text-align:right; }
+
+/* ── 테이블 */
+.data-table { width:100%; border-collapse:collapse; font-size:12px; }
+.data-table th {
+  padding:8px 10px; text-align:left; background:var(--bg3);
+  color:var(--text3); font-size:10px; font-weight:700; border-bottom:1px solid var(--border);
+  white-space:nowrap;
+}
+.data-table td {
+  padding:8px 10px; border-bottom:1px solid rgba(42,58,82,.5);
+  color:var(--text); vertical-align:middle;
+}
+.data-table tr:hover td { background:rgba(255,255,255,.02); }
+.data-table .num { text-align:right; font-family:var(--font2); }
+.data-table .badge { display:inline-block; padding:1px 6px; border-radius:8px; font-size:9px; font-weight:700; }
+.badge-gold { background:rgba(255,215,0,.2); color:var(--yellow); }
+.badge-new  { background:rgba(0,229,160,.2); color:var(--green); }
+.badge-pre  { background:rgba(181,123,238,.2); color:var(--purple); }
+.badge-apt  { background:rgba(0,212,255,.15); color:var(--accent); }
+.badge-warn { background:rgba(255,107,53,.2); color:var(--accent2); }
+.badge-high { background:rgba(255,215,0,.2); color:var(--yellow); }
+
+/* ── 테이블 컨테이너 */
+.table-wrap {
+  background:var(--card); border:1px solid var(--border); border-radius:10px;
+  overflow:hidden;
+}
+.table-wrap .table-head {
+  padding:10px 14px; border-bottom:1px solid var(--border);
+  display:flex; align-items:center; justify-content:space-between;
+}
+.table-scroll { overflow-x:auto; max-height:420px; overflow-y:auto; }
+.table-scroll::-webkit-scrollbar { width:4px; height:4px; }
+.table-scroll::-webkit-scrollbar-track { background:var(--bg); }
+.table-scroll::-webkit-scrollbar-thumb { background:var(--border); border-radius:2px; }
+
+/* ── 신고가 배지 */
+.badge-alltime { background:rgba(255,215,0,.25); color:#ffd700; border:1px solid rgba(255,215,0,.4); }
+.badge-yearly  { background:rgba(0,229,160,.2); color:#00e5a0; }
+
+/* ── 토스트 */
+#toast {
+  position:fixed; bottom:24px; left:50%; transform:translateX(-50%);
+  background:var(--accent); color:#000; padding:8px 20px; border-radius:20px;
+  font-size:12px; font-weight:700; z-index:9999; display:none;
+  box-shadow:0 4px 20px rgba(0,212,255,.4);
+}
+
+/* ── 빈 상태 */
+.empty-state {
+  padding:40px; text-align:center; color:var(--text3);
+}
+.empty-icon { font-size:36px; margin-bottom:10px; }
+.empty-title { font-size:14px; font-weight:700; margin-bottom:6px; color:var(--text2); }
+.empty-desc { font-size:12px; }
+
+/* ── 반응형 */
+@media(max-width:1200px) {
+  .district-grid { grid-template-columns:repeat(2,1fr); }
+  .kpi-row-5 { grid-template-columns:repeat(3,1fr); }
+  .grid-12, .grid-21 { grid-template-columns:1fr; }
+}
+@media(max-width:768px) {
+  .district-grid { grid-template-columns:1fr 1fr; }
+  .grid-2, .grid-3 { grid-template-columns:1fr; }
+  .kpi-row-5, .kpi-row-4 { grid-template-columns:repeat(2,1fr); }
+}
+</style>
+</head>
+<body>
+
+<!-- 헤더 -->
+<div class="header">
+  <div class="header-inner">
+    <div class="logo">🏙️ 송도 부동산 DATA<span>송도제일공인중개사사무소</span></div>
+    <div style="display:flex;align-items:center;gap:8px;margin-left:auto">
+      <span class="header-badge" id="data-status">데이터 없음</span>
+      <span class="header-meta" id="data-updated"></span>
+    </div>
+  </div>
+</div>
+
+<!-- 탭 네비 -->
+<div class="tab-nav">
+  <button class="tab-btn on" onclick="sw(0)">📡 전광판</button>
+  <button class="tab-btn" onclick="sw(1)">🏘️ 공구별 현황</button>
+  <button class="tab-btn" onclick="sw(2)">🏢 단지별 시세</button>
+  <button class="tab-btn" onclick="sw(3)">📈 매매 실거래</button>
+  <button class="tab-btn" onclick="sw(4)">🏠 전월세 실거래</button>
+  <button class="tab-btn" onclick="sw(5)">🔔 신고가 · 이상거래</button>
+  <button class="tab-btn" onclick="sw(6)">📋 네이버 매물</button>
+  <button class="tab-btn" onclick="sw(7)">🎬 유튜브 리포트</button>
+</div>
+
+<div class="main">
+
+<!-- ══ TAB0 전광판 ══ -->
+<div id="tc0" class="tc on">
+  <!-- 업로드 바 -->
+  <div class="upload-bar">
+    <span class="upload-bar-title">📂 데이터 업로드</span>
+    <div class="upload-group">
+      <label class="upload-label">📊 매매 엑셀
+        <input type="file" accept=".xlsx" style="display:none" id="upload-sale" onchange="onUploadSale(this)">
+      </label>
+      <span class="upload-status" id="sale-status">미업로드</span>
+    </div>
+    <div class="upload-group">
+      <label class="upload-label rent">🏠 전월세 엑셀
+        <input type="file" accept=".xlsx" style="display:none" id="upload-rent" onchange="onUploadRent(this)">
+      </label>
+      <span class="upload-status" id="rent-status">미업로드</span>
+    </div>
+    <span class="upload-progress" id="upload-progress"></span>
+    <button onclick="loadDemo()" style="margin-left:auto;padding:4px 12px;background:var(--bg3);border:1px solid var(--border);color:var(--text2);border-radius:6px;cursor:pointer;font-size:11px;">
+      📋 샘플 데이터 로드
+    </button>
+  </div>
+
+  <!-- 기준연도 + 면적 필터 -->
+  <div class="filter-row">
+    <span class="filter-label">기준연도</span>
+    <button class="filter-btn" onclick="setYr(2023,this)">2023</button>
+    <button class="filter-btn" onclick="setYr(2024,this)">2024</button>
+    <button class="filter-btn on" onclick="setYr(2025,this)">2025</button>
+    <button class="filter-btn" onclick="setYr(2026,this)">2026</button>
+    <div class="filter-sep"></div>
+    <span class="filter-label">면적기준</span>
+    <button class="filter-btn on" onclick="setArea('all',this)">전체</button>
+    <button class="filter-btn" onclick="setArea('84',this)">84㎡</button>
+    <button class="filter-btn" onclick="setArea('40',this)">40평대</button>
+    <div class="filter-sep"></div>
+    <span class="filter-label">매매구분</span>
+    <button class="filter-btn on" onclick="setSaleType('all',this)">전체</button>
+    <button class="filter-btn" onclick="setSaleType('apt',this)">아파트</button>
+    <button class="filter-btn" onclick="setSaleType('pre',this)">분양권</button>
+  </div>
+
+  <!-- KPI 상단 5개 -->
+  <div class="kpi-row kpi-row-5" id="kpi-top"></div>
+
+  <!-- 공구별 현황 카드 -->
+  <div class="sec-hdr">
+    <div class="sec-hdr-bar"></div>
+    <div class="sec-hdr-title">공구별 현황 <span style="color:var(--text3);font-size:11px;font-weight:400" id="dist-area-label">전체 면적</span></div>
+    <div class="sec-hdr-sub" id="dist-year-label">2025년 기준</div>
+  </div>
+  <div class="district-grid" id="district-cards"></div>
+
+  <!-- 차트 행 -->
+  <div class="grid-2">
+    <div class="chart-card">
+      <div class="chart-card-title">📊 공구별 평균 매매가 비교 (만원)</div>
+      <div class="chart-wrap"><canvas id="chart-dist-avg" height="200"></canvas></div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-card-title">📈 연도별 거래량 추이 (아파트 / 분양권)</div>
+      <div class="chart-wrap"><canvas id="chart-yr-trend" height="200"></canvas></div>
+    </div>
+  </div>
+  <div style="height:12px"></div>
+  <div class="grid-2">
+    <div class="chart-card">
+      <div class="chart-card-title">🔄 매매전환율 (거래건수 / 세대수)</div>
+      <div class="chart-wrap"><canvas id="chart-turnover" height="200"></canvas></div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-card-title">🏠 전세 신규 vs 갱신 현황 (2025/2026)</div>
+      <div class="chart-wrap"><canvas id="chart-rent-split" height="200"></canvas></div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ TAB1 공구별 현황 ══ -->
+<div id="tc1" class="tc">
+  <div class="filter-row">
+    <span class="filter-label">기준연도</span>
+    <button class="filter-btn" onclick="setYr1(2023,this)">2023</button>
+    <button class="filter-btn" onclick="setYr1(2024,this)">2024</button>
+    <button class="filter-btn on" onclick="setYr1(2025,this)">2025</button>
+    <button class="filter-btn" onclick="setYr1(2026,this)">2026</button>
+    <div class="filter-sep"></div>
+    <span class="filter-label">최고가기준</span>
+    <button class="filter-btn on" onclick="setMaxArea('all',this)">전체면적</button>
+    <button class="filter-btn" onclick="setMaxArea('84',this)">84㎡형</button>
+    <button class="filter-btn" onclick="setMaxArea('40',this)">40평대</button>
+  </div>
+
+  <div class="table-wrap" style="margin-bottom:14px">
+    <div class="table-head">
+      <span style="font-size:12px;font-weight:700">🏘️ 공구별 종합 현황</span>
+      <span style="font-size:10px;color:var(--text3)" id="t1-subtitle">2025 · 전체면적 기준</span>
+    </div>
+    <div class="table-scroll">
+      <table class="data-table" id="t1-table">
+        <thead>
+          <tr>
+            <th>공구</th><th>세대수</th><th>전체건수</th><th>아파트</th><th>분양권</th>
+            <th class="num">평균매매가</th><th class="num">아파트평균</th>
+            <th class="num">84㎡평균</th><th class="num">84㎡최고가</th><th>84㎡최고단지</th>
+            <th class="num">40평대최고</th><th>40평대최고단지</th>
+            <th class="num">전환율</th>
+          </tr>
+        </thead>
+        <tbody id="t1-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- 역대 최고가 -->
+  <div class="sec-hdr">
+    <div class="sec-hdr-bar" style="background:var(--yellow)"></div>
+    <div class="sec-hdr-title">🏆 역대 공구별 최고가 기록 (2019~현재)</div>
+  </div>
+  <div class="filter-row" style="margin-bottom:10px">
+    <span class="filter-label">면적기준</span>
+    <button class="filter-btn on" onclick="setHistArea('all',this)">전체면적</button>
+    <button class="filter-btn" onclick="setHistArea('84',this)">84㎡형</button>
+    <button class="filter-btn" onclick="setHistArea('40',this)">40평대</button>
+  </div>
+  <div class="table-wrap">
+    <div class="table-scroll">
+      <table class="data-table" id="hist-table">
+        <thead>
+          <tr>
+            <th>공구</th><th>단지명</th><th class="num">거래금액</th>
+            <th>전용㎡</th><th>층</th><th>계약년월</th><th>연도</th>
+          </tr>
+        </thead>
+        <tbody id="hist-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ══ TAB2 단지별 시세 ══ -->
+<div id="tc2" class="tc">
+  <div class="filter-row">
+    <span class="filter-label">공구</span>
+    <button class="filter-btn on" onclick="setDistFilter('all',this)">전체</button>
+    <button class="filter-btn" onclick="setDistFilter(1,this)">1공구</button>
+    <button class="filter-btn" onclick="setDistFilter(2,this)">2공구</button>
+    <button class="filter-btn" onclick="setDistFilter(3,this)">3공구</button>
+    <button class="filter-btn" onclick="setDistFilter(4,this)">4공구</button>
+    <button class="filter-btn" onclick="setDistFilter(5,this)">5공구</button>
+    <button class="filter-btn" onclick="setDistFilter(6,this)">6공구</button>
+    <button class="filter-btn" onclick="setDistFilter(7,this)">7공구</button>
+    <button class="filter-btn" onclick="setDistFilter(8,this)">8공구</button>
+    <button class="filter-btn" onclick="setDistFilter(11,this)">11공구</button>
+  </div>
+  <div class="empty-state" id="t2-empty">
+    <div class="empty-icon">📊</div>
+    <div class="empty-title">매매 데이터를 먼저 업로드해 주세요</div>
+    <div class="empty-desc">xlsx 파일 업로드 후 단지별 시세가 표시됩니다</div>
+  </div>
+  <div class="table-wrap" id="t2-wrap" style="display:none">
+    <div class="table-head">
+      <span style="font-size:12px;font-weight:700">🏢 단지별 시세 현황</span>
+    </div>
+    <div class="table-scroll">
+      <table class="data-table" id="t2-table">
+        <thead>
+          <tr>
+            <th>공구</th><th>단지명</th><th class="num">전체평균</th>
+            <th class="num">84㎡평균</th><th class="num">84㎡최고</th><th class="num">40평균</th>
+            <th class="num">거래건수</th><th>역대신고가</th><th>역대신고가단지</th>
+          </tr>
+        </thead>
+        <tbody id="t2-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ══ TAB3 매매 실거래 ══ -->
+<div id="tc3" class="tc">
+  <div class="filter-row">
+    <span class="filter-label">거래유형</span>
+    <button class="filter-btn on" onclick="setSaleF('all',this)">전체</button>
+    <button class="filter-btn" onclick="setSaleF('아파트',this)">아파트</button>
+    <button class="filter-btn" onclick="setSaleF('분양권',this)">분양권</button>
+    <div class="filter-sep"></div>
+    <span class="filter-label">면적</span>
+    <button class="filter-btn on" onclick="setSaleAreaF('all',this)">전체</button>
+    <button class="filter-btn" onclick="setSaleAreaF('84',this)">84㎡</button>
+    <button class="filter-btn" onclick="setSaleAreaF('40',this)">40평대</button>
+    <div class="filter-sep"></div>
+    <span class="filter-label">이상거래</span>
+    <button class="filter-btn on" onclick="setAbnF('inc',this)">포함</button>
+    <button class="filter-btn" onclick="setAbnF('exc',this)">제외</button>
+  </div>
+  <div class="kpi-row kpi-row-4" id="kpi-sale" style="margin-bottom:12px"></div>
+  <div class="empty-state" id="t3-empty">
+    <div class="empty-icon">📈</div>
+    <div class="empty-title">매매 데이터를 업로드해 주세요</div>
+    <div class="empty-desc">전체 → 아파트/분양권 구분 · 면적별 필터 · 이상거래 필터 지원</div>
+  </div>
+  <div id="t3-content" style="display:none">
+    <div class="grid-2" style="margin-bottom:12px">
+      <div class="chart-card">
+        <div class="chart-card-title">📊 면적별 거래 분포</div>
+        <div class="chart-wrap"><canvas id="chart-area-dist" height="220"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-card-title">📈 월별 거래량 추이</div>
+        <div class="chart-wrap"><canvas id="chart-monthly" height="220"></canvas></div>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <div class="table-head">
+        <span style="font-size:12px;font-weight:700">매매 거래 목록</span>
+        <span style="font-size:10px;color:var(--text3)" id="t3-cnt"></span>
+      </div>
+      <div class="table-scroll">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>공구</th><th>단지명</th><th>구분</th><th>전용㎡</th>
+              <th class="num">거래금액</th><th class="num">평당가</th>
+              <th>층</th><th>계약년월</th><th>거래유형</th><th>신고가</th>
+            </tr>
+          </thead>
+          <tbody id="t3-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ TAB4 전월세 ══ -->
+<div id="tc4" class="tc">
+  <div class="filter-row">
+    <span class="filter-label">유형</span>
+    <button class="filter-btn on" onclick="setRentF('all',this)">전체</button>
+    <button class="filter-btn" onclick="setRentF('전세',this)">전세</button>
+    <button class="filter-btn" onclick="setRentF('월세',this)">월세</button>
+    <div class="filter-sep"></div>
+    <span class="filter-label">계약구분</span>
+    <button class="filter-btn on" onclick="setContractF('all',this)">전체</button>
+    <button class="filter-btn" onclick="setContractF('신규',this)">신규</button>
+    <button class="filter-btn" onclick="setContractF('갱신',this)">갱신</button>
+    <div class="filter-sep"></div>
+    <span class="filter-label">갱신요구권</span>
+    <button class="filter-btn on" onclick="setRenewalF('all',this)">전체</button>
+    <button class="filter-btn" onclick="setRenewalF('사용',this)">사용건만</button>
+  </div>
+  <div class="kpi-row kpi-row-4" id="kpi-rent" style="margin-bottom:12px"></div>
+  <div class="empty-state" id="t4-empty">
+    <div class="empty-icon">🏠</div>
+    <div class="empty-title">전월세 데이터를 업로드해 주세요</div>
+    <div class="empty-desc">전세/월세 · 신규/갱신 · 갱신요구권 구분 분석</div>
+  </div>
+  <div id="t4-content" style="display:none">
+    <div class="grid-2" style="margin-bottom:12px">
+      <div class="chart-card">
+        <div class="chart-card-title">🏠 신규/갱신 보증금 비교</div>
+        <div class="chart-wrap"><canvas id="chart-rent-compare" height="220"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-card-title">📊 공구별 평균 전세가</div>
+        <div class="chart-wrap"><canvas id="chart-jeonse-dist" height="220"></canvas></div>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <div class="table-head">
+        <span style="font-size:12px;font-weight:700">전월세 거래 목록</span>
+        <span style="font-size:10px;color:var(--text3)" id="t4-cnt"></span>
+      </div>
+      <div class="table-scroll">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>공구</th><th>단지명</th><th>유형</th><th>전용㎡</th>
+              <th class="num">보증금</th><th class="num">월세</th>
+              <th>층</th><th>계약년월</th><th>계약구분</th><th>갱신요구권</th>
+            </tr>
+          </thead>
+          <tbody id="t4-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ TAB5 신고가 · 이상거래 ══ -->
+<div id="tc5" class="tc">
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+    <!-- 신고가 -->
+    <div>
+      <div class="sec-hdr">
+        <div class="sec-hdr-bar" style="background:var(--yellow)"></div>
+        <div class="sec-hdr-title">🏆 역대 신고가 갱신 (2025~현재)</div>
+      </div>
+      <div class="table-wrap">
+        <div class="table-scroll">
+          <table class="data-table" id="newhigh-table">
+            <thead>
+              <tr>
+                <th>단지명</th><th>면적</th><th class="num">거래가</th>
+                <th class="num">이전최고</th><th>갱신율</th><th>계약</th><th>층</th>
+              </tr>
+            </thead>
+            <tbody id="newhigh-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    <!-- 이상거래 -->
+    <div>
+      <div class="sec-hdr">
+        <div class="sec-hdr-bar" style="background:var(--red)"></div>
+        <div class="sec-hdr-title">⚠️ 이상거래 의심 목록</div>
+      </div>
+      <div class="filter-row" style="margin-bottom:8px">
+        <span class="filter-label">기준</span>
+        <button class="filter-btn on" onclick="setAbnThresh(70,this)">중간값 70%미만</button>
+        <button class="filter-btn" onclick="setAbnThresh(60,this)">중간값 60%미만</button>
+        <div class="filter-sep"></div>
+        <span class="filter-label">유형</span>
+        <button class="filter-btn on" onclick="setAbnType('all',this)">전체</button>
+        <button class="filter-btn" onclick="setAbnType('직거래',this)">직거래만</button>
+      </div>
+      <div class="table-wrap">
+        <div class="table-scroll">
+          <table class="data-table" id="abn-table">
+            <thead>
+              <tr>
+                <th>단지명</th><th>면적</th><th class="num">거래가</th>
+                <th class="num">중간값</th><th>비율</th><th>유형</th><th>계약</th>
+              </tr>
+            </thead>
+            <tbody id="abn-tbody"><tr><td colspan="7" class="empty-state">데이터를 업로드하면 자동 분석됩니다</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ TAB6 네이버 매물 ══ -->
+<div id="tc6" class="tc">
+  <div class="empty-state">
+    <div class="empty-icon">📋</div>
+    <div class="empty-title">네이버 매물 업로드</div>
+    <div class="empty-desc">naver_txt2xlsx.py로 생성한 엑셀 파일을 업로드해 주세요</div>
+    <label class="upload-label" style="display:inline-block;margin-top:12px;cursor:pointer">
+      📂 네이버 매물 엑셀 업로드
+      <input type="file" accept=".xlsx" style="display:none" id="upload-naver" onchange="onUploadNaver(this)">
+    </label>
+  </div>
+</div>
+
+<!-- ══ TAB7 유튜브 리포트 ══ -->
+<div id="tc7" class="tc">
+  <div class="empty-state">
+    <div class="empty-icon">🎬</div>
+    <div class="empty-title">유튜브 리포트 생성</div>
+    <div class="empty-desc">데이터 업로드 후 주간/월간 리포트 화면을 생성합니다</div>
+  </div>
+</div>
+
+</div><!-- /main -->
+
+<div id="toast"></div>
+
+<script>
+// ══ 전역 상태
+var G = {
+  yr: 2025, area: 'all', saleType: 'all',
+  yr1: 2025, maxArea: 'all', histArea: 'all',
+  distFilter: 'all',
+  saleF: 'all', saleAreaF: 'all', abnF: 'inc',
+  rentF: 'all', contractF: 'all', renewalF: 'all',
+  abnThresh: 70, abnType: 'all',
+  saleData: null,  // 업로드된 매매 원시 데이터
+  rentData: null,  // 업로드된 전월세 원시 데이터
+};
+
+// ══ 내장 샘플 데이터 (Python에서 추출한 실제 값)
+var DEMO = {
+  year_trends: {
+    yr_2023: {total:3699,apt:2707,pre:992,avg:77120,avg_apt:72103,avg_pre:89961,avg_84:71240},
+    yr_2024: {total:3604,apt:2721,pre:883,avg:83560,avg_apt:78176,avg_pre:99680,avg_84:79120},
+    yr_2025: {total:5686,apt:4475,pre:1211,avg:82890,avg_apt:78252,avg_pre:104443,avg_84:80250},
+    yr_2026: {total:497,apt:464,pre:33,avg:78100,avg_apt:77255,avg_pre:93789,avg_84:76800},
+  },
+  district: {
+    "1": {units:14401,cnt_all:311,cnt_apt:245,cnt_pre:66,avg_all:99737,avg_apt:96109,turnover:2.16,
+          cnt_84:123,avg_84:84071,max_84:122000,max_84_unit:"송도센트럴파크푸르지오",max_84_ym:202511,max_84_fl:"18",
+          avg_40:116214,max_40:171000,max_40_unit:"더샵송도아크베이",
+          max_hist_all:{val:450000,unit:"더샵센트럴파크2",ym:202109,fl:"48",sqm:291.3,yr:2021},
+          max_hist_84:{val:136500,unit:"송도센트럴파크푸르지오",ym:202202,fl:"39",sqm:84.9,yr:2022},
+          max_hist_40:{val:210000,unit:"더샵송도센트럴파크Ⅲ",ym:202310,fl:"38",sqm:119.8,yr:2023}},
+    "2": {units:3741,cnt_all:127,cnt_apt:110,cnt_pre:17,avg_all:68198,avg_apt:67200,turnover:3.39,
+          cnt_84:91,avg_84:59548,max_84:87000,max_84_unit:"더샵퍼스트월드",max_84_ym:202407,max_84_fl:"10",
+          avg_40:82000,max_40:115000,max_40_unit:"더샵퍼스트월드",
+          max_hist_all:{val:246000,unit:"더샵퍼스트월드",ym:202109,fl:"32",sqm:244.6,yr:2021},
+          max_hist_84:{val:115000,unit:"더샵퍼스트월드",ym:202407,fl:"10",sqm:84.9,yr:2024},
+          max_hist_40:{val:140000,unit:"더샵퍼스트월드",ym:202110,fl:"25",sqm:125.0,yr:2021}},
+    "3": {units:4637,cnt_all:163,cnt_apt:140,cnt_pre:23,avg_all:98007,avg_apt:97200,turnover:3.51,
+          cnt_84:81,avg_84:96926,max_84:155000,max_84_unit:"송도더샵파크애비뉴",max_84_ym:202503,max_84_fl:"30",
+          avg_40:128000,max_40:200000,max_40_unit:"더샵송도센트럴파크Ⅲ",
+          max_hist_all:{val:200000,unit:"더샵송도센트럴파크Ⅲ",ym:202512,fl:"21",sqm:119.8,yr:2025},
+          max_hist_84:{val:155000,unit:"송도더샵파크애비뉴",ym:202503,fl:"30",sqm:84.4,yr:2025},
+          max_hist_40:{val:200000,unit:"더샵송도센트럴파크Ⅲ",ym:202512,fl:"21",sqm:119.8,yr:2025}},
+    "4": {units:724,cnt_all:35,cnt_apt:30,cnt_pre:5,avg_all:82723,avg_apt:83500,turnover:4.83,
+          cnt_84:15,avg_84:77253,max_84:85000,max_84_unit:"송도웰카운티4단지",max_84_ym:202501,max_84_fl:"25",
+          avg_40:100000,max_40:120000,max_40_unit:"송도웰카운티4단지",
+          max_hist_all:{val:139000,unit:"송도SK뷰센트럴",ym:202112,fl:"35",sqm:84.7,yr:2021},
+          max_hist_84:{val:96000,unit:"송도웰카운티3단지",ym:202108,fl:"14",sqm:84.9,yr:2021},
+          max_hist_40:{val:130000,unit:"송도웰카운티4단지",ym:202108,fl:"30",sqm:119.9,yr:2021}},
+    "5": {units:5023,cnt_all:260,cnt_apt:220,cnt_pre:40,avg_all:73598,avg_apt:75000,turnover:5.18,
+          cnt_84:72,avg_84:79389,max_84:98000,max_84_unit:"송도글로벌파크베르디움",max_84_ym:202601,max_84_fl:"20",
+          avg_40:98000,max_40:115000,max_40_unit:"글로벌캠퍼스푸르지오",
+          max_hist_all:{val:240000,unit:"더샵그린스퀘어",ym:202109,fl:"45",sqm:221.1,yr:2021},
+          max_hist_84:{val:119500,unit:"송도글로벌파크베르디움",ym:202112,fl:"9",sqm:84.9,yr:2021},
+          max_hist_40:{val:135000,unit:"송도더샵센트럴시티",ym:202202,fl:"28",sqm:119.0,yr:2022}},
+    "6": {units:8200,cnt_all:436,cnt_apt:380,cnt_pre:56,avg_all:105083,avg_apt:107200,turnover:5.32,
+          cnt_84:218,avg_84:87142,max_84:120000,max_84_unit:"송도자이크리스탈오션",max_84_ym:202512,max_84_fl:"18",
+          avg_40:112000,max_40:185000,max_40_unit:"힐스테이트레이크송도5차",
+          max_hist_all:{val:337596,unit:"힐스테이트레이크송도5차",ym:202511,fl:"4",sqm:215.4,yr:2025},
+          max_hist_84:{val:120000,unit:"힐스테이트레이크송도2차",ym:202109,fl:"17",sqm:84.96,yr:2021},
+          max_hist_40:{val:264652,unit:"힐스테이트레이크송도4차",ym:202509,fl:"36",sqm:165.8,yr:2025}},
+    "7": {units:3850,cnt_all:123,cnt_apt:105,cnt_pre:18,avg_all:77655,avg_apt:78900,turnover:3.19,
+          cnt_84:78,avg_84:74584,max_84:84500,max_84_unit:"송도캐슬&해모로",max_84_ym:202508,max_84_fl:"20",
+          avg_40:95000,max_40:158000,max_40_unit:"송도아메리칸타운더샵",
+          max_hist_all:{val:196000,unit:"송도아메리칸타운더샵",ym:202108,fl:"58",sqm:108.6,yr:2021},
+          max_hist_84:{val:100000,unit:"송도아메리칸타운아이파크",ym:202106,fl:"28",sqm:84.1,yr:2021},
+          max_hist_40:{val:158000,unit:"송도아메리칸타운더샵",ym:202512,fl:"63",sqm:108.6,yr:2025}},
+    "8": {units:15112,cnt_all:263,cnt_apt:231,cnt_pre:32,avg_all:64234,avg_apt:64900,turnover:1.74,
+          cnt_84:171,avg_84:66608,max_84:86800,max_84_unit:"송도SKVIEW",max_84_ym:202601,max_84_fl:"29",
+          avg_40:82000,max_40:90000,max_40_unit:"랜드마크시티센트럴더샵",
+          max_hist_all:{val:124500,unit:"더샵송도마리나베이",ym:202202,fl:"13",sqm:84.97,yr:2022},
+          max_hist_84:{val:124500,unit:"더샵송도마리나베이",ym:202202,fl:"13",sqm:84.97,yr:2022},
+          max_hist_40:{val:110000,unit:"송도오션파크베르디움",ym:202112,fl:"32",sqm:119.0,yr:2021}},
+    "11": {units:5028,cnt_all:80,cnt_apt:72,cnt_pre:8,avg_all:92831,avg_apt:93500,turnover:1.59,
+           cnt_84:51,avg_84:85671,max_84:91287,max_84_unit:"송도자이풍경채그라노블5단지",max_84_ym:202507,max_84_fl:"40",
+           avg_40:102000,max_40:128000,max_40_unit:"송도자이풍경채그라노블3단지",
+           max_hist_all:{val:132702,unit:"송도자이풍경채그라노블1단지",ym:202502,fl:"19",sqm:208.9,yr:2025},
+           max_hist_84:{val:91287,unit:"송도자이풍경채그라노블5단지",ym:202507,fl:"40",sqm:85.0,yr:2025},
+           max_hist_40:{val:128000,unit:"송도자이풍경채그라노블3단지",ym:202504,fl:"22",sqm:112.0,yr:2025}},
+  },
+  rent: {
+    "2025": {total:11612,new_cnt:3399,new_avg:43054,renew_cnt:1879,renew_avg:38284,renewal_right:1229,avg_84_new:45200,avg_84_renew:39800},
+    "2026": {total:1962,new_cnt:683,new_avg:44100,renew_cnt:516,renew_avg:39200,renewal_right:150,avg_84_new:46500,avg_84_renew:40100},
+  },
+  new_highs: [
+    {unit:"송도더샵파크애비뉴",sqm:84,price:155000,prev_max:119500,pct:29.7,ym:202503,fl:"30",type:"아파트",dist:3},
+    {unit:"더샵송도센트럴파크Ⅲ",sqm:111,price:185500,prev_max:118724,pct:56.2,ym:202507,fl:"37",type:"아파트",dist:3},
+    {unit:"힐스테이트레이크송도5차",sqm:215,price:337596,prev_max:290823,pct:16.1,ym:202511,fl:"4",type:"아파트",dist:6},
+    {unit:"송도자이크리스탈오션",sqm:85,price:120000,prev_max:109000,pct:10.1,ym:202512,fl:"18",type:"아파트",dist:6},
+    {unit:"송도더샵파크애비뉴",sqm:95,price:145000,prev_max:135000,pct:7.4,ym:202510,fl:"26",type:"아파트",dist:3},
+    {unit:"송도아메리칸타운더샵",sqm:109,price:158000,prev_max:148000,pct:6.8,ym:202512,fl:"63",type:"아파트",dist:7},
+    {unit:"더샵송도센트럴파크Ⅲ",sqm:102,price:162800,prev_max:155000,pct:5.0,ym:202510,fl:"31",type:"아파트",dist:3},
+    {unit:"디에트르송도시그니처뷰",sqm:85,price:119000,prev_max:115000,pct:3.5,ym:202511,fl:"34",type:"아파트",dist:1},
+  ],
+  meta: {updated:"2026-04-28",total_records:30611}
+};
+
+// 공구별 색상
+var DIST_COLORS = {1:'#00d4ff',2:'#00e5a0',3:'#ffd700',4:'#ff6b35',5:'#b57bee',6:'#ff4d6d',7:'#4ecdc4',8:'#95a5a6',11:'#f39c12'};
+var DIST_NAMES = {1:'1공구',2:'2공구',3:'3공구',4:'4공구',5:'5공구',6:'6공구',7:'7공구',8:'8공구',11:'11공구'};
+var DISTS = [1,2,3,4,5,6,7,8,11];
+
+// 현재 데이터 (업로드 또는 데모)
+var DATA = null;
+var charts = {};
+
+function showToast(msg, dur){
+  var t=document.getElementById('toast');
+  t.textContent=msg; t.style.display='block';
+  clearTimeout(t._t);
+  t._t=setTimeout(function(){t.style.display='none';}, dur||2000);
+}
+
+function sw(n){
+  document.querySelectorAll('.tc').forEach(function(e){e.classList.remove('on');});
+  document.querySelectorAll('.tab-btn').forEach(function(e){e.classList.remove('on');});
+  document.getElementById('tc'+n).classList.add('on');
+  document.querySelectorAll('.tab-btn')[n].classList.add('on');
+}
+
+// ── 필터 버튼 그룹 헬퍼
+function setFilterBtn(btns, target){
+  btns.forEach(function(b){b.classList.remove('on');});
+  if(target) target.classList.add('on');
+}
+function setYr(yr,btn){ G.yr=yr; setFilterBtn(btn.parentElement.querySelectorAll('.filter-btn'),btn); renderTab0(); }
+function setArea(a,btn){ G.area=a; setFilterBtn(btn.parentElement.querySelectorAll('.filter-btn'),btn); renderTab0(); }
+function setSaleType(t,btn){ G.saleType=t; setFilterBtn(btn.parentElement.querySelectorAll('.filter-btn'),btn); renderTab0(); }
+function setYr1(yr,btn){ G.yr1=yr; setFilterBtn(btn.parentElement.querySelectorAll('.filter-btn'),btn); renderTab1(); }
+function setMaxArea(a,btn){ G.maxArea=a; setFilterBtn(btn.parentElement.querySelectorAll('.filter-btn'),btn); renderTab1(); }
+function setHistArea(a,btn){ G.histArea=a; setFilterBtn(btn.parentElement.querySelectorAll('.filter-btn'),btn); renderHistTable(); }
+function setDistFilter(d,btn){ G.distFilter=d; setFilterBtn(btn.parentElement.querySelectorAll('.filter-btn'),btn); renderTab2(); }
+function setSaleF(v,btn){ G.saleF=v; setFilterBtn(btn.parentElement.querySelectorAll('.filter-btn'),btn); renderTab3(); }
+function setSaleAreaF(v,btn){ G.saleAreaF=v; setFilterBtn(btn.parentElement.querySelectorAll('.filter-btn'),btn); renderTab3(); }
+function setAbnF(v,btn){ G.abnF=v; setFilterBtn(btn.parentElement.querySelectorAll('.filter-btn'),btn); renderTab3(); }
+function setRentF(v,btn){ G.rentF=v; setFilterBtn(btn.parentElement.querySelectorAll('.filter-btn'),btn); renderTab4(); }
+function setContractF(v,btn){ G.contractF=v; setFilterBtn(btn.parentElement.querySelectorAll('.filter-btn'),btn); renderTab4(); }
+function setRenewalF(v,btn){ G.renewalF=v; setFilterBtn(btn.parentElement.querySelectorAll('.filter-btn'),btn); renderTab4(); }
+function setAbnThresh(v,btn){ G.abnThresh=v; setFilterBtn(btn.parentElement.querySelectorAll('.filter-btn'),btn); renderAbnTable(); }
+function setAbnType(v,btn){ G.abnType=v; setFilterBtn(btn.parentElement.querySelectorAll('.filter-btn'),btn); renderAbnTable(); }
+
+function fmt만(v){ if(!v||v===0) return '-'; return Math.round(v/10000*10)/10+'억'; }
+function fmt천(v){ if(!v||v===0) return '-'; return Math.round(v).toLocaleString()+'만'; }
+function fmtPct(v){ return v>0?'+'+v+'%':v+'%'; }
+function fmtYm(ym){ if(!ym) return '-'; var s=String(ym); return s.slice(0,4)+'.'+s.slice(4,6); }
+
+// ══ 데모 데이터 로드
+function loadDemo(){
+  DATA = DEMO;
+  document.getElementById('data-status').textContent = '샘플 데이터';
+  document.getElementById('data-updated').textContent = '기준: 2026.04.28';
+  document.getElementById('sale-status').textContent = '✅ 샘플 로드';
+  document.getElementById('rent-status').textContent = '✅ 샘플 로드';
+  renderAll();
+  showToast('✅ 샘플 데이터 로드 완료');
+}
+
+// ══ 엑셀 업로드
+function onUploadSale(input){
+  if(!input.files[0]) return;
+  showToast('⏳ 매매 데이터 파싱 중...');
+  document.getElementById('upload-progress').textContent = '파싱 중...';
+  // SheetJS로 파싱
+  var reader = new FileReader();
+  reader.onload = function(e){
+    try {
+      var wb = XLSX.read(e.target.result, {type:'array'});
+      parseSaleXlsx(wb);
+    } catch(err){
+      showToast('❌ 파일 파싱 오류: '+err.message);
+      document.getElementById('upload-progress').textContent = '';
+    }
+  };
+  reader.readAsArrayBuffer(input.files[0]);
+}
+
+function onUploadRent(input){
+  if(!input.files[0]) return;
+  showToast('⏳ 전월세 데이터 파싱 중...');
+  var reader = new FileReader();
+  reader.onload = function(e){
+    try {
+      var wb = XLSX.read(e.target.result, {type:'array'});
+      parseRentXlsx(wb);
+    } catch(err){
+      showToast('❌ 파일 파싱 오류: '+err.message);
+    }
+  };
+  reader.readAsArrayBuffer(input.files[0]);
+}
+
+function parseSaleXlsx(wb){
+  // 연도별 시트 파싱 (매매2026D, 매매2025D ...)
+  var allRows = [];
+  var years = [2026,2025,2024,2023,2022,2021,2020,2019];
+  years.forEach(function(yr){
+    var shName = '매매'+yr+'D';
+    if(wb.SheetNames.indexOf(shName)<0) return;
+    var ws = wb.Sheets[shName];
+    var rows = XLSX.utils.sheet_to_json(ws, {header:0, defval:null});
+    rows.forEach(function(r){ r['연도']=yr; allRows.push(r); });
+  });
+  if(allRows.length===0){ showToast('❌ 매매 시트를 찾을 수 없습니다'); return; }
+
+  G.saleData = allRows;
+  // 통계 계산
+  buildSaleStats();
+  document.getElementById('sale-status').textContent = '✅ '+allRows.length+'건 로드';
+  document.getElementById('upload-progress').textContent = '';
+  showToast('✅ 매매 데이터 '+allRows.length+'건 로드 완료');
+  renderAll();
+}
+
+function parseRentXlsx(wb){
+  var allRows = [];
+  ['2026전세D','2025전세D','2026월세D','2025월세D'].forEach(function(sh){
+    if(wb.SheetNames.indexOf(sh)<0) return;
+    var rows = XLSX.utils.sheet_to_json(wb.Sheets[sh], {header:0, defval:null});
+    var yr = parseInt(sh.slice(0,4));
+    rows.forEach(function(r){ r['연도']=yr; allRows.push(r); });
+  });
+  G.rentData = allRows;
+  buildRentStats();
+  document.getElementById('rent-status').textContent = '✅ '+allRows.length+'건 로드';
+  showToast('✅ 전월세 데이터 '+allRows.length+'건 로드 완료');
+  renderTab4();
+}
+
+function buildSaleStats(){
+  if(!G.saleData) return;
+  var rows = G.saleData;
+  // 연도별 통계
+  var yrStats = {};
+  var distStats = {};
+  rows.forEach(function(r){
+    var yr = r['연도'];
+    var type = r['구분']||r[Object.keys(r)[1]];
+    var price = parseFloat(r['거래금액'])||0;
+    var sqm = parseFloat(r['전용(㎡)']||r['전용㎡'])||0;
+    var dist = parseInt(r['공구'])||0;
+    if(price<=0) return;
+    if(!yrStats[yr]) yrStats[yr]={total:0,apt:0,pre:0,prices:[],apt_prices:[],prices_84:[]};
+    yrStats[yr].total++;
+    yrStats[yr].prices.push(price);
+    if(type==='아파트'){ yrStats[yr].apt++; yrStats[yr].apt_prices.push(price); }
+    if(type==='분양권') yrStats[yr].pre++;
+    if(sqm>=80&&sqm<=90) yrStats[yr].prices_84.push(price);
+    // 공구별
+    if(dist>0){
+      if(!distStats[dist]) distStats[dist]={cnt:0,apt:0,pre:0,prices:[],prices_84:[],prices_40:[],top_84:null,top_40:null};
+      distStats[dist].cnt++;
+      distStats[dist].prices.push(price);
+      if(type==='아파트') distStats[dist].apt++;
+      if(type==='분양권') distStats[dist].pre++;
+      if(sqm>=80&&sqm<=90){
+        distStats[dist].prices_84.push(price);
+        if(!distStats[dist].top_84||price>distStats[dist].top_84.price)
+          distStats[dist].top_84={price:price,unit:r['단지명'],ym:r['계약년월'],fl:r['층']};
+      }
+      if(sqm>=101&&sqm<=130){
+        distStats[dist].prices_40.push(price);
+        if(!distStats[dist].top_40||price>distStats[dist].top_40.price)
+          distStats[dist].top_40={price:price,unit:r['단지명'],ym:r['계약년월'],fl:r['층']};
+      }
+    }
+  });
+  // DATA에 반영
+  if(!DATA) DATA = {year_trends:{},district:DEMO.district,rent:DEMO.rent,new_highs:DEMO.new_highs,meta:{}};
+  var avg = function(arr){ return arr.length?Math.round(arr.reduce(function(a,b){return a+b;},0)/arr.length):0; };
+  Object.keys(yrStats).forEach(function(yr){
+    var s=yrStats[yr];
+    DATA.year_trends['yr_'+yr]={
+      total:s.total,apt:s.apt,pre:s.pre,
+      avg:avg(s.prices),avg_apt:avg(s.apt_prices),avg_84:avg(s.prices_84)
+    };
+  });
+  DATA.meta.updated=new Date().toISOString().slice(0,10);
+  DATA.meta.total_records=rows.length;
+  document.getElementById('data-status').textContent='데이터 로드됨';
+  document.getElementById('data-updated').textContent='기준: '+DATA.meta.updated;
+}
+
+function buildRentStats(){
+  if(!G.rentData) return;
+  // 신규/갱신 통계 계산
+  var stats = {};
+  G.rentData.forEach(function(r){
+    var yr = r['연도'];
+    var price = parseFloat(r['보증금'])||0;
+    var type = r['계약구분']||'-';
+    var renewal = r['갱신요구권']||'-';
+    if(!stats[yr]) stats[yr]={total:0,new_prices:[],renew_prices:[],renewal_right:0};
+    stats[yr].total++;
+    if(type==='신규') stats[yr].new_prices.push(price);
+    if(type==='갱신') stats[yr].renew_prices.push(price);
+    if(renewal==='사용') stats[yr].renewal_right++;
+  });
+  var avg=function(arr){return arr.length?Math.round(arr.reduce(function(a,b){return a+b;},0)/arr.length):0;};
+  if(!DATA) DATA=JSON.parse(JSON.stringify(DEMO));
+  Object.keys(stats).forEach(function(yr){
+    var s=stats[yr];
+    if(!DATA.rent) DATA.rent={};
+    DATA.rent[yr]={
+      total:s.total,new_cnt:s.new_prices.length,new_avg:avg(s.new_prices),
+      renew_cnt:s.renew_prices.length,renew_avg:avg(s.renew_prices),
+      renewal_right:s.renewal_right
+    };
+  });
+}
+
+// ══ 렌더링
+function renderAll(){
+  renderTab0();
+  renderTab1();
+  renderTab2();
+  renderTab3();
+  renderTab4();
+  renderNewHighTable();
+  renderAbnTable();
+}
+
+// ── TAB0 전광판
+function renderTab0(){
+  if(!DATA) return;
+  var yr = G.yr;
+  var yd = DATA.year_trends['yr_'+yr];
+  if(!yd) return;
+  var area = G.area;
+
+  // KPI
+  var avgVal = area==='84'?yd.avg_84:(area==='40'?(yd.avg_40||yd.avg):yd.avg);
+  var saleTypeTxt = G.saleType==='apt'?'아파트':G.saleType==='pre'?'분양권':'전체';
+  var cntVal = G.saleType==='apt'?yd.apt:G.saleType==='pre'?yd.pre:yd.total;
+  var rentD = DATA.rent[yr]||DATA.rent['2025']||{};
+
+  document.getElementById('kpi-top').innerHTML = [
+    {label:'매매 거래건수',val:cntVal.toLocaleString()+'건',sub:saleTypeTxt+' · '+yr+'년',color:'var(--accent)',badge:(yd.apt&&yd.pre)?'아파트 '+yd.apt+'건 / 분양권 '+yd.pre+'건':''},
+    {label:'평균 매매가',val:fmt만(avgVal),sub:area==='all'?'전체면적':area==='84'?'84㎡기준':'40평대기준',color:'var(--yellow)'},
+    {label:'전세 신규평균',val:fmt만(rentD.new_avg||0),sub:'신규 '+((rentD.new_cnt||0)).toLocaleString()+'건',color:'var(--accent3)',badge:'갱신 '+fmt만(rentD.renew_avg||0)},
+    {label:'갱신요구권 사용',val:(rentD.renewal_right||0).toLocaleString()+'건',sub:'전세갱신 대비',color:'var(--purple)',badge:rentD.renew_cnt?Math.round(rentD.renewal_right/rentD.renew_cnt*100)+'%':''},
+    {label:'전체 누적 거래',val:DATA.meta.total_records.toLocaleString()+'건',sub:'2019~현재',color:'var(--text2)'},
+  ].map(function(k){
+    return '<div class="kpi-card" style="--kpi-color:'+k.color+'">'+
+      '<div class="kpi-label">'+k.label+'</div>'+
+      '<div class="kpi-val">'+k.val+'</div>'+
+      '<div class="kpi-sub">'+k.sub+'</div>'+
+      (k.badge?'<div class="kpi-badge">'+k.badge+'</div>':'')+
+      '</div>';
+  }).join('');
+
+  // 공구별 카드
+  document.getElementById('dist-area-label').textContent = area==='84'?'84㎡ 기준':area==='40'?'40평대 기준':'전체 면적';
+  document.getElementById('dist-year-label').textContent = yr+'년 기준';
+  var dd = DATA.district||{};
+  document.getElementById('district-cards').innerHTML = DISTS.map(function(g){
+    var d=dd[String(g)]; if(!d) return '';
+    var color=DIST_COLORS[g];
+    var avgShow = area==='84'?d.avg_84:area==='40'?d.avg_40:d.avg_all;
+    var maxShow = area==='84'?d.max_84:area==='40'?d.max_40:d.max_hist_all.val;
+    var maxUnit = area==='84'?d.max_84_unit:area==='40'?d.max_40_unit:d.max_hist_all.unit;
+    var cnt = G.saleType==='apt'?d.cnt_apt:G.saleType==='pre'?d.cnt_pre:d.cnt_all;
+    var turnPct = Math.min((d.turnover||0)/15*100,100);
+    return '<div class="dist-card" style="--dist-color:'+color+'">'+
+      '<div class="dist-card-header">'+
+        '<span class="dist-name">'+DIST_NAMES[g]+'</span>'+
+        '<span class="dist-cnt">'+cnt+'건 / '+d.units.toLocaleString()+'세대</span>'+
+      '</div>'+
+      '<div class="dist-stats">'+
+        '<div class="dist-stat-item"><div class="dist-stat-label">평균가</div><div class="dist-stat-val">'+fmt만(avgShow)+'</div></div>'+
+        '<div class="dist-stat-item"><div class="dist-stat-label">최고가</div><div class="dist-stat-val">'+fmt만(maxShow)+'</div></div>'+
+        '<div class="dist-stat-item" style="grid-column:1/-1"><div class="dist-stat-label">최고가 단지</div><div class="dist-stat-val" style="font-size:11px;color:var(--text2)">'+maxUnit+'</div></div>'+
+      '</div>'+
+      '<div class="dist-turnover">'+
+        '<span style="font-size:9px;color:var(--text3);min-width:50px">전환율</span>'+
+        '<div class="turnover-bar-wrap"><div class="turnover-bar" style="width:'+turnPct+'%"></div></div>'+
+        '<span class="turnover-val">'+(d.turnover||0)+'%</span>'+
+      '</div>'+
+    '</div>';
+  }).join('');
+
+  // 차트 렌더
+  renderDistAvgChart();
+  renderYrTrendChart();
+  renderTurnoverChart();
+  renderRentSplitChart();
+}
+
+function renderDistAvgChart(){
+  var ctx = document.getElementById('chart-dist-avg').getContext('2d');
+  if(charts.distAvg) charts.distAvg.destroy();
+  var dd = DATA.district||{};
+  var area = G.area;
+  var labels=[], vals=[], colors=[];
+  DISTS.forEach(function(g){
+    var d=dd[String(g)]; if(!d) return;
+    labels.push(DIST_NAMES[g]);
+    var v = area==='84'?d.avg_84:area==='40'?d.avg_40:d.avg_all;
+    vals.push(Math.round(v/10000*10)/10);
+    colors.push(DIST_COLORS[g]);
+  });
+  charts.distAvg = new Chart(ctx,{type:'bar',data:{labels:labels,datasets:[{
+    data:vals,backgroundColor:colors.map(function(c){return c+'66';}),
+    borderColor:colors,borderWidth:2,borderRadius:4
+  }]},options:{responsive:true,plugins:{legend:{display:false},tooltip:{callbacks:{label:function(c){return c.raw+'억';}}},},
+  scales:{x:{ticks:{color:'#8899bb',font:{size:11}},grid:{display:false}},
+          y:{ticks:{color:'#8899bb',font:{size:10},callback:function(v){return v+'억';}},grid:{color:'rgba(42,58,82,.5)'}}}
+  }});
+}
+
+function renderYrTrendChart(){
+  var ctx = document.getElementById('chart-yr-trend').getContext('2d');
+  if(charts.yrTrend) charts.yrTrend.destroy();
+  var yt = DATA.year_trends||{};
+  var labels=[],apt=[],pre=[];
+  for(var yr=2019;yr<=2026;yr++){
+    var d=yt['yr_'+yr]; if(!d) continue;
+    labels.push(yr+'년');
+    apt.push(d.apt||0);
+    pre.push(d.pre||0);
+  }
+  charts.yrTrend = new Chart(ctx,{type:'bar',data:{labels:labels,datasets:[
+    {label:'아파트',data:apt,backgroundColor:'rgba(0,212,255,.5)',borderColor:'#00d4ff',borderWidth:1,borderRadius:3},
+    {label:'분양권',data:pre,backgroundColor:'rgba(181,123,238,.5)',borderColor:'#b57bee',borderWidth:1,borderRadius:3},
+  ]},options:{responsive:true,plugins:{legend:{labels:{color:'#8899bb',font:{size:11}}}},
+  scales:{x:{stacked:true,ticks:{color:'#8899bb',font:{size:10}},grid:{display:false}},
+          y:{stacked:true,ticks:{color:'#8899bb',font:{size:10}},grid:{color:'rgba(42,58,82,.5)'}}}
+  }});
+}
+
+function renderTurnoverChart(){
+  var ctx = document.getElementById('chart-turnover').getContext('2d');
+  if(charts.turnover) charts.turnover.destroy();
+  var dd = DATA.district||{};
+  var labels=[],vals=[],colors=[];
+  DISTS.forEach(function(g){
+    var d=dd[String(g)]; if(!d) return;
+    labels.push(DIST_NAMES[g]);
+    vals.push(d.turnover||0);
+    var v=d.turnover||0;
+    colors.push(v>5?'#00e5a0':v>3?'#ffd700':'#ff6b35');
+  });
+  charts.turnover = new Chart(ctx,{type:'bar',data:{labels:labels,datasets:[{
+    data:vals,backgroundColor:colors.map(function(c){return c+'88';}),
+    borderColor:colors,borderWidth:2,borderRadius:4,
+    label:'전환율(%)'
+  }]},options:{indexAxis:'y',responsive:true,
+    plugins:{legend:{display:false},tooltip:{callbacks:{label:function(c){return c.raw+'%';}}}},
+    scales:{x:{ticks:{color:'#8899bb',font:{size:10},callback:function(v){return v+'%';}},grid:{color:'rgba(42,58,82,.5)'}},
+            y:{ticks:{color:'#8899bb',font:{size:11}},grid:{display:false}}}
+  }});
+}
+
+function renderRentSplitChart(){
+  var ctx = document.getElementById('chart-rent-split').getContext('2d');
+  if(charts.rentSplit) charts.rentSplit.destroy();
+  var rd = DATA.rent||{};
+  var labels=['2025 신규','2025 갱신','2026 신규','2026 갱신'];
+  var vals=[
+    rd['2025']?Math.round(rd['2025'].new_avg/10000*10)/10:0,
+    rd['2025']?Math.round(rd['2025'].renew_avg/10000*10)/10:0,
+    rd['2026']?Math.round(rd['2026'].new_avg/10000*10)/10:0,
+    rd['2026']?Math.round(rd['2026'].renew_avg/10000*10)/10:0,
+  ];
+  charts.rentSplit = new Chart(ctx,{type:'bar',data:{labels:labels,datasets:[{
+    data:vals,
+    backgroundColor:['rgba(0,212,255,.6)','rgba(0,229,160,.6)','rgba(0,212,255,.9)','rgba(0,229,160,.9)'],
+    borderColor:['#00d4ff','#00e5a0','#00d4ff','#00e5a0'],
+    borderWidth:2,borderRadius:4
+  }]},options:{responsive:true,plugins:{legend:{display:false},
+    tooltip:{callbacks:{label:function(c){return c.raw+'억';}}}},
+    scales:{x:{ticks:{color:'#8899bb',font:{size:11}},grid:{display:false}},
+            y:{ticks:{color:'#8899bb',font:{size:10},callback:function(v){return v+'억';}},grid:{color:'rgba(42,58,82,.5)'}}}
+  }});
+}
+
+// ── TAB1
+function renderTab1(){
+  if(!DATA) return;
+  renderDistTable();
+  renderHistTable();
+}
+function renderDistTable(){
+  var dd = DATA.district||{};
+  var yr = G.yr1;
+  document.getElementById('t1-subtitle').textContent = yr+'년 · 공구별 종합';
+  var html = '';
+  DISTS.forEach(function(g){
+    var d=dd[String(g)]; if(!d) return;
+    var color=DIST_COLORS[g];
+    html+='<tr>'+
+      '<td><span class="badge" style="background:'+color+'33;color:'+color+'">'+DIST_NAMES[g]+'</span></td>'+
+      '<td>'+d.units.toLocaleString()+'</td>'+
+      '<td><b>'+d.cnt_all+'</b></td>'+
+      '<td><span class="badge badge-apt">'+d.cnt_apt+'</span></td>'+
+      '<td><span class="badge badge-pre">'+d.cnt_pre+'</span></td>'+
+      '<td class="num">'+fmt천(d.avg_all)+'</td>'+
+      '<td class="num">'+fmt천(d.avg_apt)+'</td>'+
+      '<td class="num" style="color:var(--accent)">'+fmt천(d.avg_84)+'</td>'+
+      '<td class="num" style="color:var(--yellow)">'+fmt천(d.max_84)+'</td>'+
+      '<td style="font-size:11px">'+d.max_84_unit+'</td>'+
+      '<td class="num">'+fmt천(d.max_40)+'</td>'+
+      '<td style="font-size:11px">'+d.max_40_unit+'</td>'+
+      '<td class="num" style="color:var(--accent3)"><b>'+d.turnover+'%</b></td>'+
+    '</tr>';
+  });
+  document.getElementById('t1-tbody').innerHTML = html;
+}
+function renderHistTable(){
+  var dd = DATA.district||{};
+  var key = G.histArea==='84'?'max_hist_84':G.histArea==='40'?'max_hist_40':'max_hist_all';
+  var html='';
+  var rows=[];
+  DISTS.forEach(function(g){
+    var d=dd[String(g)]; if(!d||!d[key]) return;
+    var m=d[key];
+    rows.push({g:g,m:m});
+  });
+  rows.sort(function(a,b){return b.m.val-a.m.val;});
+  rows.forEach(function(r,i){
+    var g=r.g,m=r.m,color=DIST_COLORS[g];
+    html+='<tr>'+
+      '<td><span class="badge" style="background:'+color+'33;color:'+color+'">'+DIST_NAMES[g]+'</span></td>'+
+      '<td>'+m.unit+'</td>'+
+      '<td class="num"><b style="color:var(--yellow)">'+fmt천(m.val)+'</b></td>'+
+      '<td>'+m.sqm+'㎡</td>'+
+      '<td>'+m.fl+'층</td>'+
+      '<td>'+fmtYm(m.ym)+'</td>'+
+      '<td>'+m.yr+'</td>'+
+    '</tr>';
+  });
+  document.getElementById('hist-tbody').innerHTML = html;
+}
+
+// ── TAB2
+function renderTab2(){
+  if(!DATA||!G.saleData) {
+    document.getElementById('t2-empty').style.display='block';
+    document.getElementById('t2-wrap').style.display='none';
+    return;
+  }
+  document.getElementById('t2-empty').style.display='none';
+  document.getElementById('t2-wrap').style.display='block';
+  // 단지별 통계 계산
+  var rows = G.saleData.filter(function(r){
+    return !r['해제사유']||r['해제사유']==='-'||r['해제사유']==='';
+  });
+  var byUnit={};
+  rows.forEach(function(r){
+    var unit=r['단지명']||r[Object.keys(r)[5]];
+    var price=parseFloat(r['거래금액'])||0;
+    var sqm=parseFloat(r['전용(㎡)']||r['전용㎡'])||0;
+    var dist=parseInt(r['공구'])||0;
+    if(!unit||price<=0) return;
+    if(G.distFilter!=='all'&&dist!==G.distFilter) return;
+    if(!byUnit[unit]) byUnit[unit]={dist:dist,prices:[],prices_84:[],prices_40:[],max_hist:0};
+    byUnit[unit].prices.push(price);
+    if(price>byUnit[unit].max_hist) byUnit[unit].max_hist=price;
+    if(sqm>=80&&sqm<=90) byUnit[unit].prices_84.push(price);
+    if(sqm>=101&&sqm<=130) byUnit[unit].prices_40.push(price);
+  });
+  var avg=function(arr){return arr.length?Math.round(arr.reduce(function(a,b){return a+b;},0)/arr.length):0;};
+  var unitList=Object.keys(byUnit).map(function(u){
+    var d=byUnit[u];
+    return {unit:u,dist:d.dist,avg:avg(d.prices),cnt:d.prices.length,avg_84:avg(d.prices_84),max_84:d.prices_84.length?Math.max.apply(null,d.prices_84):0,avg_40:avg(d.prices_40)};
+  });
+  unitList.sort(function(a,b){return b.avg-a.avg;});
+  var html='';
+  unitList.forEach(function(u){
+    var color=DIST_COLORS[u.dist]||'#8899bb';
+    html+='<tr>'+
+      '<td><span class="badge" style="background:'+color+'33;color:'+color+'">'+(DIST_NAMES[u.dist]||u.dist+'공구')+'</span></td>'+
+      '<td>'+u.unit+'</td>'+
+      '<td class="num">'+fmt천(u.avg)+'</td>'+
+      '<td class="num" style="color:var(--accent)">'+(u.avg_84?fmt천(u.avg_84):'-')+'</td>'+
+      '<td class="num" style="color:var(--yellow)">'+(u.max_84?fmt천(u.max_84):'-')+'</td>'+
+      '<td class="num">'+(u.avg_40?fmt천(u.avg_40):'-')+'</td>'+
+      '<td class="num">'+u.cnt+'건</td>'+
+      '<td>'+fmt천(u.max_84)+'</td>'+
+      '<td style="font-size:11px">'+u.unit+'</td>'+
+    '</tr>';
+  });
+  document.getElementById('t2-tbody').innerHTML = html;
+}
+
+// ── TAB3
+function renderTab3(){
+  if(!G.saleData){
+    document.getElementById('t3-empty').style.display='block';
+    document.getElementById('t3-content').style.display='none';
+    return;
+  }
+  document.getElementById('t3-empty').style.display='none';
+  document.getElementById('t3-content').style.display='block';
+  var rows = G.saleData.filter(function(r){
+    var price=parseFloat(r['거래금액'])||0;
+    var type=r['구분'];
+    var sqm=parseFloat(r['전용(㎡)']||r['전용㎡'])||0;
+    if(price<=0) return false;
+    if(G.saleF!=='all'&&type!==G.saleF) return false;
+    if(G.saleAreaF==='84'&&!(sqm>=80&&sqm<=90)) return false;
+    if(G.saleAreaF==='40'&&!(sqm>=101&&sqm<=130)) return false;
+    if(G.abnF==='exc'&&r['해제사유']&&r['해제사유']!=='-') return false;
+    return true;
+  }).slice(-500).reverse(); // 최신 500건
+  document.getElementById('t3-cnt').textContent = rows.length+'건';
+  var newHighSet = {};
+  (DATA.new_highs||[]).forEach(function(h){ newHighSet[h.unit+'_'+h.ym]=h; });
+  var html='';
+  rows.forEach(function(r){
+    var price=parseFloat(r['거래금액'])||0;
+    var sqm=parseFloat(r['전용(㎡)']||r['전용㎡'])||0;
+    var dist=parseInt(r['공구'])||0;
+    var color=DIST_COLORS[dist]||'#8899bb';
+    var ym=r['계약년월'];
+    var isNew=newHighSet[r['단지명']+'_'+ym];
+    html+='<tr>'+
+      '<td><span class="badge" style="background:'+color+'33;color:'+color+'">'+(DIST_NAMES[dist]||'-')+'</span></td>'+
+      '<td>'+r['단지명']+'</td>'+
+      '<td><span class="badge '+(r['구분']==='아파트'?'badge-apt':'badge-pre')+'">'+r['구분']+'</span></td>'+
+      '<td>'+sqm.toFixed(1)+'㎡</td>'+
+      '<td class="num" style="color:var(--yellow)"><b>'+fmt천(price)+'</b></td>'+
+      '<td class="num">'+(r['평당가']?Math.round(parseFloat(r['평당가'])).toLocaleString()+'만':'-')+'</td>'+
+      '<td>'+(r['층']||'-')+'층</td>'+
+      '<td>'+fmtYm(ym)+'</td>'+
+      '<td style="font-size:11px">'+(r['거래유형']||'-')+'</td>'+
+      '<td>'+(isNew?'<span class="badge badge-alltime">🏆역대신고가</span>':'')+'</td>'+
+    '</tr>';
+  });
+  document.getElementById('t3-tbody').innerHTML = html;
+  renderAreaDistChart(rows);
+  renderMonthlyChart(rows);
+}
+
+function renderAreaDistChart(rows){
+  var ctx=document.getElementById('chart-area-dist').getContext('2d');
+  if(charts.areaDist) charts.areaDist.destroy();
+  var cnt={10:0,20:0,30:0,40:0,50:0,60:0};
+  rows.forEach(function(r){
+    var mc=parseInt(r['면적구분']||r[Object.keys(r)[9]])||0;
+    if(cnt[mc]!==undefined) cnt[mc]++;
+  });
+  var labels=['10평대','20평대','30평대(84㎡)','40평대','50평대','60평대이상'];
+  var vals=[cnt[10],cnt[20],cnt[30],cnt[40],cnt[50],cnt[60]];
+  var colors=['#95a5a6','#4ecdc4','#00d4ff','#ffd700','#b57bee','#ff6b35'];
+  charts.areaDist=new Chart(ctx,{type:'doughnut',data:{labels:labels,datasets:[{data:vals,backgroundColor:colors.map(function(c){return c+'cc';}),borderColor:colors,borderWidth:1}]},
+  options:{responsive:true,plugins:{legend:{position:'right',labels:{color:'#8899bb',font:{size:10},boxWidth:12}}}}});
+}
+
+function renderMonthlyChart(rows){
+  var ctx=document.getElementById('chart-monthly').getContext('2d');
+  if(charts.monthly) charts.monthly.destroy();
+  var monthly={};
+  rows.forEach(function(r){
+    var ym=String(r['계약년월']||'');
+    if(ym.length!==6) return;
+    var key=ym.slice(0,4)+'.'+ym.slice(4,6);
+    if(!monthly[key]) monthly[key]=0;
+    monthly[key]++;
+  });
+  var keys=Object.keys(monthly).sort().slice(-18);
+  charts.monthly=new Chart(ctx,{type:'line',data:{labels:keys,datasets:[{
+    data:keys.map(function(k){return monthly[k];}),
+    borderColor:'#00d4ff',backgroundColor:'rgba(0,212,255,.15)',
+    fill:true,tension:0.4,pointRadius:3,pointBackgroundColor:'#00d4ff'
+  }]},options:{responsive:true,plugins:{legend:{display:false}},
+  scales:{x:{ticks:{color:'#8899bb',font:{size:9}},grid:{display:false}},
+          y:{ticks:{color:'#8899bb',font:{size:10}},grid:{color:'rgba(42,58,82,.5)'}}}}});
+}
+
+// ── TAB4
+function renderTab4(){
+  if(!G.rentData){
+    document.getElementById('t4-empty').style.display='block';
+    document.getElementById('t4-content').style.display='none';
+    // 샘플 KPI는 DEMO로
+    renderRentKPI();
+    return;
+  }
+  document.getElementById('t4-empty').style.display='none';
+  document.getElementById('t4-content').style.display='block';
+  renderRentKPI();
+  var rows=G.rentData.filter(function(r){
+    var t=r['전월세구분'];
+    var ct=r['계약구분'];
+    var rr=r['갱신요구권'];
+    if(G.rentF!=='all'&&t!==G.rentF) return false;
+    if(G.contractF!=='all'&&ct!==G.contractF) return false;
+    if(G.renewalF==='사용'&&rr!=='사용') return false;
+    return true;
+  }).slice(-500).reverse();
+  document.getElementById('t4-cnt').textContent=rows.length+'건';
+  var html='';
+  rows.forEach(function(r){
+    var dist=parseInt(r['공구'])||0;
+    var color=DIST_COLORS[dist]||'#8899bb';
+    var price=parseFloat(r['보증금'])||0;
+    var monthly=parseFloat(r['월세금'])||0;
+    html+='<tr>'+
+      '<td><span class="badge" style="background:'+color+'33;color:'+color+'">'+(DIST_NAMES[dist]||'-')+'</span></td>'+
+      '<td>'+r['단지명']+'</td>'+
+      '<td><span class="badge '+(r['전월세구분']==='전세'?'badge-apt':'badge-pre')+'">'+r['전월세구분']+'</span></td>'+
+      '<td>'+(parseFloat(r['전용(㎡)'])||0).toFixed(1)+'㎡</td>'+
+      '<td class="num" style="color:var(--accent3)"><b>'+fmt천(price)+'</b></td>'+
+      '<td class="num">'+(monthly>0?monthly+'만':'-')+'</td>'+
+      '<td>'+(r['층']||'-')+'층</td>'+
+      '<td>'+fmtYm(r['계약년월'])+'</td>'+
+      '<td><span class="badge '+(r['계약구분']==='신규'?'badge-new':'badge-warn')+'">'+(r['계약구분']||'-')+'</span></td>'+
+      '<td>'+(r['갱신요구권']==='사용'?'<span class="badge badge-high">사용</span>':'-')+'</td>'+
+    '</tr>';
+  });
+  document.getElementById('t4-tbody').innerHTML=html;
+}
+
+function renderRentKPI(){
+  var rd=(DATA&&DATA.rent)||DEMO.rent;
+  var yr='2025';
+  var d=rd[yr]||{};
+  document.getElementById('kpi-rent').innerHTML=[
+    {label:'전세 신규 평균',val:fmt만(d.new_avg||0),sub:'신규 '+(d.new_cnt||0)+'건',color:'var(--accent)'},
+    {label:'전세 갱신 평균',val:fmt만(d.renew_avg||0),sub:'갱신 '+(d.renew_cnt||0)+'건',color:'var(--accent3)',badge:'신규대비 -'+Math.round(((d.new_avg-d.renew_avg)/d.new_avg)*100||0)+'%'},
+    {label:'갱신요구권 사용',val:(d.renewal_right||0)+'건',sub:'갱신 대비 '+(d.renew_cnt?Math.round(d.renewal_right/d.renew_cnt*100):0)+'%',color:'var(--yellow)'},
+    {label:'84㎡ 신규 전세',val:fmt만(d.avg_84_new||0),sub:'84㎡ 갱신 '+fmt만(d.avg_84_renew||0),color:'var(--purple)'},
+  ].map(function(k){
+    return '<div class="kpi-card" style="--kpi-color:'+k.color+'">'+
+      '<div class="kpi-label">'+k.label+'</div>'+
+      '<div class="kpi-val">'+k.val+'</div>'+
+      '<div class="kpi-sub">'+k.sub+'</div>'+
+      (k.badge?'<div class="kpi-badge down">'+k.badge+'</div>':'')+
+      '</div>';
+  }).join('');
+}
+
+// ── TAB5 신고가
+function renderNewHighTable(){
+  var highs=(DATA&&DATA.new_highs)||DEMO.new_highs;
+  var html='';
+  highs.slice(0,30).forEach(function(h,i){
+    var color=DIST_COLORS[h.dist]||'#8899bb';
+    html+='<tr>'+
+      '<td>'+h.unit+'</td>'+
+      '<td>'+h.sqm+'㎡</td>'+
+      '<td class="num"><b style="color:var(--yellow)">'+fmt천(h.price)+'</b></td>'+
+      '<td class="num" style="color:var(--text3)">'+fmt천(h.prev_max)+'</td>'+
+      '<td><span class="badge badge-alltime">+'+h.pct+'%</span></td>'+
+      '<td>'+fmtYm(h.ym)+'</td>'+
+      '<td>'+h.fl+'층</td>'+
+    '</tr>';
+  });
+  document.getElementById('newhigh-tbody').innerHTML=html||'<tr><td colspan="7" style="text-align:center;color:var(--text3);padding:20px">데이터 없음</td></tr>';
+}
+
+// ── TAB5 이상거래
+function renderAbnTable(){
+  if(!G.saleData){ return; }
+  // 단지+면적 중간값 계산
+  var medMap={};
+  G.saleData.forEach(function(r){
+    var price=parseFloat(r['거래금액'])||0;
+    var sqm=Math.round(parseFloat(r['전용(㎡)']||r['전용㎡'])||0);
+    var key=r['단지명']+'_'+sqm;
+    if(!medMap[key]) medMap[key]=[];
+    if(price>0) medMap[key].push(price);
+  });
+  var getMedian=function(arr){
+    if(!arr||!arr.length) return 0;
+    var s=arr.slice().sort(function(a,b){return a-b;});
+    var m=Math.floor(s.length/2);
+    return s.length%2?s[m]:(s[m-1]+s[m])/2;
+  };
+  var thresh=G.abnThresh/100;
+  var rows=G.saleData.filter(function(r){
+    var price=parseFloat(r['거래금액'])||0;
+    var sqm=Math.round(parseFloat(r['전용(㎡)']||r['전용㎡'])||0);
+    var type=r['거래유형'];
+    var key=r['단지명']+'_'+sqm;
+    var med=getMedian(medMap[key]);
+    if(price<=0||med<=0) return false;
+    var ratio=price/med;
+    if(ratio>=thresh) return false;
+    if(r['해제사유']&&r['해제사유']!=='-'&&r['해제사유']!=='') return false;
+    if(G.abnType!=='all'&&type!==G.abnType) return false;
+    return true;
+  }).map(function(r){
+    var price=parseFloat(r['거래금액'])||0;
+    var sqm=Math.round(parseFloat(r['전용(㎡)']||r['전용㎡'])||0);
+    var med=getMedian(medMap[r['단지명']+'_'+sqm]);
+    return {r:r,price:price,med:med,ratio:Math.round(price/med*100)};
+  }).sort(function(a,b){return a.ratio-b.ratio;}).slice(0,50);
+  var html='';
+  rows.forEach(function(row){
+    var r=row.r;
+    var dist=parseInt(r['공구'])||0;
+    var color=DIST_COLORS[dist]||'#8899bb';
+    var ratioColor=row.ratio<60?'var(--red)':row.ratio<70?'var(--accent2)':'var(--yellow)';
+    html+='<tr>'+
+      '<td>'+r['단지명']+'</td>'+
+      '<td>'+(parseFloat(r['전용(㎡)']||r['전용㎡'])||0).toFixed(1)+'㎡</td>'+
+      '<td class="num" style="color:'+ratioColor+'">'+fmt천(row.price)+'</td>'+
+      '<td class="num" style="color:var(--text3)">'+fmt천(row.med)+'</td>'+
+      '<td><span class="badge" style="background:'+ratioColor+'22;color:'+ratioColor+'">'+row.ratio+'%</span></td>'+
+      '<td style="font-size:11px">'+(r['거래유형']||'-')+'</td>'+
+      '<td>'+fmtYm(r['계약년월'])+'</td>'+
+    '</tr>';
+  });
+  document.getElementById('abn-tbody').innerHTML=html||'<tr><td colspan="7" style="text-align:center;color:var(--text3);padding:20px">이상거래 없음</td></tr>';
+}
+
+function onUploadNaver(input){ showToast('📋 네이버 매물 기능 준비 중'); }
+
+// ══ 초기화 - 샘플 데이터로 시작
+document.addEventListener('DOMContentLoaded', function(){
+  loadDemo();
+});
+</script>
+
+<!-- SheetJS 동적 로드 (엑셀 파싱용) -->
+<script>
+(function(){
+  var s=document.createElement('script');
+  s.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+  document.head.appendChild(s);
+})();
+</script>
+
+</body>
+</html>
