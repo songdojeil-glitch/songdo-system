@@ -260,7 +260,7 @@ body { background:var(--bg); color:var(--text); font-family:var(--font); font-si
   <div class="header-inner">
     <div class="logo">🏙️ 송도 부동산 DATA<span>송도제일공인중개사사무소</span></div>
     <div style="display:flex;align-items:center;gap:8px;margin-left:auto">
-      <span class="header-badge" id="data-status">데이터 없음</span>
+      <span id="fb-status" style="font-size:10px;color:var(--text3)">🔥 연결 중...</span>
       <span class="header-meta" id="data-updated"></span>
     </div>
   </div>
@@ -298,9 +298,17 @@ body { background:var(--bg); color:var(--text); font-family:var(--font); font-si
       <span class="upload-status" id="rent-status">미업로드</span>
     </div>
     <span class="upload-progress" id="upload-progress"></span>
-    <button onclick="loadDemo()" style="margin-left:auto;padding:4px 12px;background:var(--bg3);border:1px solid var(--border);color:var(--text2);border-radius:6px;cursor:pointer;font-size:11px;">
-      📋 샘플 데이터 로드
-    </button>
+    <div style="margin-left:auto;display:flex;gap:6px;align-items:center">
+      <button onclick="fbSaveData()" id="fb-save-btn" style="padding:4px 12px;background:#ff6600;border:none;color:#fff;border-radius:6px;cursor:pointer;font-size:11px;font-weight:700;">
+        🔥 Firebase 저장
+      </button>
+      <button onclick="fbLoadData()" id="fb-load-btn" style="padding:4px 12px;background:#1e3a5f;border:1px solid #00d4ff;color:#00d4ff;border-radius:6px;cursor:pointer;font-size:11px;font-weight:700;">
+        ☁️ Firebase 불러오기
+      </button>
+      <button onclick="loadDemo()" style="padding:4px 12px;background:var(--bg3);border:1px solid var(--border);color:var(--text2);border-radius:6px;cursor:pointer;font-size:11px;">
+        📋 샘플
+      </button>
+    </div>
   </div>
 
   <!-- 기준연도 + 면적 필터 -->
@@ -777,6 +785,13 @@ body { background:var(--bg); color:var(--text); font-family:var(--font); font-si
 <div id="toast"></div>
 
 <script>
+// ── 안전한 DOM 헬퍼
+function $id(id){ return document.getElementById(id); }
+function $set(id, val){ var el=document.getElementById(id); if(el) el.textContent=val; }
+function $style(id, prop, val){ var el=document.getElementById(id); if(el) el.style[prop]=val; }
+function $display(id, val){ var el=document.getElementById(id); if(el) el.style.display=val; }
+function $html(id, val){ var el=document.getElementById(id); if(el) el.innerHTML=val; }
+
 // ══ 전역 상태
 var G = {
   yr: 2025, area: 'all', saleType: 'all',
@@ -1939,38 +1954,173 @@ function generateReport(){
 }
 
 function printReport(){
-  var content = document.getElementById('report-print').innerHTML;
-  if(!content){
+  var printContent = document.getElementById('report-print').innerHTML;
+  if(!printContent){
     showToast('⚠️ 리포트를 먼저 생성해 주세요');
     return;
   }
   var w = window.open('','_blank','width=900,height=1200');
-  w.document.write(`<!DOCTYPE html><html><head>
-    <meta charset="UTF-8">
-    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700;900&family=Oswald:wght@400;700;900&display=swap" rel="stylesheet">
-    <style>
-      *{margin:0;padding:0;box-sizing:border-box;}
-      body{background:#0a0e1a;display:flex;justify-content:center;padding:20px;}
-      @media print{body{padding:0;} @page{size:A4;margin:0;}}
-    </style>
-  </head><body>${content}</body></html>`);
+  w.document.write('<!DOCTYPE html><html><head>'
+    +'<meta charset="UTF-8">'
+    +'<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700;900&family=Oswald:wght@400;700;900&display=swap" rel="stylesheet">'
+    +'<style>*{margin:0;padding:0;box-sizing:border-box;}body{background:#0a0e1a;display:flex;justify-content:center;padding:20px;}@media print{body{padding:0;}@page{size:A4;margin:0;}}</style>'
+    +'</head><body>'+printContent+'</body></html>');
   w.document.close();
   setTimeout(function(){ w.print(); }, 800);
 }
 
-// ══ 초기화 - 샘플 데이터로 시작
+// ══ Firebase 연동 함수
+function initFirebase(){
+  // Firebase 모듈 로드 대기 후 자동 로드
+  var tries = 0;
+  var timer = setInterval(function(){
+    tries++;
+    if(window._fbGet && window._fbChild && window._fbDb && window._fbRef){
+      clearInterval(timer);
+      fbAutoLoad();
+    } else if(tries > 30){
+      clearInterval(timer);
+      console.log('Firebase 모듈 대기 시간 초과 → 샘플 로드');
+      loadDemo();
+    }
+  }, 200);
+}
+
+window.fbAutoLoad = function(){
+  if(!window._fbGet || !window._fbChild || !window._fbDb || !window._fbRef) return;
+  var db = window._fbDb;
+  var dbRef = window._fbRef;
+  var get = window._fbGet;
+  var child = window._fbChild;
+  get(child(dbRef(db), 'sd_data')).then(function(snap){
+    if(snap.exists()){
+      var d = snap.val();
+      var hasSale = d.sale_data && d.sale_data.length > 0;
+      var hasRent = d.rent_data && d.rent_data.length > 0;
+      if(hasSale || hasRent){
+        if(hasSale){
+          G.saleData = d.sale_data;
+          buildSaleStats();
+          $set('sale-status','✅ FB '+G.saleData.length+'건');
+        }
+        if(hasRent){
+          G.rentData = d.rent_data;
+          buildRentStats();
+          $set('rent-status','✅ FB '+G.rentData.length+'건');
+        }
+        if(d.naver_data && d.naver_data.length > 0){
+          G.naverData = d.naver_data;
+          $set('naver-status','✅ FB '+G.naverData.length+'건');
+        }
+        var upd = d.meta && d.meta.updated ? d.meta.updated : '';
+        $set('data-status','☁️ Firebase 데이터');
+        $set('data-updated', upd ? '저장: '+upd : '');
+        $set('fb-status','🔥 자동로드 완료');
+        renderAll();
+        if(G.naverData) renderTab6();
+        showToast('☁️ Firebase 데이터 자동 로드 완료!', 3000);
+      } else {
+        loadDemo();
+      }
+    } else {
+      loadDemo();
+    }
+  }).catch(function(err){
+    console.error('자동 로드 오류:', err);
+    loadDemo();
+  });
+};
+
+function fbSaveData(){
+  if(!window._fbSet || !window._fbDb || !window._fbRef){
+    showToast('⚠️ Firebase 연결 대기 중...'); return;
+  }
+  if(!G.saleData && !G.rentData){
+    showToast('⚠️ 저장할 데이터가 없습니다. 먼저 엑셀을 업로드해 주세요.'); return;
+  }
+  var db = window._fbDb;
+  var dbRef = window._fbRef;
+  var set = window._fbSet;
+  showToast('⏳ Firebase에 저장 중...');
+  $set('fb-save-btn','⏳ 저장 중...');
+  var payload = {
+    sale_data: G.saleData || [],
+    rent_data: G.rentData || [],
+    naver_data: G.naverData || [],
+    meta: {
+      updated: new Date().toISOString().slice(0,10),
+      sale_cnt: (G.saleData||[]).length,
+      rent_cnt: (G.rentData||[]).length,
+      naver_cnt: (G.naverData||[]).length,
+    }
+  };
+  set(dbRef(db, 'sd_data'), payload).then(function(){
+    showToast('✅ Firebase 저장 완료! 다음 접속 시 자동 로드됩니다.', 4000);
+    $set('fb-save-btn','🔥 Firebase 저장');
+    $set('fb-status','🔥 저장 완료 '+payload.meta.updated);
+    $style('fb-status','color','#00e5a0');
+  }).catch(function(err){
+    showToast('❌ 저장 오류: '+err.message);
+    $set('fb-save-btn','🔥 Firebase 저장');
+    console.error(err);
+  });
+}
+
+function fbLoadData(){
+  if(!window._fbGet || !window._fbDb || !window._fbRef || !window._fbChild){
+    showToast('⚠️ Firebase 연결 대기 중...'); return;
+  }
+  showToast('⏳ Firebase에서 불러오는 중...');
+  $set('fb-load-btn','⏳ 로드 중...');
+  window.fbAutoLoad();
+  setTimeout(function(){
+    $set('fb-load-btn','☁️ Firebase 불러오기');
+  }, 3000);
+}
+
+// ══ 초기화
 document.addEventListener('DOMContentLoaded', function(){
-  loadDemo();
+  initFirebase();
 });
 </script>
 
-<!-- SheetJS 동적 로드 (엑셀 파싱용) -->
+<!-- SheetJS 동적 로드 -->
 <script>
 (function(){
   var s=document.createElement('script');
   s.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
   document.head.appendChild(s);
 })();
+</script>
+
+<!-- Firebase SDK (ES Module) -->
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getDatabase, ref, set, get, child } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyCMYoUBhRv_NkKeHmPqgXoqqXUjVsjEJPs",
+  authDomain: "songdojeil-202604.firebaseapp.com",
+  databaseURL: "https://songdojeil-202604-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "songdojeil-202604",
+  storageBucket: "songdojeil-202604.firebasestorage.app",
+  messagingSenderId: "567683904975",
+  appId: "1:567683904975:web:65a652a8e7b9a81e034eba"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getDatabase(app);
+
+window._fbDb = db;
+window._fbRef = ref;
+window._fbSet = set;
+window._fbGet = get;
+window._fbChild = child;
+
+document.addEventListener('DOMContentLoaded', function(){
+  $set('fb-status','🔥 Firebase 연결됨');
+  $style('fb-status','color','#ff6600');
+});
 </script>
 
 </body>
