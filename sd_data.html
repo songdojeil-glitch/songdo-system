@@ -1005,6 +1005,17 @@ function onUploadRent(input){
 }
 
 function parseSaleXlsx(wb){
+  // 공구D 시트에서 단지명→공구 매핑 테이블 생성 (VLOOKUP 수식 대체용)
+  var distMap = {};
+  if(wb.SheetNames.indexOf('공구D')>=0){
+    var distRows = XLSX.utils.sheet_to_json(wb.Sheets['공구D'], {header:0, defval:null, range:1});
+    distRows.forEach(function(r){
+      var unit = r['단지명']||r[Object.keys(r)[0]];
+      var dist = parseInt(r['공구']||r[Object.keys(r)[1]])||0;
+      if(unit && dist) distMap[String(unit).trim()] = dist;
+    });
+  }
+
   // 연도별 시트 파싱 (매매2026D, 매매2025D ...)
   var allRows = [];
   var years = [2026,2025,2024,2023,2022,2021,2020,2019];
@@ -1013,7 +1024,16 @@ function parseSaleXlsx(wb){
     if(wb.SheetNames.indexOf(shName)<0) return;
     var ws = wb.Sheets[shName];
     var rows = XLSX.utils.sheet_to_json(ws, {header:0, defval:null});
-    rows.forEach(function(r){ r['연도']=yr; allRows.push(r); });
+    rows.forEach(function(r){
+      r['연도'] = yr;
+      // 공구가 수식 문자열이거나 없으면 매핑 테이블로 대체
+      var dist = parseInt(r['공구'])||0;
+      if(!dist && r['단지명']){
+        dist = distMap[String(r['단지명']).trim()] || 0;
+      }
+      r['공구'] = dist;
+      allRows.push(r);
+    });
   });
   if(allRows.length===0){ showToast('❌ 매매 시트를 찾을 수 없습니다'); return; }
 
