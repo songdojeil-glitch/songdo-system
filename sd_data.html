@@ -625,24 +625,151 @@ body { background:var(--bg); color:var(--text); font-family:var(--font); font-si
 
 <!-- ══ TAB6 네이버 매물 ══ -->
 <div id="tc6" class="tc">
-  <div class="empty-state">
+  <!-- 업로드 바 -->
+  <div class="upload-bar">
+    <span class="upload-bar-title">📂 네이버 매물 데이터</span>
+    <div class="upload-group">
+      <label class="upload-label" style="background:var(--accent2)">📋 네이버 매물 엑셀
+        <input type="file" accept=".xlsx" style="display:none" id="upload-naver" onchange="onUploadNaver(this)">
+      </label>
+      <span class="upload-status" id="naver-status">미업로드</span>
+    </div>
+    <button onclick="loadNaverDemo()" style="margin-left:auto;padding:4px 12px;background:var(--bg3);border:1px solid var(--border);color:var(--text2);border-radius:6px;cursor:pointer;font-size:11px;">
+      📋 샘플 매물 로드
+    </button>
+  </div>
+
+  <!-- 필터 -->
+  <div class="filter-row" id="naver-filter-row">
+    <span class="filter-label">공구</span>
+    <button class="filter-btn on" onclick="setNaverDist('all',this)">전체</button>
+    <button class="filter-btn" onclick="setNaverDist(1,this)">1공구</button>
+    <button class="filter-btn" onclick="setNaverDist(2,this)">2공구</button>
+    <button class="filter-btn" onclick="setNaverDist(3,this)">3공구</button>
+    <button class="filter-btn" onclick="setNaverDist(4,this)">4공구</button>
+    <button class="filter-btn" onclick="setNaverDist(5,this)">5공구</button>
+    <button class="filter-btn" onclick="setNaverDist(6,this)">6공구</button>
+    <button class="filter-btn" onclick="setNaverDist(7,this)">7공구</button>
+    <button class="filter-btn" onclick="setNaverDist(8,this)">8공구</button>
+    <button class="filter-btn" onclick="setNaverDist(11,this)">11공구</button>
+    <div class="filter-sep"></div>
+    <span class="filter-label">거래유형</span>
+    <button class="filter-btn on" onclick="setNaverType('all',this)">전체</button>
+    <button class="filter-btn" onclick="setNaverType('매매',this)">매매</button>
+    <button class="filter-btn" onclick="setNaverType('전세',this)">전세</button>
+    <button class="filter-btn" onclick="setNaverType('월세',this)">월세</button>
+    <div class="filter-sep"></div>
+    <span class="filter-label">면적</span>
+    <button class="filter-btn on" onclick="setNaverArea('all',this)">전체</button>
+    <button class="filter-btn" onclick="setNaverArea('84',this)">84㎡</button>
+    <button class="filter-btn" onclick="setNaverArea('40',this)">40평대</button>
+  </div>
+
+  <!-- KPI -->
+  <div class="kpi-row kpi-row-4" id="kpi-naver" style="margin-bottom:12px"></div>
+
+  <!-- 빈 상태 -->
+  <div class="empty-state" id="t6-empty">
     <div class="empty-icon">📋</div>
-    <div class="empty-title">네이버 매물 업로드</div>
-    <div class="empty-desc">naver_txt2xlsx.py로 생성한 엑셀 파일을 업로드해 주세요</div>
-    <label class="upload-label" style="display:inline-block;margin-top:12px;cursor:pointer">
-      📂 네이버 매물 엑셀 업로드
-      <input type="file" accept=".xlsx" style="display:none" id="upload-naver" onchange="onUploadNaver(this)">
-    </label>
+    <div class="empty-title">네이버 매물 엑셀을 업로드해 주세요</div>
+    <div class="empty-desc">naver_txt2xlsx.py v3.1로 생성한 파일 또는 샘플 데이터 로드</div>
+  </div>
+
+  <!-- 컨텐츠 -->
+  <div id="t6-content" style="display:none">
+    <!-- 차트 행 -->
+    <div class="grid-2" style="margin-bottom:12px">
+      <div class="chart-card">
+        <div class="chart-card-title">📊 공구별 매물 수</div>
+        <div class="chart-wrap"><canvas id="chart-naver-dist" height="200"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-card-title">💰 거래유형별 평균 호가</div>
+        <div class="chart-wrap"><canvas id="chart-naver-price" height="200"></canvas></div>
+      </div>
+    </div>
+    <!-- 테이블 -->
+    <div class="table-wrap">
+      <div class="table-head">
+        <span style="font-size:12px;font-weight:700">📋 네이버 현재 매물 목록</span>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-size:10px;color:var(--text3)" id="t6-cnt"></span>
+          <input type="text" id="naver-search" placeholder="단지명 검색..." oninput="renderTab6()"
+            style="padding:3px 10px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:6px;font-size:11px;width:160px;">
+        </div>
+      </div>
+      <div class="table-scroll">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>공구</th><th>단지명</th><th>거래유형</th><th>전용㎡</th>
+              <th class="num">호가</th><th>층</th><th>방향</th>
+              <th>입력일</th><th>중개사</th><th>특이사항</th>
+            </tr>
+          </thead>
+          <tbody id="t6-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+    <!-- 실거래가 대비 분석 -->
+    <div style="margin-top:12px" id="naver-compare-wrap">
+      <div class="sec-hdr">
+        <div class="sec-hdr-bar" style="background:var(--accent2)"></div>
+        <div class="sec-hdr-title">📊 호가 vs 실거래가 비교 (84㎡ 기준)</div>
+        <div class="sec-hdr-sub">실거래 평균 대비 호가 수준</div>
+      </div>
+      <div class="table-wrap">
+        <div class="table-scroll">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>공구</th><th>단지명</th><th class="num">호가</th>
+                <th class="num">실거래평균</th><th>호가/실거래</th><th>괴리율</th>
+              </tr>
+            </thead>
+            <tbody id="t6-compare-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
 
 <!-- ══ TAB7 유튜브 리포트 ══ -->
 <div id="tc7" class="tc">
-  <div class="empty-state">
-    <div class="empty-icon">🎬</div>
-    <div class="empty-title">유튜브 리포트 생성</div>
-    <div class="empty-desc">데이터 업로드 후 주간/월간 리포트 화면을 생성합니다</div>
+  <!-- 컨트롤 바 -->
+  <div class="upload-bar">
+    <span class="upload-bar-title">🎬 유튜브 리포트 생성</span>
+    <div class="filter-row" style="border:none;background:none;padding:0;margin:0;flex:1">
+      <span class="filter-label">리포트 유형</span>
+      <button class="filter-btn on" onclick="setReportType('weekly',this)">📅 주간 시황</button>
+      <button class="filter-btn" onclick="setReportType('monthly',this)">📆 월간 분석</button>
+      <button class="filter-btn" onclick="setReportType('newhigh',this)">🏆 신고가 리포트</button>
+      <div class="filter-sep"></div>
+      <span class="filter-label">기준연도</span>
+      <button class="filter-btn" onclick="setReportYr(2024,this)">2024</button>
+      <button class="filter-btn on" onclick="setReportYr(2025,this)">2025</button>
+      <button class="filter-btn" onclick="setReportYr(2026,this)">2026</button>
+    </div>
+    <button onclick="generateReport()" style="padding:5px 16px;background:var(--red);border:none;color:#fff;border-radius:6px;cursor:pointer;font-size:11px;font-weight:700;white-space:nowrap">
+      🎬 리포트 생성
+    </button>
+    <button onclick="printReport()" style="padding:5px 16px;background:var(--bg3);border:1px solid var(--border);color:var(--text2);border-radius:6px;cursor:pointer;font-size:11px;white-space:nowrap">
+      🖨️ 인쇄/저장
+    </button>
   </div>
+
+  <!-- 리포트 미리보기 -->
+  <div id="report-area">
+    <div class="empty-state">
+      <div class="empty-icon">🎬</div>
+      <div class="empty-title">리포트 생성 버튼을 눌러주세요</div>
+      <div class="empty-desc">데이터 기반 A4 인포그래픽 리포트가 생성됩니다<br>유튜브 썸네일 · 본문 화면으로 활용 가능합니다</div>
+    </div>
+  </div>
+
+  <!-- A4 인쇄용 영역 (숨김) -->
+  <div id="report-print" style="display:none"></div>
 </div>
 
 </div><!-- /main -->
@@ -658,9 +785,34 @@ var G = {
   saleF: 'all', saleAreaF: 'all', abnF: 'inc',
   rentF: 'all', contractF: 'all', renewalF: 'all',
   abnThresh: 70, abnType: 'all',
-  saleData: null,  // 업로드된 매매 원시 데이터
-  rentData: null,  // 업로드된 전월세 원시 데이터
+  naverDist: 'all', naverType: 'all', naverArea: 'all',
+  reportType: 'weekly', reportYr: 2025,
+  saleData: null,
+  rentData: null,
+  naverData: null,
 };
+
+// 네이버 샘플 데이터
+var NAVER_DEMO = [
+  {공구:1,단지명:'송도센트럴파크푸르지오',거래유형:'매매',전용:'84.9',호가:120000,층:'15',방향:'남향',입력일:'2026.04.25',중개사:'송도제일',특이사항:''},
+  {공구:1,단지명:'더샵송도아크베이',거래유형:'매매',전용:'119.8',호가:175000,층:'25',방향:'남동향',입력일:'2026.04.24',중개사:'송도제일',특이사항:'조망탁월'},
+  {공구:1,단지명:'더샵센트럴파크2',거래유형:'전세',전용:'84.9',호가:48000,층:'10',방향:'남향',입력일:'2026.04.23',중개사:'송도제일',특이사항:''},
+  {공구:3,단지명:'송도더샵파크애비뉴',거래유형:'매매',전용:'84.4',호가:158000,층:'20',방향:'남향',입력일:'2026.04.26',중개사:'송도제일',특이사항:'신고가근접'},
+  {공구:3,단지명:'더샵송도센트럴파크Ⅲ',거래유형:'매매',전용:'111.3',호가:188000,층:'30',방향:'남서향',입력일:'2026.04.25',중개사:'송도제일',특이사항:''},
+  {공구:3,단지명:'더샵송도센트럴파크Ⅲ',거래유형:'전세',전용:'84.4',호가:52000,층:'12',방향:'남향',입력일:'2026.04.22',중개사:'송도제일',특이사항:''},
+  {공구:5,단지명:'송도글로벌파크베르디움',거래유형:'매매',전용:'84.9',호가:100000,층:'20',방향:'남향',입력일:'2026.04.26',중개사:'송도제일',특이사항:''},
+  {공구:5,단지명:'글로벌캠퍼스푸르지오',거래유형:'전세',전용:'84.9',호가:42000,층:'8',방향:'남향',입력일:'2026.04.24',중개사:'송도제일',특이사항:''},
+  {공구:6,단지명:'송도자이크리스탈오션',거래유형:'매매',전용:'84.96',호가:122000,층:'18',방향:'남향',입력일:'2026.04.27',중개사:'송도제일',특이사항:'신고가직후'},
+  {공구:6,단지명:'힐스테이트레이크송도5차',거래유형:'매매',전용:'165.8',호가:270000,층:'30',방향:'남동향',입력일:'2026.04.25',중개사:'송도제일',특이사항:'레이크뷰'},
+  {공구:6,단지명:'힐스테이트레이크송도4차',거래유형:'전세',전용:'84.9',호가:50000,층:'15',방향:'남향',입력일:'2026.04.23',중개사:'송도제일',특이사항:''},
+  {공구:6,단지명:'송도자이크리스탈오션',거래유형:'월세',전용:'59.9',호가:5000,층:'7',방향:'남향',입력일:'2026.04.22',중개사:'송도제일',특이사항:'보증금1억'},
+  {공구:7,단지명:'송도캐슬&해모로',거래유형:'매매',전용:'84.9',호가:86000,층:'18',방향:'남향',입력일:'2026.04.24',중개사:'송도제일',특이사항:''},
+  {공구:7,단지명:'송도아메리칸타운더샵',거래유형:'매매',전용:'108.6',호가:160000,층:'50',방향:'남향',입력일:'2026.04.25',중개사:'송도제일',특이사항:'초고층'},
+  {공구:8,단지명:'송도SKVIEW',거래유형:'매매',전용:'84.97',호가:88000,층:'25',방향:'남향',입력일:'2026.04.26',중개사:'송도제일',특이사항:''},
+  {공구:8,단지명:'랜드마크시티센트럴더샵',거래유형:'전세',전용:'84.9',호가:40000,층:'10',방향:'남향',입력일:'2026.04.23',중개사:'송도제일',특이사항:''},
+  {공구:11,단지명:'송도자이풍경채그라노블5단지',거래유형:'매매',전용:'85.0',호가:93000,층:'35',방향:'남향',입력일:'2026.04.27',중개사:'송도제일',특이사항:'신축급'},
+  {공구:11,단지명:'송도자이풍경채그라노블3단지',거래유형:'전세',전용:'84.9',호가:50000,층:'20',방향:'남향',입력일:'2026.04.25',중개사:'송도제일',특이사항:''},
+];
 
 // ══ 내장 샘플 데이터 (Python에서 추출한 실제 값)
 var DEMO = {
@@ -1453,7 +1605,358 @@ function renderAbnTable(){
   document.getElementById('abn-tbody').innerHTML=html||'<tr><td colspan="7" style="text-align:center;color:var(--text3);padding:20px">이상거래 없음</td></tr>';
 }
 
-function onUploadNaver(input){ showToast('📋 네이버 매물 기능 준비 중'); }
+function onUploadNaver(input){
+  if(!input.files[0]) return;
+  showToast('⏳ 네이버 매물 파싱 중...');
+  var reader = new FileReader();
+  reader.onload = function(e){
+    try {
+      var wb = XLSX.read(e.target.result, {type:'array'});
+      var sh = wb.Sheets[wb.SheetNames[0]];
+      var rows = XLSX.utils.sheet_to_json(sh, {header:0, defval:null});
+      G.naverData = rows.map(function(r){
+        return {
+          공구: parseInt(r['공구']||r['구역']||0),
+          단지명: r['단지명']||r['아파트명']||'-',
+          거래유형: r['거래유형']||r['유형']||'매매',
+          전용: String(r['전용(㎡)']||r['전용㎡']||r['면적']||0),
+          호가: parseFloat(r['호가']||r['매매가']||r['가격']||0),
+          층: String(r['층']||'-'),
+          방향: r['방향']||'-',
+          입력일: r['입력일']||r['등록일']||'-',
+          중개사: r['중개사']||r['중개사무소']||'-',
+          특이사항: r['특이사항']||r['메모']||'',
+        };
+      });
+      document.getElementById('naver-status').textContent = '✅ '+G.naverData.length+'건 로드';
+      showToast('✅ 네이버 매물 '+G.naverData.length+'건 로드 완료');
+      renderTab6();
+    } catch(err){
+      showToast('❌ 파싱 오류: '+err.message);
+    }
+  };
+  reader.readAsArrayBuffer(input.files[0]);
+}
+
+function loadNaverDemo(){
+  G.naverData = NAVER_DEMO;
+  document.getElementById('naver-status').textContent = '✅ 샘플 '+NAVER_DEMO.length+'건';
+  showToast('✅ 네이버 샘플 매물 로드 완료');
+  renderTab6();
+}
+
+// ── TAB6 필터 세터
+function setNaverDist(v,btn){ G.naverDist=v; setFilterBtn(btn.parentElement.querySelectorAll('.filter-btn'),btn); renderTab6(); }
+function setNaverType(v,btn){ G.naverType=v; setFilterBtn(btn.parentElement.querySelectorAll('.filter-btn'),btn); renderTab6(); }
+function setNaverArea(v,btn){ G.naverArea=v; setFilterBtn(btn.parentElement.querySelectorAll('.filter-btn'),btn); renderTab6(); }
+
+// ── TAB6 렌더
+function renderTab6(){
+  if(!G.naverData){
+    document.getElementById('t6-empty').style.display='block';
+    document.getElementById('t6-content').style.display='none';
+    return;
+  }
+  document.getElementById('t6-empty').style.display='none';
+  document.getElementById('t6-content').style.display='block';
+
+  var search = (document.getElementById('naver-search')||{}).value||'';
+  var rows = G.naverData.filter(function(r){
+    if(G.naverDist!=='all'&&parseInt(r.공구)!==parseInt(G.naverDist)) return false;
+    if(G.naverType!=='all'&&r.거래유형!==G.naverType) return false;
+    if(G.naverArea==='84'){var s=parseFloat(r.전용)||0; if(s<80||s>90) return false;}
+    if(G.naverArea==='40'){var s=parseFloat(r.전용)||0; if(s<101||s>130) return false;}
+    if(search&&r.단지명.indexOf(search)<0) return false;
+    return true;
+  });
+
+  // KPI
+  var saleRows=rows.filter(function(r){return r.거래유형==='매매';});
+  var jeonseRows=rows.filter(function(r){return r.거래유형==='전세';});
+  var wolseRows=rows.filter(function(r){return r.거래유형==='월세';});
+  var avg84=function(arr){
+    var s=arr.filter(function(r){var sq=parseFloat(r.전용)||0;return sq>=80&&sq<=90&&r.호가>0;});
+    if(!s.length) return 0;
+    return Math.round(s.reduce(function(a,b){return a+b.호가;},0)/s.length);
+  };
+  document.getElementById('kpi-naver').innerHTML=[
+    {label:'전체 매물',val:rows.length+'건',sub:'매매'+saleRows.length+' / 전세'+jeonseRows.length+' / 월세'+wolseRows.length,color:'var(--accent2)'},
+    {label:'매매 84㎡ 평균호가',val:fmt만(avg84(saleRows)),sub:'매매 '+saleRows.length+'건',color:'var(--yellow)'},
+    {label:'전세 84㎡ 평균호가',val:fmt만(avg84(jeonseRows)),sub:'전세 '+jeonseRows.length+'건',color:'var(--accent3)'},
+    {label:'월세 매물',val:wolseRows.length+'건',sub:'전체 대비 '+(rows.length?Math.round(wolseRows.length/rows.length*100):0)+'%',color:'var(--purple)'},
+  ].map(function(k){
+    return '<div class="kpi-card" style="--kpi-color:'+k.color+'">'+
+      '<div class="kpi-label">'+k.label+'</div>'+
+      '<div class="kpi-val">'+k.val+'</div>'+
+      '<div class="kpi-sub">'+k.sub+'</div></div>';
+  }).join('');
+
+  // 테이블
+  document.getElementById('t6-cnt').textContent = rows.length+'건';
+  var html='';
+  rows.forEach(function(r){
+    var color = DIST_COLORS[parseInt(r.공구)]||'#8899bb';
+    var typeCls = r.거래유형==='매매'?'badge-gold':r.거래유형==='전세'?'badge-apt':'badge-pre';
+    html+='<tr>'+
+      '<td><span class="badge" style="background:'+color+'33;color:'+color+'">'+(DIST_NAMES[parseInt(r.공구)]||'-')+'</span></td>'+
+      '<td style="font-weight:600">'+r.단지명+'</td>'+
+      '<td><span class="badge '+typeCls+'">'+r.거래유형+'</span></td>'+
+      '<td>'+(parseFloat(r.전용)||0).toFixed(1)+'㎡</td>'+
+      '<td class="num" style="color:var(--accent2);font-weight:700">'+fmt천(r.호가)+'</td>'+
+      '<td>'+(r.층||'-')+'층</td>'+
+      '<td style="font-size:11px;color:var(--text3)">'+(r.방향||'-')+'</td>'+
+      '<td style="font-size:11px;color:var(--text3)">'+(r.입력일||'-')+'</td>'+
+      '<td style="font-size:11px;color:var(--text3)">'+(r.중개사||'-')+'</td>'+
+      '<td style="font-size:11px;color:var(--yellow)">'+(r.특이사항||'')+'</td>'+
+    '</tr>';
+  });
+  document.getElementById('t6-tbody').innerHTML = html||'<tr><td colspan="10" style="text-align:center;padding:20px;color:var(--text3)">해당 매물 없음</td></tr>';
+
+  // 차트
+  renderNaverDistChart(rows);
+  renderNaverPriceChart(rows);
+
+  // 호가 vs 실거래 비교
+  renderNaverCompare(rows);
+}
+
+function renderNaverDistChart(rows){
+  var ctx=document.getElementById('chart-naver-dist').getContext('2d');
+  if(charts.naverDist) charts.naverDist.destroy();
+  var cnt={};
+  DISTS.forEach(function(g){cnt[g]=0;});
+  rows.forEach(function(r){var g=parseInt(r.공구);if(cnt[g]!==undefined)cnt[g]++;});
+  var labels=DISTS.map(function(g){return DIST_NAMES[g];});
+  var vals=DISTS.map(function(g){return cnt[g]||0;});
+  var colors=DISTS.map(function(g){return DIST_COLORS[g];});
+  charts.naverDist=new Chart(ctx,{type:'bar',data:{labels:labels,datasets:[{
+    data:vals,backgroundColor:colors.map(function(c){return c+'88';}),
+    borderColor:colors,borderWidth:2,borderRadius:4,label:'매물수'
+  }]},options:{responsive:true,plugins:{legend:{display:false}},
+  scales:{x:{ticks:{color:'#8899bb',font:{size:10}},grid:{display:false}},
+          y:{ticks:{color:'#8899bb',font:{size:10}},grid:{color:'rgba(42,58,82,.5)'}}}}});
+}
+
+function renderNaverPriceChart(rows){
+  var ctx=document.getElementById('chart-naver-price').getContext('2d');
+  if(charts.naverPrice) charts.naverPrice.destroy();
+  var byType={매매:[],전세:[],월세:[]};
+  rows.forEach(function(r){
+    var sq=parseFloat(r.전용)||0;
+    if(sq>=80&&sq<=90&&r.호가>0){
+      if(byType[r.거래유형]) byType[r.거래유형].push(r.호가);
+    }
+  });
+  var avg=function(arr){return arr.length?Math.round(arr.reduce(function(a,b){return a+b;},0)/arr.length/10000*10)/10:0;};
+  charts.naverPrice=new Chart(ctx,{type:'bar',data:{
+    labels:['매매 평균호가','전세 평균호가','월세 평균호가'],
+    datasets:[{data:[avg(byType['매매']),avg(byType['전세']),avg(byType['월세'])],
+      backgroundColor:['rgba(255,107,53,.6)','rgba(0,212,255,.6)','rgba(181,123,238,.6)'],
+      borderColor:['#ff6b35','#00d4ff','#b57bee'],borderWidth:2,borderRadius:4}]
+  },options:{responsive:true,plugins:{legend:{display:false},tooltip:{callbacks:{label:function(c){return c.raw+'억';}}}},
+  scales:{x:{ticks:{color:'#8899bb',font:{size:11}},grid:{display:false}},
+          y:{ticks:{color:'#8899bb',font:{size:10},callback:function(v){return v+'억';}},grid:{color:'rgba(42,58,82,.5)'}}}}});
+}
+
+function renderNaverCompare(rows){
+  // 84㎡ 매매 호가 vs 실거래 평균
+  var dd = DATA&&DATA.district ? DATA.district : DEMO.district;
+  var byUnit={};
+  rows.filter(function(r){
+    var sq=parseFloat(r.전용)||0; return r.거래유형==='매매'&&sq>=80&&sq<=90;
+  }).forEach(function(r){
+    var key=r.단지명+'_'+parseInt(r.공구);
+    if(!byUnit[key]) byUnit[key]={단지명:r.단지명,공구:parseInt(r.공구),호가:[],};
+    byUnit[key].호가.push(r.호가);
+  });
+  var avg=function(arr){return arr.length?Math.round(arr.reduce(function(a,b){return a+b;},0)/arr.length):0;};
+  var rows2=Object.values(byUnit).map(function(v){
+    var realAvg = dd[String(v.공구)] ? (dd[String(v.공구)].avg_84||0) : 0;
+    var hoAvg = avg(v.호가);
+    var ratio = realAvg ? Math.round(hoAvg/realAvg*100) : 0;
+    return {단지명:v.단지명,공구:v.공구,호가:hoAvg,실거래:realAvg,ratio:ratio};
+  }).sort(function(a,b){return b.ratio-a.ratio;});
+  var html='';
+  rows2.forEach(function(r){
+    var color=DIST_COLORS[r.공구]||'#8899bb';
+    var ratioColor=r.ratio>110?'var(--red)':r.ratio>100?'var(--yellow)':'var(--accent3)';
+    var diff=r.ratio-100;
+    html+='<tr>'+
+      '<td><span class="badge" style="background:'+color+'33;color:'+color+'">'+(DIST_NAMES[r.공구]||'-')+'</span></td>'+
+      '<td style="font-weight:600">'+r.단지명+'</td>'+
+      '<td class="num" style="color:var(--accent2);font-weight:700">'+fmt천(r.호가)+'</td>'+
+      '<td class="num" style="color:var(--text3)">'+fmt천(r.실거래)+'</td>'+
+      '<td><span class="badge" style="background:'+ratioColor+'22;color:'+ratioColor+'">'+r.ratio+'%</span></td>'+
+      '<td style="color:'+ratioColor+';font-size:11px">'+(diff>0?'+'+diff+'%':diff+'%')+(diff>10?' ⚠️ 고평가':diff<-5?' 📉 저평가':'')+'</td>'+
+    '</tr>';
+  });
+  document.getElementById('t6-compare-tbody').innerHTML=html||'<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--text3)">84㎡ 매매 매물 없음</td></tr>';
+}
+
+// ══ TAB7 유튜브 리포트
+function setReportType(v,btn){ G.reportType=v; setFilterBtn(btn.parentElement.querySelectorAll('.filter-btn'),btn); }
+function setReportYr(v,btn){ G.reportYr=v; setFilterBtn(btn.parentElement.querySelectorAll('.filter-btn'),btn); }
+
+function generateReport(){
+  var dd = DATA&&DATA.district ? DATA.district : DEMO.district;
+  var yt = DATA&&DATA.year_trends ? DATA.year_trends : DEMO.year_trends;
+  var rd = DATA&&DATA.rent ? DATA.rent : DEMO.rent;
+  var nh = DATA&&DATA.new_highs ? DATA.new_highs : DEMO.new_highs;
+  var yr = G.reportYr;
+  var yd = yt['yr_'+yr]||{};
+  var rentD = rd[yr]||rd['2025']||{};
+
+  var typeLabel = G.reportType==='weekly'?'주간 시황':G.reportType==='monthly'?'월간 분석':'신고가 리포트';
+  var today = new Date();
+  var dateStr = today.getFullYear()+'.'+(today.getMonth()+1).toString().padStart(2,'0')+'.'+today.getDate().toString().padStart(2,'0');
+
+  // 신고가 TOP5
+  var top5 = nh.slice(0,5).map(function(h,i){
+    var color=DIST_COLORS[h.dist]||'#8899bb';
+    return '<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid rgba(42,58,82,.5)">' +
+      '<span style="font-family:Oswald;font-size:20px;font-weight:900;color:rgba(255,215,0,.4);min-width:28px">'+(i+1)+'</span>'+
+      '<div style="flex:1">'+
+        '<div style="font-size:13px;font-weight:700;color:#e8eef8">'+h.unit+'</div>'+
+        '<div style="font-size:11px;color:#8899bb">'+h.sqm+'㎡ · '+h.fl+'층 · <span style="color:'+color+'">'+String(h.ym).slice(0,4)+'.'+String(h.ym).slice(4)+'</span></div>'+
+      '</div>'+
+      '<div style="text-align:right">'+
+        '<div style="font-family:Oswald;font-size:16px;font-weight:700;color:#ffd700">'+fmt천(h.price)+'</div>'+
+        '<div style="font-size:10px;color:#00e5a0">+'+h.pct+'%</div>'+
+      '</div>'+
+    '</div>';
+  }).join('');
+
+  // 공구별 84㎡ 평균가 TOP3
+  var distRank = DISTS.map(function(g){
+    var d=dd[String(g)]; return {name:DIST_NAMES[g],avg84:d?d.avg_84:0,color:DIST_COLORS[g]};
+  }).filter(function(d){return d.avg84>0;}).sort(function(a,b){return b.avg84-a.avg84;}).slice(0,5);
+
+  var distBars = distRank.map(function(d,i){
+    var pct = Math.round(d.avg84/distRank[0].avg84*100);
+    return '<div style="margin-bottom:10px">'+
+      '<div style="display:flex;justify-content:space-between;margin-bottom:4px">'+
+        '<span style="font-size:12px;font-weight:700;color:'+d.color+'">'+d.name+'</span>'+
+        '<span style="font-family:Oswald;font-size:13px;font-weight:700;color:#e8eef8">'+fmt만(d.avg84)+'</span>'+
+      '</div>'+
+      '<div style="background:#0a0e1a;border-radius:4px;height:8px;overflow:hidden">'+
+        '<div style="width:'+pct+'%;height:8px;border-radius:4px;background:linear-gradient(90deg,'+d.color+','+d.color+'88);transition:width .5s"></div>'+
+      '</div>'+
+    '</div>';
+  }).join('');
+
+  var reportHTML = `
+  <div id="report-page1" style="
+    width:794px; min-height:1123px; background:#0a0e1a; margin:0 auto 20px;
+    border:1px solid #2a3a52; font-family:'Noto Sans KR',sans-serif; position:relative; overflow:hidden;
+    box-shadow:0 8px 40px rgba(0,0,0,.6);
+  ">
+    <!-- 상단 헤더 -->
+    <div style="background:linear-gradient(135deg,#0d1f3c,#0a0e1a);padding:28px 36px 20px;border-bottom:2px solid #00d4ff">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <div>
+          <div style="font-family:Oswald;font-size:28px;font-weight:700;color:#00d4ff;letter-spacing:2px">
+            🏙️ 송도 부동산 ${typeLabel}
+          </div>
+          <div style="font-size:13px;color:#8899bb;margin-top:6px">
+            송도제일공인중개사사무소 · 인천광역시 연수구 · <b style="color:#e8eef8">${dateStr}</b> 기준
+          </div>
+        </div>
+        <div style="text-align:right">
+          <div style="font-family:Oswald;font-size:40px;font-weight:900;color:#ffd700;line-height:1">${yr}</div>
+          <div style="font-size:11px;color:#8899bb">데이터 기준</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- KPI 행 -->
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:0;border-bottom:1px solid #2a3a52">
+      ${[
+        {label:'매매 거래량',val:(yd.total||0).toLocaleString()+'건',sub:'아파트+분양권',color:'#00d4ff'},
+        {label:'평균 매매가',val:fmt만(yd.avg||0),sub:'전체 면적 평균',color:'#ffd700'},
+        {label:'84㎡ 평균가',val:fmt만(yd.avg_84||0),sub:'84㎡ 기준',color:'#ff6b35'},
+        {label:'전세 신규 평균',val:fmt만(rentD.new_avg||0),sub:'갱신 '+fmt만(rentD.renew_avg||0),color:'#00e5a0'},
+      ].map(function(k){
+        return '<div style="padding:18px 20px;border-right:1px solid #2a3a52">'+
+          '<div style="font-size:10px;color:#556688;font-weight:700;margin-bottom:6px;letter-spacing:.5px">'+k.label+'</div>'+
+          '<div style="font-family:Oswald;font-size:26px;font-weight:900;color:'+k.color+';line-height:1">'+k.val+'</div>'+
+          '<div style="font-size:10px;color:#556688;margin-top:4px">'+k.sub+'</div>'+
+        '</div>';
+      }).join('')}
+    </div>
+
+    <!-- 메인 2컬럼 -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:0;border-bottom:1px solid #2a3a52">
+      <!-- 신고가 TOP5 -->
+      <div style="padding:20px 24px;border-right:1px solid #2a3a52">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
+          <div style="width:3px;height:18px;background:#ffd700;border-radius:2px"></div>
+          <div style="font-size:13px;font-weight:700;color:#e8eef8">🏆 신고가 갱신 TOP5</div>
+          <div style="font-size:10px;color:#556688;margin-left:auto">2025~현재</div>
+        </div>
+        ${top5}
+      </div>
+      <!-- 공구별 84㎡ 시세 -->
+      <div style="padding:20px 24px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
+          <div style="width:3px;height:18px;background:#ff6b35;border-radius:2px"></div>
+          <div style="font-size:13px;font-weight:700;color:#e8eef8">📊 공구별 84㎡ 평균가</div>
+          <div style="font-size:10px;color:#556688;margin-left:auto">높은 순</div>
+        </div>
+        ${distBars}
+      </div>
+    </div>
+
+    <!-- 하단 전세 분석 -->
+    <div style="padding:20px 24px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
+        <div style="width:3px;height:18px;background:#00e5a0;border-radius:2px"></div>
+        <div style="font-size:13px;font-weight:700;color:#e8eef8">🏠 전세 현황 (${yr}년)</div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
+        ${[
+          {label:'신규 전세 건수',val:(rentD.new_cnt||0).toLocaleString()+'건',color:'#00d4ff'},
+          {label:'갱신 전세 건수',val:(rentD.renew_cnt||0).toLocaleString()+'건',color:'#00e5a0'},
+          {label:'갱신요구권 사용',val:(rentD.renewal_right||0).toLocaleString()+'건',sub:rentD.renew_cnt?'갱신 대비 '+Math.round(rentD.renewal_right/rentD.renew_cnt*100)+'%':'',color:'#ffd700'},
+        ].map(function(k){
+          return '<div style="background:#1a2235;border:1px solid #2a3a52;border-radius:8px;padding:14px">'+
+            '<div style="font-size:10px;color:#556688;margin-bottom:4px">'+k.label+'</div>'+
+            '<div style="font-family:Oswald;font-size:22px;font-weight:700;color:'+k.color+'">'+k.val+'</div>'+
+            (k.sub?'<div style="font-size:10px;color:#556688;margin-top:2px">'+k.sub+'</div>':'')+
+          '</div>';
+        }).join('')}
+      </div>
+    </div>
+
+    <!-- 워터마크 -->
+    <div style="position:absolute;bottom:16px;right:24px;font-size:11px;color:#2a3a52">
+      송도제일부동산TV · songdojeil.com
+    </div>
+  </div>`;
+
+  document.getElementById('report-area').innerHTML = reportHTML;
+  document.getElementById('report-print').innerHTML = reportHTML;
+  showToast('✅ 리포트 생성 완료!');
+}
+
+function printReport(){
+  var content = document.getElementById('report-print').innerHTML;
+  if(!content){
+    showToast('⚠️ 리포트를 먼저 생성해 주세요');
+    return;
+  }
+  var w = window.open('','_blank','width=900,height=1200');
+  w.document.write(`<!DOCTYPE html><html><head>
+    <meta charset="UTF-8">
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700;900&family=Oswald:wght@400;700;900&display=swap" rel="stylesheet">
+    <style>
+      *{margin:0;padding:0;box-sizing:border-box;}
+      body{background:#0a0e1a;display:flex;justify-content:center;padding:20px;}
+      @media print{body{padding:0;} @page{size:A4;margin:0;}}
+    </style>
+  </head><body>${content}</body></html>`);
+  w.document.close();
+  setTimeout(function(){ w.print(); }, 800);
+}
 
 // ══ 초기화 - 샘플 데이터로 시작
 document.addEventListener('DOMContentLoaded', function(){
