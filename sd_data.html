@@ -1490,6 +1490,87 @@ function renderPeriodCharts(yr, prevYr){
 }
 
 
+function renderDistAvgChart(){
+  var ctx = document.getElementById('chart-dist-avg').getContext('2d');
+  if(charts.distAvg) charts.distAvg.destroy();
+  var dd = DATA.district||{};
+  var area = G.area;
+  var labels=[], vals=[], colors=[];
+  DISTS.forEach(function(g){
+    var d=dd[String(g)]; if(!d) return;
+    labels.push(DIST_NAMES[g]);
+    var v = area==='84'?d.avg_84:area==='40'?d.avg_40:d.avg_all;
+    vals.push(Math.round(v/10000*10)/10);
+    colors.push(DIST_COLORS[g]);
+  });
+  charts.distAvg = new Chart(ctx,{type:'bar',data:{labels:labels,datasets:[{
+    data:vals,backgroundColor:colors.map(function(c){return c+'66';}),
+    borderColor:colors,borderWidth:2,borderRadius:4
+  }]},options:{responsive:true,plugins:{legend:{display:false},tooltip:{callbacks:{label:function(c){return c.raw+'억';}}}},
+  scales:{x:{ticks:{color:'#8899bb',font:{size:11}},grid:{display:false}},
+          y:{ticks:{color:'#8899bb',font:{size:10},callback:function(v){return v+'억';}},grid:{color:'rgba(42,58,82,.5)'}}}}});
+}
+
+function renderYrTrendChart(){
+  var ctx = document.getElementById('chart-yr-trend').getContext('2d');
+  if(charts.yrTrend) charts.yrTrend.destroy();
+  var yt = DATA.year_trends||{};
+  var labels=[],apt=[],pre=[];
+  for(var yr=2019;yr<=2026;yr++){
+    var d=yt['yr_'+yr]; if(!d) continue;
+    labels.push(yr+'년'); apt.push(d.apt||0); pre.push(d.pre||0);
+  }
+  charts.yrTrend = new Chart(ctx,{type:'bar',data:{labels:labels,datasets:[
+    {label:'아파트',data:apt,backgroundColor:'rgba(0,212,255,.5)',borderColor:'#00d4ff',borderWidth:1,borderRadius:3},
+    {label:'분양권',data:pre,backgroundColor:'rgba(181,123,238,.5)',borderColor:'#b57bee',borderWidth:1,borderRadius:3},
+  ]},options:{responsive:true,plugins:{legend:{labels:{color:'#8899bb',font:{size:11}}}},
+  scales:{x:{stacked:true,ticks:{color:'#8899bb',font:{size:10}},grid:{display:false}},
+          y:{stacked:true,ticks:{color:'#8899bb',font:{size:10}},grid:{color:'rgba(42,58,82,.5)'}}}}});
+}
+
+function renderTurnoverChart(){
+  var ctx = document.getElementById('chart-turnover').getContext('2d');
+  if(charts.turnover) charts.turnover.destroy();
+  var dd = DATA.district||{};
+  var labels=[],vals=[],colors=[];
+  DISTS.forEach(function(g){
+    var d=dd[String(g)]; if(!d) return;
+    labels.push(DIST_NAMES[g]); vals.push(d.turnover||0);
+    var v=d.turnover||0;
+    colors.push(v>5?'#00e5a0':v>3?'#ffd700':'#ff6b35');
+  });
+  charts.turnover = new Chart(ctx,{type:'bar',data:{labels:labels,datasets:[{
+    data:vals,backgroundColor:colors.map(function(c){return c+'88';}),
+    borderColor:colors,borderWidth:2,borderRadius:4,label:'전환율(%)'
+  }]},options:{indexAxis:'y',responsive:true,
+    plugins:{legend:{display:false},tooltip:{callbacks:{label:function(c){return c.raw+'%';}}}},
+    scales:{x:{ticks:{color:'#8899bb',font:{size:10},callback:function(v){return v+'%';}},grid:{color:'rgba(42,58,82,.5)'}},
+            y:{ticks:{color:'#8899bb',font:{size:11}},grid:{display:false}}}}});
+}
+
+function renderRentSplitChart(){
+  var ctx = document.getElementById('chart-rent-split').getContext('2d');
+  if(charts.rentSplit) charts.rentSplit.destroy();
+  var rd = DATA.rent||{};
+  var yr = G.yr;
+  var py = yr-1;
+  var labels=[py+' 신규',py+' 갱신',yr+' 신규',yr+' 갱신'];
+  var vals=[
+    rd[py]?Math.round(rd[py].new_avg/10000*10)/10:0,
+    rd[py]?Math.round(rd[py].renew_avg/10000*10)/10:0,
+    rd[yr]?Math.round(rd[yr].new_avg/10000*10)/10:0,
+    rd[yr]?Math.round(rd[yr].renew_avg/10000*10)/10:0,
+  ];
+  charts.rentSplit = new Chart(ctx,{type:'bar',data:{labels:labels,datasets:[{
+    data:vals,
+    backgroundColor:['rgba(0,212,255,.4)','rgba(0,229,160,.4)','rgba(0,212,255,.9)','rgba(0,229,160,.9)'],
+    borderColor:['#00d4ff','#00e5a0','#00d4ff','#00e5a0'],borderWidth:2,borderRadius:4
+  }]},options:{responsive:true,plugins:{legend:{display:false},
+    tooltip:{callbacks:{label:function(c){return c.raw+'억';}}}},
+    scales:{x:{ticks:{color:'#8899bb',font:{size:11}},grid:{display:false}},
+            y:{ticks:{color:'#8899bb',font:{size:10},callback:function(v){return v+'억';}},grid:{color:'rgba(42,58,82,.5)'}}}}});
+}
+
 // ── TAB1
 function renderTab1(){
   if(!DATA) return;
