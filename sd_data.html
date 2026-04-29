@@ -2048,6 +2048,34 @@ function renderPeriodCharts(yr, prevYr){
 }
 
 
+// ── 차트 수치 직접 표시 헬퍼 (연간 차트용)
+function makeAnnualLabelPlugin(fmt, color){
+  return {
+    id:'annualLabel',
+    afterDatasetsDraw:function(chart){
+      var ctx2=chart.ctx;
+      chart.data.datasets.forEach(function(ds, di){
+        var meta=chart.getDatasetMeta(di);
+        if(meta.hidden) return;
+        meta.data.forEach(function(bar,i){
+          var val=ds.data[i]; if(!val||val<=0) return;
+          var label=fmt?fmt(val):val;
+          var pos=bar.tooltipPosition?bar.tooltipPosition():{x:bar.x,y:bar.y};
+          ctx2.save();
+          ctx2.fillStyle=color||ds.borderColor||'#ffffff';
+          ctx2.font='bold 10px Noto Sans KR,sans-serif';
+          ctx2.textAlign='center';
+          ctx2.textBaseline='bottom';
+          ctx2.shadowColor='rgba(0,0,0,.9)';
+          ctx2.shadowBlur=4;
+          ctx2.fillText(label, pos.x, pos.y-3);
+          ctx2.restore();
+        });
+      });
+    }
+  };
+}
+
 function renderDistAvgChart(){
   var ctx = document.getElementById('chart-dist-avg').getContext('2d');
   if(charts.distAvg) charts.distAvg.destroy();
@@ -2061,12 +2089,23 @@ function renderDistAvgChart(){
     vals.push(Math.round(v/10000*10)/10);
     colors.push(DIST_COLORS[g]);
   });
-  charts.distAvg = new Chart(ctx,{type:'bar',data:{labels:labels,datasets:[{
-    data:vals,backgroundColor:colors.map(function(c){return c+'66';}),
-    borderColor:colors,borderWidth:2,borderRadius:4
-  }]},options:{responsive:true,plugins:{legend:{display:false},tooltip:{callbacks:{label:function(c){return c.raw+'억';}}}},
-  scales:{x:{ticks:{color:'#8899bb',font:{size:11}},grid:{display:false}},
-          y:{ticks:{color:'#8899bb',font:{size:10},callback:function(v){return v+'억';}},grid:{color:'rgba(42,58,82,.5)'}}}}});
+  var fmtAok = function(v){return v>0?v+'억':'';};
+  var plugin = makeAnnualLabelPlugin(fmtAok, '#ffe082');
+  charts.distAvg = new Chart(ctx,{
+    type:'bar',
+    plugins:[plugin],
+    data:{labels:labels,datasets:[{
+      data:vals,
+      backgroundColor:colors.map(function(c){return c+'55';}),
+      borderColor:colors,borderWidth:2,borderRadius:4
+    }]},
+    options:{responsive:true,
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:function(c){return c.raw+'억';}}}},
+      scales:{
+        x:{ticks:{color:'#aabbcc',font:{size:11}},grid:{display:false}},
+        y:{min:4,ticks:{color:'#8899bb',font:{size:10},callback:function(v){return v+'억';}},
+           grid:{color:'rgba(42,58,82,.5)'}}
+      }}});
 }
 
 function renderYrTrendChart(){
@@ -2078,12 +2117,46 @@ function renderYrTrendChart(){
     var d=yt['yr_'+yr]; if(!d) continue;
     labels.push(yr+'년'); apt.push(d.apt||0); pre.push(d.pre||0);
   }
-  charts.yrTrend = new Chart(ctx,{type:'bar',data:{labels:labels,datasets:[
-    {label:'아파트',data:apt,backgroundColor:'rgba(0,212,255,.5)',borderColor:'#00d4ff',borderWidth:1,borderRadius:3},
-    {label:'분양권',data:pre,backgroundColor:'rgba(181,123,238,.5)',borderColor:'#b57bee',borderWidth:1,borderRadius:3},
-  ]},options:{responsive:true,plugins:{legend:{labels:{color:'#8899bb',font:{size:11}}}},
-  scales:{x:{stacked:true,ticks:{color:'#8899bb',font:{size:10}},grid:{display:false}},
-          y:{stacked:true,ticks:{color:'#8899bb',font:{size:10}},grid:{color:'rgba(42,58,82,.5)'}}}}});
+  // 총계 표시 (아파트+분양권 합산)
+  var totals = apt.map(function(v,i){return v+(pre[i]||0);});
+  var pluginTotal = {
+    id:'totalLabel',
+    afterDatasetsDraw:function(chart){
+      var ctx2=chart.ctx;
+      var meta0=chart.getDatasetMeta(0);
+      var meta1=chart.getDatasetMeta(1);
+      meta0.data.forEach(function(bar,i){
+        var tot=totals[i]; if(!tot) return;
+        // 스택 최상단 위치: meta1이 있으면 meta1, 없으면 meta0
+        var topBar = meta1.data[i]||bar;
+        var pos=topBar.tooltipPosition?topBar.tooltipPosition():{x:topBar.x,y:topBar.y};
+        ctx2.save();
+        ctx2.fillStyle='#e8eef8';
+        ctx2.font='bold 10px Noto Sans KR,sans-serif';
+        ctx2.textAlign='center';
+        ctx2.textBaseline='bottom';
+        ctx2.shadowColor='rgba(0,0,0,.9)';
+        ctx2.shadowBlur=4;
+        ctx2.fillText(tot.toLocaleString()+'건', pos.x, pos.y-3);
+        ctx2.restore();
+      });
+    }
+  };
+  charts.yrTrend = new Chart(ctx,{
+    type:'bar',
+    plugins:[pluginTotal],
+    data:{labels:labels,datasets:[
+      {label:'아파트',data:apt,backgroundColor:'rgba(0,212,255,.55)',borderColor:'#00d4ff',borderWidth:1,borderRadius:3},
+      {label:'분양권',data:pre,backgroundColor:'rgba(181,123,238,.55)',borderColor:'#b57bee',borderWidth:1,borderRadius:3},
+    ]},
+    options:{responsive:true,
+      plugins:{legend:{labels:{color:'#aabbcc',font:{size:11}}}},
+      scales:{
+        x:{stacked:true,ticks:{color:'#aabbcc',font:{size:10}},grid:{display:false}},
+        y:{stacked:true,beginAtZero:true,
+           ticks:{color:'#8899bb',font:{size:10},callback:function(v){return v.toLocaleString();}},
+           grid:{color:'rgba(42,58,82,.5)'}}
+      }}});
 }
 
 function renderTurnoverChart(){
@@ -2097,20 +2170,47 @@ function renderTurnoverChart(){
     var v=d.turnover||0;
     colors.push(v>5?'#00e5a0':v>3?'#ffd700':'#ff6b35');
   });
-  charts.turnover = new Chart(ctx,{type:'bar',data:{labels:labels,datasets:[{
-    data:vals,backgroundColor:colors.map(function(c){return c+'88';}),
-    borderColor:colors,borderWidth:2,borderRadius:4,label:'전환율(%)'
-  }]},options:{indexAxis:'y',responsive:true,
-    plugins:{legend:{display:false},tooltip:{callbacks:{label:function(c){return c.raw+'%';}}}},
-    scales:{x:{ticks:{color:'#8899bb',font:{size:10},callback:function(v){return v+'%';}},grid:{color:'rgba(42,58,82,.5)'}},
-            y:{ticks:{color:'#8899bb',font:{size:11}},grid:{display:false}}}}});
+  var pluginTO = {
+    id:'toLabel',
+    afterDatasetsDraw:function(chart){
+      var ctx2=chart.ctx;
+      var meta=chart.getDatasetMeta(0);
+      meta.data.forEach(function(bar,i){
+        var val=vals[i]; if(!val) return;
+        var pos=bar.tooltipPosition?bar.tooltipPosition():{x:bar.x,y:bar.y};
+        ctx2.save();
+        ctx2.fillStyle=colors[i]||'#fff';
+        ctx2.font='bold 10px Noto Sans KR,sans-serif';
+        ctx2.textAlign='left';
+        ctx2.textBaseline='middle';
+        ctx2.shadowColor='rgba(0,0,0,.9)';
+        ctx2.shadowBlur=4;
+        ctx2.fillText(val+'%', pos.x+4, pos.y);
+        ctx2.restore();
+      });
+    }
+  };
+  charts.turnover = new Chart(ctx,{
+    type:'bar',
+    plugins:[pluginTO],
+    data:{labels:labels,datasets:[{
+      data:vals,
+      backgroundColor:colors.map(function(c){return c+'55';}),
+      borderColor:colors,borderWidth:2,borderRadius:4,label:'매매전환율(%)'
+    }]},
+    options:{indexAxis:'y',responsive:true,
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:function(c){return c.raw+'%';}}}},
+      scales:{
+        x:{ticks:{color:'#8899bb',font:{size:10},callback:function(v){return v+'%';}},grid:{color:'rgba(42,58,82,.5)'}},
+        y:{ticks:{color:'#aabbcc',font:{size:11}},grid:{display:false}}
+      }}});
 }
 
 function renderRentSplitChart(){
   var ctx = document.getElementById('chart-rent-split').getContext('2d');
   if(charts.rentSplit) charts.rentSplit.destroy();
   var rd = DATA.rent||{};
-  var yr = G.yr;
+  var yr = G.yr==='recent'?new Date().getFullYear():G.yr;
   var py = yr-1;
   var labels=[py+' 신규',py+' 갱신',yr+' 신규',yr+' 갱신'];
   var vals=[
@@ -2119,14 +2219,24 @@ function renderRentSplitChart(){
     rd[yr]?Math.round(rd[yr].new_avg/10000*10)/10:0,
     rd[yr]?Math.round(rd[yr].renew_avg/10000*10)/10:0,
   ];
-  charts.rentSplit = new Chart(ctx,{type:'bar',data:{labels:labels,datasets:[{
-    data:vals,
-    backgroundColor:['rgba(0,212,255,.4)','rgba(0,229,160,.4)','rgba(0,212,255,.9)','rgba(0,229,160,.9)'],
-    borderColor:['#00d4ff','#00e5a0','#00d4ff','#00e5a0'],borderWidth:2,borderRadius:4
-  }]},options:{responsive:true,plugins:{legend:{display:false},
-    tooltip:{callbacks:{label:function(c){return c.raw+'억';}}}},
-    scales:{x:{ticks:{color:'#8899bb',font:{size:11}},grid:{display:false}},
-            y:{ticks:{color:'#8899bb',font:{size:10},callback:function(v){return v+'억';}},grid:{color:'rgba(42,58,82,.5)'}}}}});
+  var bcolors=['rgba(0,212,255,.45)','rgba(0,229,160,.45)','rgba(0,212,255,.9)','rgba(0,229,160,.9)'];
+  var blines=['#00d4ff','#00e5a0','#00d4ff','#00e5a0'];
+  var fmtAok2 = function(v){return v>0?v+'억':'';};
+  var plugin2 = makeAnnualLabelPlugin(fmtAok2, '#e8eef8');
+  charts.rentSplit = new Chart(ctx,{
+    type:'bar',
+    plugins:[plugin2],
+    data:{labels:labels,datasets:[{
+      data:vals,
+      backgroundColor:bcolors,borderColor:blines,borderWidth:2,borderRadius:4
+    }]},
+    options:{responsive:true,
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:function(c){return c.raw+'억';}}}},
+      scales:{
+        x:{ticks:{color:'#aabbcc',font:{size:11}},grid:{display:false}},
+        y:{min:2,ticks:{color:'#8899bb',font:{size:10},callback:function(v){return v+'억';}},
+           grid:{color:'rgba(42,58,82,.5)'}}
+      }}});
 }
 
 // ── 히트맵 컬러 헬퍼
