@@ -1303,19 +1303,25 @@ function buildRentStats(){
   G.rentData.forEach(function(r){
     var yr = parseInt(r['연도']||0); if(!yr) return;
     var price = parseFloat(r['보증금액']||r['보증금']||0);
-    var type = r['계약구분']||r['전월세구분']||'-';
+    var jeonseType = r['전월세구분']||'';
+    var contractType = r['계약구분']||'';
     var renewal = r['갱신요구권사용여부']||r['갱신요구권']||'-';
     var sqm = parseFloat(r['전용(㎡)']||r['전용㎡']||0);
-    // 전용면적으로 평당가 계산 (1평=3.3058㎡)
     var pyeong = sqm>0 ? sqm/3.3058 : 0;
-    var pyPrice = pyeong>0 ? price/pyeong : 0;
+    var pyPrice = pyeong>0 && price>0 ? price/pyeong : 0;
+    var isJeonse = jeonseType==='전세' || (!jeonseType && contractType!=='');
+    if(!isJeonse && price===0) return;
     if(!stats[yr]) stats[yr]={total:0,new_prices:[],new_pyeongs:[],renew_prices:[],renewal_right:0};
     stats[yr].total++;
-    if(type==='신규'||type==='전세'){
-      stats[yr].new_prices.push(price);
+    if(contractType==='신규'){
+      if(price>0) stats[yr].new_prices.push(price);
+      if(pyPrice>0) stats[yr].new_pyeongs.push(pyPrice);
+    } else if(contractType==='갱신'){
+      if(price>0) stats[yr].renew_prices.push(price);
+    } else if(jeonseType==='전세'){
+      if(price>0) stats[yr].new_prices.push(price);
       if(pyPrice>0) stats[yr].new_pyeongs.push(pyPrice);
     }
-    if(type==='갱신') stats[yr].renew_prices.push(price);
     if(renewal==='사용') stats[yr].renewal_right++;
   });
   var avg=function(arr){return arr.length?Math.round(arr.reduce(function(a,b){return a+b;},0)/arr.length):0;};
@@ -1546,8 +1552,11 @@ function renderTab0(){
   var cntDiff = prevCnt>0?Math.round((curCnt-prevCnt)/prevCnt*100):0;
   var priceDiff = prevAvg>0?Math.round((curAvg-prevAvg)/prevAvg*100):0;
 
-  var rentD = (DATA.rent&&DATA.rent[yr])||{};
-  var rentPrev = (DATA.rent&&DATA.rent[prevYr])||{};
+  // recent일 때 현재 연도 데이터 사용
+  var rentYr = yr==='recent' ? new Date().getFullYear() : yr;
+  var rentPrevYr = prevYr==='recent_prev' ? new Date().getFullYear()-1 : prevYr;
+  var rentD = (DATA.rent&&(DATA.rent[rentYr]||DATA.rent[String(rentYr)]))||{};
+  var rentPrev = (DATA.rent&&(DATA.rent[rentPrevYr]||DATA.rent[String(rentPrevYr)]))||{};
 
   var makeYoY = function(diff){
     if(!diff) return '';
