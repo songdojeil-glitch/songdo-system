@@ -1566,28 +1566,54 @@ function renderTab0(){
   var cntDiff = prevCnt>0?Math.round((curCnt-prevCnt)/prevCnt*100):0;
   var priceDiff = prevAvg>0?Math.round((curAvg-prevAvg)/prevAvg*100):0;
 
-  // recent일 때 현재 연도 데이터 사용
-  var rentYr = yr==='recent' ? new Date().getFullYear() : yr;
-  var rentPrevYr = prevYr==='recent_prev' ? new Date().getFullYear()-1 : prevYr;
-  var rentD = (DATA.rent&&(DATA.rent[rentYr]||DATA.rent[String(rentYr)]))||{};
-  var rentPrev = (DATA.rent&&(DATA.rent[rentPrevYr]||DATA.rent[String(rentPrevYr)]))||{};
-
   var makeYoY = function(diff){
     if(!diff) return '';
     return diff>0?'<span style="color:var(--red)">▲'+diff+'%</span>':'<span style="color:var(--accent3)">▼'+Math.abs(diff)+'%</span>';
   };
 
-  // 전세 전년比 계산
-  var jCnt = rentD.jeonse_cnt||rentD.new_cnt||0;
-  var jCntPrev = rentPrev.jeonse_cnt||rentPrev.new_cnt||0;
-  var jAvg = rentD.new_avg||0;
-  var jAvgPrev = rentPrev.new_avg||0;
-  var jPy = rentD.new_pyeong||0;
-  var jPyPrev = rentPrev.new_pyeong||0;
-  var jCntDiff = jCntPrev>0?Math.round((jCnt-jCntPrev)/jCntPrev*100):0;
-  var jAvgDiff = jAvgPrev>0?Math.round((jAvg-jAvgPrev)/jAvgPrev*100):0;
-  var jPyDiff = jPyPrev>0?Math.round((jPy-jPyPrev)/jPyPrev*100):0;
-  var yrLabel2 = yr==='recent'?'최근1년':yr+'년';
+  // ── 전세 실시간 필터링 (기준연도 + 면적 + 공구 모두 반영)
+  function calcRentStats(targetYr){
+    var result = {cnt:0, new_prices:[], new_pyeongs:[], renew_cnt:0};
+    if(!G.rentData) return result;
+    G.rentData.forEach(function(r){
+      if(r['전월세구분']==='월세') return;
+      if(!yrFilter(r, targetYr)) return;
+      if(!areaFilter(r)) return;
+      if(!t0DistFilter(r)) return;
+      var price = parseFloat(r['보증금']||r['보증금액']||0);
+      if(price<=0) return;
+      var ct = r['계약구분']||'';
+      result.cnt++;
+      if(ct==='신규'){
+        result.new_prices.push(price);
+        var py = parseFloat(r['평당가']||0);
+        if(py>0) result.new_pyeongs.push(py);
+      } else if(ct==='갱신'){
+        result.renew_cnt++;
+      }
+    });
+    result.new_avg = result.new_prices.length ?
+      Math.round(result.new_prices.reduce(function(a,b){return a+b;},0)/result.new_prices.length) : 0;
+    result.new_pyeong = result.new_pyeongs.length ?
+      Math.round(result.new_pyeongs.reduce(function(a,b){return a+b;},0)/result.new_pyeongs.length) : 0;
+    return result;
+  }
+
+  var rentCur  = calcRentStats(yr);
+  var rentPrev2 = calcRentStats(prevYr);
+
+  var jCnt     = rentCur.cnt;
+  var jCntPrev = rentPrev2.cnt;
+  var jAvg     = rentCur.new_avg;
+  var jAvgPrev = rentPrev2.new_avg;
+  var jPy      = rentCur.new_pyeong;
+  var jPyPrev  = rentPrev2.new_pyeong;
+  var jNewCnt  = rentCur.new_prices.length;
+  var jRenewCnt = rentCur.renew_cnt;
+  var jCntDiff  = jCntPrev>0?Math.round((jCnt-jCntPrev)/jCntPrev*100):0;
+  var jAvgDiff  = jAvgPrev>0?Math.round((jAvg-jAvgPrev)/jAvgPrev*100):0;
+  var jPyDiff   = jPyPrev>0?Math.round((jPy-jPyPrev)/jPyPrev*100):0;
+  var yrLabel2  = yr==='recent'?'최근1년':yr+'년';
 
   document.getElementById('kpi-top').innerHTML = [
     {label:'매매 거래건수',val:curCnt.toLocaleString()+'건',
@@ -1602,7 +1628,7 @@ function renderTab0(){
       sub:yrLabel2+' · '+areaLabel(),
       badge:'',color:'var(--orange,#ff8c42)'},
     {label:'전세 거래건수',val:jCnt.toLocaleString()+'건',
-      sub:'신규 '+(rentD.new_cnt||0)+'건 + 갱신 '+(rentD.renew_cnt||0)+'건',
+      sub:'신규 '+jNewCnt+'건 + 갱신 '+jRenewCnt+'건',
       badge:jCntPrev?makeYoY(jCntDiff)+'(전년比)':'',
       color:'var(--accent3)'},
     {label:'전세 평균가(신규)',val:fmt만(jAvg),
