@@ -1700,11 +1700,25 @@ function renderTab0(){
     }).forEach(function(r){
       var g = parseInt(r['공구'])||0;
       if(!g) return;
-      if(!distStats[g]) distStats[g]={prices:[],pyeongs:[],cnt:0};
+      if(!distStats[g]) distStats[g]={prices:[],pyeongs:[],cnt:0,turnCnt:0};
       var p = parseFloat(r['거래금액']||0);
       var py = parseFloat(r['평당가']||0);
       if(p>0){distStats[g].prices.push(p); distStats[g].cnt++;}
       if(py>0) distStats[g].pyeongs.push(py);
+    });
+    // 전환율용 연간 거래건수 별도 집계 (기간 필터 무관, 연도 전체 기준)
+    var turnYr = yr==='recent' ? 'recent' : yr;
+    G.saleData.filter(function(r){
+      if(r['해제사유']&&r['해제사유']!=='-'&&r['해제사유']!=='') return false;
+      // 연간 전체: yrFilter를 연도 기준으로만 (recent도 12개월 전체)
+      if(!yrFilter(r,turnYr)) return false;
+      if(!t0DistFilter(r)) return false;
+      return areaFilter(r);
+    }).forEach(function(r){
+      var g = parseInt(r['공구'])||0; if(!g) return;
+      if(!distStats[g]) distStats[g]={prices:[],pyeongs:[],cnt:0,turnCnt:0};
+      if(!distStats[g].turnCnt) distStats[g].turnCnt=0;
+      distStats[g].turnCnt++;
     });
     // 전년 매매 평당가 집계
     G.saleData.filter(function(r){
@@ -1776,7 +1790,9 @@ function renderTab0(){
     var turnUnits = (G.saleType==='pre' && units_pre>0) ? units_pre : units;
     // 전환율 = 실제 거래건수/세대수 (기간 연환산 없음)
     // 바 표시 기준: 15% = 100% (실제 % 표시는 그대로, 바 너비만 15% 기준)
-    var turnRaw = turnUnits>0?ds.cnt/turnUnits*100:0;
+    // 전환율: 연간 기준 거래건수 사용 (분기/월별 선택과 무관)
+    var turnCntBase = ds.turnCnt||ds.cnt||0;
+    var turnRaw = turnUnits>0?turnCntBase/turnUnits*100:0;
     var turnPct = Math.min(turnRaw/15*100, 100); // 15%=풀바
     var turnDisp = turnRaw.toFixed(1); // 실제 표시값
 
