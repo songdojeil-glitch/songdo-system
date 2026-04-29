@@ -143,6 +143,13 @@ body { background:var(--bg); color:var(--text); font-family:var(--font); font-si
 .filter-sep { width:1px; height:16px; background:var(--border); margin:0 2px; }
 .filter-group { display:flex; flex-wrap:wrap; gap:4px; align-items:center; }
 
+/* ── 히트맵 */
+.hm-table { border-collapse:collapse; font-size:10px; width:100%; }
+.hm-table th { padding:3px 6px; color:var(--text3); font-weight:600; text-align:center; white-space:nowrap; }
+.hm-table td { width:32px; height:28px; text-align:center; border-radius:3px; font-size:9px; font-weight:700; cursor:default; transition:opacity .15s; }
+.hm-table td:hover { opacity:.75; outline:1px solid #fff4; }
+.hm-row-label { color:var(--text2); font-weight:700; font-size:10px; text-align:right; padding-right:8px; white-space:nowrap; }
+
 /* ── 그리드 레이아웃 */
 .grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
 .grid-3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px; }
@@ -430,6 +437,43 @@ body { background:var(--bg); color:var(--text); font-family:var(--font); font-si
       <div class="chart-card">
         <div class="chart-card-title">🏠 전세 신규 vs 갱신 현황</div>
         <div class="chart-wrap"><canvas id="chart-rent-split" height="200"></canvas></div>
+      </div>
+    </div>
+    <div style="height:12px"></div>
+
+    <!-- 히트맵 섹션 -->
+    <div class="sec-hdr" style="margin-top:8px">
+      <div class="sec-hdr-bar" style="background:var(--yellow)"></div>
+      <div class="sec-hdr-title">🔥 히트맵 분석</div>
+      <div class="sec-hdr-sub">실거래 기반 · 면적/연도 필터 연동</div>
+    </div>
+    <div class="grid-2" style="margin-bottom:12px">
+      <!-- 히트맵 1: 연도×월 거래량 -->
+      <div class="chart-card">
+        <div class="chart-card-title">📅 연도×월별 거래량 히트맵 <span id="hm1-area-label" style="font-size:10px;color:var(--accent);margin-left:6px"></span></div>
+        <div id="heatmap1" style="overflow-x:auto;padding:4px 0"></div>
+      </div>
+      <!-- 히트맵 2: 공구×연도 평균가 -->
+      <div class="chart-card">
+        <div class="chart-card-title">🏙️ 공구×연도별 평균가 히트맵 <span id="hm2-area-label" style="font-size:10px;color:var(--yellow);margin-left:6px"></span></div>
+        <div id="heatmap2" style="overflow-x:auto;padding:4px 0"></div>
+      </div>
+    </div>
+
+    <!-- 전세가율 차트 -->
+    <div class="sec-hdr">
+      <div class="sec-hdr-bar" style="background:var(--accent3)"></div>
+      <div class="sec-hdr-title">📊 전세가율 분석 <span style="font-size:11px;font-weight:400;color:var(--text3)">(전세 평균 / 매매 평균)</span></div>
+      <div class="sec-hdr-sub" id="jeonse-rate-sub">공구별 전세가율</div>
+    </div>
+    <div class="grid-2" style="margin-bottom:16px">
+      <div class="chart-card">
+        <div class="chart-card-title">🏘️ 공구별 전세가율 (%)</div>
+        <div class="chart-wrap"><canvas id="chart-jeonse-rate" height="220"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-card-title">📈 연도별 전세가율 추이</div>
+        <div class="chart-wrap"><canvas id="chart-jeonse-trend" height="220"></canvas></div>
       </div>
     </div>
   </div>
@@ -1015,7 +1059,7 @@ var DISTS = [1,2,3,4,5,6,7,8,11];
 
 // 현재 데이터 (업로드 또는 데모)
 var DATA = null;
-var charts = {periodVol:null,periodPrice:null,periodPyeong:null,periodCompare:null};
+var charts = {periodVol:null,periodPrice:null,periodPyeong:null,periodCompare:null,jeonseRate:null,jeonseTrend:null};
 
 function showToast(msg, dur){
   var t=document.getElementById('toast');
@@ -1487,6 +1531,9 @@ function renderTab0(){
     renderYrTrendChart();
     renderTurnoverChart();
     renderRentSplitChart();
+    renderHeatmap1();
+    renderHeatmap2();
+    renderJeonseRateChart();
   }
 }
 
@@ -1555,6 +1602,241 @@ function renderPeriodCharts(yr, prevYr){
             y:{ticks:{color:tickColor,font:{size:10}},grid:{color:gridColor}}}}});
 }
 
+
+// ══ 히트맵 컬러 헬퍼
+function heatColor(val, min, max, palette){
+  if(!val||val===0) return '#1a2235';
+  var t = max>min ? (val-min)/(max-min) : 0;
+  t = Math.max(0,Math.min(1,t));
+  // palette: 'blue'(거래량), 'gold'(가격)
+  if(palette==='blue'){
+    // 연한파랑 → 진한파랑 → 청록
+    var r=Math.round(10+t*0);
+    var g=Math.round(30+t*200);
+    var b=Math.round(60+t*195);
+    return 'rgb('+r+','+g+','+b+')';
+  } else {
+    // 남색 → 주황 → 빨강
+    if(t<0.5){
+      var t2=t*2;
+      return 'rgb('+Math.round(20+t2*235)+','+Math.round(50+t2*150)+','+Math.round(100-t2*80)+')';
+    } else {
+      var t2=(t-0.5)*2;
+      return 'rgb('+Math.round(255)+','+Math.round(200-t2*150)+','+Math.round(20-t2*20)+')';
+    }
+  }
+}
+
+function textColor(bgColor){
+  // 밝은 배경이면 검정, 어두우면 흰색
+  var m=bgColor.match(/\d+/g);
+  if(!m) return '#fff';
+  var l=(parseInt(m[0])*299+parseInt(m[1])*587+parseInt(m[2])*114)/1000;
+  return l>140?'#0a0e1a':'#ffffff';
+}
+
+// ── 히트맵 1: 연도×월 거래량
+function renderHeatmap1(){
+  if(!G.saleData) return;
+  var years=[2019,2020,2021,2022,2023,2024,2025,2026];
+  var months=[1,2,3,4,5,6,7,8,9,10,11,12];
+
+  // 집계
+  var data={};
+  var allVals=[];
+  years.forEach(function(yr){
+    data[yr]={};
+    months.forEach(function(mo){ data[yr][mo]=0; });
+  });
+
+  G.saleData.forEach(function(r){
+    if(r['해제사유']&&r['해제사유']!=='-'&&r['해제사유']!=='') return;
+    if(!areaFilter(r)) return;
+    var ym=String(r['계약년월']||'');
+    if(ym.length<6) return;
+    var yr=parseInt(ym.slice(0,4));
+    var mo=parseInt(ym.slice(4,6));
+    if(data[yr]&&data[yr][mo]!==undefined){
+      data[yr][mo]++;
+      allVals.push(data[yr][mo]);
+    }
+  });
+
+  var flatVals=[];
+  years.forEach(function(yr){ months.forEach(function(mo){ if(data[yr][mo]>0) flatVals.push(data[yr][mo]); }); });
+  var minV=Math.min.apply(null,flatVals)||0;
+  var maxV=Math.max.apply(null,flatVals)||1;
+
+  $set('hm1-area-label', areaLabel());
+
+  var html='<table class="hm-table"><thead><tr><th></th>';
+  months.forEach(function(mo){ html+='<th>'+mo+'월</th>'; });
+  html+='</tr></thead><tbody>';
+
+  years.forEach(function(yr){
+    html+='<tr><td class="hm-row-label">'+yr+'</td>';
+    months.forEach(function(mo){
+      var v=data[yr][mo];
+      var bg=heatColor(v,minV,maxV,'blue');
+      var tc=textColor(bg);
+      html+='<td style="background:'+bg+';color:'+tc+'" title="'+yr+'년 '+mo+'월: '+v+'건">'+(v||'')+'</td>';
+    });
+    html+='</tr>';
+  });
+  html+='</tbody></table>';
+  $html('heatmap1', html);
+}
+
+// ── 히트맵 2: 공구×연도 평균가
+function renderHeatmap2(){
+  if(!G.saleData) return;
+  var years=[2019,2020,2021,2022,2023,2024,2025,2026];
+
+  // 집계
+  var data={};
+  DISTS.forEach(function(g){ data[g]={}; years.forEach(function(yr){ data[g][yr]=[]; }); });
+
+  G.saleData.forEach(function(r){
+    if(r['해제사유']&&r['해제사유']!=='-'&&r['해제사유']!=='') return;
+    if(!areaFilter(r)) return;
+    var g=parseInt(r['공구'])||0;
+    var yr=r['연도'];
+    var p=parseFloat(r['거래금액']||0);
+    if(data[g]&&data[g][yr]!==undefined&&p>0) data[g][yr].push(p);
+  });
+
+  var avg=function(arr){ return arr.length?Math.round(arr.reduce(function(a,b){return a+b;},0)/arr.length):0; };
+  var flatVals=[];
+  DISTS.forEach(function(g){ years.forEach(function(yr){ var v=avg(data[g][yr]); if(v>0) flatVals.push(v); }); });
+  var minV=Math.min.apply(null,flatVals)||0;
+  var maxV=Math.max.apply(null,flatVals)||1;
+
+  $set('hm2-area-label', areaLabel());
+
+  var html='<table class="hm-table"><thead><tr><th></th>';
+  years.forEach(function(yr){ html+='<th>'+yr+'</th>'; });
+  html+='</tr></thead><tbody>';
+
+  DISTS.forEach(function(g){
+    html+='<tr><td class="hm-row-label" style="color:'+DIST_COLORS[g]+'">'+DIST_NAMES[g]+'</td>';
+    years.forEach(function(yr){
+      var v=avg(data[g][yr]);
+      var bg=heatColor(v,minV,maxV,'gold');
+      var tc=textColor(bg);
+      var label=v?Math.round(v/10000*10)/10+'억':'';
+      html+='<td style="background:'+bg+';color:'+tc+';min-width:52px" title="'+DIST_NAMES[g]+' '+yr+'년: '+fmt천(v)+'">'+label+'</td>';
+    });
+    html+='</tr>';
+  });
+  html+='</tbody></table>';
+  $html('heatmap2', html);
+}
+
+// ── 전세가율 차트
+function renderJeonseRateChart(){
+  if(!G.saleData||!G.rentData) return;
+  var yr = G.yr;
+
+  // 공구별 매매 평균 vs 전세 신규 평균
+  var saleByDist={};
+  DISTS.forEach(function(g){ saleByDist[g]=[]; });
+  G.saleData.forEach(function(r){
+    if(r['해제사유']&&r['해제사유']!=='-'&&r['해제사유']!=='') return;
+    if(r['연도']!==yr) return;
+    if(!areaFilter(r)) return;
+    var g=parseInt(r['공구'])||0;
+    var p=parseFloat(r['거래금액']||0);
+    if(saleByDist[g]!==undefined&&p>0) saleByDist[g].push(p);
+  });
+
+  var rentByDist={};
+  DISTS.forEach(function(g){ rentByDist[g]=[]; });
+  if(G.rentData) G.rentData.forEach(function(r){
+    if(r['연도']!==yr) return;
+    var g=parseInt(r['공구'])||0;
+    var p=parseFloat(r['보증금액']||r['거래금액']||0);
+    var type=r['전월세구분']||r['계약구분']||'';
+    if(type.indexOf('전세')>=0&&rentByDist[g]!==undefined&&p>0) rentByDist[g].push(p);
+  });
+
+  var avg=function(arr){ return arr.length?Math.round(arr.reduce(function(a,b){return a+b;},0)/arr.length):0; };
+  var labels=[],saleVals=[],rentVals=[],rateVals=[];
+  DISTS.forEach(function(g){
+    var sa=avg(saleByDist[g]);
+    var ra=avg(rentByDist[g]);
+    if(sa<=0) return;
+    labels.push(DIST_NAMES[g]);
+    saleVals.push(Math.round(sa/10000*10)/10);
+    rentVals.push(Math.round(ra/10000*10)/10);
+    rateVals.push(ra>0?Math.round(ra/sa*1000)/10:0);
+  });
+
+  var gridColor='rgba(42,58,82,.5)';
+  var tickColor='#8899bb';
+
+  // 공구별 전세가율 차트
+  var ctx1=document.getElementById('chart-jeonse-rate').getContext('2d');
+  if(charts.jeonseRate) charts.jeonseRate.destroy();
+  charts.jeonseRate=new Chart(ctx1,{type:'bar',data:{labels:labels,datasets:[
+    {label:'매매 평균(억)',data:saleVals,backgroundColor:'rgba(255,107,53,.5)',borderColor:'#ff6b35',borderWidth:2,borderRadius:4,yAxisID:'y'},
+    {label:'전세 평균(억)',data:rentVals,backgroundColor:'rgba(0,212,255,.5)',borderColor:'#00d4ff',borderWidth:2,borderRadius:4,yAxisID:'y'},
+    {label:'전세가율(%)',data:rateVals,type:'line',borderColor:'#ffd700',borderWidth:2.5,
+      pointBackgroundColor:'#ffd700',pointRadius:5,fill:false,yAxisID:'y2',tension:0.3},
+  ]},options:{responsive:true,
+    plugins:{legend:{labels:{color:tickColor,font:{size:10}}},
+      tooltip:{callbacks:{label:function(ctx){
+        if(ctx.dataset.label==='전세가율(%)') return '전세가율: '+ctx.raw+'%';
+        return ctx.dataset.label+': '+ctx.raw+'억';
+      }}}},
+    scales:{
+      x:{ticks:{color:tickColor,font:{size:11}},grid:{display:false}},
+      y:{ticks:{color:tickColor,font:{size:10},callback:function(v){return v+'억';}},grid:{color:gridColor},position:'left'},
+      y2:{ticks:{color:'#ffd700',font:{size:10},callback:function(v){return v+'%';}},grid:{display:false},position:'right',max:100},
+    }}});
+
+  // 연도별 전세가율 추이
+  var ctx2=document.getElementById('chart-jeonse-trend').getContext('2d');
+  if(charts.jeonseTrend) charts.jeonseTrend.destroy();
+
+  var trendYears=[2019,2020,2021,2022,2023,2024,2025,2026];
+  var trendRates=[];
+  trendYears.forEach(function(y){
+    var sa=[],ra=[];
+    if(G.saleData) G.saleData.forEach(function(r){
+      if(r['해제사유']&&r['해제사유']!=='-'&&r['해제사유']!=='') return;
+      if(r['연도']!==y) return;
+      if(!areaFilter(r)) return;
+      var p=parseFloat(r['거래금액']||0); if(p>0) sa.push(p);
+    });
+    if(G.rentData) G.rentData.forEach(function(r){
+      if(r['연도']!==y) return;
+      if(!areaFilter(r)) return;
+      var p=parseFloat(r['보증금액']||r['거래금액']||0);
+      var type=r['전월세구분']||r['계약구분']||'';
+      if(type.indexOf('전세')>=0&&p>0) ra.push(p);
+    });
+    var sAvg=avg(sa), rAvg=avg(ra);
+    trendRates.push(sAvg>0&&rAvg>0?Math.round(rAvg/sAvg*1000)/10:null);
+  });
+
+  charts.jeonseTrend=new Chart(ctx2,{type:'line',data:{
+    labels:trendYears.map(function(y){return y+'년';}),
+    datasets:[{
+      label:'전세가율(%)',data:trendRates,
+      borderColor:'#00e5a0',backgroundColor:'rgba(0,229,160,.1)',
+      borderWidth:2.5,pointRadius:5,pointBackgroundColor:'#00e5a0',
+      fill:true,tension:0.3,spanGaps:true,
+    }]
+  },options:{responsive:true,
+    plugins:{legend:{labels:{color:tickColor,font:{size:10}}},
+      tooltip:{callbacks:{label:function(c){return c.raw?c.raw+'%':'데이터 없음';}}}},
+    scales:{
+      x:{ticks:{color:tickColor,font:{size:11}},grid:{display:false}},
+      y:{ticks:{color:tickColor,font:{size:10},callback:function(v){return v+'%';}},
+         grid:{color:gridColor},suggestedMin:0,suggestedMax:100,
+         title:{display:true,text:'전세가율(%)',color:tickColor,font:{size:10}}},
+    }}});
+}
 
 function renderDistAvgChart(){
   var ctx = document.getElementById('chart-dist-avg').getContext('2d');
@@ -2431,12 +2713,28 @@ window.fbAutoLoad = function(){
       var hasRent = d.rent_data && d.rent_data.length > 0;
       if(hasSale || hasRent){
         if(hasSale){
-          G.saleData = d.sale_data;
+          // 슬림 데이터 컬럼 역매핑
+          G.saleData = d.sale_data.map(function(r){
+            return {
+              '연도': r.연도, '공구': r.공구, '단지명': r.단지명, '구분': r.구분,
+              '전용(㎡)': r.전용, '면적구분': r.면적구분,
+              '계약년월': r.계약년월, '거래금액': r.거래금액, '평당가': r.평당가,
+              '층': r.층, '해제사유발생일': r.해제사유||'-',
+            };
+          });
           buildSaleStats();
           $set('sale-status','✅ FB '+G.saleData.length+'건');
         }
         if(hasRent){
-          G.rentData = d.rent_data;
+          G.rentData = d.rent_data.map(function(r){
+            return {
+              '연도': r.연도, '공구': r.공구, '단지명': r.단지명,
+              '전용(㎡)': r.전용, '면적구분': r.면적구분,
+              '계약년월': r.계약년월, '보증금액': r.보증금액, '월세금액': r.월세금액,
+              '전월세구분': r.전월세구분, '계약구분': r.계약구분,
+              '갱신요구권사용여부': r.갱신요구권,
+            };
+          });
           buildRentStats();
           $set('rent-status','✅ FB '+G.rentData.length+'건');
         }
@@ -2463,6 +2761,38 @@ window.fbAutoLoad = function(){
   });
 };
 
+// ── 실거래 데이터 경량화 (Firebase 저장용 필수 컬럼만)
+function slimSaleRow(r){
+  return {
+    연도: r['연도'],
+    공구: r['공구'],
+    단지명: r['단지명'],
+    구분: r['구분'],
+    전용: parseFloat(r['전용(㎡)']||r['전용㎡']||0),
+    면적구분: parseInt(r['면적구분']||0),
+    계약년월: r['계약년월'],
+    거래금액: parseFloat(r['거래금액']||0),
+    평당가: parseFloat(r['평당가']||0),
+    층: r['층'],
+    해제사유: r['해제사유발생일']&&r['해제사유발생일']!=='-'?'Y':'',
+  };
+}
+function slimRentRow(r){
+  return {
+    연도: r['연도'],
+    공구: r['공구'],
+    단지명: r['단지명'],
+    전용: parseFloat(r['전용(㎡)']||r['전용㎡']||0),
+    면적구분: parseInt(r['면적구분']||0),
+    계약년월: r['계약년월'],
+    보증금액: parseFloat(r['보증금액']||0),
+    월세금액: parseFloat(r['월세금액']||0),
+    전월세구분: r['전월세구분']||r['계약구분']||'',
+    계약구분: r['계약구분']||'',
+    갱신요구권: r['갱신요구권사용여부']||'',
+  };
+}
+
 function fbSaveData(){
   if(!window._fbSet || !window._fbDb || !window._fbRef){
     showToast('⚠️ Firebase 연결 대기 중...'); return;
@@ -2473,23 +2803,34 @@ function fbSaveData(){
   var db = window._fbDb;
   var dbRef = window._fbRef;
   var set = window._fbSet;
-  showToast('⏳ Firebase에 저장 중...');
+  showToast('⏳ Firebase 저장 중... 잠시 기다려 주세요');
   $set('fb-save-btn','⏳ 저장 중...');
+
+  // 경량화 처리
+  var slimSale = (G.saleData||[]).map(slimSaleRow);
+  var slimRent = (G.rentData||[]).map(slimRentRow);
+  var today = new Date().toISOString().slice(0,10);
+
   var payload = {
-    sale_data: G.saleData || [],
-    rent_data: G.rentData || [],
+    sale_data: slimSale,
+    rent_data: slimRent,
     naver_data: G.naverData || [],
     meta: {
-      updated: new Date().toISOString().slice(0,10),
-      sale_cnt: (G.saleData||[]).length,
-      rent_cnt: (G.rentData||[]).length,
+      updated: today,
+      sale_cnt: slimSale.length,
+      rent_cnt: slimRent.length,
       naver_cnt: (G.naverData||[]).length,
+      slim: true,
     }
   };
+
+  var kb = Math.round(JSON.stringify(payload).length/1024);
+  console.log('Firebase 저장 용량: ~'+kb+'KB');
+
   set(dbRef(db, 'sd_data'), payload).then(function(){
-    showToast('✅ Firebase 저장 완료! 다음 접속 시 자동 로드됩니다.', 4000);
+    showToast('✅ Firebase 저장 완료! ('+kb+'KB) 다음 접속 시 자동 로드됩니다.', 5000);
     $set('fb-save-btn','🔥 Firebase 저장');
-    $set('fb-status','🔥 저장 완료 '+payload.meta.updated);
+    $set('fb-status','🔥 저장완료 '+today+' ('+kb+'KB)');
     $style('fb-status','color','#00e5a0');
   }).catch(function(err){
     showToast('❌ 저장 오류: '+err.message);
