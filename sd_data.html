@@ -1302,10 +1302,24 @@ function getRecentYmRange(){
   return {start:startYm, end:endYm};
 }
 
+// 최근1년 전년 동기 범위 (1년 전 동일 12개월)
+function getRecentPrevYmRange(){
+  var range = getRecentYmRange();
+  // start/end 각각 1년 전으로 이동
+  var prevStart = range.start - 100;  // YYYYMM - 100 = 1년 전
+  var prevEnd   = range.end   - 100;
+  return {start:prevStart, end:prevEnd};
+}
+
 // 연도 필터 적용 (recent 포함)
 function yrFilter(r, yr){
   if(yr==='recent'){
     var range = getRecentYmRange();
+    var ym = parseInt(r['계약년월']||0);
+    return ym>=range.start && ym<=range.end;
+  }
+  if(yr==='recent_prev'){
+    var range = getRecentPrevYmRange();
     var ym = parseInt(r['계약년월']||0);
     return ym>=range.start && ym<=range.end;
   }
@@ -1393,13 +1407,19 @@ function getPeriodStats(yr, prevYr){
       var q = Math.ceil(mo/3);
       // 최근1년+분기: YYYY-Q 형태로 구분
       var key2, label;
+      var isRecent = (yr==='recent'||yr==='recent_prev');
       if(G.period==='monthly'){
         key2 = yrNum*100+mo;
-        label = (yr==='recent'?(yrNum+'.'):'') + mo+'월';
+        // recent_prev는 비교를 위해 현재연도 키로 맞춤 (+100)
+        var displayKey = yr==='recent_prev' ? key2+100 : key2;
+        label = isRecent?(yrNum+'.'+mo+'월'):mo+'월';
       } else {
         key2 = yrNum*10+q;
-        label = (yr==='recent'?yrNum+' ':'') + q+'분기';
+        var displayKey = yr==='recent_prev' ? key2+10 : key2;
+        label = isRecent?(yrNum+' '+q+'분기'):q+'분기';
       }
+      // recent_prev는 현재 시점 키로 정렬 맞춤
+      if(yr==='recent_prev') key2 = (G.period==='monthly'?key2+100:key2+10);
       if(!byPeriod[key2]) byPeriod[key2]={label:label,cnt:0,prices:[],pyeongs:[],sortKey:key2};
       byPeriod[key2].cnt++;
       var price = parseFloat(r['거래금액']||0);
@@ -1417,7 +1437,7 @@ function getPeriodStats(yr, prevYr){
 function renderTab0(){
   if(!DATA) return;
   var yr = G.yr;
-  var prevYr = yr==='recent'?new Date().getFullYear()-1:yr-1;
+  var prevYr = yr==='recent'?'recent_prev':yr-1;
   updateGlobalBadges();
   var area = G.area;
   var period = G.period;
@@ -1430,7 +1450,7 @@ function renderTab0(){
   if(period!=='annual' && G.saleData){
     var pLabel = period==='monthly'?'월별':'분기별';
     $set('period-chart-title', (yr==='recent'?'최근1년':yr+'년')+' '+pLabel+' 현황 ('+areaLabel()+')');
-    $set('period-chart-sub', '전년도 '+prevYr+'년과 비교');
+    $set('period-chart-sub', prevYr==='recent_prev'?'전년 동기(1년 전 동일기간)와 비교':'전년도 '+prevYr+'년과 비교');
     $set('period-vol-title', '📊 '+pLabel+' 거래량');
     $set('period-price-title', '💰 '+pLabel+' 평균 매매가 (만원)');
     $set('period-pyeong-title', '📐 '+pLabel+' 평당가 (만원/평)');
@@ -1624,7 +1644,7 @@ function renderPeriodCharts(yr, prevYr){
   if(charts.periodVol) charts.periodVol.destroy();
   charts.periodVol=new Chart(ctx1,{type:'bar',data:{labels:labels,datasets:[
     {label:yr==='recent'?'최근1년':yr+'년',data:curVol,backgroundColor:'rgba(0,212,255,.7)',borderColor:'#00d4ff',borderWidth:1,borderRadius:4},
-    {label:prevYr==='recent'?'전년':prevYr+'년',data:prevVol,backgroundColor:'rgba(136,153,187,.3)',borderColor:'#8899bb',borderWidth:1,borderRadius:4},
+    {label:prevYr==='recent_prev'?'전년동기':prevYr+'년',data:prevVol,backgroundColor:'rgba(136,153,187,.3)',borderColor:'#8899bb',borderWidth:1,borderRadius:4},
   ]},options:{responsive:true,plugins:{legend:{labels:{color:tickColor,font:{size:10}}}},
     scales:{x:{ticks:{color:tickColor,font:{size:10}},grid:{display:false}},
             y:{ticks:{color:tickColor,font:{size:10}},grid:{color:gridColor}}}}});
@@ -1656,7 +1676,7 @@ function renderPeriodCharts(yr, prevYr){
   if(charts.periodCompare) charts.periodCompare.destroy();
   charts.periodCompare=new Chart(ctx4,{type:'line',data:{labels:labels,datasets:[
     {label:yr+'년',data:curVol,borderColor:'#00d4ff',borderWidth:2.5,pointRadius:4,pointBackgroundColor:'#00d4ff',fill:false,tension:0.3},
-    {label:prevYr+'년',data:prevVol,borderColor:'#8899bb',borderWidth:1.5,borderDash:[4,4],pointRadius:3,pointBackgroundColor:'#8899bb',fill:false,tension:0.3},
+    {label:prevYr==='recent_prev'?'전년동기':prevYr+'년',data:prevVol,borderColor:'#8899bb',borderWidth:1.5,borderDash:[4,4],pointRadius:3,pointBackgroundColor:'#8899bb',fill:false,tension:0.3},
   ]},options:{responsive:true,plugins:{legend:{labels:{color:tickColor,font:{size:10}}}},
     scales:{x:{ticks:{color:tickColor,font:{size:10}},grid:{display:false}},
             y:{ticks:{color:tickColor,font:{size:10}},grid:{color:gridColor}}}}});
@@ -1752,7 +1772,7 @@ function renderTab1(){
 }
 function renderDistTable(){
   var yr = G.yr;
-  var prevYr = yr==='recent'?new Date().getFullYear()-1:yr-1;
+  var prevYr = yr==='recent'?'recent_prev':yr-1;
   $set('t1-subtitle', yr+'년 · '+areaLabelT1()+' 기준');
   if(!G.saleData){ document.getElementById('t1-tbody').innerHTML=''; return; }
 
