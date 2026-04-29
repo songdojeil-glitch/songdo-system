@@ -1388,50 +1388,54 @@ function areaLabel(){
 // ── 기간별 집계 (월/분기)
 function getPeriodStats(yr, prevYr){
   if(!G.saleData) return null;
-  var rows = G.saleData.filter(function(r){
-    if(r['해제사유']&&r['해제사유']!=='-'&&r['해제사유']!=='') return false;
-    if(!t0DistFilter(r)) return false;
-    if(G.saleType!=='all' && r['구분']!==(G.saleType==='apt'?'아파트':'분양권')) return false;
-    return areaFilter(r);
-  });
-  var result = {cur:{}, prev:{}};
-  ['cur','prev'].forEach(function(key){
-    var y = key==='cur'?yr:prevYr;
-    var yRows = rows.filter(function(r){ return yrFilter(r,y); });
+  var avg = function(arr){return arr.length?Math.round(arr.reduce(function(a,b){return a+b;},0)/arr.length):0;};
+
+  function buildByPeriod(y){
     var byPeriod = {};
-    yRows.forEach(function(r){
+    // recent/recent_prev: 시작월 계산
+    var isRolling = (y==='recent'||y==='recent_prev');
+    var range = null, startMo = 1, startYrNum = 0;
+    if(isRolling){
+      range = y==='recent' ? getRecentYmRange() : getRecentPrevYmRange();
+      startMo = parseInt(String(range.start).slice(4,6));
+      startYrNum = parseInt(String(range.start).slice(0,4));
+    }
+
+    G.saleData.forEach(function(r){
+      if(r['해제사유']&&r['해제사유']!=='-'&&r['해제사유']!=='') return;
+      if(!t0DistFilter(r)) return;
+      if(G.saleType!=='all' && r['구분']!==(G.saleType==='apt'?'아파트':'분양권')) return;
+      if(!areaFilter(r)) return;
+      if(!yrFilter(r,y)) return;
       var ym = String(r['계약년월']||'');
       if(ym.length<6) return;
       var mo = parseInt(ym.slice(4,6));
       var yrNum = parseInt(ym.slice(0,4));
       var q = Math.ceil(mo/3);
-      // 최근1년+분기: YYYY-Q 형태로 구분
-      var key2, label;
-      var isRecent = (yr==='recent'||yr==='recent_prev');
-      if(G.period==='monthly'){
-        key2 = yrNum*100+mo;
-        // recent_prev는 비교를 위해 현재연도 키로 맞춤 (+100)
-        var displayKey = yr==='recent_prev' ? key2+100 : key2;
-        label = isRecent?(yrNum+'.'+mo+'월'):mo+'월';
+      var idx, label;
+      if(isRolling){
+        // 1~12 인덱스: 시작월=1, 다음달=2, ... 12개월
+        idx = (yrNum - startYrNum)*12 + (mo - startMo) + 1;
+        if(G.period==='quarter') idx = Math.ceil(idx/3);
+        label = G.period==='quarter' ? (yrNum+' '+q+'분기') : (yrNum+'.'+mo+'월');
       } else {
-        key2 = yrNum*10+q;
-        var displayKey = yr==='recent_prev' ? key2+10 : key2;
-        label = isRecent?(yrNum+' '+q+'분기'):q+'분기';
+        idx = G.period==='quarter' ? q : mo;
+        label = G.period==='quarter' ? q+'분기' : mo+'월';
       }
-      // recent_prev는 현재 시점 키로 정렬 맞춤
-      if(yr==='recent_prev') key2 = (G.period==='monthly'?key2+100:key2+10);
-      if(!byPeriod[key2]) byPeriod[key2]={label:label,cnt:0,prices:[],pyeongs:[],sortKey:key2};
-      byPeriod[key2].cnt++;
+      if(idx<1||idx>12) return;
+      if(!byPeriod[idx]) byPeriod[idx]={label:label,cnt:0,prices:[],pyeongs:[]};
+      byPeriod[idx].cnt++;
       var price = parseFloat(r['거래금액']||0);
       var pyeong = parseFloat(r['평당가']||0);
-      if(price>0) byPeriod[key2].prices.push(price);
-      if(pyeong>0) byPeriod[key2].pyeongs.push(pyeong);
+      if(price>0) byPeriod[idx].prices.push(price);
+      if(pyeong>0) byPeriod[idx].pyeongs.push(pyeong);
     });
-    var avg = function(arr){return arr.length?Math.round(arr.reduce(function(a,b){return a+b;},0)/arr.length):0;};
-    result[key] = byPeriod;
-  });
-  return result;
+    return byPeriod;
+  }
+
+  return {cur: buildByPeriod(yr), prev: buildByPeriod(prevYr)};
 }
+
 
 // ── TAB0 전광판
 function renderTab0(){
@@ -1615,25 +1619,16 @@ function renderPeriodCharts(yr, prevYr){
   var avg=function(arr){return arr.length?Math.round(arr.reduce(function(a,b){return a+b;},0)/arr.length):0;};
   var labels=[], curVol=[], prevVol=[], curPrice=[], curPyeong=[];
 
-  if(yr==='recent'){
-    // 최근1년: 정렬된 키 순서로 렌더
-    var allKeys = Object.keys(stats.cur).map(Number).sort(function(a,b){return a-b;});
-    allKeys.forEach(function(k){
-      var cur = stats.cur[k]||{cnt:0,prices:[],pyeongs:[],label:''};
-      var prev = stats.prev[k]||{cnt:0,prices:[],pyeongs:[]};
-      labels.push(cur.label||k);
-      curVol.push(cur.cnt); prevVol.push(prev.cnt);
-      curPrice.push(avg(cur.prices)); curPyeong.push(avg(cur.pyeongs));
-    });
-  } else {
-    var maxPeriods = period==='monthly'?12:4;
-    for(var i=1;i<=maxPeriods;i++){
-      labels.push(period==='monthly'?i+'월':i+'분기');
-      var cur = stats.cur[i]||{cnt:0,prices:[],pyeongs:[]};
-      var prev = stats.prev[i]||{cnt:0,prices:[],pyeongs:[]};
-      curVol.push(cur.cnt); prevVol.push(prev.cnt);
-      curPrice.push(avg(cur.prices)); curPyeong.push(avg(cur.pyeongs));
-    }
+  // 인덱스 기반 렌더 (recent/일반 모두 동일 로직)
+  var maxPeriods = period==='monthly'?12:4;
+  for(var i=1;i<=maxPeriods;i++){
+    var cur = stats.cur[i]||{cnt:0,prices:[],pyeongs:[],label:''};
+    var prev = stats.prev[i]||{cnt:0,prices:[],pyeongs:[],label:''};
+    // 레이블: cur 기준 (recent면 연월 표시, 일반이면 월/분기)
+    var lbl = cur.label||(period==='monthly'?i+'월':i+'분기');
+    labels.push(lbl);
+    curVol.push(cur.cnt); prevVol.push(prev.cnt);
+    curPrice.push(avg(cur.prices)); curPyeong.push(avg(cur.pyeongs));
   }
 
   var gridColor='rgba(42,58,82,.5)';
