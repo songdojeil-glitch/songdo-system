@@ -1861,8 +1861,37 @@ function renderTab0(){
     var rentPyDiff = rentPyeongPrev>0?Math.round((rentPyeong-rentPyeongPrev)/rentPyeongPrev*100):0;
     var rentAvgColor = rentAvgDiff>0?'var(--red)':'var(--accent3)';
     var rentPyColor = rentPyDiff>0?'var(--red)':'var(--accent3)';
-    var histMax = d?(area==='84'?d.max_84:area==='40'?d.max_40:d.max_hist_all.val):0;
-    var histMaxUnit = d?(area==='84'?d.max_84_unit:area==='40'?d.max_40_unit:d.max_hist_all.unit):'-';
+    // 역대 최고가 (가격/단지명/분양평형/년월)
+    var histObj = d ? (area==='84' ? {
+        val:d.max_84, unit:d.max_84_unit, ym:d.max_84_ym, fl:d.max_84_fl, sqm:84.9
+      } : area==='40' ? {
+        val:d.max_40, unit:d.max_40_unit, ym:d.max_40_ym, fl:d.max_40_fl, sqm:119
+      } : d.max_hist_all) : {val:0,unit:'-',ym:0,fl:'-',sqm:0};
+    var histMax = histObj?histObj.val||0:0;
+    var histMaxUnit = histObj?histObj.unit||'-':'-';
+    var histMaxYm = histObj&&histObj.ym?String(histObj.ym).slice(0,4)+'.'+String(histObj.ym).slice(4,6):'';
+    var histMaxPy = histObj&&histObj.sqm?Math.round(histObj.sqm/3.3058)+'평':'';
+    // 면적별 분양평형 계산
+    var histMaxPyeong = histObj&&histObj.sqm?Math.round(histObj.sqm/3.3058)+'평':'';
+
+    // 최근1년 최고가 (실거래 기반 실시간)
+    var recentMax = 0, recentMaxUnit = '', recentMaxYm = '', recentMaxPyeong = '';
+    if(G.saleData){
+      G.saleData.forEach(function(r){
+        if(r['해제사유']&&r['해제사유']==='Y') return;
+        if(!yrFilter(r,'recent')) return;
+        if(parseInt(r['공구'])!==g) return;
+        if(!areaFilter(r)) return;
+        var p = parseFloat(r['거래금액']||0);
+        if(p > recentMax){
+          recentMax = p;
+          recentMaxUnit = r['단지명']||'';
+          var ym2 = String(r['계약년월']||'');
+          recentMaxYm = ym2.length>=6?ym2.slice(0,4)+'.'+ym2.slice(4,6):'';
+          recentMaxPyeong = parseInt(r['분양평형']||0)?parseInt(r['분양평형'])+'평':'';
+        }
+      });
+    }
     var units = d?d.units:0;
     var units_pre = d?(d.units_pre||0):0;
     // 전환율 세대수 기준: 전체/아파트→입주완료, 분양권→입주예정
@@ -1912,9 +1941,20 @@ function renderTab0(){
           '<div class="dist-stat-label">전세 평당가(신규)</div>'+
           '<div class="dist-stat-val" style="font-size:12px;color:var(--accent3)">'+fmt평(rentPyeong)+
             (rentPyDiff?'<span style="font-size:9px;color:'+rentPyColor+';margin-left:2px">'+(rentPyDiff>0?'▲':'▼')+Math.abs(rentPyDiff)+'%</span>':'')+'</div></div>'+
-        '<div class="dist-stat-item" style="grid-column:1/-1">'+
-          '<div class="dist-stat-label">역대 최고가</div>'+
-          '<div class="dist-stat-val" style="font-size:11px;color:var(--text2)">'+fmt만(histMax)+(histMaxUnit?' · '+histMaxUnit:'')+'</div></div>'+
+        '<div class="dist-stat-item" style="grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr;gap:6px;border-top:1px solid rgba(42,58,82,.5);padding-top:5px;margin-top:2px">'+
+          '<div>'+
+            '<div class="dist-stat-label" style="color:var(--yellow)">🏆 역대 최고가</div>'+
+            '<div style="font-size:12px;font-weight:700;color:var(--yellow)">'+fmt만(histMax)+'</div>'+
+            '<div style="font-size:10px;color:var(--text3);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+
+              (histMaxUnit||'-')+(histMaxPyeong?' · '+histMaxPyeong:'')+(histMaxYm?' · '+histMaxYm:'')+'</div>'+
+          '</div>'+
+          '<div>'+
+            '<div class="dist-stat-label" style="color:var(--accent2)">📅 최근1년 최고가</div>'+
+            '<div style="font-size:12px;font-weight:700;color:var(--accent2)">'+fmt만(recentMax)+'</div>'+
+            '<div style="font-size:10px;color:var(--text3);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+
+              (recentMaxUnit||'-')+(recentMaxPyeong?' · '+recentMaxPyeong:'')+(recentMaxYm?' · '+recentMaxYm:'')+'</div>'+
+          '</div>'+
+        '</div>'+
       '</div>'+
       '<div class="dist-turnover">'+
         '<span style="font-size:9px;color:var(--text3);min-width:50px">전환율<span style="color:var(--border)">|15%</span></span>'+
