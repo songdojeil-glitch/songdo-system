@@ -157,6 +157,66 @@ body { background:var(--bg); color:var(--text); font-family:var(--font); font-si
 .hm-table td:hover { opacity:.75; outline:1px solid #fff4; }
 .hm-row-label { color:var(--text2); font-weight:700; font-size:10px; text-align:right; padding-right:8px; white-space:nowrap; }
 
+/* ── 촬영모드 줌 */
+body.zoom-mode .main {
+  transform-origin: top left;
+  transform: scale(1.5);
+  width: 66.67%;
+}
+body.zoom-mode {
+  overflow-x: auto;
+}
+/* 줌모드 글자 크기 보정 */
+body.zoom-mode .kpi-val { font-size: 2rem !important; }
+body.zoom-mode .kpi-label { font-size: 12px !important; }
+body.zoom-mode .kpi-sub { font-size: 11px !important; }
+body.zoom-mode .dist-name { font-size: 16px !important; }
+body.zoom-mode .dist-stat-val { font-size: 14px !important; }
+body.zoom-mode .dist-stat-label { font-size: 10px !important; }
+body.zoom-mode .filter-btn { font-size: 12px !important; padding: 4px 12px !important; }
+body.zoom-mode .tab-btn { font-size: 13px !important; padding: 14px 20px !important; }
+body.zoom-mode .data-table th,
+body.zoom-mode .data-table td { font-size: 12px !important; padding: 8px 10px !important; }
+
+/* ── 개별 확대 (Lightbox) */
+.zoom-overlay {
+  display: none;
+  position: fixed; top:0; left:0; right:0; bottom:0;
+  background: rgba(0,0,0,.85);
+  z-index: 9000;
+  justify-content: center;
+  align-items: center;
+  cursor: pointer;
+}
+.zoom-overlay.on { display: flex; }
+.zoom-overlay-inner {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 24px;
+  max-width: 90vw;
+  max-height: 90vh;
+  overflow: auto;
+  cursor: default;
+  position: relative;
+  transform: scale(1);
+  transition: transform .3s;
+}
+.zoom-close-btn {
+  position: absolute; top: 12px; right: 16px;
+  background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.2);
+  color: #fff; border-radius: 50%; width: 28px; height: 28px;
+  font-size: 14px; cursor: pointer; display: flex;
+  align-items: center; justify-content: center; z-index: 10;
+}
+.zoomable {
+  cursor: zoom-in;
+  transition: box-shadow .2s;
+}
+.zoomable:hover {
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
 /* ── 공통 필터 뱃지 */
 .global-filter-bar {
   display:flex; align-items:center; gap:6px; flex-wrap:wrap;
@@ -297,6 +357,12 @@ body { background:var(--bg); color:var(--text); font-family:var(--font); font-si
       </button>
       <span id="fb-status" style="font-size:10px;color:var(--text3)">🔥 연결 중...</span>
       <span class="header-meta" id="data-updated"></span>
+      <button id="zoom-btn" onclick="toggleZoom()"
+        style="padding:4px 14px;background:rgba(255,107,53,.12);border:1px solid rgba(255,107,53,.4);
+               color:#ff6b35;border-radius:12px;font-size:11px;font-weight:700;cursor:pointer;
+               white-space:nowrap;transition:all .2s">
+        🎬 촬영모드
+      </button>
     </div>
   </div>
 </div>
@@ -436,7 +502,7 @@ body { background:var(--bg); color:var(--text); font-family:var(--font); font-si
   </div>
 
   <!-- KPI 상단 -->
-  <div class="kpi-row kpi-row-6" id="kpi-top"></div>
+  <div class="kpi-row kpi-row-6 zoomable" id="kpi-top" onclick="openZoom(this)" style="cursor:zoom-in"></div>
 
   <!-- 기간별 차트 (분기/월별 선택 시 표시) -->
   <!-- period-charts 제거: dist-charts-wrap으로 통합 -->
@@ -534,22 +600,22 @@ body { background:var(--bg); color:var(--text); font-family:var(--font); font-si
   <!-- 연간 차트 (연간 선택 시 표시) -->
   <div id="annual-charts">
     <div class="grid-2" style="margin-top:12px">
-      <div class="chart-card">
+      <div class="chart-card zoomable" onclick="openZoom(this)">
         <div class="chart-card-title">📊 공구별 평균 매매가 비교 (만원)</div>
         <div class="chart-wrap"><canvas id="chart-dist-avg" height="200"></canvas></div>
       </div>
-      <div class="chart-card">
+      <div class="chart-card zoomable" onclick="openZoom(this)">
         <div class="chart-card-title">📈 연도별 거래량 추이 (아파트 / 분양권)</div>
         <div class="chart-wrap"><canvas id="chart-yr-trend" height="200"></canvas></div>
       </div>
     </div>
     <div style="height:12px"></div>
     <div class="grid-2">
-      <div class="chart-card">
+      <div class="chart-card zoomable" onclick="openZoom(this)">
         <div class="chart-card-title">🔄 매매전환율 (거래건수 / 세대수)</div>
         <div class="chart-wrap"><canvas id="chart-turnover" height="200"></canvas></div>
       </div>
-      <div class="chart-card">
+      <div class="chart-card zoomable" onclick="openZoom(this)">
         <div class="chart-card-title">🏠 전세 신규 vs 갱신 현황</div>
         <div class="chart-wrap"><canvas id="chart-rent-split" height="200"></canvas></div>
       </div>
@@ -1485,6 +1551,65 @@ function renderAll(){
   renderAbnTable();
 }
 
+// ══ 촬영모드 & 확대(Lightbox)
+var _zoomOn = false;
+
+function toggleZoom(){
+  _zoomOn = !_zoomOn;
+  document.body.classList.toggle('zoom-mode', _zoomOn);
+  var btn = document.getElementById('zoom-btn');
+  if(btn){
+    btn.textContent = _zoomOn ? '🎬 촬영모드 ON' : '🎬 촬영모드';
+    btn.style.background = _zoomOn ? 'rgba(255,107,53,.35)' : 'rgba(255,107,53,.12)';
+    btn.style.borderColor = _zoomOn ? '#ff6b35' : 'rgba(255,107,53,.4)';
+    btn.style.color = _zoomOn ? '#fff' : '#ff6b35';
+  }
+  // 차트 재렌더 (크기 변경 반영)
+  setTimeout(function(){
+    Object.keys(charts).forEach(function(k){
+      if(charts[k] && charts[k].resize) charts[k].resize();
+    });
+    Object.keys(dcCharts).forEach(function(k){
+      if(dcCharts[k] && dcCharts[k].resize) dcCharts[k].resize();
+    });
+  }, 350);
+}
+
+// 개별 확대 (Lightbox)
+function openZoom(el){
+  if(!el) return;
+  var overlay = document.getElementById('zoom-overlay');
+  var content = document.getElementById('zoom-overlay-content');
+  if(!overlay||!content) return;
+  // 클론해서 오버레이에 표시
+  var clone = el.cloneNode(true);
+  // 차트 canvas는 클론 불가 → 원본 이동 방식 대신 이미지로 변환
+  var canvases = el.querySelectorAll('canvas');
+  var cloneCanvases = clone.querySelectorAll('canvas');
+  canvases.forEach(function(cv, i){
+    var img = document.createElement('img');
+    img.src = cv.toDataURL();
+    img.style.width = '100%';
+    img.style.height = 'auto';
+    if(cloneCanvases[i]) cloneCanvases[i].parentNode.replaceChild(img, cloneCanvases[i]);
+  });
+  // 스타일 확대
+  clone.style.transform = 'none';
+  clone.style.cursor = 'default';
+  clone.style.minWidth = '600px';
+  clone.style.fontSize = '115%';
+  content.innerHTML = '';
+  content.appendChild(clone);
+  overlay.classList.add('on');
+}
+
+function closeZoom(e){
+  if(e && e.target !== document.getElementById('zoom-overlay') &&
+     !e.target.classList.contains('zoom-close-btn')) return;
+  var overlay = document.getElementById('zoom-overlay');
+  if(overlay) overlay.classList.remove('on');
+}
+
 // ── 최근1년 YM 범위 계산
 function getRecentYmRange(){
   var now = new Date();
@@ -1919,7 +2044,7 @@ function renderTab0(){
     var diffColor = diffD>0?'var(--red)':diffD<0?'var(--accent3)':'var(--text3)';
 
     if(!d&&!ds.cnt) return '';
-    return '<div class="dist-card" style="--dist-color:'+color+'">'+
+    return '<div class="dist-card zoomable" style="--dist-color:'+color+'" onclick="openZoom(this)">'+
       '<div class="dist-card-header">'+
         '<span class="dist-name">'+DIST_NAMES[g]+'</span>'+
         '<span class="dist-cnt">'+ds.cnt+'건'+( units?' / '+units.toLocaleString()+'세대':'' )+'</span>'+
@@ -3694,6 +3819,14 @@ document.addEventListener('DOMContentLoaded', function(){
   $style('fb-status','color','#ff6600');
 });
 </script>
+
+<!-- 확대 오버레이 (Lightbox) -->
+<div class="zoom-overlay" id="zoom-overlay" onclick="closeZoom(event)">
+  <div class="zoom-overlay-inner" id="zoom-overlay-inner">
+    <button class="zoom-close-btn" onclick="closeZoom()">✕</button>
+    <div id="zoom-overlay-content"></div>
+  </div>
+</div>
 
 </body>
 </html>
