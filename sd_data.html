@@ -428,6 +428,28 @@ body { background:var(--bg); color:var(--text); font-family:var(--font); font-si
     </div>
   </div>
 
+  <!-- 최근 매매 실거래 5건 -->
+  <div class="sec-hdr" style="margin-top:4px">
+    <div class="sec-hdr-bar" style="background:var(--yellow)"></div>
+    <div class="sec-hdr-title">🕐 최근 매매 실거래 <span id="recent5-label" style="color:var(--yellow);font-size:11px;font-weight:700"></span></div>
+    <div class="sec-hdr-sub">계약일 기준 최근 5건 · 면적/공구 필터 연동</div>
+  </div>
+  <div class="table-wrap" style="margin-bottom:12px">
+    <div class="table-scroll" style="max-height:none">
+      <table class="data-table" id="recent5-table">
+        <thead>
+          <tr>
+            <th>공구</th><th>단지명</th><th>구분</th>
+            <th class="num">전용㎡</th><th class="num">전용평</th>
+            <th class="num">거래금액</th><th class="num">평당가</th>
+            <th>층</th><th>계약년월일</th>
+          </tr>
+        </thead>
+        <tbody id="recent5-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
   <!-- 공구별 현황 카드 -->
   <div class="sec-hdr">
     <div class="sec-hdr-bar"></div>
@@ -1801,6 +1823,9 @@ function renderTab0(){
     '</div>';
   }).join('');
 
+  // ── 최근 5건
+  renderRecent5();
+
   // ── 연간 차트
   if(period==='annual'){
     renderDistAvgChart();
@@ -2109,6 +2134,82 @@ function renderJeonseRateChart(){
   },options:{responsive:true,plugins:{legend:{labels:{color:tc,font:{size:10}}}},
     scales:{x:{ticks:{color:tc,font:{size:11}},grid:{display:false}},
       y:{ticks:{color:tc,font:{size:10},callback:function(v){return v+'%';}},grid:{color:gc},suggestedMin:0,suggestedMax:100}}}});
+}
+
+// ── 최근 매매 실거래 5건
+function renderRecent5(){
+  var tbody = document.getElementById('recent5-tbody');
+  var label = document.getElementById('recent5-label');
+  if(!tbody) return;
+
+  if(!G.saleData){
+    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:12px;color:var(--text3)">데이터 없음</td></tr>';
+    return;
+  }
+
+  // 필터 적용 (기준연도 무관 - 항상 전체에서 최근 5건)
+  var rows = G.saleData.filter(function(r){
+    if(r['해제사유발생일']&&r['해제사유발생일']!=='-') return false;
+    if(r['해제사유']&&r['해제사유']==='Y') return false;
+    if(!areaFilter(r)) return false;
+    if(!t0DistFilter(r)) return false;
+    return true;
+  });
+
+  // 계약년월 + 계약일 기준 정렬 (최신순) → YYYYMMDD 숫자로 비교
+  rows.sort(function(a,b){
+    var aDate = parseInt(a['계약년월']||0)*100 + parseInt(a['계약일']||0);
+    var bDate = parseInt(b['계약년월']||0)*100 + parseInt(b['계약일']||0);
+    return bDate - aDate;
+  });
+
+  var top5 = rows.slice(0, 5);
+
+  // 라벨 업데이트
+  var areaStr = G.area==='all'?'전체면적':
+    G.area==='84'?'전용84㎡':
+    G.area==='20'?'20평이하':
+    G.area==='30'?'30평대':
+    G.area==='40'?'40평대':
+    G.area==='50'?'50평대':'60평이상';
+  var distStr = G.t0Dist==='all'?'전체공구':(DIST_NAMES[parseInt(G.t0Dist)]||G.t0Dist+'공구');
+  if(label) label.textContent = '5건 · '+areaStr+' · '+distStr;
+
+  if(top5.length===0){
+    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:12px;color:var(--text3)">해당 조건의 거래 없음</td></tr>';
+    return;
+  }
+
+  var html = '';
+  top5.forEach(function(r){
+    var g = parseInt(r['공구'])||0;
+    var color = DIST_COLORS[g]||'#8899bb';
+    var sqm = parseFloat(r['전용(㎡)']||r['전용']||0);
+    var pyeong = sqm>0 ? Math.round(sqm/3.3058*10)/10 : 0;
+    var price = parseFloat(r['거래금액']||0);
+    var py = parseFloat(r['평당가']||0);
+    if(!py && pyeong>0 && price>0) py = Math.round(price/pyeong);
+    var ym = String(r['계약년월']||'');
+    var dd = parseInt(r['계약일']||0);
+    var ymStr = ym.length>=6 ?
+      ym.slice(0,4)+'.'+ym.slice(4,6)+(dd?'.'+String(dd).padStart(2,'0'):'') : ym;
+    var typeBadge = r['구분']==='아파트'?'badge-apt':'badge-pre';
+
+    html += '<tr>'+
+      '<td><span class="badge" style="background:'+color+'33;color:'+color+'">'+
+        (DIST_NAMES[g]||'-')+'</span></td>'+
+      '<td style="font-weight:600;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+
+        (r['단지명']||'-')+'</td>'+
+      '<td><span class="badge '+typeBadge+'">'+(r['구분']||'-')+'</span></td>'+
+      '<td class="num">'+sqm.toFixed(2)+'</td>'+
+      '<td class="num">'+pyeong+'</td>'+
+      '<td class="num" style="color:var(--yellow);font-weight:700">'+fmt천(price)+'</td>'+
+      '<td class="num">'+fmt평(py)+'</td>'+
+      '<td style="text-align:center">'+(r['층']||'-')+'층</td>'+
+      '<td style="color:var(--text3);font-size:11px">'+ymStr+'</td>'+
+    '</tr>';
+  });
+  tbody.innerHTML = html;
 }
 
 // ── TAB1
@@ -2928,6 +3029,7 @@ window.fbAutoLoad = function(){
               '거래금액': parseFloat(r.거래금액||r['거래금액']||0),
               '평당가': parseFloat(r.평당가||r['평당가']||0),
               '층': r.층||r['층']||'',
+              '계약일': parseInt(r.계약일||r['계약일']||0),
               '해제사유발생일': r.해제사유||r['해제사유발생일']||'-',
             };
           }) : d.sale_data;
@@ -2992,6 +3094,7 @@ function slimSaleRow(r){
     거래금액: parseFloat(r['거래금액']||0),
     평당가: parseFloat(r['평당가']||0),
     층: r['층']||'',
+    계약일: parseInt(r['계약일']||0),
     해제사유: r['해제사유발생일']&&r['해제사유발생일']!=='-'?'Y':'',
   };
 }
