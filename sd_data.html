@@ -1309,8 +1309,9 @@ function yrFilter(r, yr){
     var ym = parseInt(r['계약년월']||0);
     return ym>=range.start && ym<=range.end;
   }
-  // 숫자/문자열 모두 처리
-  return parseInt(r['연도'])===parseInt(yr);
+  // 연도 필드 없으면 계약년월에서 추출
+  var rowYr = r['연도']!=null ? parseInt(r['연도']) : parseInt(String(r['계약년월']||'').slice(0,4));
+  return rowYr===parseInt(yr);
 }
 
 // 연도 레이블 표시용
@@ -2547,12 +2548,42 @@ window.fbAutoLoad = function(){
       var hasRent = d.rent_data && d.rent_data.length > 0;
       if(hasSale || hasRent){
         if(hasSale){
-          G.saleData = d.sale_data;
+          var slim = d.meta && d.meta.slim;
+          G.saleData = slim ? d.sale_data.map(function(r){
+            return {
+              '연도': parseInt(r.연도||r['연도']),
+              '공구': parseInt(r.공구||r['공구']||0),
+              '단지명': r.단지명||r['단지명']||'',
+              '구분': r.구분||r['구분']||'',
+              '전용(㎡)': parseFloat(r.전용||r['전용(㎡)']||0),
+              '면적구분': parseInt(r.면적구분||r['면적구분']||0),
+              '계약년월': parseInt(r.계약년월||r['계약년월']||0),
+              '거래금액': parseFloat(r.거래금액||r['거래금액']||0),
+              '평당가': parseFloat(r.평당가||r['평당가']||0),
+              '층': r.층||r['층']||'',
+              '해제사유발생일': r.해제사유||r['해제사유발생일']||'-',
+            };
+          }) : d.sale_data;
           buildSaleStats();
           $set('sale-status','✅ FB '+G.saleData.length+'건');
         }
         if(hasRent){
-          G.rentData = d.rent_data;
+          var slim = d.meta && d.meta.slim;
+          G.rentData = slim ? d.rent_data.map(function(r){
+            return {
+              '연도': parseInt(r.연도||r['연도']),
+              '공구': parseInt(r.공구||r['공구']||0),
+              '단지명': r.단지명||r['단지명']||'',
+              '전용(㎡)': parseFloat(r.전용||r['전용(㎡)']||0),
+              '면적구분': parseInt(r.면적구분||r['면적구분']||0),
+              '계약년월': parseInt(r.계약년월||r['계약년월']||0),
+              '보증금액': parseFloat(r.보증금액||r['보증금액']||0),
+              '월세금액': parseFloat(r.월세금액||r['월세금액']||0),
+              '전월세구분': r.전월세구분||r['전월세구분']||'',
+              '계약구분': r.계약구분||r['계약구분']||'',
+              '갱신요구권사용여부': r.갱신요구권||r['갱신요구권사용여부']||'',
+            };
+          }) : d.rent_data;
           buildRentStats();
           $set('rent-status','✅ FB '+G.rentData.length+'건');
         }
