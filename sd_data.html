@@ -1230,11 +1230,23 @@ function parseSaleXlsx(wb){
 
 function parseRentXlsx(wb){
   var allRows = [];
-  ['2026전세D','2025전세D','2026월세D','2025월세D'].forEach(function(sh){
-    if(wb.SheetNames.indexOf(sh)<0) return;
-    var rows = XLSX.utils.sheet_to_json(wb.Sheets[sh], {header:0, defval:null});
-    var yr = parseInt(sh.slice(0,4));
-    rows.forEach(function(r){ r['연도']=yr; allRows.push(r); });
+  var years = [2026,2025,2024,2023,2022,2021,2020,2019];
+  years.forEach(function(yr){
+    ['전세D','월세D'].forEach(function(suffix){
+      var sh = yr+suffix;
+      if(wb.SheetNames.indexOf(sh)<0) return;
+      var rows = XLSX.utils.sheet_to_json(wb.Sheets[sh], {header:0, defval:null});
+      rows.forEach(function(r){
+        r['연도'] = yr;
+        // 공구 VLOOKUP 수식 대체
+        var dist = parseInt(r['공구'])||0;
+        if(!dist && r['단지명'] && window._distMap){
+          dist = window._distMap[String(r['단지명']).trim()]||0;
+        }
+        r['공구'] = dist;
+        allRows.push(r);
+      });
+    });
   });
   G.rentData = allRows;
   buildRentStats();
@@ -1302,13 +1314,15 @@ function buildRentStats(){
   var stats = {};
   G.rentData.forEach(function(r){
     var yr = parseInt(r['연도']||0); if(!yr) return;
-    var price = parseFloat(r['보증금액']||r['보증금']||0);
+    var price = parseFloat(r['보증금']||r['보증금액']||0);  // 실제 컬럼명: 보증금
     var jeonseType = r['전월세구분']||'';
     var contractType = r['계약구분']||'';
     var renewal = r['갱신요구권사용여부']||r['갱신요구권']||'-';
     var sqm = parseFloat(r['전용(㎡)']||r['전용㎡']||0);
     var pyeong = sqm>0 ? sqm/3.3058 : 0;
-    var pyPrice = pyeong>0 && price>0 ? price/pyeong : 0;
+    // 엑셀에 평당가 컬럼이 있으면 직접 사용
+    var pyPrice = parseFloat(r['평당가']||0);
+    if(!pyPrice && pyeong>0 && price>0) pyPrice = price/pyeong;
     var isJeonse = jeonseType==='전세' || (!jeonseType && contractType!=='');
     if(!isJeonse && price===0) return;
     if(!stats[yr]) stats[yr]={total:0,new_prices:[],new_pyeongs:[],renew_prices:[],renewal_right:0};
@@ -2890,7 +2904,7 @@ function slimRentRow(r){
     전용: parseFloat(r['전용(㎡)']||0),
     면적구분: parseInt(r['면적구분']||0),
     계약년월: parseInt(r['계약년월']||0),
-    보증금액: parseFloat(r['보증금액']||0),
+    보증금액: parseFloat(r['보증금']||r['보증금액']||0),
     월세금액: parseFloat(r['월세금액']||0),
     전월세구분: r['전월세구분']||r['계약구분']||'',
     계약구분: r['계약구분']||'',
