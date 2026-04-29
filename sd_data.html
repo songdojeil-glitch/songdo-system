@@ -93,6 +93,7 @@ body { background:var(--bg); color:var(--text); font-family:var(--font); font-si
 /* ── KPI 카드 행 */
 .kpi-row { display:grid; gap:10px; margin-bottom:14px; }
 .kpi-row-5 { grid-template-columns:repeat(5,1fr); }
+.kpi-row-6 { grid-template-columns:repeat(6,1fr); }
 .kpi-row-4 { grid-template-columns:repeat(4,1fr); }
 .kpi-row-3 { grid-template-columns:repeat(3,1fr); }
 .kpi-card {
@@ -269,12 +270,13 @@ body { background:var(--bg); color:var(--text); font-family:var(--font); font-si
 @media(max-width:1200px) {
   .district-grid { grid-template-columns:repeat(2,1fr); }
   .kpi-row-5 { grid-template-columns:repeat(3,1fr); }
+  .kpi-row-6 { grid-template-columns:repeat(3,1fr); }
   .grid-12, .grid-21 { grid-template-columns:1fr; }
 }
 @media(max-width:768px) {
   .district-grid { grid-template-columns:1fr 1fr; }
   .grid-2, .grid-3 { grid-template-columns:1fr; }
-  .kpi-row-5, .kpi-row-4 { grid-template-columns:repeat(2,1fr); }
+  .kpi-row-6, .kpi-row-5, .kpi-row-4 { grid-template-columns:repeat(2,1fr); }
 }
 </style>
 </head>
@@ -395,7 +397,7 @@ body { background:var(--bg); color:var(--text); font-family:var(--font); font-si
   </div>
 
   <!-- KPI 상단 -->
-  <div class="kpi-row kpi-row-5" id="kpi-top"></div>
+  <div class="kpi-row kpi-row-6" id="kpi-top"></div>
 
   <!-- 기간별 차트 (분기/월별 선택 시 표시) -->
   <div id="period-charts" style="display:none;margin-bottom:12px">
@@ -1069,8 +1071,8 @@ var DEMO = {
            max_hist_40:{val:128000,unit:"송도자이풍경채그라노블3단지",ym:202504,fl:"22",sqm:112.0,yr:2025}},
   },
   rent: {
-    "2025": {total:11612,new_cnt:3399,new_avg:43054,renew_cnt:1879,renew_avg:38284,renewal_right:1229,avg_84_new:45200,avg_84_renew:39800},
-    "2026": {total:1962,new_cnt:683,new_avg:44100,renew_cnt:516,renew_avg:39200,renewal_right:150,avg_84_new:46500,avg_84_renew:40100},
+    "2025": {total:11612,new_cnt:3399,new_avg:43054,new_pyeong:1302,renew_cnt:1879,renew_avg:38284,renewal_right:1229,jeonse_cnt:5278,avg_84_new:45200,avg_84_renew:39800},
+    "2026": {total:1962,new_cnt:683,new_avg:44100,new_pyeong:1336,renew_cnt:516,renew_avg:39200,renewal_right:150,jeonse_cnt:1199,avg_84_new:46500,avg_84_renew:40100},
   },
   new_highs: [
     {unit:"송도더샵파크애비뉴",sqm:84,price:155000,prev_max:119500,pct:29.7,ym:202503,fl:"30",type:"아파트",dist:3},
@@ -1297,16 +1299,22 @@ function buildSaleStats(){
 
 function buildRentStats(){
   if(!G.rentData) return;
-  // 신규/갱신 통계 계산
   var stats = {};
   G.rentData.forEach(function(r){
-    var yr = r['연도'];
-    var price = parseFloat(r['보증금'])||0;
-    var type = r['계약구분']||'-';
-    var renewal = r['갱신요구권']||'-';
-    if(!stats[yr]) stats[yr]={total:0,new_prices:[],renew_prices:[],renewal_right:0};
+    var yr = parseInt(r['연도']||0); if(!yr) return;
+    var price = parseFloat(r['보증금액']||r['보증금']||0);
+    var type = r['계약구분']||r['전월세구분']||'-';
+    var renewal = r['갱신요구권사용여부']||r['갱신요구권']||'-';
+    var sqm = parseFloat(r['전용(㎡)']||r['전용㎡']||0);
+    // 전용면적으로 평당가 계산 (1평=3.3058㎡)
+    var pyeong = sqm>0 ? sqm/3.3058 : 0;
+    var pyPrice = pyeong>0 ? price/pyeong : 0;
+    if(!stats[yr]) stats[yr]={total:0,new_prices:[],new_pyeongs:[],renew_prices:[],renewal_right:0};
     stats[yr].total++;
-    if(type==='신규') stats[yr].new_prices.push(price);
+    if(type==='신규'||type==='전세'){
+      stats[yr].new_prices.push(price);
+      if(pyPrice>0) stats[yr].new_pyeongs.push(pyPrice);
+    }
     if(type==='갱신') stats[yr].renew_prices.push(price);
     if(renewal==='사용') stats[yr].renewal_right++;
   });
@@ -1316,9 +1324,15 @@ function buildRentStats(){
     var s=stats[yr];
     if(!DATA.rent) DATA.rent={};
     DATA.rent[yr]={
-      total:s.total,new_cnt:s.new_prices.length,new_avg:avg(s.new_prices),
-      renew_cnt:s.renew_prices.length,renew_avg:avg(s.renew_prices),
-      renewal_right:s.renewal_right
+      total: s.total,
+      new_cnt: s.new_prices.length,
+      new_avg: avg(s.new_prices),
+      new_pyeong: avg(s.new_pyeongs),
+      renew_cnt: s.renew_prices.length,
+      renew_avg: avg(s.renew_prices),
+      renewal_right: s.renewal_right,
+      // 전세 거래건수: 신규+갱신
+      jeonse_cnt: s.new_prices.length + s.renew_prices.length,
     };
   });
 }
@@ -1540,25 +1554,41 @@ function renderTab0(){
     return diff>0?'<span style="color:var(--red)">▲'+diff+'%</span>':'<span style="color:var(--accent3)">▼'+Math.abs(diff)+'%</span>';
   };
 
+  // 전세 전년比 계산
+  var jCnt = rentD.jeonse_cnt||rentD.new_cnt||0;
+  var jCntPrev = rentPrev.jeonse_cnt||rentPrev.new_cnt||0;
+  var jAvg = rentD.new_avg||0;
+  var jAvgPrev = rentPrev.new_avg||0;
+  var jPy = rentD.new_pyeong||0;
+  var jPyPrev = rentPrev.new_pyeong||0;
+  var jCntDiff = jCntPrev>0?Math.round((jCnt-jCntPrev)/jCntPrev*100):0;
+  var jAvgDiff = jAvgPrev>0?Math.round((jAvg-jAvgPrev)/jAvgPrev*100):0;
+  var jPyDiff = jPyPrev>0?Math.round((jPy-jPyPrev)/jPyPrev*100):0;
+  var yrLabel2 = yr==='recent'?'최근1년':yr+'년';
+
   document.getElementById('kpi-top').innerHTML = [
     {label:'매매 거래건수',val:curCnt.toLocaleString()+'건',
-      sub:(yr==='recent'?'최근1년':yr+'년')+' · '+areaLabel(),
+      sub:yrLabel2+' · '+areaLabel(),
       badge:prevCnt?makeYoY(cntDiff)+'(전년比)':'',
       color:'var(--accent)'},
     {label:'평균 매매가',val:fmt만(curAvg),
-      sub:(yr==='recent'?'최근1년':yr+'년')+' · '+areaLabel(),
+      sub:yrLabel2+' · '+areaLabel(),
       badge:prevAvg?makeYoY(priceDiff)+'(전년比)':'',
       color:'var(--yellow)'},
-    {label:'평당가',val:curPyeong?fmt평(curPyeong):'-',
-      sub:(yr==='recent'?'최근1년':yr+'년')+' · '+areaLabel(),
+    {label:'매매 평당가',val:curPyeong?fmt평(curPyeong):'-',
+      sub:yrLabel2+' · '+areaLabel(),
       badge:'',color:'var(--orange,#ff8c42)'},
-    {label:'전세 신규평균',val:fmt만(rentD.new_avg||0),
-      sub:'신규 '+((rentD.new_cnt||0))+'건',
-      badge:rentPrev.new_avg?makeYoY(Math.round((rentD.new_avg-rentPrev.new_avg)/rentPrev.new_avg*100))+'(전년比)':'',
+    {label:'전세 거래건수',val:jCnt.toLocaleString()+'건',
+      sub:'신규 '+(rentD.new_cnt||0)+'건 + 갱신 '+(rentD.renew_cnt||0)+'건',
+      badge:jCntPrev?makeYoY(jCntDiff)+'(전년比)':'',
       color:'var(--accent3)'},
-    {label:'갱신요구권 사용',val:(rentD.renewal_right||0)+'건',
-      sub:rentD.renew_cnt?'갱신 대비 '+Math.round(rentD.renewal_right/rentD.renew_cnt*100)+'%':'갱신 전세 중',
-      badge:rentD.renew_cnt?Math.round(rentD.renewal_right/rentD.renew_cnt*100)+'%':'',
+    {label:'전세 평균가(신규)',val:fmt만(jAvg),
+      sub:'신규 계약 기준',
+      badge:jAvgPrev?makeYoY(jAvgDiff)+'(전년比)':'',
+      color:'var(--teal,#00b8a9)'},
+    {label:'전세 평당가(신규)',val:jPy?fmt평(jPy):'-',
+      sub:'신규 계약 기준',
+      badge:jPyPrev?makeYoY(jPyDiff)+'(전년比)':'',
       color:'var(--purple)'},
   ].map(function(k){
     return '<div class="kpi-card" style="--kpi-color:'+k.color+'">'+
