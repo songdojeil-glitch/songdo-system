@@ -340,13 +340,6 @@ body { background:var(--bg); color:var(--text); font-family:var(--font); font-si
   <!-- 업로드 바 -->
   <div id="upload-bar-wrap" style="position:relative">
   <!-- 항상 보이는 접기/펼치기 버튼 -->
-  <button onclick="toggleUploadBar()" id="upbar-toggle-btn"
-    style="position:absolute;right:8px;top:6px;z-index:10;
-           padding:3px 10px;background:rgba(255,255,255,.07);
-           border:1px solid rgba(255,255,255,.15);color:#8899bb;
-           border-radius:6px;font-size:10px;cursor:pointer;white-space:nowrap">
-    ▲ 접기
-  </button>
   <div class="upload-bar" id="upload-bar-inner">
     <span class="upload-bar-title">📂 데이터 업로드</span>
     <div class="upload-group">
@@ -372,8 +365,15 @@ body { background:var(--bg); color:var(--text); font-family:var(--font); font-si
       <button onclick="loadDemo()" style="padding:4px 12px;background:var(--bg3);border:1px solid var(--border);color:var(--text2);border-radius:6px;cursor:pointer;font-size:11px;">
         📋 샘플
       </button>
-
     </div>
+  </div>
+  <!-- 접기 버튼 항상 표시 -->
+  <div style="display:flex;justify-content:flex-end;padding:2px 12px 3px;background:var(--bg2);border-bottom:1px solid var(--border)">
+    <button onclick="toggleUploadBar()" id="upbar-toggle-btn"
+      style="padding:2px 12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);
+             color:#8899bb;border-radius:4px;font-size:10px;cursor:pointer">
+      ▲ 데이터 업로드 접기
+    </button>
   </div>
   </div>
 
@@ -451,15 +451,16 @@ body { background:var(--bg); color:var(--text); font-family:var(--font); font-si
     <div class="table-scroll" style="max-height:none">
       <table class="data-table" id="recent5-table" style="table-layout:fixed;width:100%">
         <colgroup>
-          <col style="width:70px">
+          <col style="width:65px">
           <col style="width:auto">
+          <col style="width:55px">
           <col style="width:60px">
-          <col style="width:70px">
-          <col style="width:60px">
-          <col style="width:90px">
-          <col style="width:90px">
-          <col style="width:50px">
-          <col style="width:90px">
+          <col style="width:55px">
+          <col style="width:85px">
+          <col style="width:85px">
+          <col style="width:40px">
+          <col style="width:85px">
+          <col style="width:65px">
         </colgroup>
         <thead>
           <tr>
@@ -467,11 +468,12 @@ body { background:var(--bg); color:var(--text); font-family:var(--font); font-si
             <th>단지명</th>
             <th style="text-align:center">구분</th>
             <th class="num">전용㎡</th>
-            <th class="num">전용평</th>
+            <th class="num">분양평형</th>
             <th class="num">거래금액</th>
             <th class="num">평당가</th>
             <th class="num">층</th>
             <th class="num">계약년월일</th>
+            <th style="text-align:center">거래유형</th>
           </tr>
         </thead>
         <tbody id="recent5-tbody"></tbody>
@@ -1071,11 +1073,10 @@ function toggleUploadBar(){
   if(!inner||!btn) return;
   var isHidden = inner.style.display==='none';
   inner.style.display = isHidden ? 'flex' : 'none';
-  btn.textContent = isHidden ? '▲ 접기' : '▼ 데이터 업로드';
+  btn.textContent = isHidden ? '▲ 데이터 업로드 접기' : '▼ 데이터 업로드 펼치기';
   btn.style.color  = isHidden ? '#8899bb' : '#00d4ff';
-  btn.style.border = isHidden ? '1px solid rgba(255,255,255,.15)' : '1px solid #00d4ff44';
-  btn.style.background = isHidden ? 'rgba(255,255,255,.07)' : 'rgba(0,212,255,.08)';
-  btn.style.top = isHidden ? '6px' : '4px';
+  btn.style.border = isHidden ? '1px solid rgba(255,255,255,.12)' : '1px solid #00d4ff44';
+  btn.style.background = isHidden ? 'rgba(255,255,255,.05)' : 'rgba(0,212,255,.08)';
 }
 
 // ── 안전한 DOM 헬퍼
@@ -2287,28 +2288,33 @@ function renderRecent5(){
     var g = parseInt(r['공구'])||0;
     var color = DIST_COLORS[g]||'#8899bb';
     var sqm = parseFloat(r['전용(㎡)']||r['전용']||0);
-    var pyeong = sqm>0 ? Math.round(sqm/3.3058*10)/10 : 0;
+    var pyeong = parseInt(r['분양평형']||r['분양(㎡)']||0);
     var price = parseFloat(r['거래금액']||0);
     var py = parseFloat(r['평당가']||0);
-    if(!py && pyeong>0 && price>0) py = Math.round(price/pyeong);
+    if(!py && sqm>0 && price>0) py = Math.round(price/(sqm/3.3058));
     var ym = String(r['계약년월']||'');
     var dd = parseInt(r['계약일']||0);
     var ymStr = ym.length>=6 ?
       ym.slice(0,4)+'.'+ym.slice(4,6)+(dd?'.'+String(dd).padStart(2,'0'):'') : ym;
     var typeBadge = r['구분']==='아파트'?'badge-apt':'badge-pre';
+    // 거래유형: 중개거래→중개, 직거래→직거래
+    var tradeType = r['거래유형']||'';
+    var tradeLabel = tradeType.indexOf('직거래')>=0?'직거래':tradeType.indexOf('중개')>=0?'중개':tradeType;
+    var tradeColor = tradeType.indexOf('직거래')>=0?'var(--yellow)':'var(--text3)';
 
     html += '<tr>'+
       '<td><span class="badge" style="background:'+color+'33;color:'+color+'">'+
         (DIST_NAMES[g]||'-')+'</span></td>'+
-      '<td style="font-weight:600;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+
+      '<td style="font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+
         (r['단지명']||'-')+'</td>'+
-      '<td><span class="badge '+typeBadge+'">'+(r['구분']||'-')+'</span></td>'+
-      '<td class="num">'+sqm.toFixed(2)+'</td>'+
-      '<td class="num">'+pyeong+'</td>'+
+      '<td style="text-align:center"><span class="badge '+typeBadge+'">'+(r['구분']||'-')+'</span></td>'+
+      '<td class="num">'+sqm.toFixed(1)+'</td>'+
+      '<td class="num">'+(pyeong||'-')+'</td>'+
       '<td class="num" style="color:var(--yellow);font-weight:700">'+fmt천(price)+'</td>'+
       '<td class="num">'+fmt평(py)+'</td>'+
       '<td class="num">'+(r['층']||'-')+'층</td>'+
       '<td class="num" style="color:var(--text3);font-size:11px">'+ymStr+'</td>'+
+      '<td style="text-align:center;font-size:10px;color:'+tradeColor+'">'+tradeLabel+'</td>'+
     '</tr>';
   });
   tbody.innerHTML = html;
@@ -3363,6 +3369,8 @@ window.fbAutoLoad = function(){
               '평당가': parseFloat(r.평당가||r['평당가']||0),
               '층': r.층||r['층']||'',
               '계약일': parseInt(r.계약일||r['계약일']||0),
+              '분양평형': parseInt(r.분양평형||r['분양평형']||0),
+              '거래유형': r.거래유형||r['거래유형']||'',
               '해제사유발생일': r.해제사유||r['해제사유발생일']||'-',
             };
           }) : d.sale_data;
@@ -3428,6 +3436,8 @@ function slimSaleRow(r){
     평당가: parseFloat(r['평당가']||0),
     층: r['층']||'',
     계약일: parseInt(r['계약일']||0),
+    분양평형: parseInt(r['분양평형']||0),
+    거래유형: r['거래유형']||'',
     해제사유: r['해제사유발생일']&&r['해제사유발생일']!=='-'?'Y':'',
   };
 }
