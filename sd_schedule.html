@@ -345,7 +345,6 @@ body{font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif;background:#f7
             style="padding:3px 10px;font-size:11px;border-radius:12px;border:1px solid #bbb;background:#fff;color:#555;cursor:pointer">🏢 중개업소</button>
         </div>
       </div>
-
       <!-- 직접입력 -->
       <div id="with-panel-direct">
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
@@ -353,26 +352,24 @@ body{font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif;background:#f7
           <input id="sch-with-tel" type="tel" class="fi" placeholder="연락처 (선택)">
         </div>
       </div>
-
       <!-- 고객 불러오기 -->
       <div id="with-panel-cust" style="display:none">
-        <input id="with-cust-search" type="text" class="fi" placeholder="이름·연락처 검색..."
+        <input id="with-cust-search" type="text" class="fi" placeholder="이름·연락처·구분 검색..."
           oninput="searchWithCust(this.value)" style="margin-bottom:6px">
-        <div id="with-cust-list" style="max-height:160px;overflow-y:auto;border:1px solid #e0e0e0;border-radius:6px;background:#fff"></div>
-        <div id="with-cust-selected" style="display:none;margin-top:6px;padding:8px 10px;background:#e3f2fd;border-radius:8px;font-size:12px;color:#1565c0;display:flex;align-items:center;justify-content:space-between">
+        <div id="with-cust-list" style="max-height:180px;overflow-y:auto;border:1px solid #e0e0e0;border-radius:6px;background:#fff"></div>
+        <div id="with-cust-selected" style="display:none;margin-top:6px;padding:8px 10px;background:#e8f5e9;border-radius:8px;font-size:12px;color:#2e7d32;align-items:center;justify-content:space-between">
           <span id="with-cust-selected-text"></span>
-          <button type="button" onclick="clearWithCust()" style="border:none;background:none;color:#999;cursor:pointer;font-size:13px">✕</button>
+          <button type="button" onclick="clearWithCust()" style="border:none;background:none;color:#999;cursor:pointer;font-size:14px;margin-left:8px">✕</button>
         </div>
       </div>
-
       <!-- 중개업소 불러오기 -->
       <div id="with-panel-broker" style="display:none">
         <input id="with-broker-search" type="text" class="fi" placeholder="업소명·대표자 검색..."
           oninput="searchWithBroker(this.value)" style="margin-bottom:6px">
-        <div id="with-broker-list" style="max-height:160px;overflow-y:auto;border:1px solid #e0e0e0;border-radius:6px;background:#fff"></div>
-        <div id="with-broker-selected" style="display:none;margin-top:6px;padding:8px 10px;background:#f3e5f5;border-radius:8px;font-size:12px;color:#6a1b9a;display:flex;align-items:center;justify-content:space-between">
+        <div id="with-broker-list" style="max-height:180px;overflow-y:auto;border:1px solid #e0e0e0;border-radius:6px;background:#fff"></div>
+        <div id="with-broker-selected" style="display:none;margin-top:6px;padding:8px 10px;background:#f3e5f5;border-radius:8px;font-size:12px;color:#6a1b9a;align-items:center;justify-content:space-between">
           <span id="with-broker-selected-text"></span>
-          <button type="button" onclick="clearWithBroker()" style="border:none;background:none;color:#999;cursor:pointer;font-size:13px">✕</button>
+          <button type="button" onclick="clearWithBroker()" style="border:none;background:none;color:#999;cursor:pointer;font-size:14px;margin-left:8px">✕</button>
         </div>
       </div>
     </div>
@@ -516,136 +513,110 @@ body{font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif;background:#f7
 // ─────────────────────────────────────────
 var todos=[];
 var custs=[];
-var brks=[];  // 중개업소 목록
-var _withMode = 'direct';  // 'direct' | 'cust' | 'broker'
-var _withCustSel = null;   // 선택된 고객
-var _withBrkSel  = null;   // 선택된 중개업소
+var brks=[];
+var _withMode='direct', _withCustSel=null, _withBrkSel=null;
 
-// WITH 탭 전환
 function setWithMode(mode){
-  _withMode = mode;
+  _withMode=mode;
+  var colors={direct:'#1565c0',cust:'#2e7d32',broker:'#6a1b9a'};
   ['direct','cust','broker'].forEach(function(m){
-    var btn   = document.getElementById('with-tab-'+m);
-    var panel = document.getElementById('with-panel-'+m);
-    var on = m===mode;
-    if(btn){
-      btn.style.background = on ? (m==='broker'?'#6a1b9a':m==='cust'?'#2e7d32':'#1565c0') : '#fff';
-      btn.style.color      = on ? '#fff' : '#555';
-      btn.style.borderColor= on ? (m==='broker'?'#6a1b9a':m==='cust'?'#2e7d32':'#1565c0') : '#bbb';
-    }
-    if(panel) panel.style.display = on ? 'block' : 'none';
+    var btn=document.getElementById('with-tab-'+m);
+    var panel=document.getElementById('with-panel-'+m);
+    var on=m===mode;
+    if(btn){btn.style.background=on?colors[m]:'#fff';btn.style.color=on?'#fff':'#555';btn.style.borderColor=on?colors[m]:'#bbb';}
+    if(panel)panel.style.display=on?'block':'none';
   });
-  // 직접입력으로 전환 시 이름/연락처 초기화
-  if(mode==='direct'){
-    var nm = document.getElementById('sch-with-name');
-    var tl = document.getElementById('sch-with-tel');
-    if(nm) nm.value=''; if(tl) tl.value='';
-  }
-  // 고객/중개업소 패널 열 때 목록 갱신
   if(mode==='cust')   searchWithCust('');
   if(mode==='broker') searchWithBroker('');
 }
 
-// 고객 검색
+// 고객 검색 (필드: name, tags[], tel1)
 function searchWithCust(q){
-  var list = document.getElementById('with-cust-list');
-  if(!list) return;
-  var items = custs.filter(function(c){
-    if(!c.custName) return false;
-    var s = (c.custName+' '+(c.mobile||'')).toLowerCase();
-    return !q || s.includes(q.toLowerCase());
-  }).slice(0,30);
-  if(!items.length){
-    list.innerHTML='<div style="padding:10px;text-align:center;color:#aaa;font-size:12px">검색 결과 없음</div>';
-    return;
-  }
-  list.innerHTML = items.map(function(c){
-    var label = (c.custType||'고객')+' · '+c.custName+(c.mobile?' · '+c.mobile:'');
-    return '<div onclick="selectWithCust('+JSON.stringify(c)+')" style="padding:8px 12px;cursor:pointer;font-size:12px;border-bottom:1px solid #f0f0f0;display:flex;justify-content:space-between;align-items:center">'
-      +'<span>👤 '+label+'</span>'
-      +'<span style="font-size:10px;color:#aaa;background:#f5f5f5;padding:1px 6px;border-radius:8px">'+(c.custType||'고객')+'</span>'
+  var list=document.getElementById('with-cust-list'); if(!list)return;
+  var items=custs.filter(function(cu){
+    if(!cu.name)return false;
+    var s=(cu.name+' '+(cu.tel1||'')+' '+(cu.tags||[]).join(' ')).toLowerCase();
+    return !q||s.includes(q.toLowerCase());
+  }).slice(0,40);
+  if(!items.length){list.innerHTML='<div style="padding:10px;text-align:center;color:#aaa;font-size:12px">검색 결과 없음</div>';return;}
+  list._data=items;
+  list.innerHTML=items.map(function(cu,i){
+    var tags=(cu.tags||[]).join(' · ')||'고객';
+    var tel=cu.tel1||'';
+    return '<div onclick="selectWithCust('+i+')" style="padding:8px 12px;cursor:pointer;font-size:12px;border-bottom:1px solid #f0f0f0">'
+      +'<div style="display:flex;justify-content:space-between">'
+      +'<b>👤 '+cu.name+'</b>'
+      +'<span style="font-size:10px;background:#e8f5e9;color:#2e7d32;padding:1px 7px;border-radius:8px">'+tags+'</span>'
+      +'</div>'
+      +(tel?'<div style="font-size:11px;color:#888;margin-top:2px">📱 '+tel+'</div>':'')
       +'</div>';
   }).join('');
 }
-
-function selectWithCust(cust){
-  _withCustSel = cust;
-  var name = cust.custName||'';
-  var tel  = cust.mobile||'';
-  // 직접입력 필드에도 반영
-  var nm = document.getElementById('sch-with-name');
-  var tl = document.getElementById('sch-with-tel');
-  if(nm) nm.value = (cust.custType?'['+cust.custType+'] ':'')+name;
-  if(tl) tl.value = tel;
-  // 선택 표시
-  var sel = document.getElementById('with-cust-selected');
-  var txt = document.getElementById('with-cust-selected-text');
-  if(sel){ sel.style.display='flex'; }
-  if(txt){ txt.textContent = '✅ '+(cust.custType||'고객')+' · '+name+(tel?' · '+tel:''); }
-  document.getElementById('with-cust-list').innerHTML='';
-  document.getElementById('with-cust-search').value='';
+function selectWithCust(i){
+  var list=document.getElementById('with-cust-list');
+  var cu=(list._data||[])[i]; if(!cu)return;
+  _withCustSel=cu;
+  var tags=(cu.tags||[]).join(' · ')||'고객';
+  var nm=document.getElementById('sch-with-name');
+  var tl=document.getElementById('sch-with-tel');
+  if(nm)nm.value='['+tags+'] '+cu.name;
+  if(tl)tl.value=cu.tel1||'';
+  var sel=document.getElementById('with-cust-selected');
+  var txt=document.getElementById('with-cust-selected-text');
+  if(sel)sel.style.display='flex';
+  if(txt)txt.textContent='✅ '+tags+' · '+cu.name+(cu.tel1?' · '+cu.tel1:'');
+  list.innerHTML='';
+  var si=document.getElementById('with-cust-search'); if(si)si.value='';
 }
-
 function clearWithCust(){
-  _withCustSel = null;
-  var sel = document.getElementById('with-cust-selected');
-  if(sel) sel.style.display='none';
-  var nm = document.getElementById('sch-with-name');
-  var tl = document.getElementById('sch-with-tel');
-  if(nm) nm.value=''; if(tl) tl.value='';
+  _withCustSel=null;
+  var sel=document.getElementById('with-cust-selected'); if(sel)sel.style.display='none';
+  var nm=document.getElementById('sch-with-name'); if(nm)nm.value='';
+  var tl=document.getElementById('sch-with-tel');  if(tl)tl.value='';
   searchWithCust('');
 }
 
-// 중개업소 검색
+// 중개업소 검색 (필드: name, rep, tel, mobile)
 function searchWithBroker(q){
-  var list = document.getElementById('with-broker-list');
-  if(!list) return;
-  var items = (typeof brks!=='undefined'?brks:[]).filter(function(b){
-    if(!b.name) return false;
-    var s = (b.name+' '+(b.rep||'')+(b.mobile||'')).toLowerCase();
-    return !q || s.includes(q.toLowerCase());
-  }).slice(0,30);
-  if(!items.length){
-    list.innerHTML='<div style="padding:10px;text-align:center;color:#aaa;font-size:12px">검색 결과 없음</div>';
-    return;
-  }
-  list.innerHTML = items.map(function(b){
-    return '<div onclick="selectWithBroker('+JSON.stringify(b)+')" style="padding:8px 12px;cursor:pointer;font-size:12px;border-bottom:1px solid #f0f0f0">'
-      +'<div style="font-weight:600">🏢 '+b.name+'</div>'
-      +'<div style="color:#888;font-size:11px;margin-top:2px">'
-      +(b.rep?b.rep+' · ':'')+( b.tel?'☎ '+b.tel+' ':'')+( b.mobile?'📱 '+b.mobile:'')
-      +'</div>'
-      +'</div>';
+  var list=document.getElementById('with-broker-list'); if(!list)return;
+  var items=(brks||[]).filter(function(b){
+    if(!b.name)return false;
+    var s=(b.name+' '+(b.rep||'')+(b.mobile||'')+(b.tel||'')).toLowerCase();
+    return !q||s.includes(q.toLowerCase());
+  }).slice(0,40);
+  if(!items.length){list.innerHTML='<div style="padding:10px;text-align:center;color:#aaa;font-size:12px">검색 결과 없음</div>';return;}
+  list._data=items;
+  list.innerHTML=items.map(function(b,i){
+    return '<div onclick="selectWithBroker('+i+')" style="padding:8px 12px;cursor:pointer;font-size:12px;border-bottom:1px solid #f0f0f0">'
+      +'<b>🏢 '+b.name+'</b>'
+      +'<div style="font-size:11px;color:#888;margin-top:2px">'
+      +(b.rep?b.rep+' ':'')+(b.tel?'☎'+b.tel+' ':'')+(b.mobile?'📱'+b.mobile:'')
+      +'</div></div>';
   }).join('');
 }
-
-function selectWithBroker(brk){
-  _withBrkSel = brk;
-  var parts = [brk.name, brk.rep].filter(Boolean);
-  var name = parts.join(' / ');
-  var tel  = brk.mobile || brk.tel || '';
-  var nm = document.getElementById('sch-with-name');
-  var tl = document.getElementById('sch-with-tel');
-  if(nm) nm.value = '[중개] '+name;
-  if(tl) tl.value = tel;
-  var sel = document.getElementById('with-broker-selected');
-  var txt = document.getElementById('with-broker-selected-text');
-  if(sel){ sel.style.display='flex'; }
-  if(txt){ txt.textContent = '✅ '+brk.name+(brk.rep?' · '+brk.rep:'')+(tel?' · '+tel:''); }
-  document.getElementById('with-broker-list').innerHTML='';
-  document.getElementById('with-broker-search').value='';
+function selectWithBroker(i){
+  var list=document.getElementById('with-broker-list');
+  var b=(list._data||[])[i]; if(!b)return;
+  _withBrkSel=b;
+  var tel=b.mobile||b.tel||'';
+  var nm=document.getElementById('sch-with-name');
+  var tl=document.getElementById('sch-with-tel');
+  if(nm)nm.value='[중개] '+b.name+(b.rep?' / '+b.rep:'');
+  if(tl)tl.value=tel;
+  var sel=document.getElementById('with-broker-selected');
+  var txt=document.getElementById('with-broker-selected-text');
+  if(sel)sel.style.display='flex';
+  if(txt)txt.textContent='✅ '+b.name+(b.rep?' · '+b.rep:'')+(tel?' · '+tel:'');
+  list.innerHTML='';
+  var si=document.getElementById('with-broker-search'); if(si)si.value='';
 }
-
 function clearWithBroker(){
-  _withBrkSel = null;
-  var sel = document.getElementById('with-broker-selected');
-  if(sel) sel.style.display='none';
-  var nm = document.getElementById('sch-with-name');
-  var tl = document.getElementById('sch-with-tel');
-  if(nm) nm.value=''; if(tl) tl.value='';
+  _withBrkSel=null;
+  var sel=document.getElementById('with-broker-selected'); if(sel)sel.style.display='none';
+  var nm=document.getElementById('sch-with-name'); if(nm)nm.value='';
+  var tl=document.getElementById('sch-with-tel');  if(tl)tl.value='';
   searchWithBroker('');
 }
-
 var contracts=[];
 var props=[];
 var calYear=new Date().getFullYear();
@@ -978,11 +949,6 @@ function editFromDetail(){
     var timeEl=document.getElementById('sch-time');
     if(timeEl&&t.date&&t.date.length>10&&t.date.slice(11,16)!=='00:00') timeEl.value=t.date.slice(11,16);
     document.getElementById('sch-with-name').value=t.withName||'';
-    // WITH 탭 초기화
-    setWithMode('direct');
-    _withCustSel=null; _withBrkSel=null;
-    var sd=document.getElementById('with-cust-selected'); if(sd) sd.style.display='none';
-    var sb=document.getElementById('with-broker-selected'); if(sb) sb.style.display='none';
     document.getElementById('sch-with-tel').value=t.withTel||'';
     document.getElementById('sch-location').value=t.location||'';
     document.getElementById('sch-memo').value=t.memo||'';
