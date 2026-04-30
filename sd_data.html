@@ -1584,42 +1584,60 @@ function openZoom(el){
   var content = document.getElementById('zoom-overlay-content');
   if(!overlay||!content) return;
 
-  // canvas → 고해상도 이미지 변환
-  var clone = el.cloneNode(true);
-  var canvases = el.querySelectorAll('canvas');
-  var cloneCanvases = clone.querySelectorAll('canvas');
-  canvases.forEach(function(cv,i){
-    var img = document.createElement('img');
-    img.src = cv.toDataURL('image/png',1.0);
-    img.style.cssText = 'width:100%;height:auto;display:block;border-radius:6px';
-    if(cloneCanvases[i]) cloneCanvases[i].parentNode.replaceChild(img, cloneCanvases[i]);
-  });
-
-  // 히트맵 테이블은 클론 그대로 사용 (이미 DOM 기반)
-  // 공구별 카드는 grid 레이아웃으로 표시
   var isDistCard = el.classList.contains('dist-card');
-  if(isDistCard){
-    clone.style.cssText = 'cursor:default;font-size:130%;line-height:1.6;min-width:320px;max-width:480px';
-  } else {
-    clone.style.cssText = 'cursor:default;font-size:120%;line-height:1.5;width:100%';
-  }
-
-  // 오버레이 크기: 화면의 85%
-  inner.style.cssText = [
-    'background:var(--bg2)',
-    'border:1px solid var(--accent)',
-    'border-radius:16px',
-    'padding:28px',
-    'width:85vw',
-    'max-height:88vh',
-    'overflow:auto',
-    'cursor:default',
-    'position:relative',
-    'box-shadow:0 0 60px rgba(0,212,255,.2)',
-  ].join(';');
+  var isChartCard = el.classList.contains('chart-card');
+  var isKpi = el.id === 'kpi-top';
 
   content.innerHTML = '';
-  content.appendChild(clone);
+
+  if(isChartCard){
+    // 차트: canvas를 고해상도 이미지로 변환, 비율 유지
+    var canvases = el.querySelectorAll('canvas');
+    var title = el.querySelector('.chart-card-title');
+    var wrap = document.createElement('div');
+    wrap.style.cssText = 'background:var(--bg2);padding:0';
+    if(title){
+      var t = document.createElement('div');
+      t.className = 'chart-card-title';
+      t.style.cssText = 'font-size:16px;font-weight:700;padding:0 0 12px 0;color:var(--text)';
+      t.textContent = title.textContent;
+      wrap.appendChild(t);
+    }
+    canvases.forEach(function(cv){
+      var img = document.createElement('img');
+      img.src = cv.toDataURL('image/png',1.0);
+      img.style.cssText = 'width:100%;height:auto;display:block;border-radius:8px';
+      wrap.appendChild(img);
+    });
+    // 히트맵 div (canvas 없는 경우) - 전체 카드 클론
+    if(canvases.length===0){
+      var elClone = el.cloneNode(true);
+      elClone.style.cssText = 'font-size:13px;cursor:default;width:100%;overflow-x:auto';
+      // onclick 제거
+      elClone.removeAttribute('onclick');
+      wrap.appendChild(elClone);
+    }
+    inner.style.cssText = 'background:var(--bg2);border:1px solid var(--accent);border-radius:16px;padding:24px;width:80vw;max-height:85vh;overflow:auto;cursor:default;position:relative;box-shadow:0 0 60px rgba(0,212,255,.2)';
+    content.appendChild(wrap);
+
+  } else if(isDistCard){
+    // 공구별 카드: DOM 클론, 폰트 키움
+    var clone = el.cloneNode(true);
+    clone.style.cssText = 'cursor:default;font-size:140%;line-height:1.7;width:400px;max-width:90vw';
+    // 내부 수치 글자 더 크게
+    var vals = clone.querySelectorAll('.dist-stat-val');
+    vals.forEach(function(v){ v.style.fontSize='1.1em'; });
+    inner.style.cssText = 'background:var(--bg2);border:1px solid var(--accent);border-radius:16px;padding:24px;width:auto;max-width:500px;max-height:85vh;overflow:auto;cursor:default;position:relative;box-shadow:0 0 60px rgba(0,212,255,.2)';
+    content.appendChild(clone);
+
+  } else {
+    // KPI 등 기타: 클론 + 폰트 확대
+    var clone = el.cloneNode(true);
+    clone.style.cssText = 'cursor:default;font-size:130%;width:100%';
+    inner.style.cssText = 'background:var(--bg2);border:1px solid var(--accent);border-radius:16px;padding:24px;width:90vw;max-height:85vh;overflow:auto;cursor:default;position:relative;box-shadow:0 0 60px rgba(0,212,255,.2)';
+    content.appendChild(clone);
+  }
+
   overlay.classList.add('on');
 }
 
