@@ -157,7 +157,13 @@ body { background:var(--bg); color:var(--text); font-family:var(--font); font-si
 .hm-table td:hover { opacity:.75; outline:1px solid #fff4; }
 .hm-row-label { color:var(--text2); font-weight:700; font-size:10px; text-align:right; padding-right:8px; white-space:nowrap; }
 
-/* ── 촬영모드 줌 (viewport 방식) */
+/* ── 촬영모드 줌 */
+body.zoom-mode .zoomable {
+  cursor: default !important;
+}
+body.zoom-mode .zoomable:hover {
+  box-shadow: none !important;
+}
 
 /* ── 개별 확대 (Lightbox) */
 .zoom-overlay {
@@ -1537,14 +1543,8 @@ var _zoomOn = false;
 
 function toggleZoom(){
   _zoomOn = !_zoomOn;
-  var meta = document.getElementById('viewport-meta');
-  if(meta){
-    meta.setAttribute('content',
-      _zoomOn
-        ? 'width=device-width, initial-scale=0.67, maximum-scale=0.67, user-scalable=no'
-        : 'width=device-width, initial-scale=1.0'
-    );
-  }
+  // body zoom 방식 - PC 브라우저에서 가장 안정적
+  document.body.style.zoom = _zoomOn ? '150%' : '100%';
   document.body.classList.toggle('zoom-mode', _zoomOn);
   var btn = document.getElementById('zoom-btn');
   if(btn){
@@ -1553,6 +1553,7 @@ function toggleZoom(){
     btn.style.borderColor = _zoomOn ? '#ff6b35' : 'rgba(255,107,53,.4)';
     btn.style.color = _zoomOn ? '#fff' : '#ff6b35';
   }
+  // 차트 resize - zoom 변경 후 캔버스 크기 재계산
   setTimeout(function(){
     Object.keys(charts).forEach(function(k){
       if(charts[k] && charts[k].resize) charts[k].resize();
@@ -1560,12 +1561,13 @@ function toggleZoom(){
     Object.keys(dcCharts).forEach(function(k){
       if(dcCharts[k] && dcCharts[k].resize) dcCharts[k].resize();
     });
-  }, 200);
+  }, 150);
 }
 
-// 개별 확대 (Lightbox)
+// 개별 확대 (Lightbox) - 촬영모드에서는 비활성
 function openZoom(el){
   if(!el) return;
+  if(_zoomOn) return; // 촬영모드에서는 Lightbox 비활성
   var overlay = document.getElementById('zoom-overlay');
   var content = document.getElementById('zoom-overlay-content');
   if(!overlay||!content) return;
