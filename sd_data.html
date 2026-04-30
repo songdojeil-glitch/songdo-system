@@ -695,6 +695,14 @@ body.zoom-mode .chart-wrap canvas {
   <!-- KPI -->
   <div class="kpi-row kpi-row-4" id="kpi-t1" style="margin-bottom:12px"></div>
 
+  <!-- 공구별 추이 차트 (기간 선택 시) -->
+  <div id="t1-trend-wrap" style="display:none;margin-bottom:14px">
+    <div class="chart-card zoomable" onclick="openZoom(this)">
+      <div class="chart-card-title" id="t1-trend-title">📈 공구별 평균 매매가 추이</div>
+      <div class="chart-wrap"><canvas id="chart-t1-trend"></canvas></div>
+    </div>
+  </div>
+
   <!-- 공구별 종합 테이블 -->
   <div class="table-wrap" style="margin-bottom:14px">
     <div class="table-head">
@@ -1269,7 +1277,7 @@ var DISTS = [1,2,3,4,5,6,7,8,11];
 
 // 현재 데이터 (업로드 또는 데모)
 var DATA = null;
-var charts = {periodVol:null,periodPrice:null,periodPyeong:null,periodCompare:null};
+var charts = {periodVol:null,periodPrice:null,periodPyeong:null,periodCompare:null, t1Trend:null};
 
 function showToast(msg, dur){
   var t=document.getElementById('toast');
@@ -2915,6 +2923,7 @@ function renderDistCharts(){
 function renderTab1(){
   if(!DATA) return;
   renderDistTable();
+  renderT1TrendChart();
   renderHistTable();
 }
 function renderDistTable(){
@@ -3014,6 +3023,151 @@ function areaLabel(){
   var m={'all':'전체','84':'전용 84㎡','20':'20평이하','30':'30평대','40':'40평대','50':'50평대','60':'60평이상'};
   return m[G.area]||G.area;
 }
+// ── TAB1 공구별 추이 차트
+function renderT1TrendChart(){
+  var wrap = document.getElementById('t1-trend-wrap');
+  var ctx  = document.getElementById('chart-t1-trend');
+  if(!wrap||!ctx) return;
+
+  var yr = G.t1yr;
+  var period = G.t1period;
+
+  // 연간이면 숨김
+  if(period==='annual'){
+    wrap.style.display='none';
+    return;
+  }
+  wrap.style.display='block';
+
+  var isRolling = yr==='recent';
+  var range = isRolling ? getRecentYmRange() : null;
+  var startMo = isRolling ? parseInt(String(range.start).slice(4,6)) : 1;
+  var startYr = isRolling ? parseInt(String(range.start).slice(0,4)) : parseInt(yr);
+  var maxPeriods = period==='quarter' ? 4 : 12;
+
+  // 레이블 생성
+  var labels = [];
+  for(var i=1; i<=maxPeriods; i++){
+    if(isRolling){
+      if(period==='quarter'){
+        var mo = startMo+(i-1)*3;
+        var y  = startYr+Math.floor((mo-1)/12);
+        var q  = Math.ceil(((mo-1)%12+1)/3);
+        labels.push(y+'Q'+q);
+      } else {
+        var mo2 = startMo+(i-1);
+        var y2  = startYr+Math.floor((mo2-1)/12);
+        var m2  = ((mo2-1)%12)+1;
+        labels.push(y2+'.'+String(m2).padStart(2,'0'));
+      }
+    } else {
+      labels.push(period==='quarter' ? i+'분기' : i+'월');
+    }
+  }
+
+  // 공구별 집계
+  var avg = function(arr){ return arr.length ? Math.round(arr.reduce(function(a,b){return a+b;},0)/arr.length) : 0; };
+
+  function getIdx(r){
+    var ym = String(r['계약년월']||''); if(ym.length<6) return -1;
+    var mo = parseInt(ym.slice(4,6));
+    var y  = parseInt(ym.slice(0,4));
+    if(isRolling){
+      var idx = (y-startYr)*12+(mo-startMo)+1;
+      return period==='quarter' ? Math.ceil(idx/3) : idx;
+    }
+    return period==='quarter' ? Math.ceil(mo/3) : mo;
+  }
+
+  var distData = {};
+  DISTS.forEach(function(g){
+    distData[g] = [];
+    for(var i=0;i<maxPeriods;i++) distData[g].push([]);
+  });
+
+  if(G.saleData) G.saleData.forEach(function(r){
+    if(r['해제사유']&&r['해제사유']==='Y') return;
+    if(r['해제사유발생일']&&r['해제사유발생일']!=='-') return;
+    if(!yrFilter(r, yr)) return;
+    if(!t1AreaFilter(r)) return;
+    if(G.t1saleType!=='all' && r['구분']!==(G.t1saleType==='apt'?'아파트':'분양권')) return;
+    var g = parseInt(r['공구'])||0; if(!DISTS.includes(g)) return;
+    var idx = getIdx(r); if(idx<1||idx>maxPeriods) return;
+    var p = parseFloat(r['거래금액']||0); if(p>0) distData[g][idx-1].push(p);
+  });
+
+  // 차트 제목
+  var titleStr = (isRolling?'최근1년':yr+'년')+' '+(period==='quarter'?'분기별':'월별')+' 공구별 평균 매매가 추이 ('+t1AreaLabel()+')';
+  $set('t1-trend-title', '📈 '+titleStr);
+
+  var tc = '#8899bb', gc = 'rgba(42,58,82,.5)';
+  var datasets = DISTS.map(function(g){
+    var vals = distData[g].map(function(arr){ return avg(arr) || null; });
+    return {
+      label: DIST_NAMES[g],
+      data: vals,
+      borderColor: DIST_COLORS[g],
+      backgroundColor: DIST_COLORS[g]+'22',
+      borderWidth: 2,
+      pointRadius: 4,
+      pointBackgroundColor: DIST_COLORS[g],
+      tension: 0.3,
+      spanGaps: true,
+    };
+  });
+
+  // 수치 직접 표시 플러그인
+  var labelPlugin = {
+    id:'t1TrendLabel',
+    afterDatasetsDraw:function(chart){
+      var ctx2 = chart.ctx;
+      chart.data.datasets.forEach(function(ds){
+        var meta = chart.getDatasetMeta(chart.data.datasets.indexOf(ds));
+        if(meta.hidden) return;
+        meta.data.forEach(function(pt,i){
+          var val = ds.data[i]; if(!val) return;
+          var label = Math.round(val/10000*10)/10+'억';
+          var pos = pt.tooltipPosition ? pt.tooltipPosition() : {x:pt.x, y:pt.y};
+          ctx2.save();
+          ctx2.fillStyle = ds.borderColor;
+          ctx2.font = 'bold 9px Noto Sans KR,sans-serif';
+          ctx2.textAlign = 'center';
+          ctx2.textBaseline = 'bottom';
+          ctx2.shadowColor = 'rgba(0,0,0,.8)';
+          ctx2.shadowBlur = 3;
+          ctx2.fillText(label, pos.x, pos.y-4);
+          ctx2.restore();
+        });
+      });
+    }
+  };
+
+  if(charts.t1Trend) charts.t1Trend.destroy();
+  charts.t1Trend = new Chart(ctx.getContext('2d'), {
+    type: 'line',
+    plugins: [labelPlugin],
+    data: { labels: labels, datasets: datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { labels: { color: tc, font: { size: 10 }, boxWidth: 12 } },
+        tooltip: { callbacks: {
+          label: function(ctx){ return ctx.dataset.label+': '+(ctx.raw?Math.round(ctx.raw/10000*10)/10+'억':'-'); }
+        }}
+      },
+      scales: {
+        x: { ticks:{ color:tc, font:{size:10} }, grid:{ display:false } },
+        y: {
+          min: 30000,
+          ticks: { color:tc, font:{size:10}, callback: function(v){ return Math.round(v/10000*10)/10+'억'; } },
+          grid: { color:gc }
+        }
+      }
+    }
+  });
+}
+
 function renderHistTable(){
   var dd = DATA.district||{};
   var key = G.histArea==='84'?'max_hist_84':G.histArea==='40'?'max_hist_40':'max_hist_all';
