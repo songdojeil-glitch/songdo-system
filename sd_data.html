@@ -2093,38 +2093,39 @@ function renderTab0(){
     var rentPyDiff = rentPyeongPrev>0?Math.round((rentPyeong-rentPyeongPrev)/rentPyeongPrev*100):0;
     var rentAvgColor = rentAvgDiff>0?'var(--red)':'var(--accent3)';
     var rentPyColor = rentPyDiff>0?'var(--red)':'var(--accent3)';
-    // 역대 최고가 (가격/단지명/분양평형/년월)
-    var histObj = d ? (area==='84' ? {
-        val:d.max_84, unit:d.max_84_unit, ym:d.max_84_ym, fl:d.max_84_fl, sqm:84.9
-      } : area==='40' ? {
-        val:d.max_40, unit:d.max_40_unit, ym:d.max_40_ym, fl:d.max_40_fl, sqm:119
-      } : d.max_hist_all) : {val:0,unit:'-',ym:0,fl:'-',sqm:0};
-    var histMax = histObj?histObj.val||0:0;
-    var histMaxUnit = histObj?histObj.unit||'-':'-';
-    var histMaxYm = histObj&&histObj.ym?String(histObj.ym).slice(0,4)+'.'+String(histObj.ym).slice(4,6):'';
-    // 분양평형: fl 필드 우선, 없으면 sqm으로 역산
-    var histMaxPyeong = histObj?(
-      histObj.fl&&parseInt(histObj.fl)>0 ? parseInt(histObj.fl)+'평' :
-      histObj.sqm>0 ? Math.round(histObj.sqm/3.3058)+'평' : ''
-    ):'';
-
-    // 최근1년 최고가 (실거래 기반 실시간)
-    var recentMax = 0, recentMaxUnit = '', recentMaxYm = '', recentMaxPyeong = '';
+    // 역대 최고가 + 최근1년 최고가 - 모두 실거래 데이터에서 실시간 계산
+    var histMax=0, histMaxUnit='', histMaxYm='', histMaxPyeong='';
+    var recentMax=0, recentMaxUnit='', recentMaxYm='', recentMaxPyeong='';
     if(G.saleData){
       G.saleData.forEach(function(r){
         if(r['해제사유']&&r['해제사유']==='Y') return;
-        if(!yrFilter(r,'recent')) return;
         if(parseInt(r['공구'])!==g) return;
         if(!areaFilter(r)) return;
-        var p = parseFloat(r['거래금액']||0);
-        if(p > recentMax){
-          recentMax = p;
-          recentMaxUnit = r['단지명']||'';
-          var ym2 = String(r['계약년월']||'');
-          recentMaxYm = ym2.length>=6?ym2.slice(0,4)+'.'+ym2.slice(4,6):'';
-          recentMaxPyeong = parseInt(r['분양평형']||0)?parseInt(r['분양평형'])+'평':'';
+        var p=parseFloat(r['거래금액']||0); if(!p) return;
+        var ym2=String(r['계약년월']||'');
+        var ymStr=ym2.length>=6?ym2.slice(0,4)+'.'+ym2.slice(4,6):'';
+        var py=parseInt(r['분양평형']||0)?parseInt(r['분양평형'])+'평':'';
+        // 역대 최고가
+        if(p>histMax){
+          histMax=p; histMaxUnit=r['단지명']||'';
+          histMaxYm=ymStr; histMaxPyeong=py;
+        }
+        // 최근1년 최고가
+        if(yrFilter(r,'recent') && p>recentMax){
+          recentMax=p; recentMaxUnit=r['단지명']||'';
+          recentMaxYm=ymStr; recentMaxPyeong=py;
         }
       });
+    }
+    // 역대 최고가가 없으면 샘플 데이터 폴백
+    if(!histMax && d){
+      var ho = area==='84'?{val:d.max_84,unit:d.max_84_unit,ym:d.max_84_ym}:
+               area==='40'?{val:d.max_40,unit:d.max_40_unit,ym:d.max_40_ym}:
+               (d.max_hist_all||{});
+      histMax=ho.val||0; histMaxUnit=ho.unit||'';
+      var hym=String(ho.ym||'');
+      histMaxYm=hym.length>=6?hym.slice(0,4)+'.'+hym.slice(4,6):'';
+      histMaxPyeong=''; // 샘플 데이터에는 분양평형 없음
     }
     var units = d?d.units:0;
     var units_pre = d?(d.units_pre||0):0;
