@@ -565,13 +565,13 @@ body.zoom-mode .chart-wrap canvas {
   <!-- 평당가 TOP7 매매 실거래 -->
   <div class="sec-hdr" style="margin-top:4px" id="top5price-hdr">
     <div class="sec-hdr-bar" style="background:#ff6b35"></div>
-    <div class="sec-hdr-title" id="top5price-title">💰 평당가 TOP7 매매 실거래 <span id="top5price-label" style="color:#ff6b35;font-size:11px;font-weight:700"></span></div>
+    <div class="sec-hdr-title" id="top5price-title">💰 평당가 TOP7 실거래 <span id="top5price-label" style="color:#ff6b35;font-size:11px;font-weight:700"></span></div>
     <div class="sec-hdr-sub" id="top5price-sub">평당가 높은 순 7건 · 면적/공구/기간 필터 연동</div>
   </div>
   <div id="top5price-wrap" class="table-wrap zoomable" onclick="openZoom(this)" style="margin-bottom:12px;cursor:zoom-in">
     <div class="table-scroll" style="max-height:none">
       <table class="data-table" id="top5price-table" style="table-layout:fixed;width:100%">
-        <colgroup>
+        <colgroup id="top5price-colgroup">
           <col style="width:60px"><col style="width:150px"><col style="width:50px"><col style="width:54px"><col style="width:50px"><col style="width:80px"><col style="width:80px"><col style="width:36px"><col style="width:82px"><col style="width:52px">
         </colgroup>
         <thead>
@@ -2698,121 +2698,165 @@ function renderJeonseRateChart(){
       y:{ticks:{color:tc,font:{size:10},callback:function(v){return v+'%';}},grid:{color:gc},suggestedMin:0,suggestedMax:100}}}});
 }
 
-// ── 평당가 TOP7 매매 실거래
+// ── 평당가 TOP7 실거래 (매매/전세/월세)
 function renderTop5Price(){
   var tbody = document.getElementById('top5price-tbody');
-  var label = document.getElementById('top5price-label');
+  var titleEl = document.getElementById('top5price-title');
   var subEl = document.getElementById('top5price-sub');
   if(!tbody) return;
 
-  if(!G.saleData){
-    tbody.innerHTML='<tr><td colspan="10" style="text-align:center;padding:12px;color:var(--text3)">데이터 없음</td></tr>';
+  var tt = G.tradeType||'sale';
+  var typeLabel = tt==='sale'?'매매':tt==='jeonse'?'전세':'월세';
+  if(titleEl) titleEl.innerHTML = '💰 평당가 TOP7 '+typeLabel+' 실거래 <span id="top5price-label" style="color:#ff6b35;font-size:11px;font-weight:700"></span>';
+
+  var data = tt==='sale' ? G.saleData : G.rentData;
+  if(!data){
+    tbody.innerHTML='<tr><td colspan="11" style="text-align:center;padding:12px;color:var(--text3)">데이터 없음</td></tr>';
     return;
   }
 
-  // 기간 조건 결정
-  var yr = G.yr;
-  var period = G.period;
-  var now = new Date();
-  var curYm = now.getFullYear()*100 + (now.getMonth()+1);
-  var curQ = Math.ceil((now.getMonth()+1)/3);
+  // 기간 조건
+  var yr=G.yr, period=G.period;
+  var now=new Date();
+  var curYm=now.getFullYear()*100+(now.getMonth()+1);
+  var curQ=Math.ceil((now.getMonth()+1)/3);
 
-  // 필터 함수 - 기간 조건 포함
-  var rows = G.saleData.filter(function(r){
-    if(r['해제사유발생일']&&r['해제사유발생일']!=='-') return false;
-    if(r['해제사유']&&r['해제사유']==='Y') return false;
-    // 매매구분 필터
-    if(G.saleType==='apt' && r['구분']!=='아파트') return false;
-    if(G.saleType==='pre' && r['구분']!=='분양권') return false;
-    // 면적 필터
+  var rows = data.filter(function(r){
+    if(tt==='sale'){
+      if(r['해제사유발생일']&&r['해제사유발생일']!=='-') return false;
+      if(r['해제사유']&&r['해제사유']==='Y') return false;
+      if(G.saleType==='apt'&&r['구분']!=='아파트') return false;
+      if(G.saleType==='pre'&&r['구분']!=='분양권') return false;
+    } else {
+      var jt=r['전월세구분']||'';
+      if(tt==='jeonse'&&jt!=='전세') return false;
+      if(tt==='monthly'&&jt!=='월세') return false;
+      if((r['계약구분']||'').indexOf('신규')<0) return false;
+    }
     if(!areaFilter(r)) return false;
-    // 공구 필터
     if(!t0DistFilter(r)) return false;
     // 기간 필터
-    var ym = parseInt(r['계약년월']||0);
-    if(!ym) return false;
+    var ym=parseInt(r['계약년월']||0); if(!ym) return false;
     if(yr==='recent'){
-      // 최근1년 선택
-      if(period==='annual'){
-        // 최근 12개월
-        if(!yrFilter(r,'recent')) return false;
-      } else if(period==='quarter'){
-        // 현재 분기만
-        var mo = ym%100;
-        var rYr = Math.floor(ym/100);
-        var rQ = Math.ceil(mo/3);
+      if(period==='annual'){ if(!yrFilter(r,'recent')) return false; }
+      else if(period==='quarter'){
+        var mo=ym%100, rYr=Math.floor(ym/100), rQ=Math.ceil(mo/3);
         if(rYr!==now.getFullYear()||rQ!==curQ) return false;
-      } else {
-        // 현재 월만
-        if(ym!==curYm) return false;
-      }
+      } else { if(ym!==curYm) return false; }
     } else {
-      // 특정 연도
       if(!yrFilter(r,yr)) return false;
-      if(period==='quarter'){
-        var mo2 = ym%100;
-        var rQ2 = Math.ceil(mo2/3);
-        if(rQ2!==G.curQ4Filter) return false; // 연도+분기
-      } else if(period==='monthly'){
-        if(ym%100!==G.curM4Filter) return false; // 연도+월
-      }
-      // 연간이면 해당 연도 전체
     }
     return true;
   });
 
-  // 평당가 높은 순 정렬
+  // 정렬: 매매/전세=평당가, 월세=환산보증금
   rows.sort(function(a,b){
-    return (parseFloat(b['평당가']||0)) - (parseFloat(a['평당가']||0));
+    if(tt==='monthly'){
+      var ca=parseFloat(a['환산보증금']||0)||Math.round(parseFloat(a['보증금액']||0)+parseFloat(a['월세금액']||0)*12/0.058);
+      var cb2=parseFloat(b['환산보증금']||0)||Math.round(parseFloat(b['보증금액']||0)+parseFloat(b['월세금액']||0)*12/0.058);
+      return cb2-ca;
+    }
+    return parseFloat(b['평당가']||0)-parseFloat(a['평당가']||0);
   });
 
-  var top5 = rows.slice(0,7);
+  var top7=rows.slice(0,7);
 
-  // 서브 라벨 생성
-  var yrStr = yr==='recent'?'최근1년':yr+'년';
-  var pStr = period==='annual'?'연간':period==='quarter'?
+  // 라벨
+  var yrStr=yr==='recent'?'최근1년':yr+'년';
+  var pStr=period==='annual'?'연간':period==='quarter'?
     (yr==='recent'?now.getFullYear()+'년 '+curQ+'분기':'분기별'):
     (yr==='recent'?now.getFullYear()+'년 '+(now.getMonth()+1)+'월':'월별');
-  var areaStr = G.area==='all'?'전체':G.area==='84'?'84㎡':G.area;
-  var distStr = G.t0Dist==='all'?'전체공구':(DIST_NAMES[parseInt(G.t0Dist)]||'');
-  if(label) label.textContent = '· '+yrStr+' '+pStr+' · '+areaStr+' · '+distStr;
-  if(subEl) subEl.textContent = '평당가 높은 순 · '+yrStr+' '+pStr;
+  var areaStr=G.area==='all'?'전체':G.area==='84'?'84㎡':G.area;
+  var distStr=G.t0Dist==='all'?'전체공구':(DIST_NAMES[parseInt(G.t0Dist)]||'');
+  var lbl=document.getElementById('top5price-label');
+  if(lbl) lbl.textContent='· '+yrStr+' '+pStr+' · '+areaStr+' · '+distStr;
+  var sortStr=tt==='monthly'?'환산보증금 높은 순':'평당가 높은 순';
+  if(subEl) subEl.textContent=sortStr+' · '+yrStr+' '+pStr;
 
-  if(!top5.length){
-    tbody.innerHTML='<tr><td colspan="10" style="text-align:center;padding:12px;color:var(--text3)">해당 조건의 거래 없음</td></tr>';
+  // 헤더 동적 교체
+  var cg=document.getElementById('top5price-colgroup');
+  var thead=document.querySelector('#top5price-table thead tr');
+  if(tt==='sale'){
+    if(cg) cg.innerHTML='<col style="width:60px"><col style="width:150px"><col style="width:50px"><col style="width:54px"><col style="width:50px"><col style="width:80px"><col style="width:80px"><col style="width:36px"><col style="width:82px"><col style="width:52px">';
+    if(thead) thead.innerHTML='<th style="text-align:center">공구</th><th>단지명</th><th style="text-align:center">구분</th><th class="num">전용㎡</th><th class="num">분양평형</th><th class="num" style="color:var(--yellow)">거래금액</th><th class="num" style="color:#ff6b35">평당가</th><th class="num">층</th><th class="num">계약년월일</th><th style="text-align:center">거래유형</th>';
+  } else if(tt==='jeonse'){
+    if(cg) cg.innerHTML='<col style="width:60px"><col style="width:160px"><col style="width:56px"><col style="width:54px"><col style="width:86px"><col style="width:86px"><col style="width:38px"><col style="width:82px"><col style="width:56px">';
+    if(thead) thead.innerHTML='<th style="text-align:center">공구</th><th>단지명</th><th class="num">전용㎡</th><th class="num">분양평형</th><th class="num" style="color:var(--accent)">보증금</th><th class="num" style="color:#ff6b35">평당가</th><th class="num">층</th><th class="num">계약년월일</th><th style="text-align:center">계약구분</th>';
+  } else {
+    if(cg) cg.innerHTML='<col style="width:60px"><col style="width:130px"><col style="width:50px"><col style="width:50px"><col style="width:70px"><col style="width:58px"><col style="width:78px"><col style="width:74px"><col style="width:34px"><col style="width:76px"><col style="width:50px">';
+    if(thead) thead.innerHTML='<th style="text-align:center">공구</th><th>단지명</th><th class="num">전용㎡</th><th class="num">분양평형</th><th class="num" style="color:var(--accent)">보증금</th><th class="num" style="color:var(--yellow)">월세</th><th class="num" style="color:var(--accent2,#00e5a0)">환산보증금</th><th class="num" style="color:#ff6b35">평당가</th><th class="num">층</th><th class="num">계약년월일</th><th style="text-align:center">계약구분</th>';
+  }
+
+  if(!top7.length){
+    tbody.innerHTML='<tr><td colspan="11" style="text-align:center;padding:12px;color:var(--text3)">해당 조건의 거래 없음</td></tr>';
     return;
   }
 
   var html='';
-  top5.forEach(function(r){
-    var g=parseInt(r['공구'])||0;
-    var color=DIST_COLORS[g]||'#8899bb';
+  top7.forEach(function(r){
+    var g=parseInt(r['공구'])||0, color=DIST_COLORS[g]||'#8899bb';
     var sqm=parseFloat(r['전용(㎡)']||r['전용']||0);
     var pyeong=parseInt(r['분양평형']||0);
-    var price=parseFloat(r['거래금액']||0);
-    var py=parseFloat(r['평당가']||0);
-    if(!py&&sqm>0&&price>0) py=Math.round(price/(sqm/3.3058));
     var ym=String(r['계약년월']||'');
     var dd=parseInt(r['계약일']||0);
     var ymStr=ym.length>=6?ym.slice(0,4)+'.'+ym.slice(4,6)+(dd?'.'+String(dd).padStart(2,'0'):''):ym;
-    var tType=r['거래유형']||'';
-    var tLabel=tType.indexOf('직거래')>=0?'직거래':tType.indexOf('중개')>=0?'중개':tType;
-    var tColor=tType.indexOf('직거래')>=0?'var(--yellow)':'var(--text3)';
-    html+='<tr>'+
-      '<td><span class="badge" style="background:'+color+'33;color:'+color+'">'+(DIST_NAMES[g]||'-')+'</span></td>'+
-      '<td style="font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(r['단지명']||'-')+'</td>'+
-      '<td style="text-align:center"><span class="badge '+(r['구분']==='아파트'?'badge-apt':'badge-pre')+'">'+(r['구분']||'-')+'</span></td>'+
-      '<td class="num">'+sqm.toFixed(1)+'</td>'+
-      '<td class="num">'+(pyeong||'-')+'</td>'+
-      '<td class="num" style="color:var(--yellow);font-weight:700">'+fmt천(price)+'</td>'+
-      '<td class="num" style="color:#ff6b35;font-weight:700">'+fmt평(py)+'</td>'+
-      '<td class="num">'+(r['층']||'-')+'층</td>'+
-      '<td class="num" style="color:var(--text3);font-size:11px">'+ymStr+'</td>'+
-      '<td style="text-align:center;font-size:10px;color:'+tColor+'">'+tLabel+'</td>'+
-    '</tr>';
+    var distBadge='<td><span class="badge" style="background:'+color+'33;color:'+color+'">'+(DIST_NAMES[g]||'-')+'</span></td>';
+    var nameTd='<td style="font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(r['단지명']||'-')+'</td>';
+
+    if(tt==='sale'){
+      var price=parseFloat(r['거래금액']||0);
+      var py=parseFloat(r['평당가']||0);
+      if(!py&&sqm>0&&price>0) py=Math.round(price/(sqm/3.3058));
+      var tType=r['거래유형']||'';
+      var tLabel=tType.indexOf('직거래')>=0?'직거래':tType.indexOf('중개')>=0?'중개':tType;
+      var tColor=tType.indexOf('직거래')>=0?'var(--yellow)':'var(--text3)';
+      html+='<tr>'+distBadge+nameTd+
+        '<td style="text-align:center"><span class="badge '+(r['구분']==='아파트'?'badge-apt':'badge-pre')+'">'+(r['구분']||'-')+'</span></td>'+
+        '<td class="num">'+sqm.toFixed(1)+'</td>'+
+        '<td class="num">'+(pyeong||'-')+'</td>'+
+        '<td class="num" style="color:var(--yellow);font-weight:700">'+fmt천(price)+'</td>'+
+        '<td class="num" style="color:#ff6b35;font-weight:700">'+fmt평(py)+'</td>'+
+        '<td class="num">'+(r['층']||'-')+'층</td>'+
+        '<td class="num" style="color:var(--text3);font-size:11px">'+ymStr+'</td>'+
+        '<td style="text-align:center;font-size:10px;color:'+tColor+'">'+tLabel+'</td>'+
+      '</tr>';
+    } else if(tt==='jeonse'){
+      var dep=parseFloat(r['보증금']||r['보증금액']||0);
+      var py2=pyeong>0?Math.round(dep/pyeong):(sqm>0?Math.round(dep/(sqm/3.3058)):0);
+      var ct=r['계약구분']||'';
+      html+='<tr>'+distBadge+nameTd+
+        '<td class="num">'+sqm.toFixed(1)+'</td>'+
+        '<td class="num">'+(pyeong||'-')+'</td>'+
+        '<td class="num" style="color:var(--accent);font-weight:700">'+fmt천(dep)+'</td>'+
+        '<td class="num" style="color:#ff6b35;font-weight:700">'+fmt평(py2)+'</td>'+
+        '<td class="num">'+(r['층']||'-')+'층</td>'+
+        '<td class="num" style="color:var(--text3);font-size:11px">'+ymStr+'</td>'+
+        '<td style="text-align:center;font-size:10px;color:var(--text3)">'+ct+'</td>'+
+      '</tr>';
+    } else {
+      var dep2=parseFloat(r['보증금']||r['보증금액']||0);
+      var mon=parseFloat(r['월세금']||r['월세금액']||0);
+      var conv=parseFloat(r['환산보증금']||0);
+      if(!conv&&mon>0) conv=Math.round(dep2+mon*12/0.058);
+      if(!conv) conv=dep2;
+      var py3=pyeong>0?Math.round(conv/pyeong):(sqm>0?Math.round(conv/(sqm/3.3058)):0);
+      var ct2=r['계약구분']||'';
+      html+='<tr>'+distBadge+nameTd+
+        '<td class="num">'+sqm.toFixed(1)+'</td>'+
+        '<td class="num">'+(pyeong||'-')+'</td>'+
+        '<td class="num" style="color:var(--accent)">'+fmt천(dep2)+'</td>'+
+        '<td class="num" style="color:var(--yellow)">'+fmt천(mon)+'만</td>'+
+        '<td class="num" style="color:var(--accent2,#00e5a0);font-weight:700">'+fmt천(conv)+'</td>'+
+        '<td class="num" style="color:#ff6b35;font-weight:700">'+fmt평(py3)+'</td>'+
+        '<td class="num">'+(r['층']||'-')+'층</td>'+
+        '<td class="num" style="color:var(--text3);font-size:11px">'+ymStr+'</td>'+
+        '<td style="text-align:center;font-size:10px;color:var(--text3)">'+ct2+'</td>'+
+      '</tr>';
+    }
   });
   tbody.innerHTML=html;
 }
+
 
 // ── 최근 실거래 5건 (매매/전세/월세)
 function renderRecent5(){
