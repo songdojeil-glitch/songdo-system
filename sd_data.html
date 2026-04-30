@@ -164,6 +164,10 @@ body.zoom-mode .zoomable {
 body.zoom-mode .zoomable:hover {
   box-shadow: none !important;
 }
+/* 촬영모드에서 차트 캔버스 크기 고정 해제 */
+body.zoom-mode .chart-wrap canvas {
+  max-height: 200px !important;
+}
 
 /* ── 개별 확대 (Lightbox) */
 .zoom-overlay {
@@ -1567,27 +1571,40 @@ function toggleZoom(){
 // 개별 확대 (Lightbox) - 촬영모드에서는 비활성
 function openZoom(el){
   if(!el) return;
-  if(_zoomOn) return; // 촬영모드에서는 Lightbox 비활성
+  if(_zoomOn) return;
   var overlay = document.getElementById('zoom-overlay');
+  var inner   = document.getElementById('zoom-overlay-inner');
   var content = document.getElementById('zoom-overlay-content');
   if(!overlay||!content) return;
-  // 클론해서 오버레이에 표시
+
+  // canvas → 고해상도 이미지 변환
   var clone = el.cloneNode(true);
-  // 차트 canvas는 클론 불가 → 원본 이동 방식 대신 이미지로 변환
   var canvases = el.querySelectorAll('canvas');
   var cloneCanvases = clone.querySelectorAll('canvas');
-  canvases.forEach(function(cv, i){
+  canvases.forEach(function(cv,i){
     var img = document.createElement('img');
-    img.src = cv.toDataURL();
-    img.style.width = '100%';
-    img.style.height = 'auto';
+    img.src = cv.toDataURL('image/png',1.0);
+    img.style.cssText = 'width:100%;height:auto;display:block;border-radius:6px';
     if(cloneCanvases[i]) cloneCanvases[i].parentNode.replaceChild(img, cloneCanvases[i]);
   });
-  // 스타일 확대
-  clone.style.transform = 'none';
-  clone.style.cursor = 'default';
-  clone.style.minWidth = '600px';
-  clone.style.fontSize = '115%';
+
+  // 히트맵 테이블은 클론 그대로 사용 (이미 DOM 기반)
+  clone.style.cssText = 'cursor:default;font-size:120%;line-height:1.5;width:100%';
+
+  // 오버레이 크기: 화면의 85%
+  inner.style.cssText = [
+    'background:var(--bg2)',
+    'border:1px solid var(--accent)',
+    'border-radius:16px',
+    'padding:28px',
+    'width:85vw',
+    'max-height:88vh',
+    'overflow:auto',
+    'cursor:default',
+    'position:relative',
+    'box-shadow:0 0 60px rgba(0,212,255,.2)',
+  ].join(';');
+
   content.innerHTML = '';
   content.appendChild(clone);
   overlay.classList.add('on');
@@ -1600,8 +1617,7 @@ function closeZoom(e){
     var isCloseBtn = t.classList && t.classList.contains('zoom-close-btn');
     if(!isOverlay && !isCloseBtn) return;
   }
-  var overlay = document.getElementById('zoom-overlay');
-  if(overlay) overlay.classList.remove('on');
+  document.getElementById('zoom-overlay').classList.remove('on');
 }
 
 // ── 최근1년 YM 범위 계산
