@@ -522,17 +522,8 @@ body.zoom-mode .chart-wrap canvas {
   <div class="table-wrap" style="margin-bottom:12px">
     <div class="table-scroll" style="max-height:none">
       <table class="data-table" id="recent5-table" style="table-layout:fixed;width:100%">
-        <colgroup>
-          <col style="width:60px">
-          <col style="width:160px">
-          <col style="width:50px">
-          <col style="width:58px">
-          <col style="width:55px">
-          <col style="width:80px">
-          <col style="width:80px">
-          <col style="width:38px">
-          <col style="width:82px">
-          <col style="width:55px">
+        <colgroup id="recent5-colgroup">
+          <!-- 동적으로 교체됨 -->
         </colgroup>
         <thead>
           <tr>
@@ -2676,10 +2667,40 @@ function renderRecent5(){
     if(tt==='sale'){
       thead.innerHTML='<th style="text-align:center">공구</th><th>단지명</th><th style="text-align:center">구분</th><th class="num">전용㎡</th><th class="num">분양평형</th><th class="num">거래금액</th><th class="num">평당가</th><th class="num">층</th><th class="num">계약년월일</th><th style="text-align:center">거래유형</th>';
     } else {
-      thead.innerHTML='<th style="text-align:center">공구</th><th>단지명</th><th style="text-align:center">구분</th><th class="num">전용㎡</th><th class="num">보증금</th>'+
-        (tt==='monthly'?'<th class="num">월세</th>':'')+
-        '<th class="num" style="color:var(--accent2,#00e5a0)">환산보증금</th>'+
-        '<th class="num">평당가</th><th class="num">층</th><th class="num">계약년월일</th><th style="text-align:center">계약구분</th>';
+      // colgroup 동적 교체
+      var cg = document.getElementById('recent5-colgroup');
+      if(cg){
+        if(tt==='jeonse'){
+          cg.innerHTML = '<col style="width:60px"><col style="width:auto">'+
+            '<col style="width:58px"><col style="width:58px">'+
+            '<col style="width:88px"><col style="width:85px">'+
+            '<col style="width:40px"><col style="width:82px"><col style="width:60px">';
+        } else {
+          cg.innerHTML = '<col style="width:60px"><col style="width:auto">'+
+            '<col style="width:55px"><col style="width:55px">'+
+            '<col style="width:75px"><col style="width:65px">'+
+            '<col style="width:82px"><col style="width:80px">'+
+            '<col style="width:38px"><col style="width:82px"><col style="width:55px">';
+        }
+      }
+      if(tt==='jeonse'){
+        // 전세: 환산보증금 없음, 평당가=보증금÷분양평형
+        thead.innerHTML=
+          '<th style="text-align:center">공구</th><th>단지명</th>'+
+          '<th class="num">전용㎡</th><th class="num">분양평형</th>'+
+          '<th class="num">보증금</th><th class="num">평당가</th>'+
+          '<th class="num">층</th><th class="num">계약년월일</th>'+
+          '<th style="text-align:center">계약구분</th>';
+      } else {
+        // 월세: 환산보증금 포함
+        thead.innerHTML=
+          '<th style="text-align:center">공구</th><th>단지명</th>'+
+          '<th class="num">전용㎡</th><th class="num">분양평형</th>'+
+          '<th class="num">보증금</th><th class="num">월세</th>'+
+          '<th class="num" style="color:var(--accent2,#00e5a0)">환산보증금</th>'+
+          '<th class="num">평당가</th><th class="num">층</th>'+
+          '<th class="num">계약년월일</th><th style="text-align:center">계약구분</th>';
+      }
     }
   }
 
@@ -2711,35 +2732,48 @@ function renderRecent5(){
         '<td style="text-align:center;font-size:10px;color:'+tColor+'">'+tLabel+'</td>'+
       '</tr>';
     } else {
-      var deposit=parseFloat(r['보증금']||r['보증금액']||0);
-      var monthly=parseFloat(r['월세금']||r['월세금액']||0);
-      var convRate=(window._convRate||5.8)/100;
-      // 환산보증금: 저장된 값 우선, 없으면 계산
-      // 환산보증금: 저장값(엑셀 5.8% 기준) 우선, 없으면 재계산
-      var conv = parseFloat(r['환산보증금']||0);
-      if(!conv && monthly>0) conv = Math.round(deposit + monthly*12/0.058);
-      if(!conv) conv = deposit;
-      var pyeong=parseInt(r['분양평형']||0);
-      // 평당가: 저장값 우선, 없으면 환산보증금 ÷ 분양평형
-      var py=parseFloat(r['평당가']||0);
-      if(!py) py = pyeong>0 ? Math.round(conv/pyeong) : (sqm>0 ? Math.round(conv/(sqm/3.3058)) : 0);
-      var floor=r['층']||'-';
-      var dd2=parseInt(r['계약일']||0);
-      var ymStr2=ym.length>=6 ? ym.slice(0,4)+'.'+ym.slice(4,6)+(dd2?'.'+String(dd2).padStart(2,'0'):'') : ym;
-      var ct=r['계약구분']||'';
-      html+='<tr>'+
-        '<td><span class="badge" style="background:'+color+'33;color:'+color+'">'+(DIST_NAMES[g]||'-')+'</span></td>'+
-        '<td style="font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(r['단지명']||'-')+'</td>'+
-        '<td style="text-align:center"><span class="badge badge-apt">'+(r['전월세구분']||'-')+'</span></td>'+
-        '<td class="num">'+sqm.toFixed(1)+'</td>'+
-        '<td class="num" style="color:var(--accent)">'+fmt천(deposit)+'</td>'+
-        (tt==='monthly'?'<td class="num" style="color:var(--yellow)">'+fmt천(monthly)+'만</td>':'')+
-        '<td class="num" style="color:var(--accent2,#00e5a0);font-weight:700">'+fmt천(conv)+'</td>'+
-        '<td class="num">'+fmt평(py)+'</td>'+
-        '<td class="num">'+floor+'층</td>'+
-        '<td class="num" style="color:var(--text3);font-size:11px">'+ymStr2+'</td>'+
-        '<td style="text-align:center;font-size:10px;color:var(--text3)">'+ct+'</td>'+
-      '</tr>';
+      var deposit = parseFloat(r['보증금']||r['보증금액']||0);
+      var monthly = parseFloat(r['월세금']||r['월세금액']||0);
+      var pyeong  = parseInt(r['분양평형']||0);
+      var floor   = r['층']||'-';
+      var dd2     = parseInt(r['계약일']||0);
+      var ymStr2  = ym.length>=6 ? ym.slice(0,4)+'.'+ym.slice(4,6)+(dd2?'.'+String(dd2).padStart(2,'0'):'') : ym;
+      var ct      = r['계약구분']||'';
+
+      if(tt==='jeonse'){
+        // 전세: 환산보증금 없음 / 평당가 = 보증금 ÷ 분양평형
+        var py = pyeong>0 ? Math.round(deposit/pyeong) : (sqm>0 ? Math.round(deposit/(sqm/3.3058)) : 0);
+        html+='<tr>'+
+          '<td><span class="badge" style="background:'+color+'33;color:'+color+'">'+(DIST_NAMES[g]||'-')+'</span></td>'+
+          '<td style="font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(r['단지명']||'-')+'</td>'+
+          '<td class="num">'+sqm.toFixed(1)+'</td>'+
+          '<td class="num">'+(pyeong||'-')+'</td>'+
+          '<td class="num" style="color:var(--accent);font-weight:700">'+fmt천(deposit)+'</td>'+
+          '<td class="num">'+fmt평(py)+'</td>'+
+          '<td class="num">'+floor+'층</td>'+
+          '<td class="num" style="color:var(--text3);font-size:11px">'+ymStr2+'</td>'+
+          '<td style="text-align:center;font-size:10px;color:var(--text3)">'+ct+'</td>'+
+        '</tr>';
+      } else {
+        // 월세: 환산보증금(5.8%) / 평당가 = 환산보증금 ÷ 분양평형
+        var conv = parseFloat(r['환산보증금']||0);
+        if(!conv && monthly>0) conv = Math.round(deposit + monthly*12/0.058);
+        if(!conv) conv = deposit;
+        var py = pyeong>0 ? Math.round(conv/pyeong) : (sqm>0 ? Math.round(conv/(sqm/3.3058)) : 0);
+        html+='<tr>'+
+          '<td><span class="badge" style="background:'+color+'33;color:'+color+'">'+(DIST_NAMES[g]||'-')+'</span></td>'+
+          '<td style="font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(r['단지명']||'-')+'</td>'+
+          '<td class="num">'+sqm.toFixed(1)+'</td>'+
+          '<td class="num">'+(pyeong||'-')+'</td>'+
+          '<td class="num" style="color:var(--accent)">'+fmt천(deposit)+'</td>'+
+          '<td class="num" style="color:var(--yellow)">'+fmt천(monthly)+'만</td>'+
+          '<td class="num" style="color:var(--accent2,#00e5a0);font-weight:700">'+fmt천(conv)+'</td>'+
+          '<td class="num">'+fmt평(py)+'</td>'+
+          '<td class="num">'+floor+'층</td>'+
+          '<td class="num" style="color:var(--text3);font-size:11px">'+ymStr2+'</td>'+
+          '<td style="text-align:center;font-size:10px;color:var(--text3)">'+ct+'</td>'+
+        '</tr>';
+      }
     }
   });
   tbody.innerHTML=html;
