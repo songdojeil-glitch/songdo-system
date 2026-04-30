@@ -650,45 +650,45 @@ body.zoom-mode .chart-wrap canvas {
 
 <!-- ══ TAB1 공구별 현황 ══ -->
 <div id="tc1" class="tc">
-  <div class="global-filter-bar" id="gfb-t1">
-    <span class="gf-label">적용 필터</span>
-    <span class="gf-badge" id="gf-t1-yr"></span>
-    <span class="gf-badge" id="gf-t1-period"></span>
-    <span class="gf-badge" id="gf-t1-area"></span>
-    <span class="gf-goto" onclick="sw(0)">⚙️ 시황판에서 변경</span>
-  </div>
-  <!-- 필터 행 1 -->
+  <!-- TAB1 자체 필터 -->
   <div class="filter-row">
     <span class="filter-label">기준연도</span>
-    <div class="filter-group">
-      <button class="filter-btn" onclick="setYr1(2019,this)">2019</button>
-      <button class="filter-btn" onclick="setYr1(2020,this)">2020</button>
-      <button class="filter-btn" onclick="setYr1(2021,this)">2021</button>
-      <button class="filter-btn" onclick="setYr1(2022,this)">2022</button>
-      <button class="filter-btn" onclick="setYr1(2023,this)">2023</button>
-      <button class="filter-btn" onclick="setYr1(2024,this)">2024</button>
-      <button class="filter-btn" onclick="setYr1(2025,this)">2025</button>
-      <button class="filter-btn on" onclick="setYr1(2026,this)">2026</button>
+    <div class="filter-group" id="t1-yr-group">
+      <button class="filter-btn" onclick="t1SetYr(2019,this)">2019</button>
+      <button class="filter-btn" onclick="t1SetYr(2020,this)">2020</button>
+      <button class="filter-btn" onclick="t1SetYr(2021,this)">2021</button>
+      <button class="filter-btn" onclick="t1SetYr(2022,this)">2022</button>
+      <button class="filter-btn" onclick="t1SetYr(2023,this)">2023</button>
+      <button class="filter-btn" onclick="t1SetYr(2024,this)">2024</button>
+      <button class="filter-btn" onclick="t1SetYr(2025,this)">2025</button>
+      <button class="filter-btn on" onclick="t1SetYr(2026,this)">2026</button>
+      <button class="filter-btn filter-btn-recent" onclick="t1SetYr('recent',this)">최근1년</button>
     </div>
     <div class="filter-sep"></div>
-    <span class="filter-label">매매구분</span>
-    <div class="filter-group">
-      <button class="filter-btn on" onclick="setSaleType1('all',this)">전체</button>
-      <button class="filter-btn" onclick="setSaleType1('apt',this)">아파트</button>
-      <button class="filter-btn" onclick="setSaleType1('pre',this)">분양권</button>
+    <span class="filter-label">기간</span>
+    <div class="filter-group" id="t1-period-group">
+      <button class="filter-btn on" onclick="t1SetPeriod('annual',this)">연간</button>
+      <button class="filter-btn" onclick="t1SetPeriod('quarter',this)">분기별</button>
+      <button class="filter-btn" onclick="t1SetPeriod('monthly',this)">월별</button>
     </div>
   </div>
-  <!-- 필터 행 2 -->
   <div class="filter-row" style="margin-top:-4px">
+    <span class="filter-label">매매구분</span>
+    <div class="filter-group" id="t1-sale-group">
+      <button class="filter-btn on" onclick="t1SetSaleType('all',this)">전체</button>
+      <button class="filter-btn" onclick="t1SetSaleType('apt',this)">아파트</button>
+      <button class="filter-btn" onclick="t1SetSaleType('pre',this)">분양권</button>
+    </div>
+    <div class="filter-sep"></div>
     <span class="filter-label">면적</span>
-    <div class="filter-group">
-      <button class="filter-btn on" onclick="setMaxArea('all',this)">전체</button>
-      <button class="filter-btn" onclick="setMaxArea('20',this)">20평이하</button>
-      <button class="filter-btn" onclick="setMaxArea('30',this)">30평대</button>
-      <button class="filter-btn" onclick="setMaxArea('84',this)">전용 84㎡</button>
-      <button class="filter-btn" onclick="setMaxArea('40',this)">40평대</button>
-      <button class="filter-btn" onclick="setMaxArea('50',this)">50평대</button>
-      <button class="filter-btn" onclick="setMaxArea('60',this)">60평이상</button>
+    <div class="filter-group" id="t1-area-group">
+      <button class="filter-btn on" onclick="t1SetArea('all',this)">전체</button>
+      <button class="filter-btn" onclick="t1SetArea('20',this)">20평이하</button>
+      <button class="filter-btn" onclick="t1SetArea('30',this)">30평대</button>
+      <button class="filter-btn" onclick="t1SetArea('84',this)">전용 84㎡</button>
+      <button class="filter-btn" onclick="t1SetArea('40',this)">40평대</button>
+      <button class="filter-btn" onclick="t1SetArea('50',this)">50평대</button>
+      <button class="filter-btn" onclick="t1SetArea('60',this)">60평이상</button>
     </div>
   </div>
 
@@ -1146,6 +1146,7 @@ function $html(id, val){ var el=document.getElementById(id); if(el) el.innerHTML
 // ══ 전역 상태
 var G = {
   yr: 2026, area: '84', saleType: 'all', period: 'annual', t0Dist: 'all',
+  t1yr: 2026, t1period: 'annual', t1saleType: 'all', t1area: 'all',
   yr1: 2026, saleType1: 'all', maxArea: 'all', histArea: 'all',
   distFilter: 'all',
   saleF: 'all', saleAreaF: 'all', abnF: 'inc',
@@ -1277,6 +1278,29 @@ function showToast(msg, dur){
   t._t=setTimeout(function(){t.style.display='none';}, dur||2000);
 }
 
+function t1AreaFilter(r){
+  var area = G.t1area;
+  if(area==='all') return true;
+  var sqm = parseFloat(r['전용(㎡)']||r['전용㎡']||0);
+  var ac = parseInt(r['면적구분']||0);
+  if(area==='84') return sqm>=84&&sqm<85;
+  if(area==='20') return ac===20;
+  if(area==='30') return ac===30;
+  if(area==='40') return ac===40;
+  if(area==='50') return ac===50;
+  if(area==='60') return ac>=60;
+  return true;
+}
+function t1AreaLabel(){
+  var m={'all':'전체','84':'전용 84㎡','20':'20평이하','30':'30평대','40':'40평대','50':'50평대','60':'60평이상'};
+  return m[G.t1area]||G.t1area;
+}
+// ── TAB1 독립 필터 세터
+function t1SetYr(yr,btn){ G.t1yr=yr; setFilterBtn(btn.parentElement.querySelectorAll('.filter-btn'),btn); renderTab1(); }
+function t1SetPeriod(p,btn){ G.t1period=p; setFilterBtn(btn.parentElement.querySelectorAll('.filter-btn'),btn); renderTab1(); }
+function t1SetSaleType(t,btn){ G.t1saleType=t; setFilterBtn(btn.parentElement.querySelectorAll('.filter-btn'),btn); renderTab1(); }
+function t1SetArea(a,btn){ G.t1area=a; setFilterBtn(btn.parentElement.querySelectorAll('.filter-btn'),btn); renderTab1(); }
+
 function sw(n){
   document.querySelectorAll('.tc').forEach(function(e){e.classList.remove('on');});
   document.querySelectorAll('.tab-btn').forEach(function(e){e.classList.remove('on');});
@@ -1295,9 +1319,9 @@ function setArea(a,btn){ G.area=a; setFilterBtn(btn.parentElement.querySelectorA
 function setSaleType(t,btn){ G.saleType=t; setFilterBtn(btn.parentElement.querySelectorAll('.filter-btn'),btn); renderTab0(); }
 function setPeriod(v,btn){ G.period=v; setFilterBtn(btn.parentElement.querySelectorAll('.filter-btn'),btn); renderTab0(); }
 function setT0Dist(v,btn){ G.t0Dist=v; setFilterBtn(btn.parentElement.querySelectorAll('.filter-btn'),btn); renderTab0(); }
-function setSaleType1(t,btn){ G.saleType1=t; setFilterBtn(btn.parentElement.querySelectorAll('.filter-btn'),btn); renderTab1(); }
-function setYr1(yr,btn){ G.yr1=yr; setFilterBtn(btn.parentElement.querySelectorAll('.filter-btn'),btn); renderTab1(); }
-function setMaxArea(a,btn){ G.maxArea=a; setFilterBtn(btn.parentElement.querySelectorAll('.filter-btn'),btn); renderTab1(); }
+function setSaleType1(t,btn){ G.saleType=t; setFilterBtn(btn.parentElement.querySelectorAll('.filter-btn'),btn); renderTab1(); }
+// setYr1 deprecated - 시황판 setYr 사용
+function setMaxArea(a,btn){ G.area=a; setFilterBtn(btn.parentElement.querySelectorAll('.filter-btn'),btn); renderTab1(); }
 function setHistArea(a,btn){ G.histArea=a; setFilterBtn(btn.parentElement.querySelectorAll('.filter-btn'),btn); renderHistTable(); }
 function setDistFilter(d,btn){ G.distFilter=d; setFilterBtn(btn.parentElement.querySelectorAll('.filter-btn'),btn); renderTab2(); }
 function setSaleF(v,btn){ G.saleF=v; setFilterBtn(btn.parentElement.querySelectorAll('.filter-btn'),btn); renderTab3(); }
@@ -2894,9 +2918,9 @@ function renderTab1(){
   renderHistTable();
 }
 function renderDistTable(){
-  var yr = G.yr;
+  var yr = G.t1yr;
   var prevYr = yr==='recent'?'recent_prev':yr-1;
-  $set('t1-subtitle', yr+'년 · '+areaLabelT1()+' 기준');
+  $set('t1-subtitle', (yr==='recent'?'최근1년':yr+'년')+' · '+areaLabel()+' · '+(G.t1saleType==='all'?'전체':G.t1saleType==='apt'?'아파트':'분양권')+' 기준');
   if(!G.saleData){ document.getElementById('t1-tbody').innerHTML=''; return; }
 
   // 실거래 기반 공구별 집계
@@ -2907,8 +2931,8 @@ function renderDistTable(){
     G.saleData.filter(function(r){
       if(r['해제사유']&&r['해제사유']!=='-'&&r['해제사유']!=='') return false;
       if(!yrFilter(r,targetYr)) return false;
-      if(G.saleType1!=='all' && r['구분']!==(G.saleType1==='apt'?'아파트':'분양권')) return false;
-      return areaFilterT1(r);
+      if(G.t1saleType!=='all' && r['구분']!==(G.t1saleType==='apt'?'아파트':'분양권')) return false;
+      return t1AreaFilter(r);
     }).forEach(function(r){
       var g = parseInt(r['공구'])||0; if(!g) return;
       if(!stats[g]) stats[g]={prices:[],pyeongs:[],cnt:0,apt:0,pre:0,prices84:[]};
@@ -2985,8 +3009,8 @@ function renderDistTable(){
   document.getElementById('t1-tbody').innerHTML = html;
 }
 
-function areaFilterT1(r){
-  var area = G.maxArea;
+function t1AreaFilter(r){
+  var area = G.area;
   if(area==='all') return true;
   var sqm = parseFloat(r['전용(㎡)']||r['전용㎡']||0);
   var ac = parseInt(r['면적구분']||0);
@@ -2998,9 +3022,9 @@ function areaFilterT1(r){
   if(area==='60') return ac>=60;
   return true;
 }
-function areaLabelT1(){
+function areaLabel(){
   var m={'all':'전체','84':'전용 84㎡','20':'20평이하','30':'30평대','40':'40평대','50':'50평대','60':'60평이상'};
-  return m[G.maxArea]||G.maxArea;
+  return m[G.area]||G.area;
 }
 function renderHistTable(){
   var dd = DATA.district||{};
