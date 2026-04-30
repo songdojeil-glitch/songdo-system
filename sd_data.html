@@ -2715,11 +2715,14 @@ function renderRecent5(){
       var monthly=parseFloat(r['월세금']||r['월세금액']||0);
       var convRate=(window._convRate||5.8)/100;
       // 환산보증금: 저장된 값 우선, 없으면 계산
-      var conv=parseFloat(r['환산보증금']||0);
-      if(!conv) conv = tt==='monthly' ? Math.round(deposit + monthly*12/convRate) : deposit;
+      // 환산보증금: 저장값(엑셀 5.8% 기준) 우선, 없으면 재계산
+      var conv = parseFloat(r['환산보증금']||0);
+      if(!conv && monthly>0) conv = Math.round(deposit + monthly*12/0.058);
+      if(!conv) conv = deposit;
       var pyeong=parseInt(r['분양평형']||0);
-      // 평당가 = 환산보증금 / 분양평형 (없으면 전용면적 기준)
-      var py=pyeong>0 ? Math.round(conv/pyeong) : (sqm>0 ? Math.round(conv/(sqm/3.3058)) : 0);
+      // 평당가: 저장값 우선, 없으면 환산보증금 ÷ 분양평형
+      var py=parseFloat(r['평당가']||0);
+      if(!py) py = pyeong>0 ? Math.round(conv/pyeong) : (sqm>0 ? Math.round(conv/(sqm/3.3058)) : 0);
       var floor=r['층']||'-';
       var dd2=parseInt(r['계약일']||0);
       var ymStr2=ym.length>=6 ? ym.slice(0,4)+'.'+ym.slice(4,6)+(dd2?'.'+String(dd2).padStart(2,'0'):'') : ym;
@@ -3949,8 +3952,8 @@ window.fbAutoLoad = function(){
               '계약년월': parseInt(r.계약년월||r['계약년월']||0),
               '보증금액': parseFloat(r.보증금액||r['보증금액']||0),
               '보증금': parseFloat(r.보증금액||r['보증금액']||0),
-              '월세금': parseFloat(r.월세금액||r['월세금액']||0),
-              '월세금액': parseFloat(r.월세금액||r['월세금액']||0),
+              '월세금': parseFloat(r.월세금액||r['월세금액']||r.월세금||r['월세금']||0),
+              '월세금액': parseFloat(r.월세금액||r['월세금액']||r.월세금||r['월세금']||0),
               '환산보증금': parseFloat(r.환산보증금||r['환산보증금']||0),
               '평당가': parseFloat(r.평당가||r['평당가']||0),
               '층': r.층||r['층']||'',
@@ -4008,36 +4011,35 @@ function slimSaleRow(r){
   };
 }
 function slimRentRow(r){
-  var sqm = parseFloat(r['전용(㎡)']||0);
-  var price = parseFloat(r['보증금']||r['보증금액']||0);
+  var sqm     = parseFloat(r['전용(㎡)']||0);
+  var price   = parseFloat(r['보증금']||r['보증금액']||0);
   var monthly = parseFloat(r['월세금']||r['월세금액']||0);
-  var pyeong = parseInt(r['분양평형']||0);
-  // 환산보증금: 엑셀값 우선, 없으면 연5% 기준 계산
-  var convRate = (window._convRate||5.8)/100;
-  var conv = parseFloat(r['환산보증금']||0);
-  if(!conv && monthly>0) conv = Math.round(price + monthly*12/convRate);
+  var pyeong  = parseInt(r['분양평형']||0);
+  // 환산보증금: 엑셀값 우선(5.8% 기준), 없으면 직접 계산
+  var conv = Math.round(parseFloat(r['환산보증금']||0));
+  if(!conv && monthly>0) conv = Math.round(price + monthly*12/0.058);
   if(!conv) conv = price;
-  // 평당가: 환산보증금 / 분양평형
-  var py = parseFloat(r['평당가']||0);
+  // 평당가: 환산보증금 ÷ 분양평형 (없으면 전용면적 기준)
+  var py = Math.round(parseFloat(r['평당가']||0));
   if(!py && pyeong>0 && conv>0) py = Math.round(conv/pyeong);
   if(!py && sqm>0 && conv>0) py = Math.round(conv/(sqm/3.3058));
   return {
-    연도: parseInt(r['연도']),
-    공구: parseInt(r['공구']||0),
-    단지명: r['단지명']||'',
-    전용: sqm,
+    연도:     parseInt(r['연도']),
+    공구:     parseInt(r['공구']||0),
+    단지명:   r['단지명']||'',
+    전용:     sqm,
     분양평형: pyeong,
     면적구분: parseInt(r['면적구분']||0),
     계약년월: parseInt(r['계약년월']||0),
-    계약일: parseInt(r['계약일']||0),
-    층: r['층']||'',
+    계약일:   parseInt(r['계약일']||0),
+    층:       String(r['층']||''),
     보증금액: price,
     월세금액: monthly,
     환산보증금: conv,
-    평당가: py,
-    전월세구분: r['전월세구분']||'',
-    계약구분: r['계약구분']||'',
-    갱신요구권: r['갱신요구권사용여부']||'',
+    평당가:   py,
+    전월세구분:    r['전월세구분']||'',
+    계약구분:      r['계약구분']||'',
+    갱신요구권:    r['갱신요구권사용여부']||r['갱신요구권']||'',
   };
 }
 
