@@ -4085,13 +4085,13 @@ function renderTab2(){
     var avgPy=avg(u.pyeongs);
     var lastYmStr=u.lastYm>=202001?String(u.lastYm).slice(0,4)+'.'+String(u.lastYm).slice(4,6):'-';
     var distBadge='<td><span class="badge" style="background:'+color+'33;color:'+color+'">'+(DIST_NAMES[u.g]||'-')+'</span></td>';
-    var nameTd='<td style="font-weight:600;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" onclick="openT2Detail(''+nm.replace(/'/g,"\'")+'')">'+'<span style="color:var(--accent3);font-size:10px;margin-right:4px">▶</span>'+nm+'</td>';
+    var safeNm=nm.replace(/"/g,'&quot;'); var nameTd='<td style="font-weight:600;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" onclick="openT2Detail(this.dataset.nm)" data-nm="'+safeNm+'">'+'<span style="color:var(--accent3);font-size:10px;margin-right:4px">▶</span>'+nm+'</td>';
 
     if(trade==='sale'){
       var rentArr=rentByUnit[nm]||[];
       var avgRent=avg(rentArr);
       var jRate=avgP&&avgRent?Math.round(avgRent/avgP*100)+'%':'-';
-      html+='<tr onclick="openT2Detail(''+nm.replace(/'/g,"\'")+'')">'+
+      html+='<tr onclick="openT2Detail(this.dataset.nm)" data-nm="'+(nm.replace(/"/g,'&quot;'))+'"  >'+
         distBadge+nameTd+
         '<td class="num">'+u.cnt+'</td>'+
         '<td class="num" style="color:var(--yellow);font-weight:700">'+fmt천(avgP)+'</td>'+
@@ -4103,7 +4103,7 @@ function renderTab2(){
       '</tr>';
     } else if(trade==='jeonse'){
       var avgDep=avg(u.deps), maxDep=max2(u.deps);
-      html+='<tr onclick="openT2Detail(''+nm.replace(/'/g,"\'")+'')">'+
+      html+='<tr onclick="openT2Detail(this.dataset.nm)" data-nm="'+(nm.replace(/"/g,'&quot;'))+'"  >'+
         distBadge+nameTd+
         '<td class="num">'+u.cnt+'</td>'+
         '<td class="num" style="color:var(--accent);font-weight:700">'+fmt천(avgDep)+'</td>'+
@@ -4124,7 +4124,7 @@ function renderTab2(){
         });
         avgMon2=avg(mons);
       }
-      html+='<tr onclick="openT2Detail(''+nm.replace(/'/g,"\'")+'')">'+
+      html+='<tr onclick="openT2Detail(this.dataset.nm)" data-nm="'+(nm.replace(/"/g,'&quot;'))+'"  >'+
         distBadge+nameTd+
         '<td class="num">'+u.cnt+'</td>'+
         '<td class="num" style="color:var(--accent)">'+fmt천(avgDep2)+'</td>'+
@@ -4726,7 +4726,7 @@ function initFirebase(){
     if(window._fbGet && window._fbChild && window._fbDb && window._fbRef){
       clearInterval(timer);
       fbAutoLoad();
-    } else if(tries > 30){
+    } else if(tries > 60){
       clearInterval(timer);
       console.log('Firebase 모듈 대기 시간 초과 → 샘플 로드');
       loadDemo();
@@ -4951,10 +4951,15 @@ window._fbSet = set;
 window._fbGet = get;
 window._fbChild = child;
 
-document.addEventListener('DOMContentLoaded', function(){
+// module 스크립트는 DOMContentLoaded 이후 실행되므로 직접 호출
+if(typeof $set === 'function'){
   $set('fb-status','🔥 Firebase 연결됨');
   $style('fb-status','color','#ff6600');
-});
+}
+// Firebase 준비 완료 → 자동 로드 트리거
+if(typeof window.fbAutoLoad === 'function'){
+  window.fbAutoLoad();
+}
 </script>
 
 <!-- 확대 오버레이 (Lightbox) -->
