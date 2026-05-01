@@ -1648,18 +1648,20 @@ var _zoomOn = false;
 function toggleZoom(){
   _zoomOn = !_zoomOn;
   var btn = document.getElementById('zoom-btn');
-  var main = document.querySelector('.main');
+
+  // 모든 차트 먼저 destroy (zoom 전환 시 캔버스 크기 오염 방지)
+  function destroyAllCharts(){
+    Object.keys(charts).forEach(function(k){
+      if(charts[k]&&charts[k].destroy){ charts[k].destroy(); charts[k]=null; }
+    });
+    Object.keys(dcCharts).forEach(function(k){
+      if(dcCharts[k]&&dcCharts[k].destroy){ dcCharts[k].destroy(); dcCharts[k]=null; }
+    });
+  }
 
   if(_zoomOn){
-    // ── 촬영모드 ON
-    // main 너비를 먼저 vw/1.5로 제한 → 차트가 그 너비 기준으로 resize
-    var vw = window.innerWidth;
-    if(main){
-      main.style.width = Math.floor(vw / 1.5) + 'px';
-      main.style.maxWidth = Math.floor(vw / 1.5) + 'px';
-      main.style.overflowX = 'hidden';
-    }
-    // zoom 적용
+    // ── 촬영모드 ON: 차트 destroy → zoom 적용 → 재렌더
+    destroyAllCharts();
     document.body.style.zoom = '1.5';
     document.body.classList.add('zoom-mode');
     if(btn){
@@ -1668,15 +1670,11 @@ function toggleZoom(){
       btn.style.borderColor = '#ff6b35';
       btn.style.color = '#fff';
     }
-    setTimeout(function(){
-      Object.keys(charts).forEach(function(k){ if(charts[k]&&charts[k].resize) charts[k].resize(); });
-      Object.keys(dcCharts).forEach(function(k){ if(dcCharts[k]&&dcCharts[k].resize) dcCharts[k].resize(); });
-      if(charts.t1Trend&&charts.t1Trend.resize) charts.t1Trend.resize();
-    }, 150);
+    setTimeout(function(){ renderTab0(); }, 100);
 
   } else {
-    // ── 촬영모드 OFF
-    // 1) zoom 먼저 해제
+    // ── 촬영모드 OFF: 차트 destroy → zoom 해제 → 재렌더
+    destroyAllCharts();
     document.body.style.zoom = '1';
     document.body.classList.remove('zoom-mode');
     if(btn){
@@ -1685,21 +1683,7 @@ function toggleZoom(){
       btn.style.borderColor = 'rgba(255,107,53,.4)';
       btn.style.color = '#ff6b35';
     }
-    // 2) main 너비 복원
-    if(main){
-      main.style.width = '';
-      main.style.maxWidth = '';
-      main.style.overflowX = '';
-    }
-    // 3) 브라우저 레이아웃 재계산 후 차트 resize
-    //    requestAnimationFrame 2번으로 레이아웃 완전 안정 후 resize
-    requestAnimationFrame(function(){
-      requestAnimationFrame(function(){
-        Object.keys(charts).forEach(function(k){ if(charts[k]&&charts[k].resize) charts[k].resize(); });
-        Object.keys(dcCharts).forEach(function(k){ if(dcCharts[k]&&dcCharts[k].resize) dcCharts[k].resize(); });
-        if(charts.t1Trend&&charts.t1Trend.resize) charts.t1Trend.resize();
-      });
-    });
+    setTimeout(function(){ renderTab0(); }, 100);
   }
 }
 
