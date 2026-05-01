@@ -3282,52 +3282,71 @@ function renderTab1(){
 function renderDistTable(){
   var yr = G.t1yr;
   var prevYr = yr==='recent'?'recent_prev':yr-1;
-  $set('t1-subtitle', (yr==='recent'?'최근1년':yr+'년')+' · '+areaLabel()+' · '+(G.t1saleType==='all'?'전체':G.t1saleType==='apt'?'아파트':'분양권')+' 기준');
-  if(!G.saleData){ document.getElementById('t1-tbody').innerHTML=''; return; }
+  var trd = G.t1trade||'sale';
+  var trdLabel = trd==='sale'?'매매':trd==='jeonse'?'전세':'월세';
+  $set('t1-subtitle', (yr==='recent'?'최근1년':yr+'년')+' · '+t1AreaLabel()+' · '+trdLabel+' 기준');
 
-  // 실거래 기반 공구별 집계
   var avg = function(arr){ return arr.length?Math.round(arr.reduce(function(a,b){return a+b;},0)/arr.length):0; };
+  var dd = DATA.district||{};
 
-  function buildDistStats(targetYr){
+  // 거래구분별 집계 함수
+  function buildStats(targetYr){
     var stats = {};
-    G.saleData.filter(function(r){
-      if(r['해제사유']&&r['해제사유']!=='-'&&r['해제사유']!=='') return false;
+    var data = trd==='sale' ? G.saleData : G.rentData;
+    if(!data) return stats;
+    data.filter(function(r){
+      if(trd==='sale'){
+        if(r['해제사유']&&r['해제사유']!=='-'&&r['해제사유']!=='') return false;
+        if(G.t1saleType!=='all' && r['구분']!==(G.t1saleType==='apt'?'아파트':'분양권')) return false;
+      } else {
+        var jt=r['전월세구분']||'';
+        if(trd==='jeonse'&&jt!=='전세') return false;
+        if(trd==='monthly'&&jt!=='월세') return false;
+      }
       if(!yrFilter(r,targetYr)) return false;
-      if(G.t1saleType!=='all' && r['구분']!==(G.t1saleType==='apt'?'아파트':'분양권')) return false;
       return t1AreaFilter(r);
     }).forEach(function(r){
-      var g = parseInt(r['공구'])||0; if(!g) return;
+      var g=parseInt(r['공구'])||0; if(!g) return;
       if(!stats[g]) stats[g]={prices:[],pyeongs:[],cnt:0,apt:0,pre:0,prices84:[]};
-      var p=parseFloat(r['거래금액']||0);
-      var py=parseFloat(r['평당가']||0);
-      var sqm=parseFloat(r['전용(㎡)']||0);
-      var type=r['구분'];
+      var p,py,sqm=parseFloat(r['전용(㎡)']||r['전용']||0);
+      if(trd==='sale'){
+        p=parseFloat(r['거래금액']||0);
+        py=parseFloat(r['평당가']||0);
+        if(!py&&sqm>0&&p>0) py=Math.round(p/(sqm/3.3058));
+        var tp=r['구분'];
+        if(tp==='아파트') stats[g].apt++;
+        if(tp==='분양권') stats[g].pre++;
+        if(sqm>=84&&sqm<85) stats[g].prices84.push(p);
+      } else {
+        var dep=parseFloat(r['보증금']||r['보증금액']||0);
+        var mon=parseFloat(r['월세금']||r['월세금액']||0);
+        p = trd==='monthly'?(parseFloat(r['환산보증금']||0)||Math.round(dep+mon*12/0.058)):dep;
+        var pyeong=parseInt(r['분양평형']||0);
+        py=pyeong>0?Math.round(p/pyeong):(sqm>0?Math.round(p/(sqm/3.3058)):0);
+      }
       if(p>0){stats[g].prices.push(p); stats[g].cnt++;}
       if(py>0) stats[g].pyeongs.push(py);
-      if(type==='아파트') stats[g].apt++;
-      if(type==='분양권') stats[g].pre++;
-      if(sqm>=84&&sqm<85) stats[g].prices84.push(p);
     });
     return stats;
   }
 
-  var cur = buildDistStats(yr);
-  var prev = buildDistStats(prevYr);
-  var dd = DATA.district||{};
+  var cur = buildStats(yr);
+  var prev = buildStats(prevYr);
 
   // KPI
-  var totCnt=0, totPrices=[], totPy=[];
-  DISTS.forEach(function(g){ var s=cur[g]; if(!s) return; totCnt+=s.cnt; totPrices=totPrices.concat(s.prices); totPy=totPy.concat(s.pyeongs); });
-  var prevCnt=0, prevPrices=[];
-  DISTS.forEach(function(g){ var s=prev[g]; if(!s) return; prevCnt+=s.cnt; prevPrices=prevPrices.concat(s.prices); });
-  var totAvg=avg(totPrices), prevAvg=avg(prevPrices);
+  var totCnt=0,totPrices=[],totPy=[];
+  DISTS.forEach(function(g){var s=cur[g];if(!s)return;totCnt+=s.cnt;totPrices=totPrices.concat(s.prices);totPy=totPy.concat(s.pyeongs);});
+  var prevCnt=0,prevPrices=[];
+  DISTS.forEach(function(g){var s=prev[g];if(!s)return;prevCnt+=s.cnt;prevPrices=prevPrices.concat(s.prices);});
+  var totAvg=avg(totPrices),prevAvg=avg(prevPrices);
   var cntDiff=prevCnt>0?Math.round((totCnt-prevCnt)/prevCnt*100):0;
   var priceDiff=prevAvg>0?Math.round((totAvg-prevAvg)/prevAvg*100):0;
   var makeYoY=function(d){return d>0?'<span style="color:var(--red)">▲'+d+'%</span>':'<span style="color:var(--accent3)">▼'+Math.abs(d)+'%</span>';};
+  var priceKpiLabel = trd==='sale'?'평균 매매가':trd==='jeonse'?'평균 전세가':'평균 환산보증금';
 
   document.getElementById('kpi-t1').innerHTML = [
     {label:yr+'년 거래량',val:totCnt.toLocaleString()+'건',badge:prevCnt?makeYoY(cntDiff)+'(전년比)':'',color:'var(--accent)'},
-    {label:'평균 매매가',val:fmt만(totAvg),badge:prevAvg?makeYoY(priceDiff)+'(전년比)':'',color:'var(--yellow)'},
+    {label:priceKpiLabel,val:fmt만(totAvg),badge:prevAvg?makeYoY(priceDiff)+'(전년比)':'',color:'var(--yellow)'},
     {label:'평당가',val:fmt평(avg(totPy)),badge:'',color:'var(--orange,#ff8c42)'},
     {label:'전년도 '+prevYr,val:prevCnt+'건',badge:fmt만(prevAvg),color:'var(--text3)'},
   ].map(function(k){
@@ -3338,7 +3357,19 @@ function renderDistTable(){
     '</div>';
   }).join('');
 
-  // 테이블
+  // 테이블 헤더 동적 교체
+  var thead = document.querySelector('#t1-table thead tr');
+  if(thead){
+    if(trd==='sale'){
+      thead.innerHTML='<th>공구</th><th>세대수</th><th>거래건수</th><th>아파트</th><th>분양권</th><th class="num">평균매매가</th><th class="num">전년比</th><th class="num">평당가</th><th class="num">84㎡평균</th><th class="num">84㎡최고</th><th>84㎡최고단지</th><th class="num">매매전환율</th>';
+    } else if(trd==='jeonse'){
+      thead.innerHTML='<th>공구</th><th>세대수</th><th>거래건수</th><th>신규</th><th>갱신</th><th class="num">평균전세가</th><th class="num">전년比</th><th class="num">평당가</th>';
+    } else {
+      thead.innerHTML='<th>공구</th><th>세대수</th><th>거래건수</th><th class="num">평균환산보증금</th><th class="num">전년比</th><th class="num">평당가</th>';
+    }
+  }
+
+  // 테이블 바디
   var html='';
   DISTS.forEach(function(g){
     var s=cur[g]||{prices:[],pyeongs:[],cnt:0,apt:0,pre:0,prices84:[]};
@@ -3348,25 +3379,48 @@ function renderDistTable(){
     var curAvg=avg(s.prices), prevAvgD=avg(ps.prices);
     var diff=prevAvgD>0?Math.round((curAvg-prevAvgD)/prevAvgD*100):null;
     var diffHtml=diff!==null?(diff>0?'<span style="color:var(--red);font-size:10px">▲'+diff+'%</span>':'<span style="color:var(--accent3);font-size:10px">▼'+Math.abs(diff)+'%</span>'):'-';
-    var avg84=avg(s.prices84);
-    var max84=d?d.max_84:0;
-    var max84unit=d?d.max_84_unit:'-';
     var units=d?d.units:0;
-    var turnover=s.cnt&&units?((s.cnt/units)*100).toFixed(1):'-';
-    html+='<tr>'+
-      '<td><span class="badge" style="background:'+color+'33;color:'+color+'">'+DIST_NAMES[g]+'</span></td>'+
-      '<td>'+(units?units.toLocaleString():'-')+'</td>'+
-      '<td><b>'+s.cnt+'</b></td>'+
-      '<td><span class="badge badge-apt">'+s.apt+'</span></td>'+
-      '<td><span class="badge badge-pre">'+s.pre+'</span></td>'+
-      '<td class="num">'+fmt천(curAvg)+'</td>'+
-      '<td class="num">'+diffHtml+'</td>'+
-      '<td class="num">'+fmt평(avg(s.pyeongs))+'</td>'+
-      '<td class="num" style="color:var(--accent)">'+fmt천(avg84)+'</td>'+
-      '<td class="num" style="color:var(--yellow)">'+fmt천(max84)+'</td>'+
-      '<td style="font-size:11px;color:var(--text2)">'+max84unit+'</td>'+
-      '<td class="num" style="color:var(--accent3)"><b>'+turnover+(turnover!=='-'?'%':'')+'</b></td>'+
-    '</tr>';
+    var distBadge='<td><span class="badge" style="background:'+color+'33;color:'+color+'">'+DIST_NAMES[g]+'</span></td>';
+    var unitsTd='<td>'+(units?units.toLocaleString():'-')+'</td>';
+
+    if(trd==='sale'){
+      var avg84=avg(s.prices84);
+      var max84=d?d.max_84:0; var max84unit=d?d.max_84_unit:'-';
+      var turnover=s.cnt&&units?((s.cnt/units)*100).toFixed(1):'-';
+      html+='<tr>'+distBadge+unitsTd+
+        '<td><b>'+s.cnt+'</b></td>'+
+        '<td><span class="badge badge-apt">'+s.apt+'</span></td>'+
+        '<td><span class="badge badge-pre">'+s.pre+'</span></td>'+
+        '<td class="num">'+fmt천(curAvg)+'</td>'+
+        '<td class="num">'+diffHtml+'</td>'+
+        '<td class="num">'+fmt평(avg(s.pyeongs))+'</td>'+
+        '<td class="num" style="color:var(--accent)">'+fmt천(avg84)+'</td>'+
+        '<td class="num" style="color:var(--yellow)">'+fmt천(max84)+'</td>'+
+        '<td style="font-size:11px;color:var(--text2)">'+max84unit+'</td>'+
+        '<td class="num" style="color:var(--accent3)"><b>'+turnover+(turnover!=='-'?'%':'')+'</b></td>'+
+      '</tr>';
+    } else if(trd==='jeonse'){
+      // 전세: 신규/갱신 수 집계
+      var newCnt=0,renCnt=0;
+      if(G.rentData) G.rentData.filter(function(r){
+        return r['전월세구분']==='전세'&&parseInt(r['공구'])===g&&yrFilter(r,yr)&&t1AreaFilter(r);
+      }).forEach(function(r){ if((r['계약구분']||'').indexOf('신규')>=0) newCnt++; else renCnt++; });
+      html+='<tr>'+distBadge+unitsTd+
+        '<td><b>'+s.cnt+'</b></td>'+
+        '<td><span style="color:var(--accent)">'+newCnt+'</span></td>'+
+        '<td><span style="color:var(--text3)">'+renCnt+'</span></td>'+
+        '<td class="num">'+fmt천(curAvg)+'</td>'+
+        '<td class="num">'+diffHtml+'</td>'+
+        '<td class="num">'+fmt평(avg(s.pyeongs))+'</td>'+
+      '</tr>';
+    } else {
+      html+='<tr>'+distBadge+unitsTd+
+        '<td><b>'+s.cnt+'</b></td>'+
+        '<td class="num">'+fmt천(curAvg)+'</td>'+
+        '<td class="num">'+diffHtml+'</td>'+
+        '<td class="num">'+fmt평(avg(s.pyeongs))+'</td>'+
+      '</tr>';
+    }
   });
   document.getElementById('t1-tbody').innerHTML = html;
 }
@@ -3563,13 +3617,13 @@ function renderT1TopTable(){
 
   // 헤더/colgroup
   if(trd==='sale'){
-    if(cg) cg.innerHTML='<col style="width:60px"><col style="width:auto"><col style="width:50px"><col style="width:54px"><col style="width:50px"><col style="width:80px"><col style="width:80px"><col style="width:36px"><col style="width:82px"><col style="width:52px">';
+    if(cg) cg.innerHTML='<col style="width:60px"><col style="width:180px"><col style="width:50px"><col style="width:56px"><col style="width:52px"><col style="width:80px"><col style="width:80px"><col style="width:38px"><col style="width:84px"><col style="width:54px">';
     if(thead) thead.innerHTML='<th style="text-align:center">공구</th><th>단지명</th><th style="text-align:center">구분</th><th class="num">전용㎡</th><th class="num">분양평형</th><th class="num" style="color:var(--yellow)">거래금액</th><th class="num" style="color:#ff6b35">평당가</th><th class="num">층</th><th class="num">계약년월일</th><th style="text-align:center">거래유형</th>';
   } else if(trd==='jeonse'){
-    if(cg) cg.innerHTML='<col style="width:60px"><col style="width:auto"><col style="width:56px"><col style="width:54px"><col style="width:86px"><col style="width:86px"><col style="width:38px"><col style="width:82px"><col style="width:56px">';
+    if(cg) cg.innerHTML='<col style="width:60px"><col style="width:200px"><col style="width:58px"><col style="width:56px"><col style="width:88px"><col style="width:88px"><col style="width:40px"><col style="width:84px"><col style="width:58px">';
     if(thead) thead.innerHTML='<th style="text-align:center">공구</th><th>단지명</th><th class="num">전용㎡</th><th class="num">분양평형</th><th class="num" style="color:var(--accent)">보증금</th><th class="num" style="color:#ff6b35">평당가</th><th class="num">층</th><th class="num">계약년월일</th><th style="text-align:center">계약구분</th>';
   } else {
-    if(cg) cg.innerHTML='<col style="width:60px"><col style="width:auto"><col style="width:50px"><col style="width:50px"><col style="width:72px"><col style="width:60px"><col style="width:78px"><col style="width:74px"><col style="width:34px"><col style="width:76px"><col style="width:50px">';
+    if(cg) cg.innerHTML='<col style="width:60px"><col style="width:150px"><col style="width:50px"><col style="width:50px"><col style="width:72px"><col style="width:60px"><col style="width:78px"><col style="width:74px"><col style="width:34px"><col style="width:76px"><col style="width:50px">';
     if(thead) thead.innerHTML='<th style="text-align:center">공구</th><th>단지명</th><th class="num">전용㎡</th><th class="num">분양평형</th><th class="num" style="color:var(--accent)">보증금</th><th class="num" style="color:var(--yellow)">월세</th><th class="num" style="color:var(--accent2,#00e5a0)">환산보증금</th><th class="num" style="color:#ff6b35">평당가</th><th class="num">층</th><th class="num">계약년월일</th><th style="text-align:center">계약구분</th>';
   }
 
