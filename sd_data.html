@@ -1647,43 +1647,60 @@ var _zoomOn = false;
 
 function toggleZoom(){
   _zoomOn = !_zoomOn;
-  // body.style.zoom 직접 설정 (누적 방지)
-  document.body.style.zoom = _zoomOn ? '1.5' : '1';
-  document.body.classList.toggle('zoom-mode', _zoomOn);
   var btn = document.getElementById('zoom-btn');
-  if(btn){
-    btn.textContent = _zoomOn ? '🎬 촬영모드 ON' : '🎬 촬영모드';
-    btn.style.background = _zoomOn ? 'rgba(255,107,53,.35)' : 'rgba(255,107,53,.12)';
-    btn.style.borderColor = _zoomOn ? '#ff6b35' : 'rgba(255,107,53,.4)';
-    btn.style.color = _zoomOn ? '#fff' : '#ff6b35';
-  }
-  // zoom 시 main 컨테이너 너비를 뷰포트 기준으로 고정
   var main = document.querySelector('.main');
-  if(main){
-    if(_zoomOn){
-      // zoom:1.5 상태에서 실제 뷰포트 너비의 66.67%로 제한 → 화면 벗어남 방지
-      var vw = window.innerWidth;
+
+  if(_zoomOn){
+    // ── 촬영모드 ON
+    // main 너비를 먼저 vw/1.5로 제한 → 차트가 그 너비 기준으로 resize
+    var vw = window.innerWidth;
+    if(main){
       main.style.width = Math.floor(vw / 1.5) + 'px';
       main.style.maxWidth = Math.floor(vw / 1.5) + 'px';
       main.style.overflowX = 'hidden';
-    } else {
+    }
+    // zoom 적용
+    document.body.style.zoom = '1.5';
+    document.body.classList.add('zoom-mode');
+    if(btn){
+      btn.textContent = '🎬 촬영모드 ON';
+      btn.style.background = 'rgba(255,107,53,.35)';
+      btn.style.borderColor = '#ff6b35';
+      btn.style.color = '#fff';
+    }
+    setTimeout(function(){
+      Object.keys(charts).forEach(function(k){ if(charts[k]&&charts[k].resize) charts[k].resize(); });
+      Object.keys(dcCharts).forEach(function(k){ if(dcCharts[k]&&dcCharts[k].resize) dcCharts[k].resize(); });
+      if(charts.t1Trend&&charts.t1Trend.resize) charts.t1Trend.resize();
+    }, 150);
+
+  } else {
+    // ── 촬영모드 OFF
+    // 1) zoom 먼저 해제
+    document.body.style.zoom = '1';
+    document.body.classList.remove('zoom-mode');
+    if(btn){
+      btn.textContent = '🎬 촬영모드';
+      btn.style.background = 'rgba(255,107,53,.12)';
+      btn.style.borderColor = 'rgba(255,107,53,.4)';
+      btn.style.color = '#ff6b35';
+    }
+    // 2) main 너비 복원
+    if(main){
       main.style.width = '';
       main.style.maxWidth = '';
       main.style.overflowX = '';
     }
+    // 3) 브라우저 레이아웃 재계산 후 차트 resize
+    //    requestAnimationFrame 2번으로 레이아웃 완전 안정 후 resize
+    requestAnimationFrame(function(){
+      requestAnimationFrame(function(){
+        Object.keys(charts).forEach(function(k){ if(charts[k]&&charts[k].resize) charts[k].resize(); });
+        Object.keys(dcCharts).forEach(function(k){ if(dcCharts[k]&&dcCharts[k].resize) dcCharts[k].resize(); });
+        if(charts.t1Trend&&charts.t1Trend.resize) charts.t1Trend.resize();
+      });
+    });
   }
-  // 차트 resize - zoom 변경 후 레이아웃 재계산
-  setTimeout(function(){
-    Object.keys(charts).forEach(function(k){
-      if(charts[k] && charts[k].resize) charts[k].resize();
-    });
-    Object.keys(dcCharts).forEach(function(k){
-      if(dcCharts[k] && dcCharts[k].resize) dcCharts[k].resize();
-    });
-    if(typeof charts.t1Trend !== 'undefined' && charts.t1Trend && charts.t1Trend.resize){
-      charts.t1Trend.resize();
-    }
-  }, 150);
 }
 
 // 개별 확대 (Lightbox) - 촬영모드에서는 비활성
