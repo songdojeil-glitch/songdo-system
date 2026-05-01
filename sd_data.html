@@ -2172,6 +2172,14 @@ function renderTab0(){
     var histMax=0, histMaxUnit='', histMaxYm='', histMaxPyeong='';
     var recentMax=0, recentMaxUnit='', recentMaxYm='', recentMaxPyeong='';
     if(G.saleData){
+      // 단지+전용면적별 분양평형 사전 색인 (누락 데이터 보완용)
+      var pyeongIdx = {};
+      G.saleData.forEach(function(r){
+        var key = (r['단지명']||'')+'_'+Math.round(parseFloat(r['전용(㎡)']||r['전용']||0)*10);
+        var bp = parseInt(r['분양평형']||0);
+        if(bp>0 && !pyeongIdx[key]) pyeongIdx[key] = bp;
+      });
+
       G.saleData.forEach(function(r){
         if(r['해제사유']&&r['해제사유']==='Y') return;
         if(parseInt(r['공구'])!==g) return;
@@ -2179,8 +2187,13 @@ function renderTab0(){
         var p=parseFloat(r['거래금액']||0); if(!p) return;
         var ym2=String(r['계약년월']||'');
         var ymStr=ym2.length>=6?ym2.slice(0,4)+'.'+ym2.slice(4,6):'';
+        // 분양평형: 저장값 우선, 없으면 같은 단지+전용면적의 다른 거래에서 보완
         var bpyeong=parseInt(r['분양평형']||0);
-        var py=bpyeong>0?bpyeong+'평':'';  // fallback 없음 - 0이면 빈칸
+        if(!bpyeong){
+          var key=(r['단지명']||'')+'_'+Math.round(parseFloat(r['전용(㎡)']||r['전용']||0)*10);
+          bpyeong=pyeongIdx[key]||0;
+        }
+        var py=bpyeong>0?bpyeong+'평':'';
         // 역대 최고가
         if(p>histMax){
           histMax=p; histMaxUnit=r['단지명']||'';
