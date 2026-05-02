@@ -990,7 +990,7 @@ body.zoom-mode .chart-wrap canvas {
         <span style="font-size:12px;font-weight:700">매매 거래 목록</span>
         <span style="font-size:10px;color:var(--text3)" id="t3-cnt"></span>
       </div>
-      <div class="table-scroll">
+      <div class="table-scroll" id="t3-table-scroll" style="max-height:calc(100vh - 420px);min-height:300px">
         <table class="data-table">
           <thead>
             <tr>
@@ -4376,6 +4376,14 @@ function renderTab3(){
   document.getElementById('t3-tbody').innerHTML = html;
   renderAreaDistChart(rows);
   renderMonthlyChart(rows);
+  // 테이블 높이 동적 조정
+  setTimeout(function(){
+    var scroll=document.getElementById('t3-table-scroll');
+    if(!scroll) return;
+    var rect=scroll.getBoundingClientRect();
+    var avail=window.innerHeight - rect.top - 12;
+    scroll.style.maxHeight=Math.max(avail,200)+'px';
+  },50);
 }
 
 function renderAreaDistChart(rows){
@@ -4389,8 +4397,25 @@ function renderAreaDistChart(rows){
   var labels=['10평대','20평대','30평대(84㎡)','40평대','50평대','60평대이상'];
   var vals=[cnt[10],cnt[20],cnt[30],cnt[40],cnt[50],cnt[60]];
   var colors=['#95a5a6','#4ecdc4','#00d4ff','#ffd700','#b57bee','#ff6b35'];
-  charts.areaDist=new Chart(ctx,{type:'doughnut',data:{labels:labels,datasets:[{data:vals,backgroundColor:colors.map(function(c){return c+'cc';}),borderColor:colors,borderWidth:1}]},
-  options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'right',labels:{color:'#8899bb',font:{size:10},boxWidth:12}}}}});
+  var labelsWithCnt=labels.map(function(l,i){return vals[i]>0?l+' '+vals[i]+'건':l;});
+  charts.areaDist=new Chart(ctx,{type:'doughnut',data:{labels:labelsWithCnt,datasets:[{data:vals,backgroundColor:colors.map(function(c){return c+'cc';}),borderColor:colors,borderWidth:1}]},
+  options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'right',labels:{color:'#8899bb',font:{size:10},boxWidth:12}},
+  tooltip:{callbacks:{label:function(ctx){return ' '+ctx.label+': '+ctx.raw+'건 ('+Math.round(ctx.raw/vals.reduce(function(a,b){return a+b;},0)*100)+'%)';}}}}}});
+  // 클릭 확대
+  var wrap2=document.getElementById('chart-area-dist').closest('.chart-card');
+  if(wrap2&&!wrap2._zoomBound){
+    wrap2._zoomBound=true; wrap2.style.cursor='pointer'; wrap2.title='클릭하여 확대';
+    wrap2.addEventListener('click',function(){
+      openChartZoom('면적별 거래 분포','areaDist-zoom');
+      setTimeout(function(){
+        var ctx3=document.getElementById('areaDist-zoom-canvas').getContext('2d');
+        new Chart(ctx3,{type:'doughnut',data:{labels:labelsWithCnt,datasets:[{data:vals,backgroundColor:colors.map(function(c){return c+'cc';}),borderColor:colors,borderWidth:2}]},
+        options:{responsive:true,maintainAspectRatio:false,
+        plugins:{legend:{position:'right',labels:{color:'#8899bb',font:{size:13},boxWidth:16}},
+        tooltip:{callbacks:{label:function(ctx){return ' '+ctx.label+': '+ctx.raw+'건';}}}}}});
+      },100);
+    });
+  }
 }
 
 function renderMonthlyChart(rows){
@@ -4405,13 +4430,85 @@ function renderMonthlyChart(rows){
     monthly[key]++;
   });
   var keys=Object.keys(monthly).sort().slice(-18);
+  var vals=keys.map(function(k){return monthly[k];});
+  var monthlyLabelPlugin={id:'monthlyLabel',afterDatasetsDraw:function(chart){
+    var cx=chart.ctx;
+    chart.data.datasets.forEach(function(ds,di){
+      var meta=chart.getDatasetMeta(di);
+      meta.data.forEach(function(pt,i){
+        var v=ds.data[i]; if(!v) return;
+        cx.save();
+        cx.fillStyle='#00d4ff';
+        cx.font='bold 9px sans-serif';
+        cx.textAlign='center';
+        cx.textBaseline='bottom';
+        cx.fillText(v, pt.x, pt.y-4);
+        cx.restore();
+      });
+    });
+  }};
   charts.monthly=new Chart(ctx,{type:'line',data:{labels:keys,datasets:[{
-    data:keys.map(function(k){return monthly[k];}),
+    data:vals,
     borderColor:'#00d4ff',backgroundColor:'rgba(0,212,255,.15)',
     fill:true,tension:0.4,pointRadius:3,pointBackgroundColor:'#00d4ff'
-  }]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
+  }]},options:{responsive:true,maintainAspectRatio:false,
+  layout:{padding:{top:22}},
+  plugins:{legend:{display:false}},
   scales:{x:{ticks:{color:'#8899bb',font:{size:9}},grid:{display:false}},
-          y:{ticks:{color:'#8899bb',font:{size:10}},grid:{color:'rgba(42,58,82,.5)'}}}}});
+          y:{ticks:{color:'#8899bb',font:{size:10}},grid:{color:'rgba(42,58,82,.5)'}}}},
+  plugins:[monthlyLabelPlugin]});
+  // 클릭 확대
+  var wrap=document.getElementById('chart-monthly').closest('.chart-card');
+  if(wrap&&!wrap._zoomBound){
+    wrap._zoomBound=true;
+    wrap.style.cursor='pointer';
+    wrap.title='클릭하여 확대';
+    wrap.addEventListener('click',function(){
+      openChartZoom('월별 거래량 추이','monthly-zoom');
+      setTimeout(function(){
+        var ctx2=document.getElementById('monthly-zoom-canvas').getContext('2d');
+        var zp={id:'monthlyZoomLabel',afterDatasetsDraw:function(chart){
+          var cx=chart.ctx;
+          chart.data.datasets.forEach(function(ds,di){
+            var meta=chart.getDatasetMeta(di);
+            meta.data.forEach(function(pt,i){
+              var v=ds.data[i]; if(!v) return;
+              cx.save(); cx.fillStyle='#00d4ff'; cx.font='bold 11px sans-serif';
+              cx.textAlign='center'; cx.textBaseline='bottom';
+              cx.fillText(v,pt.x,pt.y-6); cx.restore();
+            });
+          });
+        }};
+        new Chart(ctx2,{type:'line',data:{labels:keys,datasets:[{
+          data:vals,borderColor:'#00d4ff',backgroundColor:'rgba(0,212,255,.15)',
+          fill:true,tension:0.4,pointRadius:5,pointBackgroundColor:'#00d4ff'
+        }]},options:{responsive:true,maintainAspectRatio:false,
+        layout:{padding:{top:28}},
+        plugins:{legend:{display:false}},
+        scales:{x:{ticks:{color:'#8899bb',font:{size:11}},grid:{display:false}},
+                y:{ticks:{color:'#8899bb',font:{size:12}},grid:{color:'rgba(42,58,82,.5)'}}}},
+        plugins:[zp]});
+      },100);
+    });
+  }
+}
+
+// ── 차트 확대 모달
+function openChartZoom(title, id){
+  var existing=document.getElementById('chart-zoom-overlay');
+  if(existing) existing.remove();
+  var overlay=document.createElement('div');
+  overlay.id='chart-zoom-overlay';
+  overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.9);z-index:9200;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px';
+  overlay.innerHTML='<div style="width:100%;max-width:1200px;background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:24px;position:relative">'
+    +'<div style="font-size:14px;font-weight:700;color:var(--text1);margin-bottom:16px">📈 '+title+'</div>'
+    +'<div style="height:500px"><canvas id="'+id+'-canvas"></canvas></div>'
+    +'<button id="chart-zoom-close-btn" style="position:absolute;top:12px;right:12px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:4px 12px;color:var(--text1);cursor:pointer;font-size:13px">✕ 닫기</button>'
+    +'</div>';
+  overlay.addEventListener('click',function(e){ if(e.target===overlay) overlay.remove(); });
+  document.body.appendChild(overlay);
+  var closeBtn=document.getElementById('chart-zoom-close-btn');
+  if(closeBtn) closeBtn.addEventListener('click',function(){ overlay.remove(); });
 }
 
 // ── TAB4
