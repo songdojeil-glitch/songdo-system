@@ -1524,8 +1524,13 @@ function viewContractFile(url, name){
     dlAnchor.textContent='⬇️ 다운로드';
     dlBtn=dlAnchor.outerHTML;
   } else {
-    dlBtn='<a href="'+url+'" download="'+(name||'계약서')+'" target="_blank" style="background:#1565c0;color:#fff;padding:5px 12px;border-radius:6px;text-decoration:none;font-size:12px">⬇️ 다운로드</a>';
+    // Firebase Storage URL은 cross-origin → fetch blob → 강제 다운로드
+    var safeName = JSON.stringify(name||'계약서');
+    var safeUrl  = JSON.stringify(url);
+    dlBtn='<button id="cfile-dl-btn" style="background:#1565c0;color:#fff;padding:5px 12px;border-radius:6px;border:none;font-size:12px;cursor:pointer">⬇️ 다운로드</button>';
   }
+  var _dlUrl  = url;
+  var _dlName = name||'계약서';
   var contentHtml;
   if(isImg){
     contentHtml='<div style="overflow:auto;padding:16px;flex:1;text-align:center"><img src="'+url+'" style="max-width:100%;max-height:70vh;border-radius:6px;box-shadow:0 2px 12px rgba(0,0,0,.2)"></div>';
@@ -1544,8 +1549,30 @@ function viewContractFile(url, name){
     +contentHtml
     +'</div>';
   modal.onclick=function(e){if(e.target===modal)modal.remove();};
-  // 닫기 버튼 이벤트
   modal.querySelector('#cfile-modal-close').addEventListener('click',function(){modal.remove();});
+  // 다운로드 버튼: fetch → blob → 강제 저장
+  var dlBtn2=modal.querySelector('#cfile-dl-btn');
+  if(dlBtn2){
+    dlBtn2.addEventListener('click',function(){
+      dlBtn2.textContent='⏳ 다운로드 중...';
+      dlBtn2.disabled=true;
+      fetch(_dlUrl)
+        .then(function(res){return res.blob();})
+        .then(function(blob){
+          var objUrl=URL.createObjectURL(blob);
+          var a=document.createElement('a');
+          a.href=objUrl; a.download=_dlName; a.click();
+          setTimeout(function(){URL.revokeObjectURL(objUrl);},3000);
+          dlBtn2.textContent='✅ 완료';
+        })
+        .catch(function(e){
+          // fetch 실패 시 새 탭으로 fallback
+          window.open(_dlUrl,'_blank');
+          dlBtn2.textContent='⬇️ 다운로드';
+          dlBtn2.disabled=false;
+        });
+    });
+  }
   document.body.appendChild(modal);
 }
 
