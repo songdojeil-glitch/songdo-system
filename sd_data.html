@@ -2692,7 +2692,8 @@ function renderTab0(){
   if(G.saleData){
     G.saleData.filter(function(r){
       if(r['해제사유']&&r['해제사유']!=='-'&&r['해제사유']!=='') return false;
-      if(!yrFilter(r,yr)) return false;
+      var ym=parseInt(r['계약년월']||0);
+      if(!subPeriodFilter(ym, yr, period, G.subPeriod||0)) return false;
       if(!t0DistFilter(r)) return false;
       return areaFilter(r);
     }).forEach(function(r){
@@ -2719,9 +2720,14 @@ function renderTab0(){
       distStats[g].turnCnt++;
     });
     // 전년 매매 평당가 집계
+    // 전년比: recent는 연도 전체 비교, 특정연도는 같은 분기/월 비교
+    var prevSubPeriod = (yr==='recent') ? 0 : (G.subPeriod||0);
+    var prevPeriod    = (yr==='recent') ? 'annual' : period;
+    var prevYrForSub  = (yr==='recent') ? 'recent_prev' : (parseInt(yr)-1);
     G.saleData.filter(function(r){
       if(r['해제사유']&&r['해제사유']!=='-'&&r['해제사유']!=='') return false;
-      if(!yrFilter(r,prevYr)) return false;
+      var ym=parseInt(r['계약년월']||0);
+      if(!subPeriodFilter(ym, prevYrForSub, prevPeriod, prevSubPeriod)) return false;
       if(!t0DistFilter(r)) return false;
       return areaFilter(r);
     }).forEach(function(r){
@@ -2744,14 +2750,15 @@ function renderTab0(){
       var p = parseFloat(r['보증금']||r['보증금액']||0);
       var py = parseFloat(r['평당가']||0);
       if(!py){var sqm=parseFloat(r['전용(㎡)']||0); if(sqm>0&&p>0) py=Math.round(p/(sqm/3.3058));}
-      // 현재
-      if(yrFilter(r,yr)){
+      // 현재: subPeriod 연동
+      var ym2=parseInt(r['계약년월']||0);
+      if(subPeriodFilter(ym2, yr, period, G.subPeriod||0)){
         if(!distRentStats[g]) distRentStats[g]={prices:[],pyeongs:[]};
         if(p>0) distRentStats[g].prices.push(p);
         if(py>0) distRentStats[g].pyeongs.push(py);
       }
-      // 전년
-      if(yrFilter(r,prevYr)){
+      // 전년: 같은 분기/월 기준
+      if(subPeriodFilter(ym2, prevYrForSub, prevPeriod, prevSubPeriod)){
         if(!distRentStatsPrev[g]) distRentStatsPrev[g]={prices:[],pyeongs:[]};
         if(p>0) distRentStatsPrev[g].prices.push(p);
         if(py>0) distRentStatsPrev[g].pyeongs.push(py);
@@ -2844,7 +2851,9 @@ function renderTab0(){
     var prevDs = {prices:[]};
     if(G.saleData){
       G.saleData.filter(function(r){
-        if(!yrFilter(r,prevYr)||parseInt(r['공구'])!==g) return false;
+        var ym3=parseInt(r['계약년월']||0);
+        if(!subPeriodFilter(ym3, prevYrForSub, prevPeriod, prevSubPeriod)) return false;
+        if(parseInt(r['공구'])!==g) return false;
         return areaFilter(r);
       }).forEach(function(r){
         var p=parseFloat(r['거래금액']||0); if(p>0) prevDs.prices.push(p);
@@ -2854,6 +2863,22 @@ function renderTab0(){
     var diffD = prevAvgD>0?Math.round((liveAvg-prevAvgD)/prevAvgD*100):0;
     var diffColor = diffD>0?'var(--red)':diffD<0?'var(--accent3)':'var(--text3)';
 
+    // 카드 기간 라벨
+    var cardPeriodLabel = (function(){
+      if(period==='annual') return yr==='recent'?'최근1년':yr+'년';
+      var sub=G.subPeriod||0;
+      var now2=new Date();
+      if(yr==='recent'){
+        return period==='quarter'?'최근4분기':'최근12개월';
+      }
+      if(period==='quarter'){
+        var q=sub||Math.ceil((now2.getMonth()+1)/3);
+        return yr+'년 '+q+'Q';
+      }
+      var m=sub||(now2.getMonth()+1);
+      return yr+'년 '+m+'월';
+    })();
+
     if(!d&&!ds.cnt) return '';
     return '<div class="dist-card zoomable" style="--dist-color:'+color+'" onclick="openZoom(this)">'+
       '<div class="dist-card-header">'+
@@ -2862,7 +2887,7 @@ function renderTab0(){
       '</div>'+
       '<div class="dist-stats" style="grid-template-columns:1fr 1fr;gap:5px">'+
         '<div class="dist-stat-item">'+
-          '<div class="dist-stat-label">매매 평균가</div>'+
+          '<div class="dist-stat-label">매매 평균가 <span style="color:var(--text3);font-size:9px">('+cardPeriodLabel+')</span></div>'+
           '<div class="dist-stat-val" style="font-size:12px">'+fmt만(liveAvg)+
             (diffD?'<span style="font-size:9px;color:'+diffColor+';margin-left:2px">'+(diffD>0?'▲':'▼')+Math.abs(diffD)+'%</span>':'')+'</div></div>'+
         '<div class="dist-stat-item">'+
@@ -2870,7 +2895,7 @@ function renderTab0(){
           '<div class="dist-stat-val" style="font-size:12px">'+fmt평(livePyeong)+
             (pyDiffD?'<span style="font-size:9px;color:'+pyDiffColor+';margin-left:2px">'+(pyDiffD>0?'▲':'▼')+Math.abs(pyDiffD)+'%</span>':'')+'</div></div>'+
         '<div class="dist-stat-item">'+
-          '<div class="dist-stat-label">전세 평균가(신규)</div>'+
+          '<div class="dist-stat-label">전세 평균가 <span style="color:var(--text3);font-size:9px">('+cardPeriodLabel+')</span></div>'+
           '<div class="dist-stat-val" style="font-size:12px;color:var(--accent3)">'+fmt만(rentAvg)+
             (rentAvgDiff?'<span style="font-size:9px;color:'+rentAvgColor+';margin-left:2px">'+(rentAvgDiff>0?'▲':'▼')+Math.abs(rentAvgDiff)+'%</span>':'')+'</div></div>'+
         '<div class="dist-stat-item">'+
@@ -2899,7 +2924,7 @@ function renderTab0(){
         '</div>'+
       '</div>'+
       '<div class="dist-turnover">'+
-        '<span style="font-size:9px;color:var(--text3);min-width:50px">전환율<span style="color:var(--border)">|15%</span></span>'+
+        '<span style="font-size:9px;color:var(--text3);min-width:50px">전환율<span style="color:var(--border);font-size:8px">(연간)</span></span>'+
         '<div class="turnover-bar-wrap"><div class="turnover-bar" style="width:'+turnPct.toFixed(0)+'%"></div></div>'+
         '<span class="turnover-val">'+turnDisp+'%</span>'+
       '</div>'+
