@@ -44,9 +44,71 @@ body{margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',
 </style>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-storage-compat.js"></script>
-  <!-- Firebase Storage 어댑터 (window.storage 호환) -->
-  <script src="firebase-storage.js"></script>
+  <script>
+  // ── Firebase 설정 + window.storage 어댑터 (인라인)
+  var _fbApp, _fbDb;
+  try {
+    var firebaseConfig = {
+      apiKey: "AIzaSyCMYoUBhRv_NkKeHmPqgXoqqXUjVsjEJPs",
+      authDomain: "songdojeil-202604.firebaseapp.com",
+      databaseURL: "https://songdojeil-202604-default-rtdb.asia-southeast1.firebasedatabase.app",
+      projectId: "songdojeil-202604",
+      storageBucket: "songdojeil-202604.appspot.com",
+      appId: "1:862241407812:web:abc123"
+    };
+    if (!firebase.apps.length) {
+      _fbApp = firebase.initializeApp(firebaseConfig);
+    } else {
+      _fbApp = firebase.app();
+    }
+    _fbDb = firebase.database(_fbApp);
+  } catch(e) { console.warn('Firebase 초기화 오류:', e); }
+
+  // window.storage 어댑터 - Firebase Realtime DB 기반
+  window.storage = {
+    get: function(key) {
+      return new Promise(function(resolve, reject) {
+        if (!_fbDb) { resolve(null); return; }
+        _fbDb.ref('storage/' + key).once('value')
+          .then(function(snap) {
+            var v = snap.val();
+            resolve(v ? { key: key, value: v } : null);
+          })
+          .catch(function(e) { console.error('storage.get 오류:', e); resolve(null); });
+      });
+    },
+    set: function(key, value) {
+      return new Promise(function(resolve, reject) {
+        if (!_fbDb) { resolve(null); return; }
+        _fbDb.ref('storage/' + key).set(value)
+          .then(function() { resolve({ key: key, value: value }); })
+          .catch(function(e) { console.error('storage.set 오류:', e); resolve(null); });
+      });
+    },
+    delete: function(key) {
+      return new Promise(function(resolve, reject) {
+        if (!_fbDb) { resolve(null); return; }
+        _fbDb.ref('storage/' + key).remove()
+          .then(function() { resolve({ key: key, deleted: true }); })
+          .catch(function(e) { console.error('storage.delete 오류:', e); resolve(null); });
+      });
+    },
+    list: function(prefix) {
+      return new Promise(function(resolve, reject) {
+        if (!_fbDb) { resolve({ keys: [] }); return; }
+        _fbDb.ref('storage').once('value')
+          .then(function(snap) {
+            var keys = [];
+            snap.forEach(function(child) {
+              if (!prefix || child.key.startsWith(prefix)) keys.push(child.key);
+            });
+            resolve({ keys: keys });
+          })
+          .catch(function(e) { resolve({ keys: [] }); });
+      });
+    }
+  };
+  </script>
 </head>
 <body>
 <!-- ═══ PIN 인증 체크 ═══ -->
@@ -1028,22 +1090,62 @@ function onCDeal(){
   var isPunyang=d==='분양권매매';
   var isRenewal=nr==='갱신재계약';
   var isApt=['아파트','오피스텔'].includes(t);
+
+  // ── 매매/분양권: 신규갱신 "해당없음" 처리
+  var nrEl=document.getElementById('fc-newrenewal');
+  var nrWrap=nrEl?nrEl.closest('div[style]')||nrEl.parentElement:null;
+  if(nrEl){
+    if(isMae){
+      nrEl.value='해당없음';
+      nrEl.disabled=true;
+      nrEl.style.color='#aaa';
+      // 해당없음 옵션 추가(없으면)
+      if(!Array.from(nrEl.options).find(function(o){return o.value==='해당없음';})){
+        var opt=document.createElement('option');
+        opt.value='해당없음';opt.textContent='해당없음';
+        nrEl.insertBefore(opt,nrEl.firstChild);
+      }
+      nrEl.value='해당없음';
+    } else {
+      nrEl.disabled=false;
+      nrEl.style.color='';
+      // 해당없음 옵션 제거
+      var noOpt=Array.from(nrEl.options).find(function(o){return o.value==='해당없음';});
+      if(noOpt) nrEl.removeChild(noOpt);
+      if(nrEl.value==='해당없음') nrEl.value='신규';
+    }
+  }
+
+  // ── 매매/분양권: 만기일 "해당없음" 처리
+  var exEl=document.getElementById('fc-expiry');
+  var exLabel=document.querySelector('label[for="fc-expiry"]')||
+    (exEl?exEl.previousElementSibling:null);
+  if(exEl){
+    if(isMae){
+      exEl.disabled=true;
+      exEl.style.color='#aaa';
+      exEl.placeholder='해당없음';
+      if(!exEl.value) exEl.value='';
+    } else {
+      exEl.disabled=false;
+      exEl.style.color='';
+      exEl.placeholder='';
+    }
+  }
+
   // 가격 레이블
   if(!isPunyang){
     var lbl=d==='전세'?'전세금':isMae&&!isKwon?'매매가':isKwon?'권리금':'';
     document.getElementById('fc-p1l').textContent=lbl;
   }
-  // 임대차/월세/임대는 fc-p1w(가격) 숨기고 보증금+월세만 표시
   document.getElementById('fc-p1w').style.display=(isPunyang||isWol)?'none':'block';
   document.getElementById('fc-p2w').style.display=(isWol||isKwon)?'block':'none';
   document.getElementById('fc-p3w').style.display=(isWol||isKwon)?'block':'none';
   document.getElementById('fc-period-wrap').style.display=isMae?'none':'block';
-  // 분양권/권리/상가임대인
   var puWrap=document.getElementById('fc-punyang-wrap');
   if(puWrap)puWrap.style.display=isPunyang?'block':'none';
   var llWrap=document.getElementById('fc-landlord-wrap');
   if(llWrap)llWrap.style.display=isKwon?'block':'none';
-  // 갱신청구권
   var rrWrap=document.getElementById('fc-renewal-right-wrap');
   if(rrWrap)rrWrap.style.display=(isRenewal&&isApt&&!isMae)?'block':'none';
 }
@@ -1202,7 +1304,7 @@ async function analyzeContractFile(){
           },
           {
             type:'text',
-            text: '이 계약서 이미지에서 정보를 추출해서 JSON만 출력하세요. 다른 텍스트 없이 순수 JSON 객체만 출력하세요.\n\n출력할 JSON 키:\n- type: 아파트|상가|오피스텔|사무실|토지|분양권|권리|생활숙박시설\n- deal: 전세|임대차|매매|월세|임대|분양권매매\n- bldg: 건물명(단지명, 타워명)\n- dong: 동\n- ho: 호수\n- addr: 전체 주소\n- area: 전용면적(숫자만, 예: 46.41)\n- cdate: 계약일 YYYY-MM-DD\n- fdate: 잔금일(임대차는 잔금일/인도일) YYYY-MM-DD\n- expiry: 만기일 YYYY-MM-DD (임대차기간 종료일)\n- seller: 임대인 또는 매도인 성명\n- sellerTel: 임대인/매도인 휴대전화\n- buyer: 임차인 또는 매수인 성명\n- buyerTel: 임차인/매수인 휴대전화\n- price: 전세금 또는 매매가 (숫자, 예: 30000000)\n- deposit: 보증금 (월세/임대차 계약의 보증금, 숫자)\n- monthly: 월세 금액 (숫자)\n- period: 계약기간 개월수 (숫자만, 예: 24)\n- conditions: 특약사항 전체 내용을 요약 없이 그대로 모두 기록\n- agencySeller: 계약서 하단 좌측(임대인측) 중개업소명. 송도제일공인중개사사무소이면 "송도제일공인"으로 기록\n- agencyBuyer: 계약서 하단 우측(임차인측) 중개업소명. 송도제일공인중개사사무소이면 "송도제일공인"으로 기록\n\n주의사항:\n- 임대차 계약에서 보증금과 월세가 모두 있으면 deposit과 monthly 모두 입력\n- price는 전세금이나 매매가에만 사용, 임대차 보증금은 deposit에 입력\n- conditions는 특약사항 전체를 빠짐없이 그대로 기록\n- 없는 값은 빈 문자열("")'
+            text: '이 계약서 이미지에서 정보를 추출해서 JSON만 출력하세요. 다른 텍스트 없이 순수 JSON 객체만 출력하세요.\n\n출력할 JSON 키:\n- type: 아파트|상가|오피스텔|사무실|토지|분양권|권리|생활숙박시설\n- deal: 전세|임대차|매매|월세|임대|분양권매매\n- bldg: 건물명(단지명, 타워명)\n- dong: 동\n- ho: 호수\n- addr: 전체 주소\n- area: 전용면적(숫자만, 예: 46.41)\n- cdate: 계약일 YYYY-MM-DD\n- fdate: 잔금일(임대차는 잔금일/인도일) YYYY-MM-DD\n- expiry: 만기일 YYYY-MM-DD (임대차기간 종료일)\n- seller: 임대인 또는 매도인 성명\n- sellerTel: 임대인/매도인 휴대전화\n- buyer: 임차인 또는 매수인 성명\n- buyerTel: 임차인/매수인 휴대전화\n- price: 전세금 또는 매매가 (숫자, 예: 30000000)\n- deposit: 보증금 (월세/임대차 계약의 보증금, 숫자)\n- monthly: 월세 금액 (숫자)\n- period: 계약기간 개월수 (숫자만, 예: 24)\n- conditions: 특약사항 전체 내용을 요약 없이 그대로 모두 기록\n- agencySeller: 계약서 하단 좌측(임대인측) 중개업소명. 송도제일공인중개사사무소이면 "송도제일공인"으로 기록\n- agencyBuyer: 계약서 하단 우측(임차인측) 중개업소명. 송도제일공인중개사사무소이면 "송도제일공인"으로 기록\n\n주의사항:\n- 임대차 계약에서 보증금과 월세가 모두 있으면 deposit과 monthly 모두 입력\n- price는 전세금이나 매매가에만 사용, 임대차 보증금은 deposit에 입력\n- conditions는 특약사항 전체를 빠짐없이 그대로 기록\n- 없는 값은 빈 문자열("")\\n- deal이 매매/분양권매매/권리인 경우 renewalType는 \"해당없음\", expiry는 \"\" 으로 출력\\n- agencyBuyer가 없거나 우측 중개업소 란이 비어있으면 agencySeller 값을 agencyBuyer에도 동일하게 사용'
           }
         ]
       }]
@@ -1272,28 +1374,28 @@ function fillContractForm(d){
   Object.keys(map).forEach(function(id){
     if(map[id]){ var el=document.getElementById(id); if(el) el.value=map[id]; }
   });
+  // 매매/분양권 → renewalType 해당없음, expiry 초기화
+  var isMaeAI=['매매','분양권매매','권리'].includes(d.deal||'');
+  if(isMaeAI){ d.renewalType='해당없음'; d.expiry=''; }
   // UI 먼저 갱신 (deal 설정 후 필드 표시 상태 확정)
   if(typeof onCDeal==='function') onCDeal();
 
   // 중개업소 자동 설정
-  if(d.agencySeller){
-    if(d.agencySeller==='송도제일공인'){
-      var bs=document.getElementById('btn-sdj-seller');
-      if(bs)bs.classList.add('active');
+  // 좌측(매도인측)만 있고 우측(매수인측)이 없으면 양쪽 동일 적용
+  var effectiveBuyer = d.agencyBuyer || d.agencySeller || '';
+  var effectiveSeller = d.agencySeller || '';
+  function applyAgency(val, btnId, inputId){
+    if(!val) return;
+    if(val==='송도제일공인'){
+      var btn=document.getElementById(btnId);
+      if(btn) btn.classList.add('active');
     } else {
-      var as=document.getElementById('fc-agency-seller');
-      if(as)as.value=d.agencySeller;
+      var inp=document.getElementById(inputId);
+      if(inp) inp.value=val;
     }
   }
-  if(d.agencyBuyer){
-    if(d.agencyBuyer==='송도제일공인'){
-      var bb=document.getElementById('btn-sdj-buyer');
-      if(bb)bb.classList.add('active');
-    } else {
-      var ab=document.getElementById('fc-agency-buyer');
-      if(ab)ab.value=d.agencyBuyer;
-    }
-  }
+  applyAgency(effectiveSeller, 'btn-sdj-seller', 'fc-agency-seller');
+  applyAgency(effectiveBuyer,  'btn-sdj-buyer',  'fc-agency-buyer');
   // 만기일 재계산 (period 입력 후)
   if(typeof autoExpiry==='function') autoExpiry();
 }
