@@ -112,32 +112,61 @@ body{margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',
     setTimeout(function(){t.remove();},3500);
   }
   </script>
-  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
-  <script>
-  // Firebase CDN 로드 후 초기화 (이 시점엔 firebase 전역변수 확정)
-  (function initFirebase() {
-    try {
-      var cfg = {
-        apiKey: "AIzaSyCMYoUBhRv_NkKeHmPqgXoqqXUjVsjEJPs",
-        authDomain: "songdojeil-202604.firebaseapp.com",
-        databaseURL: "https://songdojeil-202604-default-rtdb.asia-southeast1.firebasedatabase.app",
-        projectId: "songdojeil-202604",
-        storageBucket: "songdojeil-202604.firebasestorage.app",
-        messagingSenderId: "567683904975",
-        appId: "1:567683904975:web:65a652a8e7b9a81e034eba"
-      };
-      var app = firebase.apps.length ? firebase.app() : firebase.initializeApp(cfg);
-      _fbDb = firebase.database(app);
-      console.log('✅ Firebase 연결됨');
-      // Firebase 연결 후 localStorage → Firebase 동기화 (최신 데이터 우선)
-      window.storage.get('sd_contracts').then(function(r){
-        if(r && r.value && typeof fromCStore === 'function') fromCStore();
-      });
-    } catch(e) {
-      console.warn('Firebase 초기화 실패 (localStorage 모드):', e.message);
-    }
-  })();
+  <script type="module">
+  import { initializeApp } from 'https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js';
+  import { getDatabase, ref, get, set, remove } from 'https://www.gstatic.com/firebasejs/9.23.0/firebase-database.js';
+  import { getStorage, ref as sRef, uploadBytes, getDownloadURL } from 'https://www.gstatic.com/firebasejs/9.23.0/firebase-storage.js';
+
+  try {
+    const cfg = {
+      apiKey: "AIzaSyCMYoUBhRv_NkKeHmPqgXoqqXUjVsjEJPs",
+      authDomain: "songdojeil-202604.firebaseapp.com",
+      databaseURL: "https://songdojeil-202604-default-rtdb.asia-southeast1.firebasedatabase.app",
+      projectId: "songdojeil-202604",
+      storageBucket: "songdojeil-202604.firebasestorage.app",
+      messagingSenderId: "567683904975",
+      appId: "1:567683904975:web:65a652a8e7b9a81e034eba"
+    };
+    const app = initializeApp(cfg);
+    const db  = getDatabase(app);
+    const st  = getStorage(app);
+    window._fbDb = db;
+    window._fbStorage = { ref: (path) => sRef(st, path), uploadBytes, getDownloadURL };
+
+    // window.storage 어댑터 - Firebase Realtime DB 기반으로 교체
+    window.storage = {
+      get: function(key) {
+        return get(ref(db, 'storage/' + key)).then(function(snap) {
+          var v = snap.val();
+          if (v) { try { localStorage.setItem('sd_' + key, v); } catch(e){} }
+          return v ? { key: key, value: v } : null;
+        }).catch(function() {
+          try { var lv = localStorage.getItem('sd_' + key); return lv ? { key: key, value: lv } : null; } catch(e) { return null; }
+        });
+      },
+      set: function(key, value) {
+        try { localStorage.setItem('sd_' + key, value); } catch(e){}
+        return set(ref(db, 'storage/' + key), value)
+          .then(function() { return { key: key, value: value }; })
+          .catch(function(e) { console.error('Firebase set 오류:', e); return { key: key, value: value }; });
+      },
+      delete: function(key) {
+        try { localStorage.removeItem('sd_' + key); } catch(e){}
+        return remove(ref(db, 'storage/' + key))
+          .then(function() { return { key: key, deleted: true }; })
+          .catch(function() { return { key: key, deleted: true }; });
+      }
+    };
+
+    console.log('✅ Firebase 연결됨 (DB + Storage)');
+    // 데이터 로드
+    if (typeof fromCStore === 'function') fromCStore();
+    else document.addEventListener('DOMContentLoaded', function() {
+      if (typeof fromCStore === 'function') fromCStore();
+    });
+  } catch(e) {
+    console.warn('Firebase 초기화 실패:', e.message);
+  }
   </script></head>
 <body>
 <!-- ═══ PIN 인증 체크 ═══ -->
@@ -1440,18 +1469,18 @@ function fillContractForm(d){
 async function uploadContractFile(){
   if(!_contractFileB64 || !_contractFileMime) return;
   try{
-    var storage = firebase.storage();
+    if(!window._fbStorage){ console.warn('[SD] Storage 미초기화'); return; }
     var contractId = Date.now();
     var ext = _contractFileMime==='application/pdf'?'pdf':(_contractFileMime==='image/png'?'png':'jpg');
     var path = 'contracts/' + contractId + '_' + (_contractFileName||'contract.'+ext);
-    var ref = storage.ref(path);
+    var fileRef = window._fbStorage.ref(path);
     // base64 → Blob
     var byteStr = atob(_contractFileB64);
     var arr = new Uint8Array(byteStr.length);
     for(var i=0;i<byteStr.length;i++) arr[i]=byteStr.charCodeAt(i);
     var blob = new Blob([arr],{type:_contractFileMime});
-    await ref.put(blob,{contentType:_contractFileMime});
-    _contractFileUrl = await ref.getDownloadURL();
+    await window._fbStorage.uploadBytes(fileRef, blob, {contentType:_contractFileMime});
+    _contractFileUrl = await window._fbStorage.getDownloadURL(fileRef);
     console.log('[SD] 계약서 업로드 완료:', _contractFileUrl);
   }catch(e){
     console.warn('[SD] 계약서 업로드 실패 (저장은 계속):', e);
