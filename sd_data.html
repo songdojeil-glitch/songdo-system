@@ -959,6 +959,15 @@ body.zoom-mode .chart-wrap canvas {
       <button class="filter-btn" onclick="t3Set('abn','exc',this)">제외</button>
     </div>
   </div>
+  <!-- TAB3 단지 검색 -->
+  <div class="filter-row" style="margin-top:-4px;align-items:center;gap:8px">
+    <span class="filter-label">단지검색</span>
+    <input type="text" id="t3-search-input" placeholder="단지명 입력..." 
+      style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:4px 10px;color:var(--text1);font-size:12px;width:160px;outline:none"
+      oninput="t3SearchInput(this.value)" />
+    <div id="t3-unit-chips" style="display:flex;flex-wrap:wrap;gap:4px;flex:1"></div>
+    <button onclick="t3ClearSearch()" style="background:transparent;border:1px solid var(--border);border-radius:6px;padding:3px 10px;color:var(--text3);font-size:11px;cursor:pointer">초기화</button>
+  </div>
   <div class="kpi-row kpi-row-4" id="kpi-sale" style="margin-bottom:12px"></div>
   <div class="empty-state" id="t3-empty">
     <div class="empty-icon">📈</div>
@@ -992,6 +1001,7 @@ body.zoom-mode .chart-wrap canvas {
               <th style="width:44px">층</th>
               <th style="width:88px" class="num">거래금액</th>
               <th style="width:88px" class="num" style="color:#64b5f6">최근1년평균</th>
+              <th style="width:80px" class="num">차이금액</th>
               <th style="width:68px" class="num">평균대비</th>
               <th style="width:72px" class="num">평당가</th>
               <th style="width:82px">거래년월일</th>
@@ -1315,6 +1325,7 @@ var G = {
   yr1: 2026, saleType1: 'all', maxArea: 'all', histArea: 'all',
   distFilter: 'all',
   saleF: 'all', saleAreaF: 'all', abnF: 'inc',
+  t3yr: 'recent', t3period: 'annual', t3saleType: 'all', t3area: 'all', t3dist: 'all', t3abn: 'inc', t3unit: 'all', t3search: '',
   rentF: 'all', contractF: 'all', renewalF: 'all',
   abnThresh: 70, abnType: 'all',
   naverDist: 'all', naverType: 'all', naverArea: 'all',
@@ -1480,6 +1491,23 @@ function t2Set(key, val, btn){
 function t3Set(key, val, btn){
   G['t3'+key] = val;
   if(btn) setFilterBtn(btn.parentElement.querySelectorAll('.filter-btn'), btn);
+  // 필터 변경 시 단지 선택 초기화
+  if(key!=='unit') G.t3unit='all';
+  renderTab3();
+}
+function t3SetUnit(nm){
+  G.t3unit = nm;
+  renderTab3();
+}
+function t3SearchInput(val){
+  G.t3search = val;
+  G.t3unit = 'all';
+  renderTab3();
+}
+function t3ClearSearch(){
+  G.t3search=''; G.t3unit='all';
+  var el=document.getElementById('t3-search-input');
+  if(el) el.value='';
   renderTab3();
 }
 
@@ -4213,6 +4241,8 @@ function renderTab3(){
   var area    = G.t3area||'all';
   var dist    = G.t3dist||'all';
   var abn     = G.t3abn||'inc';
+  var unitSel = G.t3unit||'all';
+  var search  = (G.t3search||'').trim();
 
   var now=new Date(), curYm=now.getFullYear()*100+(now.getMonth()+1);
   var curQ=Math.ceil((now.getMonth()+1)/3);
@@ -4266,8 +4296,36 @@ function renderTab3(){
     if(!areaOk(sqm)) return false;
     if(saleType!=='all'&&r['구분']!==saleType) return false;
     if(abn==='exc'&&r['해제사유발생일']&&r['해제사유발생일']!=='-') return false;
+    if(unitSel!=='all'&&r['단지명']!==unitSel) return false;
+    if(search&&r['단지명']&&r['단지명'].indexOf(search)===-1) return false;
     return true;
   });
+
+  // 단지 칩 업데이트 (필터 조건 적용 전 전체 단지 목록)
+  var allFiltered = G.saleData.filter(function(r){
+    var price=parseFloat(r['거래금액'])||0;
+    if(price<=0) return false;
+    if(!ymOk(r['계약년월'])) return false;
+    if(dist!=='all'&&parseInt(r['공구'])!==parseInt(dist)) return false;
+    var sqm=parseFloat(r['전용(㎡)']||r['전용㎡'])||0;
+    if(!areaOk(sqm)) return false;
+    if(saleType!=='all'&&r['구분']!==saleType) return false;
+    if(abn==='exc'&&r['해제사유발생일']&&r['해제사유발생일']!=='-') return false;
+    return true;
+  });
+  var unitSet={};
+  allFiltered.forEach(function(r){ if(r['단지명']) unitSet[r['단지명']]=(unitSet[r['단지명']]||0)+1; });
+  var unitList=Object.keys(unitSet).sort();
+  var chipsEl=document.getElementById('t3-unit-chips');
+  if(chipsEl){
+    var chipHtml='<span onclick="t3SetUnit(this.dataset.nm)" data-nm="all" style="cursor:pointer;padding:3px 8px;border-radius:12px;font-size:11px;white-space:nowrap;'+(unitSel==='all'?'background:var(--accent);color:#fff':'background:var(--bg3);color:var(--text2);border:1px solid var(--border)')+'">전체('+allFiltered.length+')</span>';
+    unitList.forEach(function(nm){
+      var sel=unitSel===nm;
+      var safeNm=nm.replace(/"/g,'&quot;');
+      chipHtml+='<span onclick="t3SetUnit(this.dataset.nm)" data-nm="'+safeNm+'" style="cursor:pointer;padding:3px 8px;border-radius:12px;font-size:11px;white-space:nowrap;'+(sel?'background:var(--accent);color:#fff':'background:var(--bg3);color:var(--text2);border:1px solid var(--border)')+'">'+nm+'('+unitSet[nm]+')</span>';
+    });
+    chipsEl.innerHTML=chipHtml;
+  }
 
   // 최신순 정렬
   rows.sort(function(a,b){
@@ -4307,6 +4365,7 @@ function renderTab3(){
       '<td style="font-size:11px;text-align:center">'+(r['층']||'-')+'층</td>'+
       '<td class="num" style="color:var(--yellow);font-weight:700">'+fmt천(price)+'</td>'+
       '<td class="num" style="color:#aaa">'+(avg1y?fmt천(avg1y):'-')+'</td>'+
+      '<td class="num" style="color:'+diffColor+';font-weight:600">'+(avg1y?(diffPct>=0?'▲+':'▼')+Math.abs(Math.round(price-avg1y)).toLocaleString()+'만':'-')+'</td>'+
       '<td class="num" style="color:'+diffColor+';font-weight:700">'+diffStr+'</td>'+
       '<td class="num" style="font-size:11px">'+(r['평당가']?Math.round(parseFloat(r['평당가'])).toLocaleString()+'만':'-')+'</td>'+
       '<td style="font-size:11px;color:var(--text2)">'+ymStr+'</td>'+
