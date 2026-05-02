@@ -148,6 +148,8 @@ body { background:var(--bg); color:var(--text); font-family:var(--font); font-si
 .filter-btn-recent { border-color:var(--accent3); color:var(--accent3); }
 .filter-btn-recent.on { background:var(--accent3); color:#0a0e1a; border-color:var(--accent3); font-weight:700; }
 .filter-sep { width:1px; height:16px; background:var(--border); margin:0 2px; }
+.sub-period-row { display:none; flex-wrap:wrap; gap:4px; align-items:center; margin-top:4px; padding:4px 6px; background:var(--bg3); border-radius:8px; border-left:2px solid var(--accent); }
+.sub-period-row.visible { display:flex; }
 .filter-group { display:flex; flex-wrap:wrap; gap:4px; align-items:center; }
 
 /* ── 히트맵 */
@@ -494,7 +496,7 @@ body.zoom-mode .chart-wrap canvas {
     </div>
     <div class="filter-sep"></div>
     <span class="filter-label">기간</span>
-    <div class="filter-group">
+    <div class="filter-group" id="t0-period-btns">
       <button class="filter-btn on" onclick="setPeriod('annual',this)">연간</button>
       <button class="filter-btn" onclick="setPeriod('quarter',this)">분기별</button>
       <button class="filter-btn" onclick="setPeriod('monthly',this)">월별</button>
@@ -515,6 +517,11 @@ body.zoom-mode .chart-wrap canvas {
     </div>
   </div>
 
+  <!-- 서브기간 행 (분기/월 선택) -->
+  <div id="t0-sub-period" class="sub-period-row" style="margin-top:-4px">
+    <span class="filter-label" id="t0-sub-label">분기</span>
+    <div class="filter-group" id="t0-sub-btns"></div>
+  </div>
   <!-- 필터 행 2: 면적 + 공구 -->
   <div class="filter-row" style="margin-top:-4px">
     <span class="filter-label">면적</span>
@@ -752,6 +759,11 @@ body.zoom-mode .chart-wrap canvas {
       <button class="filter-btn" onclick="t1SetPeriod('monthly',this)">월별</button>
     </div>
   </div>
+  <!-- 서브기간 행 -->
+  <div id="t1-sub-period" class="sub-period-row" style="margin-top:-4px">
+    <span class="filter-label" id="t1-sub-label">분기</span>
+    <div class="filter-group" id="t1-sub-btns"></div>
+  </div>
   <div class="filter-row" style="margin-top:-4px">
     <span class="filter-label">거래구분</span>
     <div class="filter-group" id="t1-trade-group">
@@ -862,6 +874,11 @@ body.zoom-mode .chart-wrap canvas {
       <button class="filter-btn" onclick="t2Set('trade','monthly',this)">월세</button>
     </div>
   </div>
+  <!-- 서브기간 행 -->
+  <div id="t2-sub-period" class="sub-period-row" style="margin-top:-4px">
+    <span class="filter-label" id="t2-sub-label">분기</span>
+    <div class="filter-group" id="t2-sub-btns"></div>
+  </div>
   <div class="filter-row" style="margin-top:-4px">
     <span class="filter-label" id="t2-saletype-lbl">매매구분</span>
     <div class="filter-group" id="t2-saletype-group">
@@ -950,6 +967,11 @@ body.zoom-mode .chart-wrap canvas {
       <button class="filter-btn" onclick="t3Set('period','quarter',this)">분기별</button>
       <button class="filter-btn" onclick="t3Set('period','monthly',this)">월별</button>
     </div>
+  </div>
+  <!-- 서브기간 행 -->
+  <div id="t3-sub-period" class="sub-period-row" style="margin-top:-4px">
+    <span class="filter-label" id="t3-sub-label">분기</span>
+    <div class="filter-group" id="t3-sub-btns"></div>
   </div>
   <div class="filter-row" style="margin-top:-4px">
     <span class="filter-label">매매구분</span>
@@ -1092,6 +1114,11 @@ body.zoom-mode .chart-wrap canvas {
       <button class="filter-btn" onclick="t4Set('tradeType','전세',this)">전세</button>
       <button class="filter-btn" onclick="t4Set('tradeType','월세',this)">월세</button>
     </div>
+  </div>
+  <!-- 서브기간 행 -->
+  <div id="t4-sub-period" class="sub-period-row" style="margin-top:-4px">
+    <span class="filter-label" id="t4-sub-label">분기</span>
+    <div class="filter-group" id="t4-sub-btns"></div>
   </div>
   <div class="filter-row" style="margin-top:-4px">
     <span class="filter-label">계약구분</span>
@@ -1449,14 +1476,14 @@ function $html(id, val){ var el=document.getElementById(id); if(el) el.innerHTML
 
 // ══ 전역 상태
 var G = {
-  yr: 2026, area: '84', saleType: 'all', period: 'annual', t0Dist: 'all', tradeType: 'sale',
-  t1yr: 2026, t1period: 'annual', t1saleType: 'all', t1area: 'all', t1trade: 'sale',
-  t2yr: 2026, t2period: 'annual', t2trade: 'sale', t2saleType: 'all', t2area: 'all', t2dist: 'all',
+  yr: 2026, area: '84', saleType: 'all', period: 'annual', subPeriod: 0, t0Dist: 'all', tradeType: 'sale',
+  t1yr: 2026, t1period: 'annual', t1subPeriod: 0, t1saleType: 'all', t1area: 'all', t1trade: 'sale',
+  t2yr: 2026, t2period: 'annual', t2subPeriod: 0, t2trade: 'sale', t2saleType: 'all', t2area: 'all', t2dist: 'all',
   yr1: 2026, saleType1: 'all', maxArea: 'all', histArea: 'all',
   distFilter: 'all',
   saleF: 'all', saleAreaF: 'all', abnF: 'inc',
-  t3yr: 'recent', t3period: 'annual', t3saleType: 'all', t3area: 'all', t3dist: 'all', t3abn: 'inc', t3unit: 'all', t3search: '',
-  t4yr: 'recent', t4period: 'annual', t4tradeType: 'all', t4contract: 'all', t4area: 'all', t4dist: 'all', t4renewal: 'all', t4unit: 'all', t4search: '',
+  t3yr: 'recent', t3period: 'annual', t3subPeriod: 0, t3saleType: 'all', t3area: 'all', t3dist: 'all', t3abn: 'inc', t3unit: 'all', t3search: '',
+  t4yr: 'recent', t4period: 'annual', t4subPeriod: 0, t4tradeType: 'all', t4contract: 'all', t4area: 'all', t4dist: 'all', t4renewal: 'all', t4unit: 'all', t4search: '',
   rentF: 'all', contractF: 'all', renewalF: 'all',
   abnThresh: 70, abnType: 'all',
   naverDist: 'all', naverType: 'all', naverArea: 'all',
@@ -1607,13 +1634,20 @@ function t1AreaLabel(){
 function t2Set(key, val, btn){
   G['t2'+key] = val;
   if(btn) setFilterBtn(btn.parentElement.querySelectorAll('.filter-btn'), btn);
-  // 거래구분 변경 시 매매구분 표시/숨김
   if(key==='trade'){
     var show = val==='sale';
     ['t2-saletype-lbl','t2-saletype-group'].forEach(function(id){
       var el=document.getElementById(id);
       if(el) el.style.display = show?'':'none';
     });
+  }
+  if(key==='period'){
+    var now=new Date();
+    G.t2subPeriod = val==='quarter' ? Math.ceil((now.getMonth()+1)/3) : (val==='monthly' ? now.getMonth()+1 : 0);
+    updateSubPeriodUI('t2', G.t2yr, val, G.t2subPeriod);
+  } else if(key==='yr'){
+    if(val==='recent') G.t2subPeriod=0;
+    updateSubPeriodUI('t2', val, G.t2period, G.t2subPeriod);
   }
   renderTab2();
 }
@@ -1622,8 +1656,16 @@ function t2Set(key, val, btn){
 function t3Set(key, val, btn){
   G['t3'+key] = val;
   if(btn) setFilterBtn(btn.parentElement.querySelectorAll('.filter-btn'), btn);
-  // 공구 변경 시만 단지 선택 초기화 (연도/기간/면적 변경은 단지 선택 유지)
+  // 공구 변경 시만 단지 초기화
   if(key==='dist') G.t3unit='all';
+  if(key==='period'){
+    var now=new Date();
+    G.t3subPeriod = val==='quarter' ? Math.ceil((now.getMonth()+1)/3) : (val==='monthly' ? now.getMonth()+1 : 0);
+    updateSubPeriodUI('t3', G.t3yr, val, G.t3subPeriod);
+  } else if(key==='yr'){
+    if(val==='recent') G.t3subPeriod=0;
+    updateSubPeriodUI('t3', val, G.t3period, G.t3subPeriod);
+  }
   renderTab3();
 }
 function t3SetUnit(nm){
@@ -1646,8 +1688,15 @@ function t3ClearSearch(){
 function t4Set(key, val, btn){
   G['t4'+key] = val;
   if(btn) setFilterBtn(btn.parentElement.querySelectorAll('.filter-btn'), btn);
-  // 공구 변경 시만 단지 선택 초기화
   if(key==='dist') G.t4unit='all';
+  if(key==='period'){
+    var now=new Date();
+    G.t4subPeriod = val==='quarter' ? Math.ceil((now.getMonth()+1)/3) : (val==='monthly' ? now.getMonth()+1 : 0);
+    updateSubPeriodUI('t4', G.t4yr, val, G.t4subPeriod);
+  } else if(key==='yr'){
+    if(val==='recent') G.t4subPeriod=0;
+    updateSubPeriodUI('t4', val, G.t4period, G.t4subPeriod);
+  }
   renderTab4();
 }
 function t4SetUnit(nm){
@@ -1667,8 +1716,21 @@ function t4ClearSearch(){
 }
 
 // ── TAB1 독립 필터 세터
-function t1SetYr(yr,btn){ G.t1yr=yr; setFilterBtn(btn.parentElement.querySelectorAll('.filter-btn'),btn); renderTab1(); }
-function t1SetPeriod(p,btn){ G.t1period=p; setFilterBtn(btn.parentElement.querySelectorAll('.filter-btn'),btn); renderTab1(); }
+function t1SetYr(yr,btn){
+  G.t1yr=yr;
+  if(yr==='recent'){ G.t1subPeriod=0; }
+  setFilterBtn(btn.parentElement.querySelectorAll('.filter-btn'),btn);
+  updateSubPeriodUI('t1', yr, G.t1period, G.t1subPeriod);
+  renderTab1();
+}
+function t1SetPeriod(p,btn){
+  G.t1period=p;
+  var now=new Date();
+  G.t1subPeriod = p==='quarter' ? Math.ceil((now.getMonth()+1)/3) : (p==='monthly' ? now.getMonth()+1 : 0);
+  setFilterBtn(btn.parentElement.querySelectorAll('.filter-btn'),btn);
+  updateSubPeriodUI('t1', G.t1yr, p, G.t1subPeriod);
+  renderTab1();
+}
 function t1SetSaleType(t,btn){ G.t1saleType=t; setFilterBtn(btn.parentElement.querySelectorAll('.filter-btn'),btn); renderTab1(); }
 function t1SetArea(a,btn){ G.t1area=a; setFilterBtn(btn.parentElement.querySelectorAll('.filter-btn'),btn); renderTab1(); }
 function t1SetTradeType(t,btn){
@@ -1696,7 +1758,102 @@ function setFilterBtn(btns, target){
   btns.forEach(function(b){b.classList.remove('on');});
   if(target) target.classList.add('on');
 }
-function setYr(yr,btn){ G.yr=yr; setFilterBtn(btn.parentElement.querySelectorAll('.filter-btn'),btn); renderTab0(); }
+
+// ══ 서브기간 (분기/월) 공통 유틸 ══
+
+// 각 탭의 서브기간 행 업데이트 (기간버튼 클릭 or 연도 변경 시 호출)
+function updateSubPeriodUI(tabId, yr, period, curSub) {
+  var row   = document.getElementById(tabId + '-sub-period');
+  var label = document.getElementById(tabId + '-sub-label');
+  var btns  = document.getElementById(tabId + '-sub-btns');
+  if (!row || !btns) return;
+
+  var isRecent = (yr === 'recent');
+
+  if (period === 'annual' || isRecent) {
+    // 연간 또는 최근1년: 서브기간 행 숨김
+    row.classList.remove('visible');
+    return;
+  }
+
+  row.classList.add('visible');
+
+  if (period === 'quarter') {
+    label.textContent = '분기';
+    var qLabels = ['1Q','2Q','3Q','4Q'];
+    var now = new Date();
+    var defaultQ = Math.ceil((now.getMonth()+1)/3);
+    var sel = curSub || defaultQ;
+    btns.innerHTML = qLabels.map(function(lbl, i) {
+      var q = i + 1;
+      return '<button class="filter-btn' + (sel === q ? ' on' : '') + '" ' +
+        'onclick="setSubPeriodBtn(\'' + tabId + '\',' + q + ',this)">' + lbl + '</button>';
+    }).join('');
+  } else { // monthly
+    label.textContent = '월';
+    var now2 = new Date();
+    var defaultM = now2.getMonth() + 1;
+    var sel2 = curSub || defaultM;
+    btns.innerHTML = [1,2,3,4,5,6,7,8,9,10,11,12].map(function(m) {
+      return '<button class="filter-btn' + (sel2 === m ? ' on' : '') + '" ' +
+        'onclick="setSubPeriodBtn(\'' + tabId + '\',' + m + ',this)">' + m + '월</button>';
+    }).join('');
+  }
+}
+
+// 서브기간 버튼 클릭 핸들러
+function setSubPeriodBtn(tabId, val, btn) {
+  setFilterBtn(btn.parentElement.querySelectorAll('.filter-btn'), btn);
+  // G에 저장 후 해당 탭 렌더
+  var key = tabId === 't0' ? 'subPeriod' : tabId + 'subPeriod';
+  G[key] = val;
+  if      (tabId==='t0') renderTab0();
+  else if (tabId==='t1') renderTab1();
+  else if (tabId==='t2') renderTab2();
+  else if (tabId==='t3') renderTab3();
+  else if (tabId==='t4') renderTab4();
+}
+
+// 기간 필터에서 특정 계약년월(ym=YYYYMM)이 통과하는지 판단
+// 공통으로 쓰는 헬퍼 - 각 탭 renderTab 내부의 로컬 yr/period/subPeriod를 인자로 받음
+function subPeriodFilter(ym, yr, period, subPeriod) {
+  if (!ym) return false;
+  var now = new Date();
+
+  if (yr === 'recent') {
+    // 최근 1년: 오늘 기준 최근 12개월
+    var iy = Math.floor(ym/100), im = ym % 100;
+    var diff = (now.getFullYear() - iy) * 12 + (now.getMonth()+1 - im);
+    return diff >= 0 && diff < 12;
+  }
+
+  // 특정 연도
+  var rowYr = Math.floor(ym / 100);
+  if (rowYr !== parseInt(yr)) return false;
+
+  if (period === 'annual') return true;
+
+  var mo = ym % 100;
+  if (period === 'quarter') {
+    var q = Math.ceil(mo / 3);
+    // subPeriod=0이면 기본값(현재분기)
+    var sel = subPeriod || Math.ceil((now.getMonth()+1) / 3);
+    return q === sel;
+  }
+  if (period === 'monthly') {
+    var sel2 = subPeriod || (now.getMonth()+1);
+    return mo === sel2;
+  }
+  return true;
+}
+
+function setYr(yr,btn){
+  G.yr=yr;
+  if(yr==='recent'){ G.subPeriod=0; }
+  setFilterBtn(btn.parentElement.querySelectorAll('.filter-btn'),btn);
+  updateSubPeriodUI('t0', yr, G.period, G.subPeriod);
+  renderTab0();
+}
 function setArea(a,btn){ G.area=a; setFilterBtn(btn.parentElement.querySelectorAll('.filter-btn'),btn); renderTab0(); }
 function setTradeType(t,btn){
   G.tradeType=t;
@@ -1707,7 +1864,15 @@ function setTradeType(t,btn){
   renderTab0();
 }
 function setSaleType(t,btn){ G.saleType=t; setFilterBtn(btn.parentElement.querySelectorAll('.filter-btn'),btn); renderTab0(); }
-function setPeriod(v,btn){ G.period=v; setFilterBtn(btn.parentElement.querySelectorAll('.filter-btn'),btn); renderTab0(); }
+function setPeriod(v,btn){
+  G.period=v;
+  // 기간 변경 시 서브기간 초기화
+  var now=new Date();
+  G.subPeriod = v==='quarter' ? Math.ceil((now.getMonth()+1)/3) : (v==='monthly' ? now.getMonth()+1 : 0);
+  setFilterBtn(btn.parentElement.querySelectorAll('.filter-btn'),btn);
+  updateSubPeriodUI('t0', G.yr, v, G.subPeriod);
+  renderTab0();
+}
 function setT0Dist(v,btn){ G.t0Dist=v; setFilterBtn(btn.parentElement.querySelectorAll('.filter-btn'),btn); renderTab0(); }
 function setSaleType1(t,btn){ G.saleType=t; setFilterBtn(btn.parentElement.querySelectorAll('.filter-btn'),btn); renderTab1(); }
 // setYr1 deprecated - 시황판 setYr 사용
@@ -2272,7 +2437,19 @@ function yrLabel(yr){
 }
 
 // 기간 레이블
-function periodLabel(){ return G.period==='annual'?'연간':G.period==='quarter'?'분기별':'월별'; }
+function periodLabel(){
+  if(G.period==='annual') return '연간';
+  var now=new Date();
+  var sub=G.subPeriod||0;
+  if(G.period==='quarter'){
+    if(G.yr==='recent') return '최근4분기';
+    var q=sub||Math.ceil((now.getMonth()+1)/3);
+    return q+'분기';
+  }
+  if(G.yr==='recent') return '최근12개월';
+  var m=sub||(now.getMonth()+1);
+  return m+'월';
+}
 
 // 공통 필터 뱃지 업데이트
 function updateGlobalBadges(){
@@ -3173,8 +3350,6 @@ function renderTop5Price(){
   // 기간 조건
   var yr=G.yr, period=G.period;
   var now=new Date();
-  var curYm=now.getFullYear()*100+(now.getMonth()+1);
-  var curQ=Math.ceil((now.getMonth()+1)/3);
 
   var rows = data.filter(function(r){
     if(tt==='sale'){
@@ -3190,18 +3365,8 @@ function renderTop5Price(){
     }
     if(!areaFilter(r)) return false;
     if(!t0DistFilter(r)) return false;
-    // 기간 필터
     var ym=parseInt(r['계약년월']||0); if(!ym) return false;
-    if(yr==='recent'){
-      if(period==='annual'){ if(!yrFilter(r,'recent')) return false; }
-      else if(period==='quarter'){
-        var mo=ym%100, rYr=Math.floor(ym/100), rQ=Math.ceil(mo/3);
-        if(rYr!==now.getFullYear()||rQ!==curQ) return false;
-      } else { if(ym!==curYm) return false; }
-    } else {
-      if(!yrFilter(r,yr)) return false;
-    }
-    return true;
+    return subPeriodFilter(ym, yr, period, G.subPeriod||0);
   });
 
   // 정렬: 매매/전세=평당가, 월세=환산보증금
@@ -3218,9 +3383,11 @@ function renderTop5Price(){
 
   // 라벨
   var yrStr=yr==='recent'?'최근1년':yr+'년';
+  var _sub=G.subPeriod||0;
+  var _defQ=Math.ceil((now.getMonth()+1)/3), _defM=now.getMonth()+1;
   var pStr=period==='annual'?'연간':period==='quarter'?
-    (yr==='recent'?now.getFullYear()+'년 '+curQ+'분기':'분기별'):
-    (yr==='recent'?now.getFullYear()+'년 '+(now.getMonth()+1)+'월':'월별');
+    (yr==='recent'?'최근4분기':yr+'년 '+(_sub||_defQ)+'분기'):
+    (yr==='recent'?'최근12개월':yr+'년 '+(_sub||_defM)+'월');
   var areaStr=G.area==='all'?'전체':G.area==='84'?'84㎡':G.area;
   var distStr=G.t0Dist==='all'?'전체공구':(DIST_NAMES[parseInt(G.t0Dist)]||'');
   var lbl=document.getElementById('top5price-label');
@@ -4186,31 +4353,10 @@ function renderTab2(){
   var area    = G.t2area||'all';
   var dist    = G.t2dist||'all';
 
-  // 기간 필터 계산
   var now = new Date();
-  var curYm  = now.getFullYear()*100+(now.getMonth()+1);
-  var curQ   = Math.ceil((now.getMonth()+1)/3);
+  var subPeriod = G.t2subPeriod||0;
 
-  function ymInRange(ym){
-    if(!ym) return false;
-    if(yr==='recent'){
-      if(period==='annual') return yrFilter({계약년월:ym},'recent');
-      if(period==='quarter'){
-        var mo=ym%100, y=Math.floor(ym/100);
-        return y===now.getFullYear() && Math.ceil(mo/3)===curQ;
-      }
-      return ym===curYm;
-    } else {
-      var y2=Math.floor(ym/100);
-      if(y2!==parseInt(yr)) return false;
-      if(period==='quarter'){
-        var mo2=ym%100;
-        return Math.ceil(mo2/3)===curQ;
-      }
-      if(period==='monthly') return ym%100===(now.getMonth()+1);
-      return true;
-    }
-  }
+  function ymInRange(ym){ return subPeriodFilter(ym, yr, period, subPeriod); }
 
   function areaOk(r){
     if(area==='all') return true;
@@ -4396,6 +4542,7 @@ function renderTab3(){
 
   var yr      = G.t3yr||'recent';
   var period  = G.t3period||'annual';
+  var subPeriod = G.t3subPeriod||0;
   var saleType= G.t3saleType||'all';
   var area    = G.t3area||'all';
   var dist    = G.t3dist||'all';
@@ -4403,23 +4550,9 @@ function renderTab3(){
   var unitSel = G.t3unit||'all';
   var search  = (G.t3search||'').trim();
 
-  var now=new Date(), curYm=now.getFullYear()*100+(now.getMonth()+1);
-  var curQ=Math.ceil((now.getMonth()+1)/3);
+  var now=new Date();
 
-  function ymOk(ym){
-    if(!ym) return false;
-    if(yr==='recent'){
-      var d=now.getFullYear()*100+now.getMonth()+1;
-      var y=Math.floor(ym/100), m=ym%100;
-      var diff=(now.getFullYear()-y)*12+(now.getMonth()+1-m);
-      return diff>=0&&diff<12;
-    }
-    var y2=Math.floor(ym/100);
-    if(y2!==parseInt(yr)) return false;
-    if(period==='quarter'){ var mo=ym%100; return Math.ceil(mo/3)===curQ; }
-    if(period==='monthly') return ym%100===(now.getMonth()+1);
-    return true;
-  }
+  function ymOk(ym){ return subPeriodFilter(ym, yr, period, subPeriod); }
   function areaOk(sqm){
     if(area==='all') return true;
     if(area==='84') return sqm>=83&&sqm<86;
@@ -4475,8 +4608,6 @@ function renderTab3(){
   var unitSet={};
   allFiltered.forEach(function(r){ if(r['단지명']) unitSet[r['단지명']]=(unitSet[r['단지명']]||0)+1; });
   var unitList=Object.keys(unitSet).sort();
-  // 선택된 단지가 현재 필터 결과에 없으면 전체로 자동 복원
-  if(unitSel!=='all' && !unitSet[unitSel]) { G.t3unit='all'; unitSel='all'; }
   var chipsEl=document.getElementById('t3-unit-chips');
   if(chipsEl){
     var chipHtml='<span onclick="t3SetUnit(this.dataset.nm)" data-nm="all" style="cursor:pointer;padding:3px 8px;border-radius:12px;font-size:11px;white-space:nowrap;'+(unitSel==='all'?'background:var(--accent);color:#fff':'background:var(--bg3);color:var(--text2);border:1px solid var(--border)')+'">전체('+allFiltered.length+')</span>';
@@ -4686,6 +4817,7 @@ function renderTab4(){
 
   var yr       = G.t4yr||'recent';
   var period   = G.t4period||'annual';
+  var subPeriod = G.t4subPeriod||0;
   var tradeType= G.t4tradeType||'all';
   var contract = G.t4contract||'all';
   var area     = G.t4area||'all';
@@ -4695,21 +4827,8 @@ function renderTab4(){
   var search   = (G.t4search||'').trim();
 
   var now=new Date();
-  var curQ=Math.ceil((now.getMonth()+1)/3);
 
-  function ymOk(ym){
-    if(!ym) return false;
-    if(yr==='recent'){
-      var y=Math.floor(ym/100), m=ym%100;
-      var diff=(now.getFullYear()-y)*12+(now.getMonth()+1-m);
-      return diff>=0&&diff<12;
-    }
-    var y2=Math.floor(ym/100);
-    if(y2!==parseInt(yr)) return false;
-    if(period==='quarter'){ var mo=ym%100; return Math.ceil(mo/3)===curQ; }
-    if(period==='monthly') return ym%100===(now.getMonth()+1);
-    return true;
-  }
+  function ymOk(ym){ return subPeriodFilter(ym, yr, period, subPeriod); }
   function areaOk(sqm){
     if(area==='all') return true;
     if(area==='84') return sqm>=83&&sqm<86;
@@ -4752,8 +4871,6 @@ function renderTab4(){
   var unitSet={};
   allFiltered.forEach(function(r){ if(r['단지명']) unitSet[r['단지명']]=(unitSet[r['단지명']]||0)+1; });
   var unitList=Object.keys(unitSet).sort();
-  // 선택된 단지가 현재 필터 결과에 없으면 전체로 자동 복원
-  if(unitSel!=='all' && !unitSet[unitSel]) { G.t4unit='all'; unitSel='all'; }
   var chipsEl=document.getElementById('t4-unit-chips');
   if(chipsEl){
     var chipHtml='<span onclick="t4SetUnit(this.dataset.nm)" data-nm="all" style="cursor:pointer;padding:3px 8px;border-radius:12px;font-size:11px;white-space:nowrap;'+(unitSel==='all'?'background:var(--accent);color:#fff':'background:var(--bg3);color:var(--text2);border:1px solid var(--border)')+'">전체('+allFiltered.length+')</span>';
