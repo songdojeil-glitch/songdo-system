@@ -1373,8 +1373,8 @@ body.zoom-mode .chart-wrap canvas {
   <div class="upload-bar">
     <span class="upload-bar-title">📂 네이버 매물 데이터</span>
     <div class="upload-group">
-      <label class="upload-label" style="background:var(--accent2)">📋 네이버 매물 엑셀
-        <input type="file" accept=".xlsx" style="display:none" id="upload-naver" onchange="onUploadNaver(this)">
+      <label class="upload-label" style="background:var(--accent2)">📋 네이버 매물 엑셀 <span style="font-size:10px;opacity:.75">(복수파일)</span>
+        <input type="file" accept=".xlsx" multiple style="display:none" id="upload-naver" onchange="onUploadNaver(this)">
       </label>
       <span class="upload-status" id="naver-status">미업로드</span>
     </div>
@@ -1449,7 +1449,7 @@ body.zoom-mode .chart-wrap canvas {
             <tr>
               <th>공구</th><th>단지명</th><th>거래유형</th><th>전용㎡</th>
               <th class="num">호가</th><th>층</th><th>방향</th>
-              <th>입력일</th><th>중개사</th><th>특이사항</th>
+              <th>입력일</th><th>중개사</th><th class="num" style="color:var(--text3)">중복등록수</th><th>특이사항</th><th style="color:var(--text3)">중복업소명</th>
             </tr>
           </thead>
           <tbody id="t6-tbody"></tbody>
@@ -5628,14 +5628,28 @@ function renderAbnTable(){
 }
 
 function onUploadNaver(input){
-  if(!input.files[0]) return;
-  showToast('⏳ 네이버 매물 파싱 중...');
-  var reader = new FileReader();
-  reader.onload = function(e){
+  if(!input.files||!input.files.length) return;
+  var files = Array.from(input.files);
+  showToast('⏳ '+files.length+'개 파일 파싱 중...');
+  var allRows = [];
+  var remaining = files.length;
+  files.forEach(function(file){
+    var reader = new FileReader();
+    reader.onload = function(e){
+      try{
+        var wb = XLSX.read(e.target.result, {type:'array'});
+        var sh = wb.Sheets[wb.SheetNames[0]];
+        var rows = XLSX.utils.sheet_to_json(sh, {header:0, defval:null});
+        allRows = allRows.concat(rows);
+      }catch(err){ console.warn('파일 파싱 오류:', file.name, err); }
+      remaining--;
+      if(remaining===0) processNaverRows(allRows, files.length);
+    };
+    reader.readAsArrayBuffer(file);
+  });
+}
+function processNaverRows(rows, fileCnt){
     try {
-      var wb = XLSX.read(e.target.result, {type:'array'});
-      var sh = wb.Sheets[wb.SheetNames[0]];
-      var rows = XLSX.utils.sheet_to_json(sh, {header:0, defval:null});
       // ── 네이버 엑셀 파싱 유틸 ──
       // 전용면적: '111T/84m²', '132/101m²', '84m²' → 숫자
       function parseNaverSqm(v){
@@ -5707,20 +5721,20 @@ function onUploadNaver(input){
           방향: r['방향']||'-',
           입력일: rawDate,
           중개사: rawAgent,
+          중복등록수: parseInt(r['중복 등록업소의 수']||r['중복등록수']||0)||0,
           특이사항: r['특이사항']||r['주요정보']||r['메모']||'',
+          중복업소명: r['중복 등록업소명 (YYYY.MM.DD)']||r['중복업소명']||'',
           // 월세 추가 필드
           월세: (rawType==='월세'&&String(r['가격']||'').indexOf('/')>-1) ?
                   parseInt(String(r['가격']).split('/')[1].replace(/[^0-9]/g,''))||0 : 0,
         };
       });
-      $set('naver-status', '✅ '+G.naverData.length+'건 로드');
-      showToast('✅ 네이버 매물 '+G.naverData.length+'건 로드 완료');
+      $set('naver-status', '✅ '+G.naverData.length+'건 ('+fileCnt+'개 파일)');
+      showToast('✅ 네이버 매물 '+G.naverData.length+'건 로드 완료 ('+fileCnt+'개 파일)');
       renderTab6();
     } catch(err){
       showToast('❌ 파싱 오류: '+err.message);
     }
-  };
-  reader.readAsArrayBuffer(input.files[0]);
 }
 
 function loadNaverDemo(){
@@ -5792,10 +5806,13 @@ function renderTab6(){
       '<td style="font-size:11px;color:var(--text3)">'+(r.방향||'-')+'</td>'+
       '<td style="font-size:11px;color:var(--text3)">'+(r.입력일||'-')+'</td>'+
       '<td style="font-size:11px;color:var(--text3)">'+(r.중개사||'-')+'</td>'+
+      '<td class="num" style="color:'+(r.중복등록수>5?'var(--red)':r.중복등록수>2?'var(--yellow)':'var(--text3)')+';font-size:11px">'+
+        (r.중복등록수>0?r.중복등록수+'개':'-')+'</td>'+
       '<td style="font-size:11px;color:var(--yellow)">'+(r.특이사항||'')+'</td>'+
+      '<td style="font-size:10px;color:var(--text3);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+(r.중복업소명||'')+'">'+(r.중복업소명||'-')+'</td>'+
     '</tr>';
   });
-  document.getElementById('t6-tbody').innerHTML = html||'<tr><td colspan="10" style="text-align:center;padding:20px;color:var(--text3)">해당 매물 없음</td></tr>';
+  document.getElementById('t6-tbody').innerHTML = html||'<tr><td colspan="12" style="text-align:center;padding:20px;color:var(--text3)">해당 매물 없음</td></tr>';
 
   // 차트
   renderNaverDistChart(rows);
