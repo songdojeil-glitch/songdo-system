@@ -1481,20 +1481,18 @@ body.zoom-mode .chart-wrap canvas {
             style="padding:3px 10px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:6px;font-size:11px;width:160px;">
         </div>
       </div>
-      <div class="table-wrap">
-        <div class="table-scroll-hint">← 좌우로 스크롤하여 전체 내용 확인 →</div>
-        <div class="table-scroll">
-          <table class="data-table">
-            <thead>
-              <tr id="t6-thead-tr">
-                <th>공구</th><th>단지명</th><th>거래구분</th><th class="num">전용㎡</th><th class="num">분양평형</th>
-                <th class="num">호가</th><th>층</th><th>방향</th>
-                <th>입력일</th><th id="t6-th-agent">중개사</th><th class="num" style="color:var(--text3)">중복등록수</th><th>특이사항</th><th id="t6-th-dupnm" style="color:var(--text3);min-width:180px">중복등록업소명</th>
-              </tr>
-            </thead>
-            <tbody id="t6-tbody"></tbody>
-          </table>
-        </div>
+      <div class="table-scroll-hint">← 좌우로 스크롤하여 전체 내용 확인 →</div>
+      <div class="table-scroll">
+        <table class="data-table">
+          <thead>
+            <tr id="t6-thead-tr">
+              <th>공구</th><th>단지명</th><th>거래구분</th><th class="num">전용㎡</th><th>타입</th><th class="num">분양평형</th>
+              <th class="num">호가</th><th>층</th><th>방향</th>
+              <th>입력일</th><th id="t6-th-agent">중개사</th><th class="num" style="color:var(--text3)">중복등록수</th><th>특이사항</th><th id="t6-th-dupnm" style="color:var(--text3);min-width:200px">중복등록업소명</th>
+            </tr>
+          </thead>
+          <tbody id="t6-tbody"></tbody>
+        </table>
       </div>
     </div>
     <!-- 실거래가 대비 분석 -->
@@ -5760,7 +5758,16 @@ function processNaverRows(rows, fileCnt){
       G.naverData = validRows.map(function(r){
         var nm=r['단지명']||r['아파트명']||'-';
         var rawType=r['거래구분']||r['거래유형']||r['유형']||'매매';
-        var rawSqm=r['타입(전용)']||r['전용(㎡)']||r['전용㎡']||r['면적']||'0';
+        var rawTypeVal=r['타입(전용)']||'';
+        var rawSqm=rawTypeVal||r['전용(㎡)']||r['전용㎡']||r['면적']||'0';
+        // 타입명 추출: '111T/84m²' → '111T', '132/101m²' → '132' (/ 앞 부분)
+        var typeNm=(function(){
+          if(!rawTypeVal) return '-';
+          var s=String(rawTypeVal);
+          var slash=s.indexOf('/');
+          var part=slash>-1?s.slice(0,slash).trim():s.replace(/\d+m.*/,'').trim();
+          return part||'-';
+        })();
         var rawPrice=r['가격']||r['호가']||r['매매가']||'0';
         var rawFloor=r['층/총층']||r['층']||'-';
         var rawDate=r['확인 날짜']||r['입력일']||r['등록일']||'-';
@@ -5770,6 +5777,7 @@ function processNaverRows(rows, fileCnt){
           공구: distVal,
           단지명: nm,
           거래유형: rawType,
+          타입: typeNm,
           전용: parseNaverSqm(rawSqm),
           호가: parseNaverPrice(rawPrice),
           층: parseNaverFloor(rawFloor),
@@ -5944,6 +5952,7 @@ function renderTab6(){
       '<td style="font-weight:600">'+r.단지명+'</td>'+
       '<td><span class="badge '+typeCls+'">'+r.거래유형+'</span></td>'+
       '<td class="num">'+sqm.toFixed(1)+'㎡</td>'+
+      '<td style="font-size:11px;color:var(--text2)">'+(r.타입||'-')+'</td>'+
       '<td class="num" style="color:var(--text3);font-size:11px">'+(pyeong>0?pyeong+'평':'-')+'</td>'+
       '<td class="num" style="color:var(--accent2);font-weight:700">'+fmt천(r.호가)+'</td>'+
       '<td>'+(r.층||'-')+'층</td>'+
@@ -5953,13 +5962,10 @@ function renderTab6(){
       '<td class="num" style="color:'+dupColor+';font-size:11px">'+
         (r.중복등록수>0?r.중복등록수+'개':'-')+'</td>'+
       '<td style="font-size:11px;color:var(--yellow)">'+(r.특이사항||'')+'</td>'+
-      (hideAgent?'':'<td style="padding:0;min-width:160px;max-width:220px">'+
-        '<div style="font-size:10px;color:var(--text3);overflow-x:auto;white-space:nowrap;padding:4px 6px;max-width:220px">'+
-          (r.중복업소명||'-')+
-        '</div></td>')+
+      (hideAgent?'':'<td style="font-size:10px;color:var(--text3);min-width:200px;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(r.중복업소명||'-')+'</td>')+
     '</tr>';
   });
-  document.getElementById('t6-tbody').innerHTML = html||'<tr><td colspan="'+(hideAgent?'11':'13')+'" style="text-align:center;padding:20px;color:var(--text3)">해당 매물 없음</td></tr>';
+  document.getElementById('t6-tbody').innerHTML = html||'<tr><td colspan="'+(hideAgent?'12':'14')+'" style="text-align:center;padding:20px;color:var(--text3)">해당 매물 없음</td></tr>';
 
   // 차트
   renderNaverDistChart(rows);
