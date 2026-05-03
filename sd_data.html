@@ -1374,13 +1374,18 @@ body.zoom-mode .chart-wrap canvas {
     <span class="upload-bar-title">📂 네이버 매물 데이터</span>
     <div class="upload-group">
       <label class="upload-label" style="background:var(--accent2)">📋 네이버 매물 엑셀 <span style="font-size:10px;opacity:.75">(복수파일)</span>
-        <input type="file" accept=".xlsx" multiple multiple style="display:none" id="upload-naver" onchange="onUploadNaver(this)">
+        <input type="file" accept=".xlsx" multiple style="display:none" id="upload-naver" onchange="onUploadNaver(this)">
       </label>
       <span class="upload-status" id="naver-status">미업로드</span>
     </div>
-    <button onclick="loadNaverDemo()" style="margin-left:auto;padding:4px 12px;background:var(--bg3);border:1px solid var(--border);color:var(--text2);border-radius:6px;cursor:pointer;font-size:11px;">
-      📋 샘플 매물 로드
-    </button>
+    <div style="margin-left:auto;display:flex;gap:6px;align-items:center">
+      <button onclick="fbSaveData()" style="padding:4px 12px;background:#ff6600;border:none;color:#fff;border-radius:6px;cursor:pointer;font-size:11px;font-weight:700">
+        🔥 Firebase 저장
+      </button>
+      <button onclick="loadNaverDemo()" style="padding:4px 12px;background:var(--bg3);border:1px solid var(--border);color:var(--text2);border-radius:6px;cursor:pointer;font-size:11px;">
+        📋 샘플 로드
+      </button>
+    </div>
   </div>
 
   <!-- 필터 행1: 공구 -->
@@ -1856,6 +1861,8 @@ function sw(n){
   document.getElementById('tc'+n).classList.add('on');
   document.querySelectorAll('.tab-btn')[n].classList.add('on');
   updateGlobalBadges();
+  // TAB6 전환 시 naverData 있으면 자동 렌더
+  if(n===6 && G.naverData) renderTab6();
 }
 
 // ── 필터 버튼 그룹 헬퍼
@@ -5700,17 +5707,13 @@ function processNaverRows(rows, fileCnt){
         var s=String(v).replace(/층/g,'');
         return s.split('/')[0].trim()||'-';
       }
-      // 공구: 단지명으로 G.saleData에서 역조회 (없으면 0)
-      function guessDistByName(nm){
-        if(!nm) return 0;
-        if(G.saleData){
-          for(var i=0;i<G.saleData.length;i++){
-            if(G.saleData[i]['단지명']===nm && G.saleData[i]['공구'])
-              return parseInt(G.saleData[i]['공구'])||0;
-          }
-        }
-        return 0;
-      }
+      // 공구: 단지명→공구 캐시맵 1회 생성 후 O(1) 조회
+      var _distCache={};
+      if(G.saleData) G.saleData.forEach(function(sr){
+        var nm2=sr['단지명']||''; var g2=parseInt(sr['공구']||0);
+        if(nm2&&g2&&!_distCache[nm2]) _distCache[nm2]=g2;
+      });
+      function guessDistByName(nm){ return (nm&&_distCache[nm])||0; }
 
       var validRows = rows.filter(function(r){
         // 헤더 중복행·빈 행 제거
@@ -6209,7 +6212,8 @@ window.fbAutoLoad = function(){
         $set('data-updated', upd ? '저장: '+upd : '');
         $set('fb-status','🔥 자동로드 완료');
         renderAll();
-        if(G.naverData) renderTab6();
+        // 현재 TAB6가 활성 상태일 때만 렌더 (비활성이면 탭 전환 시 자동 렌더)
+        if(G.naverData && document.getElementById('tc6').classList.contains('on')) renderTab6();
         showToast('☁️ Firebase 데이터 자동 로드 완료!', 3000);
       } else {
         loadDemo();
