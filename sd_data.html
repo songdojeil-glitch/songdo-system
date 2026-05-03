@@ -1259,25 +1259,22 @@ body.zoom-mode .chart-wrap canvas {
     <div class="filter-sep"></div>
     <span class="filter-label">공구</span>
     <div class="filter-group" id="t5-dist-group">
-      <button class="filter-btn on" onclick="t5Set('dist','all',this)">전체</button>
-      <button class="filter-btn" onclick="t5Set('dist',1,this)">1공구</button>
-      <button class="filter-btn" onclick="t5Set('dist',2,this)">2공구</button>
-      <button class="filter-btn" onclick="t5Set('dist',3,this)">3공구</button>
-      <button class="filter-btn" onclick="t5Set('dist',4,this)">4공구</button>
-      <button class="filter-btn" onclick="t5Set('dist',5,this)">5공구</button>
-      <button class="filter-btn" onclick="t5Set('dist',6,this)">6공구</button>
-      <button class="filter-btn" onclick="t5Set('dist',7,this)">7공구</button>
-      <button class="filter-btn" onclick="t5Set('dist',8,this)">8공구</button>
-      <button class="filter-btn" onclick="t5Set('dist',11,this)">11공구</button>
+      <button class="filter-btn on" onclick="t5SetDist('all',this)">전체</button>
+      <button class="filter-btn" onclick="t5SetDist(1,this)">1공구</button>
+      <button class="filter-btn" onclick="t5SetDist(2,this)">2공구</button>
+      <button class="filter-btn" onclick="t5SetDist(3,this)">3공구</button>
+      <button class="filter-btn" onclick="t5SetDist(4,this)">4공구</button>
+      <button class="filter-btn" onclick="t5SetDist(5,this)">5공구</button>
+      <button class="filter-btn" onclick="t5SetDist(6,this)">6공구</button>
+      <button class="filter-btn" onclick="t5SetDist(7,this)">7공구</button>
+      <button class="filter-btn" onclick="t5SetDist(8,this)">8공구</button>
+      <button class="filter-btn" onclick="t5SetDist(11,this)">11공구</button>
     </div>
-    <div class="filter-sep"></div>
-    <span class="filter-label">단지</span>
-    <div style="display:flex;gap:4px;align-items:center">
-      <input id="t5-unit-input" type="text" placeholder="단지명 입력..." oninput="t5Set('unit',this.value)"
-        style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:3px 8px;color:var(--text);font-size:11px;width:130px">
-      <button onclick="document.getElementById('t5-unit-input').value='';t5Set('unit','')"
-        style="background:transparent;border:1px solid var(--border);border-radius:6px;padding:3px 8px;color:var(--text3);font-size:11px;cursor:pointer">✕</button>
-    </div>
+  </div>
+  <!-- 단지 칩 행 (공구 선택 시 동적 생성) -->
+  <div id="t5-unit-chip-row" style="display:none;margin-top:4px;flex-wrap:wrap;gap:4px;padding:4px 6px;background:var(--bg3);border-radius:8px;border-left:2px solid var(--accent)">
+    <span class="filter-label" style="align-self:center">단지</span>
+    <div id="t5-unit-chips" style="display:flex;flex-wrap:wrap;gap:4px;flex:1"></div>
   </div>
 
   <!-- ① 기간별 최고 신고가 -->
@@ -1993,6 +1990,16 @@ function setAbnType(v,btn){
 function t5Set(key, val, btn){
   G['t5'+key] = val;
   if(btn) setFilterBtn(btn.parentElement.querySelectorAll('.filter-btn'), btn);
+  renderTab5();
+}
+function t5SetDist(val, btn){
+  G.t5dist = val;
+  G.t5unit = 'all'; // 공구 바꾸면 단지 초기화
+  setFilterBtn(btn.parentElement.querySelectorAll('.filter-btn'), btn);
+  renderTab5();
+}
+function t5SetUnit(nm){
+  G.t5unit = (nm===undefined ? 'all' : nm);
   renderTab5();
 }
 function renderTab5(){
@@ -5259,17 +5266,21 @@ function renderT5TopTable(){
   var yr    = G.t5yr||2026;
   var trade = G.t5trade||'sale';
   var dist  = G.t5dist||'all';
-  var unit  = (G.t5unit||'').trim();
+  var unit  = G.t5unit||'all';
   var data  = trade==='sale' ? G.saleData : G.rentData;
+
+  var isFiltered = (dist!=='all' || unit!=='all'); // 공구 또는 단지 선택 여부
 
   // 서브 라벨 업데이트
   var yrStr = yr==='all'?'역대':yr==='recent'?'최근1년':yr+'년';
-  var distStr = dist==='all'?'전체공구':(DIST_NAMES[parseInt(dist)]||'');
+  var distStr = dist==='all'?'':DIST_NAMES[parseInt(dist)]||'';
   var sub = document.getElementById('t5-top-sub');
-  if(sub) sub.textContent = yrStr+' · '+(trade==='sale'?'매매':'전세')+(dist!=='all'?' · '+distStr:'')+(unit?' · '+unit:'');
+  if(sub) sub.textContent = yrStr+' · '+(trade==='sale'?'매매':'전세')+
+    (distStr?' · '+distStr:'')+(unit!=='all'?' · '+unit:'')+'  '+
+    (isFiltered?'[전용면적별 최고가]':'[계약일순 최대 15건]');
 
   if(!data){
-    tbody.innerHTML='<tr><td colspan="11" style="text-align:center;color:var(--text3);padding:20px">데이터를 업로드하세요</td></tr>';
+    tbody.innerHTML='<tr><td colspan="9" style="text-align:center;color:var(--text3);padding:20px">데이터를 업로드하세요</td></tr>';
     return;
   }
 
@@ -5286,8 +5297,8 @@ function renderT5TopTable(){
     return Math.floor(ym/100)===parseInt(yr);
   }
 
-  // 필터링
-  var rows = data.filter(function(r){
+  // 공통 필터
+  var filtered = data.filter(function(r){
     if(trade==='sale'){
       if(r['해제사유']&&r['해제사유']!=='-'&&r['해제사유']!=='') return false;
     } else {
@@ -5296,29 +5307,50 @@ function renderT5TopTable(){
     }
     if(!yrOk(r['계약년월'])) return false;
     if(dist!=='all'&&parseInt(r['공구'])!==parseInt(dist)) return false;
-    if(unit&&(r['단지명']||'').indexOf(unit)===-1) return false;
+    if(unit!=='all'&&(r['단지명']||'')!==unit) return false;
     return true;
   });
 
-  if(!rows.length){
-    tbody.innerHTML='<tr><td colspan="11" style="text-align:center;color:var(--text3);padding:20px">해당 조건의 데이터 없음</td></tr>';
-    return;
+  // ── 단지 칩 업데이트 (공구 선택 여부와 관계없이 항상)
+  var chipRow  = document.getElementById('t5-unit-chip-row');
+  var chipsEl  = document.getElementById('t5-unit-chips');
+  // 단지 목록: 공구 필터까지만 적용한 결과에서 추출
+  var forChips = data.filter(function(r){
+    if(trade==='sale'){
+      if(r['해제사유']&&r['해제사유']!=='-'&&r['해제사유']!=='') return false;
+    } else {
+      if(r['전월세구분']!=='전세') return false;
+    }
+    if(!yrOk(r['계약년월'])) return false;
+    if(dist!=='all'&&parseInt(r['공구'])!==parseInt(dist)) return false;
+    return true;
+  });
+  var unitSet={};
+  forChips.forEach(function(r){ if(r['단지명']) unitSet[r['단지명']]=(unitSet[r['단지명']]||0)+1; });
+  var unitList=Object.keys(unitSet).sort();
+
+  // 단지 칩 행: 공구 선택 또는 단지 선택 중이면 표시
+  if(chipRow){
+    if(dist!=='all'||unit!=='all'){
+      chipRow.style.display='flex';
+      var chipHtml='<span onclick="t5SetUnit(this.dataset.nm)" data-nm="all" style="cursor:pointer;padding:3px 8px;border-radius:12px;font-size:11px;white-space:nowrap;'+
+        (unit==='all'?'background:var(--accent);color:#fff':'background:var(--bg3);color:var(--text2);border:1px solid var(--border)')+'">전체</span>';
+      unitList.forEach(function(nm){
+        var sel=unit===nm;
+        var safeNm=nm.replace(/"/g,'&quot;');
+        chipHtml+='<span onclick="t5SetUnit(this.dataset.nm)" data-nm="'+safeNm+'" style="cursor:pointer;padding:3px 8px;border-radius:12px;font-size:11px;white-space:nowrap;'+
+          (sel?'background:var(--accent);color:#fff':'background:var(--bg3);color:var(--text2);border:1px solid var(--border)')+'">'+nm+'</span>';
+      });
+      if(chipsEl) chipsEl.innerHTML=chipHtml;
+    } else {
+      chipRow.style.display='none';
+    }
   }
 
-  // 전용면적 그룹별 최고가 추출
-  var byArea={};
-  rows.forEach(function(r){
-    var sqm=parseFloat(r['전용(㎡)']||r['전용㎡']||0);
-    var price=trade==='sale'?parseFloat(r['거래금액']||0):parseFloat(r['보증금']||r['보증금액']||0);
-    if(!sqm||!price) return;
-    var areaKey=Math.round(sqm*10)/10;
-    if(!byArea[areaKey]||price>byArea[areaKey].price){
-      byArea[areaKey]={r:r,price:price,sqm:sqm};
-    }
-  });
-
-  // 면적 오름차순 정렬
-  var sorted=Object.keys(byArea).map(Number).sort(function(a,b){return a-b;});
+  if(!filtered.length){
+    tbody.innerHTML='<tr><td colspan="9" style="text-align:center;color:var(--text3);padding:20px">해당 조건의 데이터 없음</td></tr>';
+    return;
+  }
 
   // 헤더
   if(thead) thead.innerHTML=
@@ -5332,21 +5364,17 @@ function renderT5TopTable(){
     '<th class="num">계약년월</th>'+
     (trade==='sale'?'<th style="text-align:center">거래유형</th>':'<th style="text-align:center">계약구분</th>');
 
-  var html='';
-  sorted.forEach(function(areaKey){
-    var item=byArea[areaKey];
-    var r=item.r;
+  function makeRow(r, price){
     var g=parseInt(r['공구'])||0;
     var color=DIST_COLORS[g]||'#8899bb';
-    var price=item.price;
-    var sqm=item.sqm;
+    var sqm=parseFloat(r['전용(㎡)']||r['전용㎡']||0);
     var pyeong=parseInt(r['분양평형']||0);
     var py=pyeong>0?Math.round(price/pyeong):(sqm>0?Math.round(price/(sqm/3.3058)):0);
     var ym=String(r['계약년월']||'');
     var ymStr=ym.length>=6?ym.slice(0,4)+'.'+ym.slice(4,6):'';
-    var tType=trade==='sale'?(r['거래유형']||''):((r['계약구분']||''));
+    var tType=trade==='sale'?(r['거래유형']||''):(r['계약구분']||'');
     var tLabel=tType.indexOf('직거래')>=0?'직거래':tType.indexOf('중개')>=0?'중개':tType;
-    html+='<tr>'+
+    return '<tr>'+
       '<td><span class="badge" style="background:'+color+'33;color:'+color+'">'+(DIST_NAMES[g]||'-')+'</span></td>'+
       '<td style="font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(r['단지명']||'-')+'</td>'+
       '<td class="num">'+sqm.toFixed(1)+'</td>'+
@@ -5357,7 +5385,37 @@ function renderT5TopTable(){
       '<td class="num" style="color:var(--text3);font-size:11px">'+ymStr+'</td>'+
       '<td style="text-align:center;font-size:10px;color:var(--text3)">'+tLabel+'</td>'+
     '</tr>';
-  });
+  }
+
+  var html='';
+
+  if(isFiltered){
+    // ── 공구/단지 선택 시: 전용면적별 최고가
+    var byArea={};
+    filtered.forEach(function(r){
+      var sqm=parseFloat(r['전용(㎡)']||r['전용㎡']||0);
+      var price=trade==='sale'?parseFloat(r['거래금액']||0):parseFloat(r['보증금']||r['보증금액']||0);
+      if(!sqm||!price) return;
+      var areaKey=Math.round(sqm*10)/10;
+      if(!byArea[areaKey]||price>byArea[areaKey].price)
+        byArea[areaKey]={r:r,price:price};
+    });
+    Object.keys(byArea).map(Number).sort(function(a,b){return a-b;}).forEach(function(areaKey){
+      var item=byArea[areaKey];
+      html+=makeRow(item.r, item.price);
+    });
+  } else {
+    // ── 공구/단지 미선택: 계약일 가까운 순 15건
+    var sorted2=filtered.slice().sort(function(a,b){
+      var ad=parseInt(a['계약년월']||0)*100+parseInt(a['계약일']||0);
+      var bd=parseInt(b['계약년월']||0)*100+parseInt(b['계약일']||0);
+      return bd-ad;
+    }).slice(0,15);
+    sorted2.forEach(function(r){
+      var price=trade==='sale'?parseFloat(r['거래금액']||0):parseFloat(r['보증금']||r['보증금액']||0);
+      html+=makeRow(r, price);
+    });
+  }
   tbody.innerHTML=html||'<tr><td colspan="9" style="text-align:center;color:var(--text3);padding:20px">데이터 없음</td></tr>';
 }
 
