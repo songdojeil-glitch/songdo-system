@@ -1296,7 +1296,7 @@ body.zoom-mode .chart-wrap canvas {
   <!-- ② 역대 신고가 갱신 (2025~현재) -->
   <div class="sec-hdr" style="margin-top:16px">
     <div class="sec-hdr-bar" style="background:var(--orange,#ff8c42)"></div>
-    <div class="sec-hdr-title">📈 역대 신고가 갱신 <span style="color:var(--text3);font-size:11px;font-weight:400">(2025~현재 · 최대 15건)</span></div>
+    <div class="sec-hdr-title">📈 역대 매매 신고가 갱신 <span style="color:var(--text3);font-size:11px;font-weight:400">(2025~현재 · 최대 20건)</span></div>
   </div>
   <div class="table-wrap">
     <div class="table-scroll-hint">← 좌우로 스크롤하여 전체 내용 확인 →</div>
@@ -1325,7 +1325,7 @@ body.zoom-mode .chart-wrap canvas {
   <!-- ③ 이상거래 의심목록 -->
   <div class="sec-hdr" style="margin-top:16px">
     <div class="sec-hdr-bar" style="background:var(--red)"></div>
-    <div class="sec-hdr-title">⚠️ 이상거래 의심 목록 <span style="color:var(--text3);font-size:11px;font-weight:400">(최근1년 · 최대 15건)</span></div>
+    <div class="sec-hdr-title">⚠️ 매매 이상거래 의심 목록 <span style="color:var(--text3);font-size:11px;font-weight:400">(최근1년 · 최대 15건)</span></div>
   </div>
   <div class="filter-row" style="margin-bottom:8px">
     <span class="filter-label">기준</span>
@@ -5429,7 +5429,7 @@ function renderNewHighTable(){
     // 데모 데이터
     var highs=(DATA&&DATA.new_highs)||DEMO.new_highs;
     var html='';
-    highs.slice(0,15).forEach(function(h){
+    highs.slice(0,20).forEach(function(h){
       var color=DIST_COLORS[h.dist]||'#8899bb';
       var pyeong=h.pyeong||0;
       var py=pyeong>0?Math.round(h.price/pyeong):0;
@@ -5454,36 +5454,34 @@ function renderNewHighTable(){
     return;
   }
 
-  // 실거래 데이터: 단지+면적별 역대 최고가 맵 먼저 계산
-  var allMaxMap={};
-  G.saleData.forEach(function(r){
-    if(r['해제사유']&&r['해제사유']!=='-'&&r['해제사유']!=='') return;
-    var key=(r['단지명']||'')+'_'+Math.round(parseFloat(r['전용(㎡)']||0)*10);
-    var price=parseFloat(r['거래금액']||0); if(!price) return;
-    var ym=parseInt(r['계약년월']||0);
-    if(!allMaxMap[key]||price>allMaxMap[key].price)
-      allMaxMap[key]={price:price,ym:ym};
-  });
+  // O(n) 최적화: keyMap 캐싱 (saleData 변경 없으면 재계산 안 함)
+  if(!G._nhKeyMap || G._nhKeyMapSrc!==G.saleData){
+    var _km={};
+    G.saleData.forEach(function(r){
+      if(r['해제사유']&&r['해제사유']!=='-'&&r['해제사유']!=='') return;
+      var price=parseFloat(r['거래금액']||0); if(!price) return;
+      var key=(r['단지명']||'')+'_'+Math.round(parseFloat(r['전용(㎡)']||0)*10);
+      if(!_km[key]) _km[key]={top1:0,top2:0,row1:null};
+      if(price>_km[key].top1){ _km[key].top2=_km[key].top1; _km[key].top1=price; _km[key].row1=r; }
+      else if(price>_km[key].top2){ _km[key].top2=price; }
+    });
+    G._nhKeyMap=_km; G._nhKeyMapSrc=G.saleData;
+  }
+  // top1 = 역대 최고가, top2 = 직전 최고가(= top1 제외 최고)
+  var keyMap=G._nhKeyMap;
 
-  // 2025년 이후 거래 중 해당 단지+면적 최고가 갱신한 건
+  // 2025년 이후 거래 중 역대 최고가 갱신한 건 추출
   var highs=[];
   G.saleData.forEach(function(r){
     if(r['해제사유']&&r['해제사유']!=='-'&&r['해제사유']!=='') return;
     var ym=parseInt(r['계약년월']||0);
     if(Math.floor(ym/100)<2025) return;
-    var key=(r['단지명']||'')+'_'+Math.round(parseFloat(r['전용(㎡)']||0)*10);
     var price=parseFloat(r['거래금액']||0); if(!price) return;
-    var prevMax=allMaxMap[key]?allMaxMap[key].price:0;
-    // 역대 최고가 = 이 거래 자신이므로, 직전 최고가는 자신 제외 최고가로 계산
-    var prevRows=G.saleData.filter(function(r2){
-      if(r2===r) return false;
-      if(r2['해제사유']&&r2['해제사유']!=='-'&&r2['해제사유']!=='') return false;
-      var k2=(r2['단지명']||'')+'_'+Math.round(parseFloat(r2['전용(㎡)']||0)*10);
-      return k2===key;
-    });
-    var prevMax2=prevRows.reduce(function(m,r2){
-      return Math.max(m,parseFloat(r2['거래금액']||0));
-    },0);
+    var key=(r['단지명']||'')+'_'+Math.round(parseFloat(r['전용(㎡)']||0)*10);
+    var km=keyMap[key]; if(!km) return;
+    // 이 거래가 해당 key의 역대 최고가인지 확인
+    if(km.row1!==r) return; // 역대 최고가 행이 아니면 스킵
+    var prevMax2=km.top2; // 직전 최고가
     if(prevMax2>0&&price>prevMax2){
       var pct=((price-prevMax2)/prevMax2*100).toFixed(1);
       highs.push({r:r,price:price,prevMax:prevMax2,pct:pct,ym:ym});
@@ -5496,7 +5494,7 @@ function renderNewHighTable(){
     var bd=b.ym*100+parseInt(b.r['계약일']||0);
     return bd-ad;
   });
-  highs=highs.slice(0,15);
+  highs=highs.slice(0,20);
 
   var html='';
   highs.forEach(function(h){
@@ -5546,16 +5544,20 @@ function renderAbnTable(){
     return diff>=0&&diff<12;
   }
 
-  // 단지+면적별 평균값 계산 (전체 데이터 기준)
-  var avgMap={};
-  G.saleData.forEach(function(r){
-    if(r['해제사유']&&r['해제사유']!=='-'&&r['해제사유']!=='') return;
-    var price=parseFloat(r['거래금액'])||0; if(!price) return;
-    var sqm=Math.round(parseFloat(r['전용(㎡)']||r['전용㎡'])||0);
-    var key=(r['단지명']||'')+'_'+sqm;
-    if(!avgMap[key]) avgMap[key]={sum:0,cnt:0};
-    avgMap[key].sum+=price; avgMap[key].cnt++;
-  });
+  // 단지+면적별 평균값 캐시 (saleData 변경 없으면 재계산 안 함)
+  if(!G._abnAvgMap || G._abnAvgMapSrc!==G.saleData){
+    var _map={};
+    G.saleData.forEach(function(r){
+      if(r['해제사유']&&r['해제사유']!=='-'&&r['해제사유']!=='') return;
+      var price=parseFloat(r['거래금액'])||0; if(!price) return;
+      var sqm=Math.round(parseFloat(r['전용(㎡)']||r['전용㎡'])||0);
+      var key=(r['단지명']||'')+'_'+sqm;
+      if(!_map[key]) _map[key]={sum:0,cnt:0};
+      _map[key].sum+=price; _map[key].cnt++;
+    });
+    G._abnAvgMap=_map; G._abnAvgMapSrc=G.saleData;
+  }
+  var avgMap=G._abnAvgMap;
   function getAvg(key){ var e=avgMap[key]; return e&&e.cnt?Math.round(e.sum/e.cnt):0; }
 
   var thresh=G.abnThresh/100;
