@@ -5636,18 +5636,81 @@ function onUploadNaver(input){
       var wb = XLSX.read(e.target.result, {type:'array'});
       var sh = wb.Sheets[wb.SheetNames[0]];
       var rows = XLSX.utils.sheet_to_json(sh, {header:0, defval:null});
-      G.naverData = rows.map(function(r){
+      // ── 네이버 엑셀 파싱 유틸 ──
+      // 전용면적: '111T/84m²', '132/101m²', '84m²' → 숫자
+      function parseNaverSqm(v){
+        if(!v) return '0';
+        var s=String(v);
+        var m=s.match(/(\d+(?:\.\d+)?)m/);
+        return m ? m[1] : (s.match(/(\d+(?:\.\d+)?)/)? s.match(/(\d+(?:\.\d+)?)/)[1] : '0');
+      }
+      // 가격: '7억 8,000', '6억', '1억/280' → 만원 정수
+      function parseNaverPrice(v){
+        if(!v) return 0;
+        var s=String(v).replace(/,/g,'').replace(/ /g,'');
+        if(s.indexOf('/')>-1) s=s.split('/')[0]; // 월세 보증금만
+        var uk=0, man=0;
+        var mU=s.match(/(\d+(?:\.\d+)?)억/);
+        if(mU) uk=parseFloat(mU[1]);
+        var mM=s.match(/억(\d+)/);
+        if(mM) man=parseInt(mM[1]);
+        if(!mU){
+          // 억 없으면 만원 단위로 간주
+          var mN=s.match(/(\d+)/);
+          return mN?parseInt(mN[1]):0;
+        }
+        return Math.round(uk*10000)+man;
+      }
+      // 층: '저/30층', '6/33층', '중/30층' → '저', '6', '중'
+      function parseNaverFloor(v){
+        if(!v) return '-';
+        var s=String(v).replace(/층/g,'');
+        return s.split('/')[0].trim()||'-';
+      }
+      // 공구: 단지명으로 G.saleData에서 역조회 (없으면 0)
+      function guessDistByName(nm){
+        if(!nm) return 0;
+        if(G.saleData){
+          for(var i=0;i<G.saleData.length;i++){
+            if(G.saleData[i]['단지명']===nm && G.saleData[i]['공구'])
+              return parseInt(G.saleData[i]['공구'])||0;
+          }
+        }
+        return 0;
+      }
+
+      var validRows = rows.filter(function(r){
+        // 헤더 중복행·빈 행 제거
+        var nm=r['단지명']||r['아파트명'];
+        var type=r['거래구분']||r['거래유형']||r['유형'];
+        if(!nm || nm==='단지명') return false;
+        if(!type || type==='거래구분') return false;
+        return true;
+      });
+
+      G.naverData = validRows.map(function(r){
+        var nm=r['단지명']||r['아파트명']||'-';
+        var rawType=r['거래구분']||r['거래유형']||r['유형']||'매매';
+        var rawSqm=r['타입(전용)']||r['전용(㎡)']||r['전용㎡']||r['면적']||'0';
+        var rawPrice=r['가격']||r['호가']||r['매매가']||'0';
+        var rawFloor=r['층/총층']||r['층']||'-';
+        var rawDate=r['확인 날짜']||r['입력일']||r['등록일']||'-';
+        var rawAgent=r['중개업소명']||r['중개사']||r['중개사무소']||'-';
+        var distVal=parseInt(r['공구']||r['구역']||0)||guessDistByName(nm);
         return {
-          공구: parseInt(r['공구']||r['구역']||0),
-          단지명: r['단지명']||r['아파트명']||'-',
-          거래유형: r['거래유형']||r['유형']||'매매',
-          전용: String(r['전용(㎡)']||r['전용㎡']||r['면적']||0),
-          호가: parseFloat(r['호가']||r['매매가']||r['가격']||0),
-          층: String(r['층']||'-'),
+          공구: distVal,
+          단지명: nm,
+          거래유형: rawType,
+          전용: parseNaverSqm(rawSqm),
+          호가: parseNaverPrice(rawPrice),
+          층: parseNaverFloor(rawFloor),
           방향: r['방향']||'-',
-          입력일: r['입력일']||r['등록일']||'-',
-          중개사: r['중개사']||r['중개사무소']||'-',
-          특이사항: r['특이사항']||r['메모']||'',
+          입력일: rawDate,
+          중개사: rawAgent,
+          특이사항: r['특이사항']||r['주요정보']||r['메모']||'',
+          // 월세 추가 필드
+          월세: (rawType==='월세'&&String(r['가격']||'').indexOf('/')>-1) ?
+                  parseInt(String(r['가격']).split('/')[1].replace(/[^0-9]/g,''))||0 : 0,
         };
       });
       $set('naver-status', '✅ '+G.naverData.length+'건 로드');
@@ -5687,7 +5750,7 @@ function renderTab6(){
     if(G.naverDist!=='all'&&parseInt(r.공구)!==parseInt(G.naverDist)) return false;
     if(G.naverType!=='all'&&r.거래유형!==G.naverType) return false;
     if(G.naverArea==='84'){var s=parseFloat(r.전용)||0; if(s<80||s>90) return false;}
-    if(G.naverArea==='40'){var s=parseFloat(r.전용)||0; if(s<101||s>130) return false;}
+    if(G.naverArea==='40'){var s=parseFloat(r.전용)||0; if(s<120||s>145) return false;}
     if(search&&r.단지명.indexOf(search)<0) return false;
     return true;
   });
