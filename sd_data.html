@@ -293,11 +293,12 @@ body.zoom-mode .chart-wrap canvas {
   padding:8px 10px; text-align:left; background:var(--bg3);
   color:var(--text3); font-size:10px; font-weight:700; border-bottom:1px solid var(--border);
   white-space:nowrap;
-  position:sticky; top:0; z-index:10;
+  position:sticky; top:0; z-index:2;
 }
 .data-table td {
   padding:8px 10px; border-bottom:1px solid rgba(42,58,82,.5);
   color:var(--text); vertical-align:middle;
+  position:relative; z-index:1;
 }
 .data-table tr:hover td { background:rgba(255,255,255,.02); }
 .data-table .num { text-align:right; font-family:var(--font2); }
@@ -5951,10 +5952,17 @@ function renderTab6(){
       '<div class="kpi-sub">'+k.sub+'</div></div>';
   }).join('');
 
-  // 테이블
-  $set('t6-cnt', rows.length+'건');
+  // 테이블 (렌더링 상한선 500건 - 2000건+ 렌더 시 레이아웃 붕괴 방지)
+  var MAX_T6 = 500;
+  var totalT6 = rows.length;
+  $set('t6-cnt', totalT6+'건');
+  var displayRows = rows.slice(0, MAX_T6);
+  var overBanner = totalT6 > MAX_T6
+    ? '<tr><td colspan="'+(hideAgent?'12':'14')+'" style="text-align:center;padding:8px;background:rgba(255,200,0,.1);color:var(--yellow);font-size:11px">'+
+      '⚠️ '+totalT6.toLocaleString()+'건 중 상위 '+MAX_T6+'건만 표시. 공구·거래구분·단지를 선택해 좁혀주세요.</td></tr>'
+    : '';
   var html='';
-  rows.forEach(function(r){
+  displayRows.forEach(function(r){
     var color = DIST_COLORS[parseInt(r.공구)]||'#8899bb';
     var typeCls = r.거래유형==='매매'?'badge-gold':r.거래유형==='전세'?'badge-apt':'badge-pre';
     var sqm=parseFloat(r.전용)||0;
@@ -5984,7 +5992,7 @@ function renderTab6(){
       (hideAgent?'':'<td style="font-size:10px;color:var(--text3);min-width:200px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+(r.중복업소명||'')+'">'+(r.중복업소명||'-')+'</td>')+
     '</tr>';
   });
-  document.getElementById('t6-tbody').innerHTML = html||'<tr><td colspan="'+(hideAgent?'12':'14')+'" style="text-align:center;padding:20px;color:var(--text3)">해당 매물 없음</td></tr>';
+  document.getElementById('t6-tbody').innerHTML = overBanner+html||'<tr><td colspan="'+(hideAgent?'12':'14')+'" style="text-align:center;padding:20px;color:var(--text3)">해당 매물 없음</td></tr>';
 
   // 차트
   renderNaverDistChart(rows);
