@@ -99,6 +99,7 @@ body { background:var(--bg); color:var(--text); font-family:var(--font); font-si
 .kpi-row-5 { grid-template-columns:repeat(5,1fr); }
 .kpi-row-6 { grid-template-columns:repeat(6,1fr); }
 .kpi-row-4 { grid-template-columns:repeat(4,1fr); }
+.kpi-row-7 { grid-template-columns:repeat(7,1fr); }
 .kpi-row-3 { grid-template-columns:repeat(3,1fr); }
 .kpi-card {
   background:var(--card); border:1px solid var(--border); border-radius:10px;
@@ -292,6 +293,7 @@ body.zoom-mode .chart-wrap canvas {
   padding:8px 10px; text-align:left; background:var(--bg3);
   color:var(--text3); font-size:10px; font-weight:700; border-bottom:1px solid var(--border);
   white-space:nowrap;
+  position:sticky; top:0; z-index:10;
 }
 .data-table td {
   padding:8px 10px; border-bottom:1px solid rgba(42,58,82,.5);
@@ -319,7 +321,7 @@ body.zoom-mode .chart-wrap canvas {
   padding:10px 14px; border-bottom:1px solid var(--border);
   display:flex; align-items:center; justify-content:space-between;
 }
-.table-scroll { overflow-x:auto; max-height:420px; overflow-y:auto; -webkit-overflow-scrolling:touch; }
+.table-scroll { overflow-x:auto; max-height:520px; overflow-y:auto; -webkit-overflow-scrolling:touch; }
 .table-scroll::-webkit-scrollbar { width:4px; height:6px; }
 .table-scroll::-webkit-scrollbar-track { background:var(--bg); }
 .table-scroll::-webkit-scrollbar-thumb { background:var(--accent); border-radius:3px; opacity:.7; }
@@ -551,7 +553,7 @@ body.zoom-mode .chart-wrap canvas {
   </div>
 
   <!-- KPI 상단 -->
-  <div class="kpi-row kpi-row-6 zoomable" id="kpi-top" onclick="openZoom(this)" style="cursor:zoom-in"></div>
+  <div class="kpi-row kpi-row-7 zoomable" id="kpi-top" onclick="openZoom(this)" style="cursor:zoom-in"></div>
 
   <!-- 기간별 차트 (분기/월별 선택 시 표시) -->
   <!-- period-charts 제거: dist-charts-wrap으로 통합 -->
@@ -2762,8 +2764,19 @@ function renderTab0(){
 
   // ── 전세 실시간 필터링 (기준연도 + 면적 + 공구 모두 반영)
   function calcRentStats(targetYr){
-    var result = {cnt:0, new_prices:[], new_pyeongs:[], renew_cnt:0};
+    var result = {cnt:0, new_prices:[], new_pyeongs:[], renew_cnt:0, wolse_cnt:0, wolse_new:0, wolse_renew:0};
     if(!G.rentData) return result;
+    // 월세 카운트 별도 집계
+    G.rentData.forEach(function(r){
+      if(r['전월세구분']!=='월세') return;
+      if(!yrFilter(r, targetYr)) return;
+      if(!areaFilter(r)) return;
+      if(!t0DistFilter(r)) return;
+      result.wolse_cnt++;
+      var ct=r['계약구분']||'';
+      if(ct==='신규') result.wolse_new++;
+      else if(ct.indexOf('갱신')>=0) result.wolse_renew++;
+    });
     G.rentData.forEach(function(r){
       if(r['전월세구분']==='월세') return;
       if(!yrFilter(r, targetYr)) return;
@@ -2833,6 +2846,10 @@ function renderTab0(){
       sub:'신규 계약 기준',
       badge:jPyPrev?makeYoY(jPyDiff)+'(전년比)':'',
       color:'var(--purple)'},
+    {label:'월세 거래건수',val:(rentCur.wolse_cnt||0).toLocaleString()+'건',
+      sub:'신규 '+(rentCur.wolse_new||0)+'건 + 갱신 '+(rentCur.wolse_renew||0)+'건',
+      badge:'',
+      color:'var(--accent2)'},
   ].map(function(k){
     return '<div class="kpi-card" style="--kpi-color:'+k.color+'">'+
       '<div class="kpi-label">'+k.label+'</div>'+
@@ -5962,7 +5979,8 @@ function renderTab6(){
       '<td class="num" style="color:'+dupColor+';font-size:11px">'+
         (r.중복등록수>0?r.중복등록수+'개':'-')+'</td>'+
       '<td style="font-size:11px;color:var(--yellow)">'+(r.특이사항||'')+'</td>'+
-      (hideAgent?'':'<td style="font-size:10px;color:var(--text3);min-width:200px;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(r.중복업소명||'-')+'</td>')+
+      (hideAgent?'':'<td style="font-size:10px;color:var(--text3);min-width:220px">'+
+        '<div style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(r.중복업소명||'-')+'</div></td>')+
     '</tr>';
   });
   document.getElementById('t6-tbody').innerHTML = html||'<tr><td colspan="'+(hideAgent?'12':'14')+'" style="text-align:center;padding:20px;color:var(--text3)">해당 매물 없음</td></tr>';
