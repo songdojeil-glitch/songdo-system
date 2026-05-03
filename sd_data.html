@@ -1415,6 +1415,12 @@ body.zoom-mode .chart-wrap canvas {
       <button class="filter-btn" onclick="setNaverArea('50',this)">50평대</button>
       <button class="filter-btn" onclick="setNaverArea('o60',this)">60평이상</button>
     </div>
+    <div class="filter-sep"></div>
+    <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:11px;color:var(--text2);white-space:nowrap">
+      <input type="checkbox" id="t6-hide-agent" onchange="renderTab6()"
+        style="width:14px;height:14px;accent-color:var(--accent);cursor:pointer">
+      중개업소명 제외
+    </label>
   </div>
   <!-- 필터 행2: 공구 -->
   <div class="filter-row" style="flex-wrap:wrap;gap:4px;margin-top:4px">
@@ -1480,10 +1486,10 @@ body.zoom-mode .chart-wrap canvas {
         <div class="table-scroll">
           <table class="data-table">
             <thead>
-              <tr>
+              <tr id="t6-thead-tr">
                 <th>공구</th><th>단지명</th><th>거래구분</th><th class="num">전용㎡</th><th class="num">분양평형</th>
                 <th class="num">호가</th><th>층</th><th>방향</th>
-                <th>입력일</th><th>중개사</th><th class="num" style="color:var(--text3)">중복등록수</th><th>특이사항</th><th style="color:var(--text3);min-width:160px">중복업소명</th>
+                <th>입력일</th><th id="t6-th-agent">중개사</th><th class="num" style="color:var(--text3)">중복등록수</th><th>특이사항</th><th id="t6-th-dupnm" style="color:var(--text3);min-width:180px">중복등록업소명</th>
               </tr>
             </thead>
             <tbody id="t6-tbody"></tbody>
@@ -5828,6 +5834,14 @@ function renderTab6(){
     document.getElementById('t6-content').style.display='none';
     return;
   }
+  // 중개업소명 제외 체크 상태
+  var hideAgent = (document.getElementById('t6-hide-agent')||{}).checked||false;
+  // 헤더 컬럼 표시/숨김
+  var thAgent = document.getElementById('t6-th-agent');
+  var thDupnm = document.getElementById('t6-th-dupnm');
+  if(thAgent) thAgent.style.display = hideAgent ? 'none' : '';
+  if(thDupnm) thDupnm.style.display = hideAgent ? 'none' : '';
+
   // 분양평형 맵 캐싱: 단지명_전용㎡(소수점1자리) → 분양평형
   if(!G._naverPyeongMap || G._naverPyeongMapSrc!==G.saleData){
     var _pm={};
@@ -5935,17 +5949,17 @@ function renderTab6(){
       '<td>'+(r.층||'-')+'층</td>'+
       '<td style="font-size:11px;color:var(--text3)">'+(r.방향||'-')+'</td>'+
       '<td style="font-size:11px;color:var(--text3)">'+(r.입력일||'-')+'</td>'+
-      '<td style="font-size:11px;color:var(--text3)">'+(r.중개사||'-')+'</td>'+
+      (hideAgent?'':'<td style="font-size:11px;color:var(--text3)">'+(r.중개사||'-')+'</td>')+
       '<td class="num" style="color:'+dupColor+';font-size:11px">'+
         (r.중복등록수>0?r.중복등록수+'개':'-')+'</td>'+
       '<td style="font-size:11px;color:var(--yellow)">'+(r.특이사항||'')+'</td>'+
-      '<td style="padding:0;min-width:160px;max-width:220px">'+
-      '<div style="font-size:10px;color:var(--text3);overflow-x:auto;white-space:nowrap;padding:4px 6px;max-width:220px">'+
-        (r.중복업소명||'-')+
-      '</div></td>'+
+      (hideAgent?'':'<td style="padding:0;min-width:160px;max-width:220px">'+
+        '<div style="font-size:10px;color:var(--text3);overflow-x:auto;white-space:nowrap;padding:4px 6px;max-width:220px">'+
+          (r.중복업소명||'-')+
+        '</div></td>')+
     '</tr>';
   });
-  document.getElementById('t6-tbody').innerHTML = html||'<tr><td colspan="13" style="text-align:center;padding:20px;color:var(--text3)">해당 매물 없음</td></tr>';
+  document.getElementById('t6-tbody').innerHTML = html||'<tr><td colspan="'+(hideAgent?'11':'13')+'" style="text-align:center;padding:20px;color:var(--text3)">해당 매물 없음</td></tr>';
 
   // 차트
   renderNaverDistChart(rows);
