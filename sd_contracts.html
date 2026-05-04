@@ -343,6 +343,8 @@ body{margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',
       <div id="fc-p3w" style="display:none"><label class="fl">월세</label><input id="fc-monthly" type="text" class="fi"></div>
       <div><label class="fl">법정 중개보수 <button type="button" onclick="calcFee()" style="margin-left:6px;font-size:10px;padding:1px 7px;background:#e3f2fd;color:#1565c0;border:0.5px solid #90caf9;border-radius:5px;cursor:pointer">자동계산</button></label>
           <input id="fc-fee" type="text" class="fi" placeholder="자동계산 또는 직접 입력"></div>
+      <div id="fc-tenant-wrap" style="display:none"><label class="fl">🏪 입점업체</label>
+          <input id="fc-tenant" type="text" class="fi" placeholder="예: 카페베네, 편의점GS25"></div>
       <div id="fc-period-wrap"><label class="fl">계약 기간 (개월)</label>
         <div style="display:flex;align-items:center;gap:6px"><input id="fc-period" type="number" class="fi" min="1" max="120" placeholder="예: 24" oninput="autoExpiry()" style="flex:1"><span style="font-size:12px;color:#666;white-space:nowrap">개월</span></div>
       </div>
@@ -735,7 +737,7 @@ function rawNum(id){var el=document.getElementById(id);if(!el)return'';return el
 function openDetail(id){
   var c=contracts.find(function(x){return x.id===id;});if(!c)return;
   detailId=id;
-  document.getElementById('detail-title').textContent='📑 '+c.bldg+(c.dong?' '+c.dong:'')+(c.ho?' '+c.ho:'')+'  '+c.deal;
+  document.getElementById('detail-title').textContent='📑 '+c.bldg+(c.dong?' '+c.dong:'')+(c.ho?' '+c.ho:'')+(c.tenant?'<span style="background:#fff3e0;color:#e65100;border:0.5px solid #ffcc80;border-radius:10px;padding:1px 7px;font-size:10px;margin-left:5px">🏪 '+c.tenant+'</span>':'')+'  '+c.deal;
   var isKwon=c.deal==='권리'||c.type==='권리';
   var isWol=c.deal==='월세'||c.deal==='임대'||c.deal==='임대차';
   var isMae=['매매','분양권매매','권리'].includes(c.deal);
@@ -866,6 +868,7 @@ function saveDetail(){
   c.fee=gdv('fee');c.memo=gdv('memo');c.conditions=gdv('conditions');
   c.agencySeller=sdjSel;c.agencyBuyer=sdjBuy;c.manager=gdv('manager');
   c.landlord=gdv('landlord')||'';c.landlordTel=gdv('landlordtel')||'';c.landlordExp=gdv('landlordexp')||'';
+  c.tenant=gdv('tenant')||'';
   toCStore();syncMidToSchedule(c);renderCT();
   var msg=document.getElementById('detail-msg');
   msg.textContent='✅ 저장됐습니다!';msg.style.background='#e8f5e9';msg.style.color='#2e7d32';msg.style.display='block';
@@ -1212,6 +1215,8 @@ function onCDeal(){
   if(puWrap)puWrap.style.display=isPunyang?'block':'none';
   var llWrap=document.getElementById('fc-landlord-wrap');
   if(llWrap)llWrap.style.display=isKwon?'block':'none';
+  var tenantWrap=document.getElementById('fc-tenant-wrap');
+  if(tenantWrap)tenantWrap.style.display=(t==='상가')?'block':'none';
   var rrWrap=document.getElementById('fc-renewal-right-wrap');
   if(rrWrap)rrWrap.style.display=(isRenewal&&isApt&&!isMae)?'block':'none';
 }
@@ -1354,7 +1359,7 @@ async function analyzeContractFile(){
 
     // Claude API 호출
     var body = {
-      model: 'claude-sonnet-4-6',
+      model: 'claude-sonnet-4-5-20250929',
       max_tokens: 1500,
       system: '당신은 한국 부동산 계약서에서 정보를 추출하는 전문가입니다. 반드시 순수 JSON 객체만 출력하고, 마크다운 코드블록이나 설명 텍스트를 절대 포함하지 마세요.',
       messages:[{
@@ -1701,6 +1706,7 @@ function saveContract(){
     landlord:document.getElementById('fc-landlord')?document.getElementById('fc-landlord').value.trim():'',
     landlordTel:document.getElementById('fc-landlordtel')?document.getElementById('fc-landlordtel').value.trim():'',
     landlordExp:document.getElementById('fc-landlordexp')?document.getElementById('fc-landlordexp').value:'',
+    tenant:document.getElementById('fc-tenant')?document.getElementById('fc-tenant').value.trim():'',
     propId:propId,custId:document.getElementById('fc-custid').value,seeded:false,
     fileUrl:_contractFileUrl||'',fileName:_contractFileName||''};
   if(cEditId){var idx=contracts.findIndex(function(x){return x.id===cEditId;});if(idx>=0)contracts[idx]=obj;cEditId=null;document.getElementById('csave-btn').textContent='💾 계약 저장';}else contracts.unshift(obj);
@@ -1714,7 +1720,7 @@ function clearCF(){
   document.getElementById('fc-type').value='아파트';document.getElementById('fc-deal').value='전세';document.getElementById('fc-period').value='';
   document.getElementById('fc-propid').value='';document.getElementById('fc-custid').value='';
   document.getElementById('fc-link-info').style.display='none';document.getElementById('prop-sel-wrap').style.display='none';document.getElementById('cust-sel-wrap').style.display='none';
-  ['fc-conditions','fc-landlord','fc-landlordtel','fc-landlordexp','fc-agency-seller','fc-agency-buyer'].forEach(function(id){var el=document.getElementById(id);if(el)el.value='';});
+  ['fc-conditions','fc-landlord','fc-landlordtel','fc-landlordexp','fc-agency-seller','fc-agency-buyer','fc-tenant'].forEach(function(id){var el=document.getElementById(id);if(el)el.value='';});
   ['fc-pbase','fc-popt','fc-pprem'].forEach(function(id){var el=document.getElementById(id);if(el)el.value='';});
   var sm=document.getElementById('fc-manager');if(sm)sm.value='';
   var nr=document.getElementById('fc-newrenewal');if(nr)nr.value='신규';
@@ -1776,6 +1782,11 @@ function editCT(id){
   cEditId=id;sw(1);document.getElementById('fc-type').value=c.type||'아파트';document.getElementById('fc-deal').value=c.deal||'전세';
   ['bldg','dong','ho','addr','cdate','mid1','mid2','fdate','seller','stl','buyer','btl','price','deposit','monthly','fee','memo','expiry'].forEach(function(k){var el=document.getElementById('fc-'+k);if(el)el.value=c[k==='stl'?'sellerTel':k==='btl'?'buyerTel':k]||'';});
   document.getElementById('fc-period').value=c.period||'';document.getElementById('fc-propid').value=c.propId||'';document.getElementById('fc-custid').value=c.custId||'';
+  if(document.getElementById('fc-landlord'))document.getElementById('fc-landlord').value=c.landlord||'';
+  if(document.getElementById('fc-landlordtel'))document.getElementById('fc-landlordtel').value=c.landlordTel||'';
+  if(document.getElementById('fc-landlordexp'))document.getElementById('fc-landlordexp').value=c.landlordExp||'';
+  if(document.getElementById('fc-tenant'))document.getElementById('fc-tenant').value=c.tenant||'';
+  if(document.getElementById('fc-conditions'))document.getElementById('fc-conditions').value=c.conditions||'';
   var links=[];if(c.propId)links.push('🔗 매물 연동됨');if(c.custId)links.push('👤 고객 연동됨');
   if(links.length){document.getElementById('fc-link-info').textContent=links.join(' · ');document.getElementById('fc-link-info').style.display='block';}
   document.getElementById('csave-btn').textContent='💾 수정 저장';document.getElementById('fc-form-title').textContent='계약 수정';onCDeal();
@@ -2251,6 +2262,7 @@ function saveDetail(){
   c.fee=gdv('fee');c.memo=gdv('memo');c.conditions=gdv('conditions');
   c.agencySeller=sdjSel;c.agencyBuyer=sdjBuy;c.manager=gdv('manager');
   c.landlord=gdv('landlord')||'';c.landlordTel=gdv('landlordtel')||'';c.landlordExp=gdv('landlordexp')||'';
+  c.tenant=gdv('tenant')||'';
   toCStore();syncMidToSchedule(c);renderCT();
   var msg=document.getElementById('detail-msg');
   msg.textContent='✅ 저장됐습니다!';msg.style.background='#e8f5e9';msg.style.color='#2e7d32';msg.style.display='block';
