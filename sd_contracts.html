@@ -440,6 +440,24 @@ body{margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',
 
 <!-- TAB4 가져오기 -->
 <div id="tc4" class="tc">
+  <!-- 계약→고객 일괄 연동 카드 -->
+  <div class="card" style="border-left:4px solid #1565c0;margin-bottom:12px">
+    <p class="sec" style="color:#1565c0">👥 기존 계약 → 고객 일괄 연동</p>
+    <p style="font-size:12px;color:#666;margin:0 0 10px">
+      Firebase에 저장된 <strong>전체 계약 데이터</strong>에서 거래당사자를 추출해<br>
+      고객관리 시스템에 자동 등록합니다.<br>
+      <span style="color:#2e7d32">● 매도인·임대인</span> → 계약고객(자사) &nbsp;|&nbsp;
+      <span style="color:#757575">● 매수인·임차인</span> → 계약고객(타사)
+    </p>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <button onclick="bulkSyncCusts()" id="bulk-sync-btn"
+        style="padding:8px 20px;background:#1565c0;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer">
+        🔄 계약→고객 일괄 연동 실행
+      </button>
+      <span id="bulk-sync-result" style="font-size:12px;color:#2e7d32;display:none"></span>
+    </div>
+  </div>
+
   <div class="card">
     <p class="sec" style="color:#2e7d32">📂 파일 가져오기 (텍스트/엑셀)</p>
     <p style="font-size:12px;color:#666;margin:0 0 10px">
@@ -718,6 +736,123 @@ async function updateBuyerAgencyHint(val){
   if(!hint)return;
   hint.textContent=val?'📑 계약고객(타사)로 등록':'';
 }
+// ══ 기존 계약 전체 → 고객 일괄 연동 ══
+async function bulkSyncCusts(){
+  var btn=document.getElementById('bulk-sync-btn');
+  var res=document.getElementById('bulk-sync-result');
+  btn.disabled=true;btn.textContent='⏳ 연동 중...';
+  if(res){res.style.display='none';}
+
+  try{
+    // 1. 현재 contracts 전체 로드 (메모리에 있으면 사용, 없으면 Firebase에서)
+    var allContracts=contracts;
+    if(!allContracts||allContracts.length===0){
+      var cr=await window.storage.get('sd_contracts');
+      allContracts=cr&&cr.value?JSON.parse(cr.value):[];
+    }
+    if(!allContracts.length){
+      alert('연동할 계약 데이터가 없습니다. 먼저 계약을 불러오세요.');
+      btn.disabled=false;btn.textContent='🔄 계약→고객 일괄 연동 실행';
+      return;
+    }
+
+    // 2. 기존 고객 데이터 로드
+    var custData=await window.storage.get('sd_custs');
+    var custs=custData&&custData.value?JSON.parse(custData.value):[];
+    var origLen=custs.length;
+
+    // 3. 이름+전화 인덱스 맵 생성 (빠른 중복 체크)
+    var nameMap={};
+    var telMap={};
+    custs.forEach(function(x){
+      if(x.name)nameMap[x.name]=x;
+      if(x.tel)telMap[x.tel]=x;
+    });
+
+    var added=0, updated=0;
+    var baseId=Date.now();
+
+    allContracts.forEach(function(p,i){
+      var deal=p.deal||'';
+      var isSale=(deal==='매매');
+
+      // ─ 매도인/임대인 → 계약고객(자사)
+      var sName=(p.seller||p.landlord||'').trim();
+      var sTel=(p.sellerTel||p.landlordTel||'').trim();
+      var sRole=isSale?'매도인':'임대인';
+      if(sName){
+        var ex=nameMap[sName]||(sTel&&telMap[sTel]);
+        if(ex){
+          if(!ex.tags)ex.tags=[];
+          if(ex.tags.indexOf('계약고객(자사)')<0&&ex.tags.indexOf('계약고객')<0){
+            ex.tags.push('계약고객(자사)');updated++;
+          }
+        } else {
+          var obj={
+            id:baseId+(i*100)+1,
+            name:sName,tel:sTel,
+            tags:['계약고객(자사)'],
+            memo:'[계약연동] '+sRole+' / '+p.bldg+' '+(p.dong||'')+'동 '+(p.ho||'')+'호 ('+p.cdate+')',
+            ctCx:p.bldg+' '+(p.dong||'')+'동 '+(p.ho||'')+'호',
+            deal:deal,lastdate:p.cdate,pipe:4,
+            agencyType:'자사',agencyName:'송도제일공인'
+          };
+          custs.push(obj);
+          nameMap[sName]=obj;
+          if(sTel)telMap[sTel]=obj;
+          added++;
+        }
+      }
+
+      // ─ 매수인/임차인 → 계약고객(타사)
+      var bName=(p.buyer||p.tenant||'').trim();
+      var bTel=(p.buyerTel||'').trim();
+      var bRole=isSale?'매수인':'임차인';
+      if(bName){
+        var ex2=nameMap[bName]||(bTel&&telMap[bTel]);
+        if(ex2){
+          if(!ex2.tags)ex2.tags=[];
+          if(ex2.tags.indexOf('계약고객(타사)')<0&&ex2.tags.indexOf('계약고객')<0&&
+             ex2.tags.indexOf('계약고객(자사)')<0){
+            ex2.tags.push('계약고객(타사)');updated++;
+          }
+        } else {
+          var obj2={
+            id:baseId+(i*100)+2,
+            name:bName,tel:bTel,
+            tags:['계약고객(타사)'],
+            memo:'[계약연동] '+bRole+' / '+p.bldg+' '+(p.dong||'')+'동 '+(p.ho||'')+'호 ('+p.cdate+')',
+            ctCx:p.bldg+' '+(p.dong||'')+'동 '+(p.ho||'')+'호',
+            deal:deal,lastdate:p.cdate,pipe:4,
+            agencyType:'타사',agencyName:p.agencyBuyer||''
+          };
+          custs.push(obj2);
+          nameMap[bName]=obj2;
+          if(bTel)telMap[bTel]=obj2;
+          added++;
+        }
+      }
+    });
+
+    // 4. 최신순 정렬
+    custs.sort(function(a,b){return(b.lastdate||'').localeCompare(a.lastdate||'');});
+
+    // 5. 저장
+    await window.storage.set('sd_custs',JSON.stringify(custs));
+
+    var msg='✅ 완료! 신규 '+added+'명 등록 / '+updated+'명 태그 업데이트 (총 '+custs.length+'명)';
+    btn.textContent='✅ 완료';btn.style.background='#2e7d32';
+    if(res){res.textContent=msg;res.style.display='inline';res.style.color='#2e7d32';}
+    alert(msg);
+    refreshHub&&refreshHub();
+  }catch(e){
+    console.error('[일괄연동] 오류:', e);
+    btn.disabled=false;btn.textContent='🔄 계약→고객 일괄 연동 실행';
+    if(res){res.textContent='⚠️ 오류: '+e.message;res.style.display='inline';res.style.color='#c62828';}
+    alert('오류 발생: '+e.message);
+  }
+}
+
 async function autoRegisterCusts(contractList){
   try{
     var custData=await window.storage.get('sd_custs');
@@ -2250,6 +2385,123 @@ async function updateBuyerAgencyHint(val){
   if(!hint)return;
   hint.textContent=val?'📑 계약고객(타사)로 등록':'';
 }
+// ══ 기존 계약 전체 → 고객 일괄 연동 ══
+async function bulkSyncCusts(){
+  var btn=document.getElementById('bulk-sync-btn');
+  var res=document.getElementById('bulk-sync-result');
+  btn.disabled=true;btn.textContent='⏳ 연동 중...';
+  if(res){res.style.display='none';}
+
+  try{
+    // 1. 현재 contracts 전체 로드 (메모리에 있으면 사용, 없으면 Firebase에서)
+    var allContracts=contracts;
+    if(!allContracts||allContracts.length===0){
+      var cr=await window.storage.get('sd_contracts');
+      allContracts=cr&&cr.value?JSON.parse(cr.value):[];
+    }
+    if(!allContracts.length){
+      alert('연동할 계약 데이터가 없습니다. 먼저 계약을 불러오세요.');
+      btn.disabled=false;btn.textContent='🔄 계약→고객 일괄 연동 실행';
+      return;
+    }
+
+    // 2. 기존 고객 데이터 로드
+    var custData=await window.storage.get('sd_custs');
+    var custs=custData&&custData.value?JSON.parse(custData.value):[];
+    var origLen=custs.length;
+
+    // 3. 이름+전화 인덱스 맵 생성 (빠른 중복 체크)
+    var nameMap={};
+    var telMap={};
+    custs.forEach(function(x){
+      if(x.name)nameMap[x.name]=x;
+      if(x.tel)telMap[x.tel]=x;
+    });
+
+    var added=0, updated=0;
+    var baseId=Date.now();
+
+    allContracts.forEach(function(p,i){
+      var deal=p.deal||'';
+      var isSale=(deal==='매매');
+
+      // ─ 매도인/임대인 → 계약고객(자사)
+      var sName=(p.seller||p.landlord||'').trim();
+      var sTel=(p.sellerTel||p.landlordTel||'').trim();
+      var sRole=isSale?'매도인':'임대인';
+      if(sName){
+        var ex=nameMap[sName]||(sTel&&telMap[sTel]);
+        if(ex){
+          if(!ex.tags)ex.tags=[];
+          if(ex.tags.indexOf('계약고객(자사)')<0&&ex.tags.indexOf('계약고객')<0){
+            ex.tags.push('계약고객(자사)');updated++;
+          }
+        } else {
+          var obj={
+            id:baseId+(i*100)+1,
+            name:sName,tel:sTel,
+            tags:['계약고객(자사)'],
+            memo:'[계약연동] '+sRole+' / '+p.bldg+' '+(p.dong||'')+'동 '+(p.ho||'')+'호 ('+p.cdate+')',
+            ctCx:p.bldg+' '+(p.dong||'')+'동 '+(p.ho||'')+'호',
+            deal:deal,lastdate:p.cdate,pipe:4,
+            agencyType:'자사',agencyName:'송도제일공인'
+          };
+          custs.push(obj);
+          nameMap[sName]=obj;
+          if(sTel)telMap[sTel]=obj;
+          added++;
+        }
+      }
+
+      // ─ 매수인/임차인 → 계약고객(타사)
+      var bName=(p.buyer||p.tenant||'').trim();
+      var bTel=(p.buyerTel||'').trim();
+      var bRole=isSale?'매수인':'임차인';
+      if(bName){
+        var ex2=nameMap[bName]||(bTel&&telMap[bTel]);
+        if(ex2){
+          if(!ex2.tags)ex2.tags=[];
+          if(ex2.tags.indexOf('계약고객(타사)')<0&&ex2.tags.indexOf('계약고객')<0&&
+             ex2.tags.indexOf('계약고객(자사)')<0){
+            ex2.tags.push('계약고객(타사)');updated++;
+          }
+        } else {
+          var obj2={
+            id:baseId+(i*100)+2,
+            name:bName,tel:bTel,
+            tags:['계약고객(타사)'],
+            memo:'[계약연동] '+bRole+' / '+p.bldg+' '+(p.dong||'')+'동 '+(p.ho||'')+'호 ('+p.cdate+')',
+            ctCx:p.bldg+' '+(p.dong||'')+'동 '+(p.ho||'')+'호',
+            deal:deal,lastdate:p.cdate,pipe:4,
+            agencyType:'타사',agencyName:p.agencyBuyer||''
+          };
+          custs.push(obj2);
+          nameMap[bName]=obj2;
+          if(bTel)telMap[bTel]=obj2;
+          added++;
+        }
+      }
+    });
+
+    // 4. 최신순 정렬
+    custs.sort(function(a,b){return(b.lastdate||'').localeCompare(a.lastdate||'');});
+
+    // 5. 저장
+    await window.storage.set('sd_custs',JSON.stringify(custs));
+
+    var msg='✅ 완료! 신규 '+added+'명 등록 / '+updated+'명 태그 업데이트 (총 '+custs.length+'명)';
+    btn.textContent='✅ 완료';btn.style.background='#2e7d32';
+    if(res){res.textContent=msg;res.style.display='inline';res.style.color='#2e7d32';}
+    alert(msg);
+    refreshHub&&refreshHub();
+  }catch(e){
+    console.error('[일괄연동] 오류:', e);
+    btn.disabled=false;btn.textContent='🔄 계약→고객 일괄 연동 실행';
+    if(res){res.textContent='⚠️ 오류: '+e.message;res.style.display='inline';res.style.color='#c62828';}
+    alert('오류 발생: '+e.message);
+  }
+}
+
 async function autoRegisterCusts(contractList){
   try{
     var custData=await window.storage.get('sd_custs');
