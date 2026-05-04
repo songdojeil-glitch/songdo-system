@@ -41,6 +41,7 @@ body{margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',
 .tag-mul{background:#fff3e0;color:#e65100;display:inline-block;padding:2px 8px;border-radius:8px;font-size:11px;font-weight:600}
 .tag-ct{background:#e8f5e9;color:#2e7d32;display:inline-block;padding:2px 8px;border-radius:8px;font-size:11px;font-weight:600}
 .tag-ex{background:#f0f0f0;color:#555;display:inline-block;padding:2px 8px;border-radius:8px;font-size:11px;font-weight:600}
+.tag-ex-ct{background:#eeeeee;color:#616161;display:inline-block;padding:2px 8px;border-radius:8px;font-size:11px;font-weight:600;border:1px solid #bdbdbd}
 .tag-chk{display:flex;align-items:center;gap:6px;padding:8px 12px;border:0.5px solid #e0e0e0;border-radius:10px;cursor:pointer;font-size:13px;transition:all .15s}
 .tag-chk:hover{background:#f5f5f3}
 .tag-chk input[type=checkbox]{width:16px;height:16px;cursor:pointer}
@@ -160,8 +161,13 @@ body{margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',
       </label>
       <label class="tag-chk" id="chk-ct-box">
         <input type="checkbox" id="f-tag-ct" onchange="onTagChange()">
-        <span class="tag-ct">📑 계약고객</span>
-        <span style="font-size:11px;color:#666">기존 계약 완료 고객</span>
+        <span class="tag-ct">📑 계약고객(자사)</span>
+        <span style="font-size:11px;color:#666">송도제일공인 계약 고객 <span style="color:#2e7d32;font-weight:600">●</span></span>
+      </label>
+      <label class="tag-chk" id="chk-ct2-box">
+        <input type="checkbox" id="f-tag-ct2" onchange="onTagChange()">
+        <span class="tag-ex-ct">📑 계약고객(타사)</span>
+        <span style="font-size:11px;color:#666">타 중개업소 계약 고객 <span style="color:#757575;font-weight:600">●</span></span>
       </label>
       <label class="tag-chk" id="chk-ex-box">
         <input type="checkbox" id="f-tag-ex" onchange="onTagChange()">
@@ -323,6 +329,8 @@ body{margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',
         <option value="가망고객">🎯 가망고객</option>
         <option value="물건고객">🏠 물건고객</option>
         <option value="계약고객">📑 계약고객</option>
+        <option value="계약고객(자사)">📑 계약고객(자사)</option>
+        <option value="계약고객(타사)">📑 계약고객(타사)</option>
         <option value="기존고객">⭐ 기존고객</option>
       </select>
       <select id="ft-deal" class="fi" style="width:auto;font-size:12px" onchange="rtbl()"><option value="">전체 거래방식</option><option>매매</option><option>전세</option><option>월세</option><option>분양권 매매</option></select>
@@ -469,6 +477,8 @@ body{margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',
         <option value="가망고객">🎯 가망고객</option>
         <option value="물건고객">🏠 물건고객</option>
         <option value="계약고객">📑 계약고객</option>
+        <option value="계약고객(자사)">📑 계약고객(자사)</option>
+        <option value="계약고객(타사)">📑 계약고객(타사)</option>
         <option value="기존고객">⭐ 기존고객</option>
       </select>
       <select id="msg-filter-deal" class="fi" style="width:auto;font-size:12px" onchange="filterMsgTargets()">
@@ -635,10 +645,12 @@ var PIPE_CLS=['','bdg-1','bdg-2','bdg-3','bdg-4'];
 
 // ── 태그 정의
 var TAG_INFO={
-  '가망고객':{cls:'tag-ga',icon:'🎯'},
-  '물건고객':{cls:'tag-mul',icon:'🏠'},
-  '계약고객':{cls:'tag-ct',icon:'📑'},
-  '기존고객':{cls:'tag-ex',icon:'⭐'}
+  '가망고객':    {cls:'tag-ga',  icon:'🎯'},
+  '물건고객':    {cls:'tag-mul', icon:'🏠'},
+  '계약고객':    {cls:'tag-ct',  icon:'📑'},
+  '계약고객(자사)':{cls:'tag-ct', icon:'📑'},
+  '계약고객(타사)':{cls:'tag-ex-ct',icon:'📑'},
+  '기존고객':    {cls:'tag-ex',  icon:'⭐'}
 };
 
 function tagBadges(tags){
@@ -1209,19 +1221,24 @@ function onTagChange(){
   var ga=document.getElementById('f-tag-ga').checked;
   var mul=document.getElementById('f-tag-mul').checked;
   var ct=document.getElementById('f-tag-ct').checked;
+  var ct2=document.getElementById('f-tag-ct2')&&document.getElementById('f-tag-ct2').checked;
   var ex=document.getElementById('f-tag-ex').checked;
   document.getElementById('sec-ga').style.display=ga?'block':'none';
   document.getElementById('sec-mul').style.display=mul?'block':'none';
-  document.getElementById('sec-ct').style.display=ct?'block':'none';
+  document.getElementById('sec-ct').style.display=(ct||ct2)?'block':'none';
   document.getElementById('sec-ex').style.display=ex?'block':'none';
-  document.getElementById('tag-warn').style.display=(!ga&&!mul&&!ct&&!ex)?'block':'none';
+  document.getElementById('tag-warn').style.display=(!ga&&!mul&&!ct&&!ct2&&!ex)?'block':'none';
+  // 자사/타사 동시 체크 방지
+  if(ct&&ct2){ document.getElementById('f-tag-ct2').checked=false; }
 }
 
 function getTags(){
   var tags=[];
   if(document.getElementById('f-tag-ga').checked)tags.push('가망고객');
   if(document.getElementById('f-tag-mul').checked)tags.push('물건고객');
-  if(document.getElementById('f-tag-ct').checked)tags.push('계약고객');
+  if(document.getElementById('f-tag-ct').checked)tags.push('계약고객(자사)');
+  var el2=document.getElementById('f-tag-ct2');
+  if(el2&&el2.checked)tags.push('계약고객(타사)');
   if(document.getElementById('f-tag-ex').checked)tags.push('기존고객');
   return tags;
 }
@@ -1231,7 +1248,11 @@ function setTags(tags){
   if(!tags)return;
   if(tags.indexOf('가망고객')>=0)document.getElementById('f-tag-ga').checked=true;
   if(tags.indexOf('물건고객')>=0)document.getElementById('f-tag-mul').checked=true;
-  if(tags.indexOf('계약고객')>=0)document.getElementById('f-tag-ct').checked=true;
+  // 계약고객 자사/타사 복원 (구버전 '계약고객'은 자사로 마이그레이션)
+  if(tags.indexOf('계약고객(자사)')>=0||tags.indexOf('계약고객')>=0)
+    document.getElementById('f-tag-ct').checked=true;
+  var el2=document.getElementById('f-tag-ct2');
+  if(el2&&tags.indexOf('계약고객(타사)')>=0)el2.checked=true;
   if(tags.indexOf('기존고객')>=0)document.getElementById('f-tag-ex').checked=true;
   onTagChange();
 }
@@ -1278,7 +1299,7 @@ function clearF(){
   // 면적 필드는 ㎡ 기본값 복원
   var propArea=document.getElementById('f-prop-area');if(propArea)propArea.value='㎡';
   ['f-route','f-deal','f-ptype','f-area','f-size','f-prop-deal','f-prop-ptype','f-ct-renew','f-ct-intro','f-ex-rel','f-ex-intro'].forEach(function(id){var el=document.getElementById(id);if(el)el.value='';});
-  ['f-tag-ga','f-tag-mul','f-tag-ct','f-tag-ex'].forEach(function(id){document.getElementById(id).checked=false;});
+  ['f-tag-ga','f-tag-mul','f-tag-ct','f-tag-ct2','f-tag-ex'].forEach(function(id){var el=document.getElementById(id);if(el)el.checked=false;});
   onTagChange();selPipe(1);setToday();editId=null;document.getElementById('save-btn').textContent='💾 고객 저장';
 }
 

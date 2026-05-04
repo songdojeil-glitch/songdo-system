@@ -366,13 +366,14 @@ body{margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',
         <div><label class="fl">임대인측 중개업소</label>
           <div style="display:flex;gap:6px">
             <button type="button" onclick="setSdj('seller')" id="btn-sdj-seller" class="sdj-btn">송도제일공인</button>
-            <input id="fc-agency-seller" type="text" class="fi" style="flex:1;font-size:12px" placeholder="타 중개업소 입력">
+            <input id="fc-agency-seller" type="text" class="fi" style="flex:1;font-size:12px;border-left:3px solid #9e9e9e" placeholder="타 중개업소명 입력 (타사 고객)">
           </div>
         </div>
         <div><label class="fl">임차인측 중개업소</label>
           <div style="display:flex;gap:6px">
             <button type="button" onclick="setSdj('buyer')" id="btn-sdj-buyer" class="sdj-btn">송도제일공인</button>
-            <input id="fc-agency-buyer" type="text" class="fi" style="flex:1;font-size:12px" placeholder="타 중개업소 입력">
+            <input id="fc-agency-buyer" type="text" class="fi" style="flex:1;font-size:12px;border-left:3px solid #9e9e9e" placeholder="타 중개업소명 입력 (타사 고객)" oninput="updateBuyerAgencyHint(this.value)">
+            <span id="buyer-agency-hint" style="font-size:10px;color:#757575;margin-left:4px"></span>
           </div>
         </div>
         <div><label class="fl">송도제일 담당자</label>
@@ -682,18 +683,24 @@ function doFileImport(){
   var btn=document.getElementById('file-import-btn');
   btn.disabled=true;btn.textContent='저장 중...';
   var added=0,skip=0;
-  fileImportItems.forEach(function(p){
+  var baseId=Date.now();
+  fileImportItems.forEach(function(p,i){
     var dup=contracts.some(function(x){return x.bldg===p.bldg&&x.cdate===p.cdate&&x.ho===p.ho;});
     if(dup){skip++;return;}
-    p.id=Date.now()+added+Math.floor(Math.random()*9999);
+    // ID 중복 방지: baseId + 인덱스 기반 고유 ID
+    p.id=baseId+i*13+Math.floor(Math.random()*7);
     contracts.push(p);added++;
   });
-  // 계약일 역순 정렬
   contracts.sort(function(a,b){return(b.cdate||'').localeCompare(a.cdate||'');});
   toCStore().then(function(){
+    // 고객 자동 등록 (새로 추가된 계약만)
+    var newContracts=fileImportItems.filter(function(p){
+      return contracts.some(function(x){return String(x.id)===String(p.id);});
+    });
+    autoRegisterCusts(fileImportItems);
     renderCT();renderExpiry();refreshHub();
     var res=document.getElementById('file-import-result');
-    res.innerHTML='✅ <strong>'+added+'건</strong> 가져오기 완료! (중복 제외: '+skip+'건) — 전체 '+contracts.length+'건';
+    res.innerHTML='✅ <strong>'+added+'건</strong> 가져오기 완료! (중복 제외: '+skip+'건) — 전체 '+contracts.length+'건<br><span style="font-size:11px;color:#666">고객 자동 등록 완료 (매도/임대인→자사, 매수/임차인→타사)</span>';
     res.style.background='#e8f5e9';res.style.color='#2e7d32';res.style.display='block';
     btn.textContent='✅ 완료 '+added+'건';btn.style.background='#2e7d32';
     fileImportItems=[];
@@ -703,6 +710,82 @@ function doFileImport(){
     res.style.background='#fff3e0';res.style.color='#e65100';res.style.display='block';
     btn.disabled=false;btn.textContent='📂 가져오기 실행';
   });
+}
+
+// 계약 목록에서 고객 자동 등록/업데이트
+async function updateBuyerAgencyHint(val){
+  var hint=document.getElementById('buyer-agency-hint');
+  if(!hint)return;
+  hint.textContent=val?'📑 계약고객(타사)로 등록':'';
+}
+async function autoRegisterCusts(contractList){
+  try{
+    var custData=await window.storage.get('sd_custs');
+    var custs=custData&&custData.value?JSON.parse(custData.value):[];
+    var baseId=Date.now();
+    var custAdded=0;
+    contractList.forEach(function(p,i){
+      // 매도인/임대인 → 계약고객(자사)
+      var sellerName=(p.seller||p.landlord||'').trim();
+      var sellerTel=(p.sellerTel||p.landlordTel||'').trim();
+      if(sellerName){
+        var deal=p.deal||'';
+        var isSale=(deal==='매매');
+        var role=isSale?'매도인':'임대인';
+        var existing=custs.find(function(x){
+          return x.name===sellerName||(sellerTel&&x.tel===sellerTel);
+        });
+        if(existing){
+          // 기존 고객: 태그에 계약고객(자사) 추가
+          if(!existing.tags)existing.tags=['계약고객(자사)'];
+          else if(existing.tags.indexOf('계약고객(자사)')<0&&existing.tags.indexOf('계약고객(타사)')<0)
+            existing.tags.push('계약고객(자사)');
+        } else {
+          custs.unshift({
+            id:baseId+(i*100)+1,
+            name:sellerName,tel:sellerTel,
+            tags:['계약고객(자사)'],
+            memo:'[자동등록] '+role+' / '+p.bldg+' '+p.dong+'동 '+p.ho+'호 ('+p.cdate+')',
+            ctCx:p.bldg+' '+p.dong+'동 '+p.ho+'호',
+            deal:p.deal,lastdate:p.cdate,pipe:4,
+            agencyType:'자사',agencyName:'송도제일공인'
+          });
+          custAdded++;
+        }
+      }
+      // 매수인/임차인 → 계약고객(타사)
+      var buyerName=(p.buyer||p.tenant||'').trim();
+      var buyerTel=(p.buyerTel||'').trim();
+      if(buyerName){
+        var deal2=p.deal||'';
+        var isSale2=(deal2==='매매');
+        var role2=isSale2?'매수인':'임차인';
+        var existing2=custs.find(function(x){
+          return x.name===buyerName||(buyerTel&&x.tel===buyerTel);
+        });
+        if(existing2){
+          if(!existing2.tags)existing2.tags=['계약고객(타사)'];
+          else if(existing2.tags.indexOf('계약고객(자사)')<0&&existing2.tags.indexOf('계약고객(타사)')<0)
+            existing2.tags.push('계약고객(타사)');
+        } else {
+          custs.unshift({
+            id:baseId+(i*100)+2,
+            name:buyerName,tel:buyerTel,
+            tags:['계약고객(타사)'],
+            memo:'[자동등록] '+role2+' / '+p.bldg+' '+p.dong+'동 '+p.ho+'호 ('+p.cdate+')',
+            ctCx:p.bldg+' '+p.dong+'동 '+p.ho+'호',
+            deal:p.deal,lastdate:p.cdate,pipe:4,
+            agencyType:'타사',agencyName:p.agencyBuyer||''
+          });
+          custAdded++;
+        }
+      }
+    });
+    await window.storage.set('sd_custs',JSON.stringify(custs));
+    console.log('[계약연동] 고객 '+custAdded+'명 자동 등록');
+  }catch(e){
+    console.warn('[계약연동] 고객 등록 오류:', e);
+  }
 }
 
 var detailId=null;
@@ -976,10 +1059,25 @@ var contracts=[], cEditId=null;
 
 async function toCStore(){
   try{
-    await window.storage.set('sd_contracts',JSON.stringify(contracts));
+    var data=JSON.stringify(contracts);
+    // 용량 경고 (4MB 초과 시)
+    if(data.length > 4*1024*1024){
+      console.warn('[계약] 데이터 크기 경고: '+(data.length/1024/1024).toFixed(1)+'MB');
+    }
+    await window.storage.set('sd_contracts', data);
+    // 저장 검증: 바로 읽어서 건수 확인
+    var verify=await window.storage.get('sd_contracts');
+    if(verify&&verify.value){
+      var parsed=JSON.parse(verify.value);
+      if(parsed.length!==contracts.length){
+        console.error('[계약] 저장 검증 실패: 메모리='+contracts.length+'건, 저장='+parsed.length+'건');
+        throw new Error('저장 검증 실패: '+contracts.length+'건 중 '+parsed.length+'건만 저장됨');
+      }
+    }
   }catch(e){
     console.error('toCStore 오류:', e);
-    showToast && showToast('⚠️ 저장 중 오류: '+e.message);
+    showToast && showToast('⚠️ 저장 오류: '+e.message+'\n(현재 '+contracts.length+'건)');
+    throw e;
   }
 }
 async function fromCStore(retry){
@@ -1730,6 +1828,8 @@ function saveContract(){
     fileUrl:_contractFileUrl||'',fileName:_contractFileName||''};
   if(cEditId){var idx=contracts.findIndex(function(x){return x.id===cEditId;});if(idx>=0)contracts[idx]=obj;cEditId=null;document.getElementById('csave-btn').textContent='💾 계약 저장';}else contracts.unshift(obj);
   toCStore();
+  // 계약 저장 시 고객 자동 등록
+  autoRegisterCusts([obj]);
   if(!cEditId&&propId&&confirm('연결된 매물을 "거래완료"로 변경할까요?')){window.storage.get('sd_props').then(function(r){var props=r&&r.value?JSON.parse(r.value):[];var p=props.find(function(x){return String(x.id)===String(propId);});if(p){p.status='거래완료';window.storage.set('sd_props',JSON.stringify(props));}});}
   syncMidToSchedule(obj);var ok=document.getElementById('csave-ok');ok.textContent='계약이 저장되었습니다! 📑';ok.style.display='block';setTimeout(function(){ok.style.display='none';},3000);clearCF();
 }
@@ -2115,18 +2215,24 @@ function doFileImport(){
   var btn=document.getElementById('file-import-btn');
   btn.disabled=true;btn.textContent='저장 중...';
   var added=0,skip=0;
-  fileImportItems.forEach(function(p){
+  var baseId=Date.now();
+  fileImportItems.forEach(function(p,i){
     var dup=contracts.some(function(x){return x.bldg===p.bldg&&x.cdate===p.cdate&&x.ho===p.ho;});
     if(dup){skip++;return;}
-    p.id=Date.now()+added+Math.floor(Math.random()*9999);
+    // ID 중복 방지: baseId + 인덱스 기반 고유 ID
+    p.id=baseId+i*13+Math.floor(Math.random()*7);
     contracts.push(p);added++;
   });
-  // 계약일 역순 정렬
   contracts.sort(function(a,b){return(b.cdate||'').localeCompare(a.cdate||'');});
   toCStore().then(function(){
+    // 고객 자동 등록 (새로 추가된 계약만)
+    var newContracts=fileImportItems.filter(function(p){
+      return contracts.some(function(x){return String(x.id)===String(p.id);});
+    });
+    autoRegisterCusts(fileImportItems);
     renderCT();renderExpiry();refreshHub();
     var res=document.getElementById('file-import-result');
-    res.innerHTML='✅ <strong>'+added+'건</strong> 가져오기 완료! (중복 제외: '+skip+'건) — 전체 '+contracts.length+'건';
+    res.innerHTML='✅ <strong>'+added+'건</strong> 가져오기 완료! (중복 제외: '+skip+'건) — 전체 '+contracts.length+'건<br><span style="font-size:11px;color:#666">고객 자동 등록 완료 (매도/임대인→자사, 매수/임차인→타사)</span>';
     res.style.background='#e8f5e9';res.style.color='#2e7d32';res.style.display='block';
     btn.textContent='✅ 완료 '+added+'건';btn.style.background='#2e7d32';
     fileImportItems=[];
@@ -2136,6 +2242,82 @@ function doFileImport(){
     res.style.background='#fff3e0';res.style.color='#e65100';res.style.display='block';
     btn.disabled=false;btn.textContent='📂 가져오기 실행';
   });
+}
+
+// 계약 목록에서 고객 자동 등록/업데이트
+async function updateBuyerAgencyHint(val){
+  var hint=document.getElementById('buyer-agency-hint');
+  if(!hint)return;
+  hint.textContent=val?'📑 계약고객(타사)로 등록':'';
+}
+async function autoRegisterCusts(contractList){
+  try{
+    var custData=await window.storage.get('sd_custs');
+    var custs=custData&&custData.value?JSON.parse(custData.value):[];
+    var baseId=Date.now();
+    var custAdded=0;
+    contractList.forEach(function(p,i){
+      // 매도인/임대인 → 계약고객(자사)
+      var sellerName=(p.seller||p.landlord||'').trim();
+      var sellerTel=(p.sellerTel||p.landlordTel||'').trim();
+      if(sellerName){
+        var deal=p.deal||'';
+        var isSale=(deal==='매매');
+        var role=isSale?'매도인':'임대인';
+        var existing=custs.find(function(x){
+          return x.name===sellerName||(sellerTel&&x.tel===sellerTel);
+        });
+        if(existing){
+          // 기존 고객: 태그에 계약고객(자사) 추가
+          if(!existing.tags)existing.tags=['계약고객(자사)'];
+          else if(existing.tags.indexOf('계약고객(자사)')<0&&existing.tags.indexOf('계약고객(타사)')<0)
+            existing.tags.push('계약고객(자사)');
+        } else {
+          custs.unshift({
+            id:baseId+(i*100)+1,
+            name:sellerName,tel:sellerTel,
+            tags:['계약고객(자사)'],
+            memo:'[자동등록] '+role+' / '+p.bldg+' '+p.dong+'동 '+p.ho+'호 ('+p.cdate+')',
+            ctCx:p.bldg+' '+p.dong+'동 '+p.ho+'호',
+            deal:p.deal,lastdate:p.cdate,pipe:4,
+            agencyType:'자사',agencyName:'송도제일공인'
+          });
+          custAdded++;
+        }
+      }
+      // 매수인/임차인 → 계약고객(타사)
+      var buyerName=(p.buyer||p.tenant||'').trim();
+      var buyerTel=(p.buyerTel||'').trim();
+      if(buyerName){
+        var deal2=p.deal||'';
+        var isSale2=(deal2==='매매');
+        var role2=isSale2?'매수인':'임차인';
+        var existing2=custs.find(function(x){
+          return x.name===buyerName||(buyerTel&&x.tel===buyerTel);
+        });
+        if(existing2){
+          if(!existing2.tags)existing2.tags=['계약고객(타사)'];
+          else if(existing2.tags.indexOf('계약고객(자사)')<0&&existing2.tags.indexOf('계약고객(타사)')<0)
+            existing2.tags.push('계약고객(타사)');
+        } else {
+          custs.unshift({
+            id:baseId+(i*100)+2,
+            name:buyerName,tel:buyerTel,
+            tags:['계약고객(타사)'],
+            memo:'[자동등록] '+role2+' / '+p.bldg+' '+p.dong+'동 '+p.ho+'호 ('+p.cdate+')',
+            ctCx:p.bldg+' '+p.dong+'동 '+p.ho+'호',
+            deal:p.deal,lastdate:p.cdate,pipe:4,
+            agencyType:'타사',agencyName:p.agencyBuyer||''
+          });
+          custAdded++;
+        }
+      }
+    });
+    await window.storage.set('sd_custs',JSON.stringify(custs));
+    console.log('[계약연동] 고객 '+custAdded+'명 자동 등록');
+  }catch(e){
+    console.warn('[계약연동] 고객 등록 오류:', e);
+  }
 }
 
 var detailId=null;
