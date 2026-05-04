@@ -294,6 +294,16 @@ body.zoom-mode .chart-wrap canvas {
   color:var(--text3); font-size:10px; font-weight:700; border-bottom:1px solid var(--border);
   white-space:nowrap;
   position:sticky; top:0; z-index:2;
+  position:relative; user-select:none;
+}
+.col-resizer {
+  position:absolute; right:0; top:0; bottom:0; width:5px;
+  cursor:col-resize; z-index:3;
+  background:transparent;
+}
+.col-resizer:hover, .col-resizer.resizing {
+  background:var(--accent);
+  opacity:0.6;
 }
 .data-table td {
   padding:8px 10px; border-bottom:1px solid rgba(42,58,82,.5);
@@ -1487,22 +1497,22 @@ body.zoom-mode .chart-wrap canvas {
       </div>
       <div class="table-scroll-hint">← 좌우로 스크롤하여 전체 내용 확인 →</div>
       <div class="table-scroll">
-        <table class="data-table" style="table-layout:fixed;min-width:1280px">
+        <table class="data-table" style="table-layout:fixed;min-width:1100px">
           <colgroup>
-            <col style="width:55px">
-            <col style="width:130px">
-            <col style="width:58px">
-            <col style="width:58px">
-            <col style="width:50px">
-            <col style="width:55px">
-            <col style="width:82px">
-            <col style="width:40px">
-            <col style="width:48px">
-            <col style="width:65px">
-            <col style="width:82px">
-            <col style="width:58px">
-            <col style="width:220px">
-            <col style="width:200px">
+            <col style="width:52px">    <!-- 공구 -->
+            <col style="width:110px">   <!-- 단지명 -->
+            <col style="width:55px">    <!-- 거래구분 -->
+            <col style="width:55px">    <!-- 전용㎡ -->
+            <col style="width:48px">    <!-- 타입 -->
+            <col style="width:52px">    <!-- 분양평형 -->
+            <col style="width:80px">    <!-- 호가 -->
+            <col style="width:38px">    <!-- 층 -->
+            <col style="width:45px">    <!-- 방향 -->
+            <col style="width:62px">    <!-- 입력일 -->
+            <col style="width:75px">    <!-- 중개사 -->
+            <col style="width:52px">    <!-- 중복등록수 -->
+            <col style="width:130px">   <!-- 특이사항 -->
+            <col style="width:140px">   <!-- 중복등록업소명 -->
           </colgroup>
           <thead>
             <tr id="t6-thead-tr">
@@ -1900,6 +1910,94 @@ function sw(n){
 }
 
 // ── 필터 버튼 그룹 헬퍼
+
+// ══ 컬럼 너비 조정 (드래그) ══
+function initColResize(table) {
+  if (!table || table._colResizeInit) return;
+  table._colResizeInit = true;
+
+  var ths = table.querySelectorAll('thead th');
+  ths.forEach(function(th) {
+    // 이미 핸들 있으면 스킵
+    if (th.querySelector('.col-resizer')) return;
+    var handle = document.createElement('div');
+    handle.className = 'col-resizer';
+    th.appendChild(handle);
+
+    var startX, startW, col;
+
+    handle.addEventListener('mousedown', function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      startX = e.pageX;
+      startW = th.offsetWidth;
+      handle.classList.add('resizing');
+
+      // table-layout:fixed 전환 (아직 아니면)
+      if (!table.style.tableLayout || table.style.tableLayout !== 'fixed') {
+        // 현재 각 th 너비 고정
+        var allThs = table.querySelectorAll('thead th');
+        allThs.forEach(function(t) {
+          t.style.width = t.offsetWidth + 'px';
+        });
+        table.style.tableLayout = 'fixed';
+      }
+
+      function onMove(e) {
+        var dx = e.pageX - startX;
+        var newW = Math.max(40, startW + dx);
+        th.style.width = newW + 'px';
+        // colgroup col도 같이 업데이트
+        var idx = Array.from(ths).indexOf(th);
+        var cols = table.querySelectorAll('colgroup col');
+        if (cols[idx]) cols[idx].style.width = newW + 'px';
+      }
+
+      function onUp() {
+        handle.classList.remove('resizing');
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+      }
+
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    });
+  });
+}
+
+// 모든 data-table에 적용
+function initAllColResize() {
+  document.querySelectorAll('.data-table').forEach(initColResize);
+}
+
+// 탭 전환 및 렌더링 후마다 재적용
+var _origSw = window.sw;
+window.sw = function(n) {
+  _origSw && _origSw(n);
+  setTimeout(initAllColResize, 100);
+};
+
+// MutationObserver: 테이블 tbody가 바뀔 때마다 헤더 리사이저 재초기화
+(function() {
+  var observer = new MutationObserver(function(mutations) {
+    mutations.forEach(function(m) {
+      var table = m.target.closest ? m.target.closest('.data-table') : null;
+      if (table) {
+        table._colResizeInit = false;
+        initColResize(table);
+      }
+    });
+  });
+  document.addEventListener('DOMContentLoaded', function() {
+    setTimeout(function() {
+      initAllColResize();
+      document.querySelectorAll('.data-table tbody').forEach(function(tbody) {
+        observer.observe(tbody, { childList: true });
+      });
+    }, 500);
+  });
+})();
+
 function setFilterBtn(btns, target){
   btns.forEach(function(b){b.classList.remove('on');});
   if(target) target.classList.add('on');
