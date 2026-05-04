@@ -498,6 +498,7 @@ body{margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',
     <tbody id="tbdy"></tbody></table>
   </div>
   <div id="no-cust" style="display:none;text-align:center;padding:3rem;color:#aaa;font-size:14px">등록된 고객이 없습니다.</div>
+  <div id="cust-pager" style="display:none;align-items:center;gap:8px;padding:10px;justify-content:center;flex-wrap:wrap"></div>
   <div id="detail-panel" style="display:none;margin-top:1rem;border:0.5px solid #e0e0e0;border-radius:12px;overflow:hidden">
     <div style="padding:10px 14px;background:#f5f5f3;border-bottom:0.5px solid #e0e0e0;display:flex;justify-content:space-between;align-items:center">
       <span id="dp-title" style="font-size:13px;font-weight:500"></span>
@@ -1519,7 +1520,7 @@ function saveCust(){
   };
   if(editId){var idx=custs.findIndex(function(x){return x.id===editId;});if(idx>=0)custs[idx]=obj;editId=null;document.getElementById('save-btn').textContent='💾 고객 저장';}
   else custs.unshift(obj);
-  toStore();rtbl();popStat();popAISel();setFollowUp();refreshHub();
+  toStore();popStat();popAISel();setFollowUp();refreshHub();
   var ok=document.getElementById('save-ok');ok.textContent='고객 정보가 저장되었습니다! 👤';ok.style.display='block';
   setTimeout(function(){ok.style.display='none';},2000);
   clearF();
@@ -1559,6 +1560,8 @@ function rtbl(){
   var af=document.getElementById('ft-area').value;
   var nf=(document.getElementById('ft-name')||{}).value||'';
   var bf=(document.getElementById('ft-bldg')||{}).value||'';
+  var _curFilter=tf+'|'+df+'|'+af+'|'+nf+'|'+bf;
+  if(_curFilter!==window._custLastFilter){ window._custPage=0; window._custLastFilter=_curFilter; }
   var f=custs.filter(function(c){
     var tags=migrateTags(c);
     if(tf&&tags.indexOf(tf)<0)return false;
@@ -1570,11 +1573,30 @@ function rtbl(){
   });
   document.getElementById('tbl-cnt').textContent=f.length+'명';
   var np=document.getElementById('no-cust'),tb=document.getElementById('tbdy');
-  if(!f.length){tb.innerHTML='';np.style.display='block';return;}
+  if(!f.length){tb.innerHTML='';np.style.display='block';
+    document.getElementById('cust-pager').style.display='none';return;}
   np.style.display='none';
-  tb.innerHTML=f.map(function(c,i){
-    var tags=migrateTags(c);
-    var daysAgo=c.lastdate?Math.floor((new Date()-new Date(c.lastdate))/86400000):-1;
+  // ── 페이지네이션: 한 번에 최대 100건만 렌더 (2000건+ 렌더링 시 브라우저 먹통 방지)
+  var PAGE_SIZE=100;
+  var _page=window._custPage||0;
+  var totalPages=Math.ceil(f.length/PAGE_SIZE);
+  if(_page>=totalPages)_page=totalPages-1;
+  window._custPage=_page;
+  var pageSlice=f.slice(_page*PAGE_SIZE, (_page+1)*PAGE_SIZE);
+  var pager=document.getElementById('cust-pager');
+  if(pager){
+    if(totalPages>1){
+      pager.style.display='flex';
+      pager.innerHTML='<span style="font-size:12px;color:#666">'+(_page*PAGE_SIZE+1)+'~'+Math.min((_page+1)*PAGE_SIZE,f.length)+'명 / 전체 '+f.length+'명</span>'
+        +'<button onclick="window._custPage=Math.max(0,(window._custPage||0)-1);rtbl()" style="padding:3px 10px;border:1px solid #ddd;border-radius:6px;font-size:12px;cursor:pointer;background:#fff" '+((_page===0)?'disabled':'')+'>&lt; 이전</button>'
+        +'<span style="font-size:12px">'+(_page+1)+'/'+totalPages+'</span>'
+        +'<button onclick="window._custPage=Math.min('+(totalPages-1)+','+(window._custPage||0)+'+1);rtbl()" style="padding:3px 10px;border:1px solid #ddd;border-radius:6px;font-size:12px;cursor:pointer;background:#fff" '+((_page>=totalPages-1)?'disabled':'')+'>다음 &gt;</button>';
+    } else { pager.style.display='none'; }
+  }
+  tb.innerHTML=pageSlice.map(function(cust,pageI){
+    var c=cust;var i=_page*PAGE_SIZE+pageI;
+    var tags=migrateTags(cust);
+    var daysAgo=cust.lastdate?Math.floor((new Date()-new Date(c.lastdate))/86400000):-1;
     var dTag=daysAgo>=0?'<span style="font-size:10px;color:'+(daysAgo>7?'#cc3333':daysAgo>3?'#f57f17':'#aaa')+'">'+(daysAgo===0?'오늘':daysAgo+'일 전')+'</span>':'';
     // 거래·단지 정보
     var dealInfo=[];
