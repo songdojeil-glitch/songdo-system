@@ -67,7 +67,132 @@ body{margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
   <!-- ═══ Firebase Storage 어댑터 (window.storage 호환) ═══ -->
-  <script src="firebase-storage.js"></script>
+<script>
+  // ── window.storage 어댑터 (Firebase 초기화는 DOMContentLoaded 후)
+  var _fbDb = null;
+
+  // localStorage fallback 기반 즉시 사용 가능한 storage
+  window.storage = {
+    get: function(key) {
+      return new Promise(function(resolve) {
+        if (_fbDb) {
+          _fbDb.ref('storage/' + key).once('value')
+            .then(function(snap) {
+              var v = snap.val();
+              resolve(v ? { key: key, value: v } : null);
+            })
+            .catch(function() {
+              try { var lv=localStorage.getItem('sd_'+key); resolve(lv?{key:key,value:lv}:null); } catch(e){ resolve(null); }
+            });
+        } else {
+          try { var v=localStorage.getItem('sd_'+key); resolve(v?{key:key,value:v}:null); } catch(e){ resolve(null); }
+        }
+      });
+    },
+    set: function(key, value) {
+      return new Promise(function(resolve) {
+        // localStorage에 항상 저장 (빠른 응답)
+        try { localStorage.setItem('sd_'+key, value); } catch(e){}
+        if (_fbDb) {
+          _fbDb.ref('storage/' + key).set(value)
+            .then(function() { resolve({ key: key, value: value }); })
+            .catch(function(e) { console.error('Firebase set 오류:', e); resolve({ key: key, value: value }); });
+        } else {
+          resolve({ key: key, value: value });
+        }
+      });
+    },
+    delete: function(key) {
+      return new Promise(function(resolve) {
+        try { localStorage.removeItem('sd_'+key); } catch(e){}
+        if (_fbDb) {
+          _fbDb.ref('storage/' + key).remove()
+            .then(function() { resolve({ key: key, deleted: true }); })
+            .catch(function() { resolve({ key: key, deleted: true }); });
+        } else { resolve({ key: key, deleted: true }); }
+      });
+    },
+    list: function(prefix) {
+      return new Promise(function(resolve) {
+        if (_fbDb) {
+          _fbDb.ref('storage').once('value')
+            .then(function(snap) {
+              var keys = [];
+              snap.forEach(function(child) {
+                if (!prefix || child.key.startsWith(prefix)) keys.push(child.key);
+              });
+              resolve({ keys: keys });
+            })
+            .catch(function() { resolve({ keys: [] }); });
+        } else { resolve({ keys: [] }); }
+      });
+    }
+  };
+
+  // 토스트 알림
+  function showToast(msg, type){
+    var t=document.createElement('div');
+    t.style.cssText='position:fixed;top:16px;left:50%;transform:translateX(-50%);z-index:9999;background:'+(type==='err'?'#ffebee':'#e8f5e9')+';border:1px solid '+(type==='err'?'#ef9a9a':'#a5d6a7')+';border-radius:10px;padding:10px 20px;font-size:13px;color:'+(type==='err'?'#c62828':'#2e7d32')+';box-shadow:0 2px 12px rgba(0,0,0,.15)';
+    t.textContent=msg;document.body.appendChild(t);
+    setTimeout(function(){t.remove();},3500);
+  }
+  </script>
+<script type="module">
+  import { initializeApp } from 'https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js';
+  import { getDatabase, ref, get, set, remove } from 'https://www.gstatic.com/firebasejs/9.23.0/firebase-database.js';
+  import { getStorage, ref as sRef, uploadBytes, getDownloadURL } from 'https://www.gstatic.com/firebasejs/9.23.0/firebase-storage.js';
+
+  try {
+    const cfg = {
+      apiKey: "AIzaSyCMYoUBhRv_NkKeHmPqgXoqqXUjVsjEJPs",
+      authDomain: "songdojeil-202604.firebaseapp.com",
+      databaseURL: "https://songdojeil-202604-default-rtdb.asia-southeast1.firebasedatabase.app",
+      projectId: "songdojeil-202604",
+      storageBucket: "songdojeil-202604.firebasestorage.app",
+      messagingSenderId: "567683904975",
+      appId: "1:567683904975:web:65a652a8e7b9a81e034eba"
+    };
+    const app = initializeApp(cfg);
+    const db  = getDatabase(app);
+    const st  = getStorage(app);
+    window._fbDb = db;
+    window._fbStorage = { ref: (path) => sRef(st, path), uploadBytes, getDownloadURL };
+
+    // window.storage 어댑터 - Firebase Realtime DB 기반으로 교체
+    window.storage = {
+      get: function(key) {
+        return get(ref(db, 'storage/' + key)).then(function(snap) {
+          var v = snap.val();
+          if (v) { try { localStorage.setItem('sd_' + key, v); } catch(e){} }
+          return v ? { key: key, value: v } : null;
+        }).catch(function() {
+          try { var lv = localStorage.getItem('sd_' + key); return lv ? { key: key, value: lv } : null; } catch(e) { return null; }
+        });
+      },
+      set: function(key, value) {
+        try { localStorage.setItem('sd_' + key, value); } catch(e){}
+        return set(ref(db, 'storage/' + key), value)
+          .then(function() { return { key: key, value: value }; })
+          .catch(function(e) { console.error('Firebase set 오류:', e); return { key: key, value: value }; });
+      },
+      delete: function(key) {
+        try { localStorage.removeItem('sd_' + key); } catch(e){}
+        return remove(ref(db, 'storage/' + key))
+          .then(function() { return { key: key, deleted: true }; })
+          .catch(function() { return { key: key, deleted: true }; });
+      }
+    };
+
+    console.log('✅ Firebase 연결됨 (DB + Storage)');
+    // 데이터 로드
+    if (typeof fromCStore === 'function') fromCStore();
+    else document.addEventListener('DOMContentLoaded', function() {
+      if (typeof fromCStore === 'function') fromCStore();
+    });
+  } catch(e) {
+    console.warn('Firebase 초기화 실패:', e.message);
+  }
+  </script>
 </head>
 <body>
 <!-- ═══ 시스템 네비게이션 바 ═══ -->
@@ -321,7 +446,7 @@ body{margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',
 
 <!-- TAB2 고객 관리 -->
 <div id="tc2" class="tc">
-  <div id="stat-row" style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:1.25rem"></div>
+  <div id="stat-row" style="display:grid;grid-template-columns:repeat(7,1fr);gap:8px;margin-bottom:1.25rem"></div>
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
     <div style="display:flex;gap:8px;flex-wrap:wrap">
       <select id="ft-tag" class="fi" style="width:auto;font-size:12px" onchange="rtbl()">
@@ -1371,11 +1496,18 @@ function rtbl(){
 }
 
 function popStat(){
-  var cnt={total:0,가망고객:0,물건고객:0,계약고객:0,기존고객:0};
-  custs.forEach(function(c){cnt.total++;migrateTags(c).forEach(function(t){if(cnt[t]!==undefined)cnt[t]++;});});
-  var labels=['전체','🎯 가망고객','🏠 물건고객','📑 계약고객','⭐ 기존고객'];
-  var colors=['#1a1a1a','#1565c0','#e65100','#2e7d32','#555'];
-  var keys=['total','가망고객','물건고객','계약고객','기존고객'];
+  var cnt={total:0,가망고객:0,물건고객:0,'계약고객(자사)':0,'계약고객(타사)':0,계약고객:0,기존고객:0};
+  custs.forEach(function(c){
+    cnt.total++;
+    migrateTags(c).forEach(function(t){
+      if(cnt[t]!==undefined) cnt[t]++;
+      // 자사/타사를 계약고객 합계에도 포함
+      if(t==='계약고객(자사)'||t==='계약고객(타사)') cnt['계약고객']++;
+    });
+  });
+  var labels=['전체','🎯 가망고객','🏠 물건고객','📑 계약고객(자사)','📑 계약고객(타사)','📑 계약고객(전체)','⭐ 기존고객'];
+  var colors=['#1a1a1a','#1565c0','#e65100','#2e7d32','#757575','#1b5e20','#555'];
+  var keys=['total','가망고객','물건고객','계약고객(자사)','계약고객(타사)','계약고객','기존고객'];
   document.getElementById('stat-row').innerHTML=keys.map(function(k,i){return'<div class="stat-box"><div class="stat-n" style="color:'+colors[i]+'">'+cnt[k]+'</div><div class="stat-l">'+labels[i]+'</div></div>';}).join('');
 }
 
