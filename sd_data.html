@@ -1911,20 +1911,64 @@ function sw(n){
 
 // ── 필터 버튼 그룹 헬퍼
 
-// ══ 컬럼 너비 조정 (드래그) ══
+// ══ 컬럼 너비 조정 (드래그 + localStorage 저장) ══
+var COL_STORAGE_KEY = 'sdj_col_widths';
+
+function _crSaveWidths(tableId, widths) {
+  try {
+    var all = JSON.parse(localStorage.getItem(COL_STORAGE_KEY) || '{}');
+    all[tableId] = widths;
+    localStorage.setItem(COL_STORAGE_KEY, JSON.stringify(all));
+  } catch(e) {}
+}
+function _crLoadWidths(tableId) {
+  try {
+    var all = JSON.parse(localStorage.getItem(COL_STORAGE_KEY) || '{}');
+    return all[tableId] || null;
+  } catch(e) { return null; }
+}
+
+function getTableId(table) {
+  return table.id || table.getAttribute('data-cr-id') || '';
+}
+
 function initColResize(table) {
-  if (!table || table._colResizeInit) return;
-  table._colResizeInit = true;
+  if (!table) return;
+  var tableId = getTableId(table);
+
+  // 기존 핸들 모두 제거 후 재생성 (thead 재렌더 대응)
+  table.querySelectorAll('.col-resizer').forEach(function(h){ h.parentNode.removeChild(h); });
+
+  // table-layout:fixed 전환
+  if (table.style.tableLayout !== 'fixed') {
+    var allThs0 = table.querySelectorAll('thead th');
+    allThs0.forEach(function(t){ t.style.width = t.offsetWidth + 'px'; });
+    table.style.tableLayout = 'fixed';
+    table.style.minWidth = Math.max(table.offsetWidth, 600) + 'px';
+  }
+
+  // 저장된 너비 복원
+  if (tableId) {
+    var saved = _crLoadWidths(tableId);
+    if (saved) {
+      var ths0 = table.querySelectorAll('thead th');
+      var cols0 = table.querySelectorAll('colgroup col');
+      saved.forEach(function(w, i) {
+        if (ths0[i]) ths0[i].style.width = w + 'px';
+        if (cols0[i]) cols0[i].style.width = w + 'px';
+      });
+    }
+  }
 
   var ths = table.querySelectorAll('thead th');
-  ths.forEach(function(th) {
-    // 이미 핸들 있으면 스킵
-    if (th.querySelector('.col-resizer')) return;
+
+  ths.forEach(function(th, thIdx) {
     var handle = document.createElement('div');
     handle.className = 'col-resizer';
+    th.style.position = 'relative';
     th.appendChild(handle);
 
-    var startX, startW, col;
+    var startX, startW;
 
     handle.addEventListener('mousedown', function(e) {
       e.preventDefault();
@@ -1933,30 +1977,23 @@ function initColResize(table) {
       startW = th.offsetWidth;
       handle.classList.add('resizing');
 
-      // table-layout:fixed 전환 (아직 아니면)
-      if (!table.style.tableLayout || table.style.tableLayout !== 'fixed') {
-        // 현재 각 th 너비 고정
-        var allThs = table.querySelectorAll('thead th');
-        allThs.forEach(function(t) {
-          t.style.width = t.offsetWidth + 'px';
-        });
-        table.style.tableLayout = 'fixed';
-      }
-
       function onMove(e) {
-        var dx = e.pageX - startX;
-        var newW = Math.max(40, startW + dx);
+        var newW = Math.max(40, startW + (e.pageX - startX));
         th.style.width = newW + 'px';
-        // colgroup col도 같이 업데이트
-        var idx = Array.from(ths).indexOf(th);
         var cols = table.querySelectorAll('colgroup col');
-        if (cols[idx]) cols[idx].style.width = newW + 'px';
+        if (cols[thIdx]) cols[thIdx].style.width = newW + 'px';
       }
 
       function onUp() {
         handle.classList.remove('resizing');
         document.removeEventListener('mousemove', onMove);
         document.removeEventListener('mouseup', onUp);
+        // 너비 저장
+        if (tableId) {
+          var curThs = table.querySelectorAll('thead th');
+          var ws = Array.from(curThs).map(function(t){ return t.offsetWidth; });
+          _crSaveWidths(tableId, ws);
+        }
       }
 
       document.addEventListener('mousemove', onMove);
@@ -1965,36 +2002,40 @@ function initColResize(table) {
   });
 }
 
-// 모든 data-table에 적용
+// 모든 data-table에 id 부여 후 리사이즈 초기화
 function initAllColResize() {
-  document.querySelectorAll('.data-table').forEach(initColResize);
+  var cnt = 0;
+  document.querySelectorAll('.data-table').forEach(function(table) {
+    if (!table.id) {
+      table.id = 'cr-table-' + (cnt++);
+    }
+    initColResize(table);
+  });
 }
 
-// 탭 전환 및 렌더링 후마다 재적용
+// 탭 전환 시 재적용
 var _origSw = window.sw;
 window.sw = function(n) {
   _origSw && _origSw(n);
-  setTimeout(initAllColResize, 100);
+  setTimeout(initAllColResize, 150);
 };
 
-// MutationObserver: 테이블 tbody가 바뀔 때마다 헤더 리사이저 재초기화
+// MutationObserver: thead/tbody 변경 감지
 (function() {
-  var observer = new MutationObserver(function(mutations) {
-    mutations.forEach(function(m) {
-      var table = m.target.closest ? m.target.closest('.data-table') : null;
-      if (table) {
-        table._colResizeInit = false;
-        initColResize(table);
-      }
-    });
+  var pending = null;
+  var observer = new MutationObserver(function() {
+    if (pending) clearTimeout(pending);
+    pending = setTimeout(initAllColResize, 200);
   });
+
   document.addEventListener('DOMContentLoaded', function() {
     setTimeout(function() {
       initAllColResize();
-      document.querySelectorAll('.data-table tbody').forEach(function(tbody) {
-        observer.observe(tbody, { childList: true });
+      // 전체 tc 컨테이너 감시 (동적 렌더링 대응)
+      document.querySelectorAll('.tc').forEach(function(tc) {
+        observer.observe(tc, { childList:true, subtree:true });
       });
-    }, 500);
+    }, 600);
   });
 })();
 
@@ -6103,11 +6144,13 @@ function renderTab6(){
       (hideAgent?'':'<td style="font-size:11px;color:var(--text3)">'+(r.중개사||'-')+'</td>')+
       '<td class="num" style="color:'+dupColor+';font-size:11px">'+
         (r.중복등록수>0?r.중복등록수+'개':'-')+'</td>'+
-      '<td style="font-size:11px;color:var(--yellow);max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+(r.특이사항||'').replace(/"/g,"&quot;")+'">'+(r.특이사항||'')+'</td>'+
-      (hideAgent?'':'<td style="font-size:10px;color:var(--text3);min-width:200px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+(r.중복업소명||'')+'">'+(r.중복업소명||'-')+'</td>')+
+      '<td style="font-size:11px;color:var(--yellow);width:200px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+(r.특이사항||'').replace(/"/g,"&quot;")+'">'+(r.특이사항||'')+'</td>'+
+      (hideAgent?'':'<td style="font-size:10px;color:var(--text3);width:140px;max-width:140px;min-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+(r.중복업소명||'')+'">'+(r.중복업소명||'-')+'</td>')+
     '</tr>';
   });
-  document.getElementById('t6-tbody').innerHTML = overBanner+html||'<tr><td colspan="'+(hideAgent?'12':'14')+'" style="text-align:center;padding:20px;color:var(--text3)">해당 매물 없음</td></tr>';
+  var _t6tbody = document.getElementById('t6-tbody');
+  _t6tbody.innerHTML = overBanner+html||'<tr><td colspan="'+(hideAgent?'12':'14')+'" style="text-align:center;padding:20px;color:var(--text3)">해당 매물 없음</td></tr>';
+  setTimeout(function(){ var t=document.querySelector('.data-table[style*="1100px"]'); if(t) initColResize(t); },50);
 
   // 차트
   renderNaverDistChart(rows);
