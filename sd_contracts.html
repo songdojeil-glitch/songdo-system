@@ -1359,9 +1359,9 @@ async function analyzeContractFile(){
 
     // Claude API 호출
     var body = {
-      model: 'claude-sonnet-4-5-20250929',
-      max_tokens: 1500,
-      system: '당신은 한국 부동산 계약서에서 정보를 추출하는 전문가입니다. 반드시 순수 JSON 객체만 출력하고, 마크다운 코드블록이나 설명 텍스트를 절대 포함하지 마세요.',
+      model: 'claude-sonnet-4-6',
+      max_tokens: 2000,
+      system: '당신은 한국 부동산 계약서에서 정보를 추출하는 전문가입니다. 반드시 순수 JSON 객체만 출력하세요. 절대로 마크다운 코드블록(```), 설명 텍스트, 인사말, 주석을 포함하지 마세요. 응답의 첫 글자는 반드시 { 이어야 합니다.',
       messages:[{
         role:'user',
         content:[
@@ -1400,15 +1400,28 @@ async function analyzeContractFile(){
     }
     var text = (data.content||[]).map(function(b){return b.text||'';}).join('');
 
-    // JSON 파싱 (유연하게)
-    console.log('[AI 응답]', text);
-    // 코드블록 제거
-    text = text.replace(/```json/gi,'').replace(/```/g,'').trim();
+    // JSON 파싱 (강화된 4단계 폴백 파싱)
+    console.log('[AI 응답 원문]', text);
+    // 1단계: 코드블록 제거
+    text = text.replace(/```json[\s\S]*?```/gi, function(m){ return m.replace(/```json/i,'').replace(/```/,''); });
+    text = text.replace(/```/g,'').trim();
+    // 2단계: JSON 블록 추출
     var jsonMatch = text.match(/\{[\s\S]*\}/);
-    if(!jsonMatch) throw new Error('AI 응답에서 JSON을 찾을 수 없습니다. 응답: ' + text.slice(0,100));
+    if(!jsonMatch){
+      // 3단계: 배열로 감싸진 경우
+      var arrMatch = text.match(/\[[\s\S]*\]/);
+      if(arrMatch){ try{ var arr=JSON.parse(arrMatch[0]); if(arr[0]) jsonMatch=[JSON.stringify(arr[0])]; }catch(e){} }
+    }
+    if(!jsonMatch) throw new Error('AI 응답에서 JSON을 찾을 수 없습니다. 응답: ' + text.slice(0,200));
     var extracted;
-    try{ extracted = JSON.parse(jsonMatch[0]); }
-    catch(pe){ throw new Error('JSON 파싱 오류: ' + pe.message); }
+    try{
+      extracted = JSON.parse(jsonMatch[0]);
+    }catch(pe){
+      // 4단계: trailing comma 등 minor 오류 자동 수정
+      var fixed = jsonMatch[0].replace(/,\s*([\}\]])/g,'$1');
+      try{ extracted = JSON.parse(fixed); }
+      catch(pe2){ throw new Error('JSON 파싱 오류: ' + pe.message + ' / 응답앞부분: ' + text.slice(0,200)); }
+    }
 
     // 폼에 자동 입력
     fillContractForm(extracted);
