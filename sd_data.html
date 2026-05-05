@@ -5864,19 +5864,29 @@ function onUploadNaver(input){
   if(!input.files||!input.files.length) return;
   var files = Array.from(input.files);
   showToast('⏳ '+files.length+'개 파일 파싱 중...');
-  var allRows = [];
+  // Race Condition 방지: 인덱스 기반 배열 사용
+  // allRows = allRows.concat(rows) 는 51개 동시 실행 시 데이터 유실 발생
+  var resultBuckets = new Array(files.length).fill(null);
   var remaining = files.length;
-  files.forEach(function(file){
+  files.forEach(function(file, fileIdx){
     var reader = new FileReader();
     reader.onload = function(e){
       try{
         var wb = XLSX.read(e.target.result, {type:'array'});
         var sh = wb.Sheets[wb.SheetNames[0]];
         var rows = XLSX.utils.sheet_to_json(sh, {header:0, defval:null});
-        allRows = allRows.concat(rows);
-      }catch(err){ console.warn('파일 파싱 오류:', file.name, err); }
+        resultBuckets[fileIdx] = rows; // 인덱스 기반 → Race Condition 없음
+      }catch(err){
+        console.warn('파일 파싱 오류:', file.name, err);
+        resultBuckets[fileIdx] = [];
+      }
       remaining--;
-      if(remaining===0) processNaverRows(allRows, files.length);
+      if(remaining===0){
+        // 모든 파일 완료 후 순서대로 합치기
+        var allRows = [];
+        resultBuckets.forEach(function(rows){ if(rows) allRows = allRows.concat(rows); });
+        processNaverRows(allRows, files.length);
+      }
     };
     reader.readAsArrayBuffer(file);
   });
