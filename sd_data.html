@@ -1497,7 +1497,7 @@ body.zoom-mode .chart-wrap canvas {
       </div>
       <div class="table-scroll-hint">← 좌우로 스크롤하여 전체 내용 확인 →</div>
       <div class="table-scroll">
-        <table class="data-table" style="table-layout:fixed;min-width:1120px">
+        <table class="data-table" style="table-layout:fixed;min-width:1100px">
           <colgroup>
             <col style="width:52px">    <!-- 공구 -->
             <col style="width:110px">   <!-- 단지명 -->
@@ -1510,9 +1510,9 @@ body.zoom-mode .chart-wrap canvas {
             <col style="width:45px">    <!-- 방향 -->
             <col style="width:62px">    <!-- 입력일 -->
             <col style="width:75px">    <!-- 중개사 -->
-            <col style="width:65px">    <!-- 중복등록수(마우스오버→업소명) -->
-            <col style="width:200px">   <!-- 특이사항 -->
-            <col style="width:180px">   <!-- 중복등록업소명 -->
+            <col style="width:52px">    <!-- 중복등록수 -->
+            <col style="width:130px">   <!-- 특이사항 -->
+            <col style="width:140px">   <!-- 중복등록업소명 -->
           </colgroup>
           <thead>
             <tr id="t6-thead-tr">
@@ -1965,6 +1965,7 @@ function initColResize(table) {
   ths.forEach(function(th, thIdx) {
     var handle = document.createElement('div');
     handle.className = 'col-resizer';
+    th.style.position = 'relative';
     th.appendChild(handle);
 
     var startX, startW;
@@ -5873,8 +5874,26 @@ function onUploadNaver(input){
       try{
         var wb = XLSX.read(e.target.result, {type:'array'});
         var sh = wb.Sheets[wb.SheetNames[0]];
+        // header:1로 읽어서 헤더행과 데이터행 분리
+        var allArr = XLSX.utils.sheet_to_json(sh, {header:1, defval:null});
+        var hdr = allArr[0] || [];
+        // 중복업소명 컬럼 인덱스를 헤더에서 직접 탐색
+        var dupNmIdx = -1;
+        for(var hi=0; hi<hdr.length; hi++){
+          var hv = hdr[hi] ? String(hdr[hi]) : '';
+          if(hv.indexOf('중복')>=0 && hv.indexOf('업소명')>=0){ dupNmIdx=hi; break; }
+        }
+        // header:0 방식으로도 파싱 (기존 키 호환)
         var rows = XLSX.utils.sheet_to_json(sh, {header:0, defval:null});
-        resultBuckets[fileIdx] = rows; // 인덱스 기반 → Race Condition 없음
+        // 각 행에 중복업소명 직접 주입
+        if(dupNmIdx >= 0){
+          var dataArr = allArr.slice(1);
+          rows.forEach(function(r, ri){
+            var rawVal = dataArr[ri] ? dataArr[ri][dupNmIdx] : null;
+            r['__dupNm__'] = rawVal ? String(rawVal) : '';
+          });
+        }
+        resultBuckets[fileIdx] = rows;
       }catch(err){
         console.warn('파일 파싱 오류:', file.name, err);
         resultBuckets[fileIdx] = [];
@@ -5940,8 +5959,7 @@ function processNaverRows(rows, fileCnt){
         return true;
       });
 
-      // 기존 데이터에 merge (같은 단지 있으면 교체, 없는 단지는 추가)
-      var newParsed = validRows.map(function(r){
+      G.naverData = validRows.map(function(r){
         var nm=r['단지명']||r['아파트명']||'-';
         var rawType=r['거래구분']||r['거래유형']||r['유형']||'매매';
         var rawTypeVal=r['타입(전용)']||'';
@@ -5972,26 +5990,14 @@ function processNaverRows(rows, fileCnt){
           중개사: rawAgent,
           중복등록수: parseInt(r['중복 등록업소의 수']||r['중복등록수']||0)||0,
           특이사항: r['특이사항']||r['주요정보']||r['메모']||'',
-          중복업소명: r['중복 등록업소명 (YYYY.MM.DD)']||r['중복업소명']||'',
+          중복업소명: r['__dupNm__']||r['중복 등록업소명 (YYYY.MM.DD)']||r['중복 등록업소명 (YY.MM.DD)']||r['중복업소명']||'',
           // 월세 추가 필드
           월세: (rawType==='월세'&&String(r['가격']||'').indexOf('/')>-1) ?
                   parseInt(String(r['가격']).split('/')[1].replace(/[^0-9]/g,''))||0 : 0,
         };
       });
-      // 단지명 기준 merge: 업로드된 단지는 교체, 나머지 기존 데이터 유지
-      if(G.naverData && G.naverData.length > 0){
-        // 새로 업로드된 단지명 목록
-        var newDanjiSet = {};
-        newParsed.forEach(function(r){ if(r.단지명) newDanjiSet[r.단지명] = true; });
-        // 기존 데이터에서 새 단지를 제외한 것 + 새 데이터 합치기
-        var kept = G.naverData.filter(function(r){ return !newDanjiSet[r.단지명]; });
-        G.naverData = kept.concat(newParsed);
-        showToast('✅ '+newParsed.length+'건 업데이트 (전체 '+G.naverData.length+'건 유지)');
-      } else {
-        G.naverData = newParsed;
-        showToast('✅ 네이버 매물 '+G.naverData.length+'건 로드 완료 ('+fileCnt+'개 파일)');
-      }
-      $set('naver-status', '✅ '+G.naverData.length+'건 ('+fileCnt+'개 파일 업데이트)');
+      $set('naver-status', '✅ '+G.naverData.length+'건 ('+fileCnt+'개 파일)');
+      showToast('✅ 네이버 매물 '+G.naverData.length+'건 로드 완료 ('+fileCnt+'개 파일)');
       renderTab6();
     } catch(err){
       showToast('❌ 파싱 오류: '+err.message);
@@ -6164,10 +6170,10 @@ function renderTab6(){
       '<td style="font-size:11px;color:var(--text3)">'+(r.방향||'-')+'</td>'+
       '<td style="font-size:11px;color:var(--text3)">'+(r.입력일||'-')+'</td>'+
       (hideAgent?'':'<td style="font-size:11px;color:var(--text3)">'+(r.중개사||'-')+'</td>')+
-      '<td class="num" style="color:'+dupColor+';font-size:11px;cursor:'+(r.중복업소명?'help':'default')+'" title="'+(r.중복업소명||'').replace(/"/g,'&quot;')+'">'+
+      '<td class="num" style="color:'+dupColor+';font-size:11px">'+
         (r.중복등록수>0?r.중복등록수+'개':'-')+'</td>'+
-      '<td style="font-size:11px;color:var(--yellow);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+(r.특이사항||'').replace(/"/g,'&quot;')+'">'+(r.특이사항||'')+'</td>'+
-      (hideAgent?'':'<td style="font-size:10px;color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+(r.중복업소명||'').replace(/"/g,'&quot;')+'">'+(r.중복업소명||'-')+'</td>')+
+      '<td style="font-size:11px;color:var(--yellow);width:200px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+(r.특이사항||'').replace(/"/g,"&quot;")+'">'+(r.특이사항||'')+'</td>'+
+      (hideAgent?'':'<td style="font-size:10px;color:var(--text3);width:140px;max-width:140px;min-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+(r.중복업소명||'')+'">'+(r.중복업소명||'-')+'</td>')+
     '</tr>';
   });
   var _t6tbody = document.getElementById('t6-tbody');
