@@ -8728,119 +8728,95 @@ function renderNaverPriceChart(rows){
 }
 
 function renderNaverCompare(rows){
-    // ── 의뢰가 vs 실거래가 비교 (단지 1개 선택 시만 표시)
+  // ── 의뢰가 vs 실거래가 비교 (단지 1개 선택 시만 표시)
   var compareWrap = document.getElementById('naver-compare-wrap');
   var compareSub  = document.getElementById('compare-sub');
 
-  if(t6unit === 'all'){
-    // 단지 미선택 → 숨김
-    if(compareWrap) compareWrap.style.display = 'none';
+  if(!rows || !rows.length || typeof t6unit==='undefined' || t6unit==='all'){
+    if(compareWrap) compareWrap.style.display='none';
     return;
   }
-
-  // 단지 1개 선택 → 표시
-  if(compareWrap) compareWrap.style.display = 'block';
+  if(compareWrap) compareWrap.style.display='block';
 
   var selectedUnit = t6unit;
-  var dealFilter   = G.naverType || 'all'; // 현재 거래구분 필터
+  var dealFilter   = (typeof G.naverType!=='undefined') ? G.naverType : 'all';
 
-  // ── 현재 네이버 매물 (선택 단지, 필터 거래구분)
-  var naverRows = G.naverData.filter(function(r){
-    if(r.단지명 !== selectedUnit) return false;
-    if(dealFilter !== 'all' && r.거래유형 !== dealFilter) return false;
-    return r.호가 > 0;
-  });
-
+  // 현재 네이버 매물 (선택 단지)
+  var naverRows = rows.filter(function(r){ return r.호가>0; });
   if(!naverRows.length){
-    document.getElementById('t6-compare-tbody').innerHTML =
+    document.getElementById('t6-compare-tbody').innerHTML=
       '<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--text3)">해당 조건 매물 없음</td></tr>';
-    if(compareSub) compareSub.textContent = selectedUnit + ' — 매물 없음';
+    if(compareSub) compareSub.textContent=selectedUnit+' — 매물 없음';
     return;
   }
 
-  // ── 실거래 1년 평균 (평형별)
-  var now    = new Date();
-  var cutoff = (now.getFullYear()-1)*100 + (now.getMonth()+1);
-  var realAvgByPyeong = {};
+  // 실거래 1년 평균 (평형별)
+  var now=new Date();
+  var cutoff=(now.getFullYear()-1)*100+(now.getMonth()+1);
+  var realByPyeong={};
   if(G.saleData){
     G.saleData.filter(function(r){
-      return r['단지명'] === selectedUnit && (r['계약년월']||0) >= cutoff && r['거래금액'] > 0;
+      return r['단지명']===selectedUnit&&(r['계약년월']||0)>=cutoff&&r['거래금액']>0;
     }).forEach(function(r){
-      var p = r['분양평형'] || 0;
-      if(!p) return;
-      if(!realAvgByPyeong[p]) realAvgByPyeong[p] = [];
-      realAvgByPyeong[p].push(r['거래금액']);
+      var p=r['분양평형']||0; if(!p) return;
+      if(!realByPyeong[p]) realByPyeong[p]=[];
+      realByPyeong[p].push(r['거래금액']);
     });
   }
-  var avg = function(arr){ return arr.length ? Math.round(arr.reduce(function(a,b){return a+b;},0)/arr.length) : 0; };
-  var realAvg = {};
-  Object.keys(realAvgByPyeong).forEach(function(p){ realAvg[p] = avg(realAvgByPyeong[p]); });
+  var avg=function(arr){return arr.length?Math.round(arr.reduce(function(a,b){return a+b;},0)/arr.length):0;};
+  var realAvg={};
+  Object.keys(realByPyeong).forEach(function(p){realAvg[p]=avg(realByPyeong[p]);});
 
-  // ── 매물별 비교 계산
-  var compareRows = naverRows.map(function(r){
-    var pyeong  = r.분양평형 || 0;
-    var realPrc = realAvg[pyeong] || 0;
-    var diff    = realPrc > 0 ? r.호가 - realPrc : null; // 의뢰가 - 실거래평균
-    var ratio   = (diff !== null && realPrc > 0) ? Math.round(diff / realPrc * 1000) / 10 : null;
-    return {
-      행: r,
-      pyeong:  pyeong,
-      deal:    r.거래유형,
-      asking:  r.호가,
-      real:    realPrc,
-      diff:    diff,
-      ratio:   ratio,
-      memo:    r.특이사항 || ''
-    };
+  // 매물별 비교 계산
+  var cmpRows=naverRows.map(function(r){
+    var p=r.분양평형||0;
+    var rp=realAvg[p]||0;
+    var diff=rp>0?r.호가-rp:null;
+    var ratio=(diff!==null&&rp>0)?Math.round(diff/rp*1000)/10:null;
+    return {r:r,pyeong:p,deal:r.거래유형,asking:r.호가,real:rp,diff:diff,ratio:ratio,memo:r.특이사항||''};
   });
 
-  // ── (-)가 큰 순 정렬 (급매 우선), 실거래 없으면 뒤로
-  compareRows.sort(function(a, b){
-    if(a.diff === null && b.diff === null) return a.asking - b.asking;
-    if(a.diff === null) return 1;
-    if(b.diff === null) return -1;
-    return a.diff - b.diff; // 작은(음수 큰) 순
+  // (-)가 큰 순 정렬 (급매 우선)
+  cmpRows.sort(function(a,b){
+    if(a.diff===null&&b.diff===null) return a.asking-b.asking;
+    if(a.diff===null) return 1;
+    if(b.diff===null) return -1;
+    return a.diff-b.diff;
   });
 
-  // ── HTML 렌더
-  var html = '';
-  compareRows.forEach(function(row){
-    var r       = row.행;
-    var typeCls = row.deal === '매매' ? 'badge-gold' : row.deal === '전세' ? 'badge-apt' : 'badge-pre';
-
-    var diffStr   = '—', ratioStr = '—', diffColor = 'var(--text3)', mark = '';
-    if(row.diff !== null){
-      var isNeg  = row.diff < 0;
-      var isPos  = row.diff > 0;
-      diffColor  = isNeg ? 'var(--accent3)' : isPos ? 'var(--red)' : 'var(--text3)';
-      var absDiff = Math.abs(row.diff);
-      diffStr    = (isNeg ? '▼ -' : isPos ? '▲ +' : '') + fmt천(absDiff);
-      ratioStr   = (isNeg ? '-' : '+') + Math.abs(row.ratio).toFixed(1) + '%';
-      mark       = row.ratio <= -10 ? '🔥 급매' : row.ratio <= -5 ? '📉 저평가' : row.ratio >= 10 ? '⚠️ 고평가' : '';
+  var html='';
+  cmpRows.forEach(function(row){
+    var typeCls=row.deal==='매매'?'badge-gold':row.deal==='전세'?'badge-apt':'badge-pre';
+    var diffStr='—',ratioStr='—',diffColor='var(--text3)',mark='';
+    if(row.diff!==null){
+      var neg=row.diff<0,pos=row.diff>0;
+      diffColor=neg?'var(--accent3)':pos?'var(--red)':'var(--text3)';
+      diffStr=(neg?'▼ -':pos?'▲ +':'')+fmt천(Math.abs(row.diff));
+      ratioStr=(neg?'-':'+')+Math.abs(row.ratio).toFixed(1)+'%';
+      mark=row.ratio<=-10?'🔥 급매':row.ratio<=-5?'📉 저평가':row.ratio>=10?'⚠️ 고평가':'';
     }
-    var realStr = row.real > 0 ? fmt천(row.real) : '<span style="color:var(--text3);font-size:10px">실거래없음</span>';
-
-    html += '<tr onclick="openNaverDetail('+G.naverData.indexOf(r)+')" style="cursor:pointer">'
-      + '<td><span class="badge" style="font-size:11px">'
-        + (row.pyeong > 0 ? row.pyeong+'평' : '-') + '</span></td>'
-      + '<td><span class="badge '+typeCls+'">'+row.deal+'</span></td>'
-      + '<td class="num" style="color:var(--accent2);font-weight:700">'+fmt천(row.asking)+'</td>'
-      + '<td class="num" style="color:var(--text3)">'+realStr+'</td>'
-      + '<td class="num" style="color:'+diffColor+';font-weight:600">'+diffStr+'</td>'
-      + '<td class="num" style="color:'+diffColor+';font-weight:600">'+ratioStr+'</td>'
-      + '<td style="font-size:11px;color:var(--yellow)">'+mark
-        + (row.memo ? ' <span style="color:var(--text3)">'+row.memo.slice(0,20)+'</span>' : '')+'</td>'
-      + '</tr>';
+    var realStr=row.real>0?fmt천(row.real):'<span style="color:var(--text3);font-size:10px">없음</span>';
+    html+='<tr onclick="openNaverDetail('+G.naverData.indexOf(row.r)+')" style="cursor:pointer">'
+      +'<td><span class="badge">'+(row.pyeong>0?row.pyeong+'평':'-')+'</span></td>'
+      +'<td><span class="badge '+typeCls+'">'+row.deal+'</span></td>'
+      +'<td class="num" style="color:var(--accent2);font-weight:700">'+fmt천(row.asking)+'</td>'
+      +'<td class="num" style="color:var(--text3)">'+realStr+'</td>'
+      +'<td class="num" style="color:'+diffColor+';font-weight:600">'+diffStr+'</td>'
+      +'<td class="num" style="color:'+diffColor+';font-weight:600">'+ratioStr+'</td>'
+      +'<td style="font-size:11px;color:var(--yellow)">'+mark
+        +(row.memo?'<span style="color:var(--text3)"> '+row.memo.slice(0,20)+'</span>':'')+'</td>'
+      +'</tr>';
   });
 
-  document.getElementById('t6-compare-tbody').innerHTML = html ||
+  document.getElementById('t6-compare-tbody').innerHTML=html||
     '<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--text3)">매물 없음</td></tr>';
 
   if(compareSub){
-    var realCnt = Object.keys(realAvg).filter(function(p){return realAvg[p]>0;}).length;
-    compareSub.textContent = selectedUnit + ' · 매물 '+compareRows.length+'건'
-      + (realCnt > 0 ? ' · 실거래 평균 '+realCnt+'개 평형' : ' · 실거래 데이터 없음');
+    var rCnt=Object.keys(realAvg).filter(function(p){return realAvg[p]>0;}).length;
+    compareSub.textContent=selectedUnit+' · 매물 '+cmpRows.length+'건'
+      +(rCnt>0?' · 실거래 평균 '+rCnt+'개 평형':' · 실거래 없음');
   }
+}
 
 // ══ TAB7 유튜브 리포트
 function setReportType(v,btn){ G.reportType=v; setFilterBtn(btn.parentElement.querySelectorAll('.filter-btn'),btn); }
@@ -9239,8 +9215,6 @@ function fbLoadData(){
 document.addEventListener('DOMContentLoaded', function(){
   initFirebase();
 });
-
-}
 </script>
 
 <!-- SheetJS -->
@@ -9412,4 +9386,3 @@ if(typeof window.fbAutoLoad === 'function'){
 
 </body>
 </html>
-}
