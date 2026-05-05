@@ -293,7 +293,7 @@ body.zoom-mode .chart-wrap canvas {
   padding:8px 10px; text-align:left; background:var(--bg3);
   color:var(--text3); font-size:10px; font-weight:700; border-bottom:1px solid var(--border);
   white-space:nowrap;
-  position:sticky; top:0; z-index:2;
+  position:sticky; top:0; z-index:10;
   user-select:none;
 }
 .col-resizer {
@@ -308,7 +308,6 @@ body.zoom-mode .chart-wrap canvas {
 .data-table td {
   padding:8px 10px; border-bottom:1px solid rgba(42,58,82,.5);
   color:var(--text); vertical-align:middle;
-  position:relative; z-index:1;
   overflow:hidden; text-overflow:ellipsis;
 }
 .data-table tr:hover td { background:rgba(255,255,255,.02); }
@@ -333,7 +332,12 @@ body.zoom-mode .chart-wrap canvas {
   padding:10px 14px; border-bottom:1px solid var(--border);
   display:flex; align-items:center; justify-content:space-between;
 }
-.table-scroll { overflow-x:auto; max-height:520px; overflow-y:auto; -webkit-overflow-scrolling:touch; border-radius:0 0 10px 10px; }
+.table-scroll { overflow-x:auto; max-height:560px; overflow-y:auto; -webkit-overflow-scrolling:touch; border-radius:0 0 10px 10px; }
+/* 상단 가로 스크롤바 */
+.table-scroll-top { overflow-x:auto; overflow-y:hidden; height:12px; border-bottom:1px solid var(--border); background:var(--bg3); }
+.table-scroll-top::-webkit-scrollbar { height:8px; }
+.table-scroll-top::-webkit-scrollbar-thumb { background:var(--border); border-radius:4px; }
+.table-scroll-top-inner { height:1px; }
 .table-scroll::-webkit-scrollbar { width:4px; height:6px; }
 .table-scroll::-webkit-scrollbar-track { background:var(--bg); }
 .table-scroll::-webkit-scrollbar-thumb { background:var(--accent); border-radius:3px; opacity:.7; }
@@ -1520,9 +1524,9 @@ tr.naver-fav>td:first-child{border-left:3px solid #ffd700;}
             style="padding:3px 10px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:6px;font-size:11px;width:160px;">
         </div>
       </div>
-      <div class="table-scroll-hint">← 좌우로 스크롤하여 전체 내용 확인 →</div>
-      <div class="table-scroll">
-        <table class="data-table" style="table-layout:fixed;min-width:1100px">
+      <div class="table-scroll-top" id="t6-scroll-top"><div class="table-scroll-top-inner" id="t6-scroll-top-inner"></div></div>
+      <div class="table-scroll" id="t6-scroll-body">
+        <table class="data-table" id="t6-table" style="min-width:1100px">
           <colgroup>
             <col style="width:26px">    <!-- ⭐ -->
             <col style="width:52px">    <!-- 공구 -->
@@ -1967,9 +1971,12 @@ function initColResize(table) {
   table.querySelectorAll('.col-resizer').forEach(function(h){ h.parentNode.removeChild(h); });
 
   // table-layout:fixed 전환
+  // table-layout:fixed 전환 (아직 아닐 때만)
   if (table.style.tableLayout !== 'fixed') {
     var allThs0 = table.querySelectorAll('thead th');
-    allThs0.forEach(function(t){ t.style.width = t.offsetWidth + 'px'; });
+    allThs0.forEach(function(t){
+      if (!t.style.width) t.style.width = t.offsetWidth + 'px';
+    });
     table.style.tableLayout = 'fixed';
     table.style.minWidth = Math.max(table.offsetWidth, 600) + 'px';
   }
@@ -2193,6 +2200,40 @@ function printFavList(){
   w.document.close(); w.print();
 }
 
+
+
+// ══ t6 상단/하단 가로 스크롤바 동기화 ══
+function initT6ScrollSync() {
+  var top  = document.getElementById('t6-scroll-top');
+  var body = document.getElementById('t6-scroll-body');
+  var inner = document.getElementById('t6-scroll-top-inner');
+  var tbl  = document.getElementById('t6-table');
+  if (!top || !body || !inner || !tbl) return;
+
+  // inner 너비를 table 너비에 맞춤
+  function syncWidth() {
+    inner.style.width = tbl.offsetWidth + 'px';
+  }
+  syncWidth();
+
+  // 동기화 (loop 방지용 플래그)
+  var _syncing = false;
+  top.addEventListener('scroll', function() {
+    if (_syncing) return; _syncing = true;
+    body.scrollLeft = top.scrollLeft;
+    _syncing = false;
+  });
+  body.addEventListener('scroll', function() {
+    if (_syncing) return; _syncing = true;
+    top.scrollLeft = body.scrollLeft;
+    _syncing = false;
+  });
+
+  // resize 시 너비 재계산
+  if (window.ResizeObserver) {
+    new ResizeObserver(syncWidth).observe(tbl);
+  }
+}
 
 function setFilterBtn(btns, target){
   btns.forEach(function(b){b.classList.remove('on');});
@@ -6352,7 +6393,10 @@ function renderTab6(){
   });
   var _t6tbody = document.getElementById('t6-tbody');
   _t6tbody.innerHTML = overBanner+html||'<tr><td colspan="'+(hideAgent?'12':'14')+'" style="text-align:center;padding:20px;color:var(--text3)">해당 매물 없음</td></tr>';
-  setTimeout(function(){ var t=document.querySelector('.data-table[style*="1100px"]'); if(t) initColResize(t); },50);
+  setTimeout(function(){
+    var t=document.getElementById('t6-table'); if(t) initColResize(t);
+    initT6ScrollSync();
+  }, 50);
 
   // 차트
   renderNaverDistChart(rows);
