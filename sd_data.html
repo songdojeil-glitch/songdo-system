@@ -1497,7 +1497,7 @@ body.zoom-mode .chart-wrap canvas {
       </div>
       <div class="table-scroll-hint">← 좌우로 스크롤하여 전체 내용 확인 →</div>
       <div class="table-scroll">
-        <table class="data-table" style="table-layout:fixed;min-width:1100px">
+        <table class="data-table" style="table-layout:fixed;min-width:1120px">
           <colgroup>
             <col style="width:52px">    <!-- 공구 -->
             <col style="width:110px">   <!-- 단지명 -->
@@ -1510,9 +1510,9 @@ body.zoom-mode .chart-wrap canvas {
             <col style="width:45px">    <!-- 방향 -->
             <col style="width:62px">    <!-- 입력일 -->
             <col style="width:75px">    <!-- 중개사 -->
-            <col style="width:52px">    <!-- 중복등록수 -->
-            <col style="width:130px">   <!-- 특이사항 -->
-            <col style="width:140px">   <!-- 중복등록업소명 -->
+            <col style="width:65px">    <!-- 중복등록수(마우스오버→업소명) -->
+            <col style="width:200px">   <!-- 특이사항 -->
+            <col style="width:180px">   <!-- 중복등록업소명 -->
           </colgroup>
           <thead>
             <tr id="t6-thead-tr">
@@ -1965,7 +1965,6 @@ function initColResize(table) {
   ths.forEach(function(th, thIdx) {
     var handle = document.createElement('div');
     handle.className = 'col-resizer';
-    th.style.position = 'relative';
     th.appendChild(handle);
 
     var startX, startW;
@@ -5941,7 +5940,8 @@ function processNaverRows(rows, fileCnt){
         return true;
       });
 
-      G.naverData = validRows.map(function(r){
+      // 기존 데이터에 merge (같은 단지 있으면 교체, 없는 단지는 추가)
+      var newParsed = validRows.map(function(r){
         var nm=r['단지명']||r['아파트명']||'-';
         var rawType=r['거래구분']||r['거래유형']||r['유형']||'매매';
         var rawTypeVal=r['타입(전용)']||'';
@@ -5978,8 +5978,20 @@ function processNaverRows(rows, fileCnt){
                   parseInt(String(r['가격']).split('/')[1].replace(/[^0-9]/g,''))||0 : 0,
         };
       });
-      $set('naver-status', '✅ '+G.naverData.length+'건 ('+fileCnt+'개 파일)');
-      showToast('✅ 네이버 매물 '+G.naverData.length+'건 로드 완료 ('+fileCnt+'개 파일)');
+      // 단지명 기준 merge: 업로드된 단지는 교체, 나머지 기존 데이터 유지
+      if(G.naverData && G.naverData.length > 0){
+        // 새로 업로드된 단지명 목록
+        var newDanjiSet = {};
+        newParsed.forEach(function(r){ if(r.단지명) newDanjiSet[r.단지명] = true; });
+        // 기존 데이터에서 새 단지를 제외한 것 + 새 데이터 합치기
+        var kept = G.naverData.filter(function(r){ return !newDanjiSet[r.단지명]; });
+        G.naverData = kept.concat(newParsed);
+        showToast('✅ '+newParsed.length+'건 업데이트 (전체 '+G.naverData.length+'건 유지)');
+      } else {
+        G.naverData = newParsed;
+        showToast('✅ 네이버 매물 '+G.naverData.length+'건 로드 완료 ('+fileCnt+'개 파일)');
+      }
+      $set('naver-status', '✅ '+G.naverData.length+'건 ('+fileCnt+'개 파일 업데이트)');
       renderTab6();
     } catch(err){
       showToast('❌ 파싱 오류: '+err.message);
@@ -6152,10 +6164,10 @@ function renderTab6(){
       '<td style="font-size:11px;color:var(--text3)">'+(r.방향||'-')+'</td>'+
       '<td style="font-size:11px;color:var(--text3)">'+(r.입력일||'-')+'</td>'+
       (hideAgent?'':'<td style="font-size:11px;color:var(--text3)">'+(r.중개사||'-')+'</td>')+
-      '<td class="num" style="color:'+dupColor+';font-size:11px">'+
+      '<td class="num" style="color:'+dupColor+';font-size:11px;cursor:'+(r.중복업소명?'help':'default')+'" title="'+(r.중복업소명||'').replace(/"/g,'&quot;')+'">'+
         (r.중복등록수>0?r.중복등록수+'개':'-')+'</td>'+
-      '<td style="font-size:11px;color:var(--yellow);width:200px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+(r.특이사항||'').replace(/"/g,"&quot;")+'">'+(r.특이사항||'')+'</td>'+
-      (hideAgent?'':'<td style="font-size:10px;color:var(--text3);width:140px;max-width:140px;min-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+(r.중복업소명||'')+'">'+(r.중복업소명||'-')+'</td>')+
+      '<td style="font-size:11px;color:var(--yellow);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+(r.특이사항||'').replace(/"/g,'&quot;')+'">'+(r.특이사항||'')+'</td>'+
+      (hideAgent?'':'<td style="font-size:10px;color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+(r.중복업소명||'').replace(/"/g,'&quot;')+'">'+(r.중복업소명||'-')+'</td>')+
     '</tr>';
   });
   var _t6tbody = document.getElementById('t6-tbody');
