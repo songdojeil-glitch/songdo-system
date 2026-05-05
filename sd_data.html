@@ -5959,7 +5959,7 @@ function processNaverRows(rows, fileCnt){
         return true;
       });
 
-      G.naverData = validRows.map(function(r){
+      var newParsed = validRows.map(function(r){
         var nm=r['단지명']||r['아파트명']||'-';
         var rawType=r['거래구분']||r['거래유형']||r['유형']||'매매';
         var rawTypeVal=r['타입(전용)']||'';
@@ -5996,8 +5996,18 @@ function processNaverRows(rows, fileCnt){
                   parseInt(String(r['가격']).split('/')[1].replace(/[^0-9]/g,''))||0 : 0,
         };
       });
-      $set('naver-status', '✅ '+G.naverData.length+'건 ('+fileCnt+'개 파일)');
-      showToast('✅ 네이버 매물 '+G.naverData.length+'건 로드 완료 ('+fileCnt+'개 파일)');
+      // ── 단지명 기준 merge: 업로드 단지는 교체, 나머지 기존 데이터 유지
+      if(G.naverData && G.naverData.length > 0){
+        var newDanjiSet={};
+        newParsed.forEach(function(r){ if(r.단지명) newDanjiSet[r.단지명]=true; });
+        var kept=G.naverData.filter(function(r){ return !newDanjiSet[r.단지명]; });
+        G.naverData = kept.concat(newParsed);
+        showToast('✅ '+newParsed.length+'건 업데이트 (전체 '+G.naverData.length+'건 유지)');
+      } else {
+        G.naverData = newParsed;
+        showToast('✅ 네이버 매물 '+G.naverData.length+'건 로드');
+      }
+      $set('naver-status', '✅ '+G.naverData.length+'건');
       renderTab6();
     } catch(err){
       showToast('❌ 파싱 오류: '+err.message);
