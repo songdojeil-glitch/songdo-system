@@ -500,6 +500,7 @@ tr.naver-fav>td:first-child{border-left:3px solid #ffd700;}
       </button>
       <button onclick="exportFavExcel()" style="padding:4px 10px;background:#1a2a1a;border:1px solid #ffd700;border-radius:6px;color:#ffd700;font-size:11px;cursor:pointer">⭐ 엑셀</button>
       <button onclick="printFavList()" style="padding:4px 10px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:11px;cursor:pointer">🖨️ 인쇄</button>
+      <button onclick="showNaverDeleteModal()" style="padding:4px 10px;background:#2a1a1a;border:1px solid #ff4444;border-radius:6px;color:#ff7777;font-size:11px;cursor:pointer" title="단지별 또는 전체 삭제">🗑️ 삭제</button>
       <button onclick="fbLoadData()" id="fb-load-btn" style="padding:4px 12px;background:#1e3a5f;border:1px solid #00d4ff;color:#00d4ff;border-radius:6px;cursor:pointer;font-size:11px;font-weight:700;">
         ☁️ Firebase 불러오기
       </button>
@@ -1424,6 +1425,7 @@ tr.naver-fav>td:first-child{border-left:3px solid #ffd700;}
       </button>
       <button onclick="exportFavExcel()" style="padding:4px 10px;background:#1a2a1a;border:1px solid #ffd700;border-radius:6px;color:#ffd700;font-size:11px;cursor:pointer">⭐ 엑셀</button>
       <button onclick="printFavList()" style="padding:4px 10px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:11px;cursor:pointer">🖨️ 인쇄</button>
+      <button onclick="showNaverDeleteModal()" style="padding:4px 10px;background:#2a1a1a;border:1px solid #ff4444;border-radius:6px;color:#ff7777;font-size:11px;cursor:pointer" title="단지별 또는 전체 삭제">🗑️ 삭제</button>
       <button onclick="loadNaverDemo()" style="padding:4px 12px;background:var(--bg3);border:1px solid var(--border);color:var(--text2);border-radius:6px;cursor:pointer;font-size:11px;">
         📋 샘플 로드
       </button>
@@ -4367,6 +4369,109 @@ function printProposal(){
   var w=window.open('','_blank');
   w.document.write('<meta charset=utf-8><title>매물추천제안서</title><pre style="font-family:sans-serif;font-size:13px;line-height:1.8;padding:30px;white-space:pre-wrap">'+txt+'</pre>');
   w.document.close(); w.print();
+}
+
+
+// ══ 네이버 매물 삭제 기능 ══
+
+function showNaverDeleteModal(){
+  if(!G.naverData || !G.naverData.length){
+    showToast('삭제할 매물이 없습니다.'); return;
+  }
+  setDelTab('danji');
+  renderDelDanjiList();
+  document.getElementById('naver-delete-modal').style.display='flex';
+}
+function closeNaverDeleteModal(){
+  document.getElementById('naver-delete-modal').style.display='none';
+}
+
+function setDelTab(tab){
+  var isD = tab==='danji';
+  document.getElementById('del-panel-danji').style.display = isD?'block':'none';
+  document.getElementById('del-panel-all').style.display   = isD?'none':'block';
+  document.getElementById('del-tab-danji').style.background = isD?'var(--accent)':'var(--bg3)';
+  document.getElementById('del-tab-danji').style.color     = isD?'#fff':'var(--text3)';
+  document.getElementById('del-tab-all').style.background  = isD?'var(--bg3)':'#c62828';
+  document.getElementById('del-tab-all').style.color       = isD?'var(--text3)':'#fff';
+  if(!isD){
+    var cnt = G.naverData ? G.naverData.length : 0;
+    var danjis = G.naverData ? [...new Set(G.naverData.map(r=>r.단지명))].length : 0;
+    document.getElementById('del-all-cnt').textContent =
+      '전체 ' + danjis + '개 단지 / ' + cnt + '건 매물';
+  }
+}
+
+function renderDelDanjiList(){
+  var search = (document.getElementById('del-search')||{}).value||'';
+  if(!G.naverData) return;
+
+  // 단지별 건수 집계
+  var danjiMap = {};
+  G.naverData.forEach(function(r){
+    if(!r.단지명) return;
+    danjiMap[r.단지명] = (danjiMap[r.단지명]||0)+1;
+  });
+
+  var names = Object.keys(danjiMap).sort();
+  if(search) names = names.filter(function(n){ return n.indexOf(search)>=0; });
+
+  var listEl = document.getElementById('del-danji-list');
+  document.getElementById('del-total-cnt').textContent = names.length+'개 단지';
+
+  listEl.innerHTML = names.map(function(nm){
+    return '<label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:6px 8px;border-radius:6px;background:var(--bg2)">'
+      +'<input type="checkbox" class="del-danji-cb" data-nm="'+nm+'"'
+      +' style="width:14px;height:14px;accent-color:#ff4444;cursor:pointer">'
+      +'<span style="flex:1;font-size:12px;color:var(--text)">'+nm+'</span>'
+      +'<span style="font-size:11px;color:var(--text3)">'+danjiMap[nm]+'건</span>'
+      +'</label>';
+  }).join('');
+
+  // 체크 변경 시 카운트 업데이트
+  listEl.querySelectorAll('.del-danji-cb').forEach(function(cb){
+    cb.addEventListener('change', updateDelCount);
+  });
+  updateDelCount();
+}
+
+function updateDelCount(){
+  var checked = document.querySelectorAll('.del-danji-cb:checked').length;
+  var cntEl = document.getElementById('del-selected-cnt');
+  cntEl.textContent = checked > 0 ? '('+checked+'개 선택됨)' : '';
+  document.getElementById('del-check-all').checked =
+    checked > 0 && checked === document.querySelectorAll('.del-danji-cb').length;
+}
+
+function toggleDelAll(checked){
+  document.querySelectorAll('.del-danji-cb').forEach(function(cb){ cb.checked=checked; });
+  updateDelCount();
+}
+
+function execDeleteDanji(){
+  var selected = Array.from(document.querySelectorAll('.del-danji-cb:checked'))
+                      .map(function(cb){ return cb.dataset.nm; });
+  if(!selected.length){ showToast('삭제할 단지를 선택해 주세요.'); return; }
+
+  var beforeCnt = G.naverData.length;
+  G.naverData = G.naverData.filter(function(r){ return selected.indexOf(r.단지명)<0; });
+  var deletedCnt = beforeCnt - G.naverData.length;
+
+  $set('naver-status', '✅ '+G.naverData.length+'건');
+  closeNaverDeleteModal();
+  renderTab6();
+  showToast('🗑️ '+selected.length+'개 단지 ('+deletedCnt+'건) 삭제됨 → Firebase 저장 버튼으로 확정');
+}
+
+function execDeleteAll(){
+  if(!G.naverData || !G.naverData.length){ showToast('데이터 없음'); return; }
+  var cnt = G.naverData.length;
+  var danjis = [...new Set(G.naverData.map(r=>r.단지명))].length;
+  G.naverData = [];
+  $set('naver-status', '미업로드');
+  closeNaverDeleteModal();
+  renderTab6();
+  showToast('🗑️ 전체 '+danjis+'개 단지 '+cnt+'건 삭제됨 → Firebase 저장 버튼으로 확정');
 }
 
 function setFilterBtn(btns, target){
@@ -9156,5 +9261,72 @@ if(typeof window.fbAutoLoad === 'function'){
   </div>
 </div>
 <!-- ╚══ 네이버 매물 상세 모달 끝 ══╝ -->
+
+<!-- ╔══ 네이버 매물 삭제 모달 ══╗ -->
+<div id="naver-delete-modal" onclick="if(event.target===this)closeNaverDeleteModal()"
+  style="display:none;position:fixed;inset:0;z-index:3100;background:rgba(0,0,0,.7);align-items:center;justify-content:center">
+  <div style="background:var(--card);border:1px solid #ff444466;border-radius:14px;width:min(560px,96vw);max-height:85vh;overflow-y:auto;padding:22px 24px;box-shadow:0 8px 40px rgba(0,0,0,.6)">
+    <!-- 헤더 -->
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px">
+      <span style="font-size:15px;font-weight:700;color:#ff7777">🗑️ 네이버 매물 삭제</span>
+      <button onclick="closeNaverDeleteModal()" style="background:none;border:none;color:var(--text3);font-size:20px;cursor:pointer">✕</button>
+    </div>
+
+    <!-- 탭: 단지별 / 전체 -->
+    <div style="display:flex;gap:0;margin-bottom:16px;border-radius:8px;overflow:hidden;border:1px solid var(--border)">
+      <button id="del-tab-danji" onclick="setDelTab('danji')"
+        style="flex:1;padding:8px;background:var(--accent);color:#fff;border:none;font-size:12px;font-weight:600;cursor:pointer">
+        🏢 단지별 삭제
+      </button>
+      <button id="del-tab-all" onclick="setDelTab('all')"
+        style="flex:1;padding:8px;background:var(--bg3);color:var(--text3);border:none;font-size:12px;font-weight:600;cursor:pointer">
+        ⚠️ 전체 삭제
+      </button>
+    </div>
+
+    <!-- 단지별 삭제 패널 -->
+    <div id="del-panel-danji">
+      <div style="font-size:11px;color:var(--text3);margin-bottom:8px">
+        삭제할 단지를 선택하세요 <span id="del-selected-cnt" style="color:var(--yellow)"></span>
+      </div>
+      <!-- 검색 -->
+      <input type="text" id="del-search" placeholder="단지명 검색..."
+        oninput="renderDelDanjiList()"
+        style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;padding:6px 10px;box-sizing:border-box;margin-bottom:8px">
+      <!-- 전체선택 -->
+      <div style="display:flex;justify-content:space-between;margin-bottom:6px">
+        <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:12px;color:var(--text3)">
+          <input type="checkbox" id="del-check-all" onchange="toggleDelAll(this.checked)"
+            style="width:14px;height:14px;accent-color:var(--accent)"> 전체 선택
+        </label>
+        <span id="del-total-cnt" style="font-size:11px;color:var(--text3)"></span>
+      </div>
+      <!-- 단지 목록 -->
+      <div id="del-danji-list"
+        style="max-height:280px;overflow-y:auto;background:var(--bg3);border-radius:8px;padding:8px;display:flex;flex-direction:column;gap:4px">
+      </div>
+      <button onclick="execDeleteDanji()"
+        style="width:100%;margin-top:14px;padding:10px;background:#c62828;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer">
+        🗑️ 선택 단지 삭제
+      </button>
+    </div>
+
+    <!-- 전체 삭제 패널 -->
+    <div id="del-panel-all" style="display:none;text-align:center;padding:10px 0">
+      <div style="font-size:36px;margin-bottom:12px">⚠️</div>
+      <div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:8px">네이버 매물 전체 삭제</div>
+      <div id="del-all-cnt" style="font-size:13px;color:var(--text3);margin-bottom:20px"></div>
+      <div style="font-size:12px;color:#ff7777;background:#ff222211;border:1px solid #ff444433;border-radius:8px;padding:10px;margin-bottom:20px">
+        삭제 후 Firebase 저장 버튼을 눌러야 서버에도 반영됩니다
+      </div>
+      <button onclick="execDeleteAll()"
+        style="width:100%;padding:12px;background:#c62828;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer">
+        ⚠️ 전체 삭제 실행
+      </button>
+    </div>
+  </div>
+</div>
+<!-- ╚══ 네이버 매물 삭제 모달 끝 ══╝ -->
+
 </body>
 </html>
