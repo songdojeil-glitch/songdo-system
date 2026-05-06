@@ -3341,15 +3341,16 @@ var _GLOBAL_DIST_MAP = (function(){
   keys.forEach(function(k){ _GLOBAL_DIST_MAP[k+'(주상복합)'] = _GLOBAL_DIST_MAP[k]; });
 })();
 
-// 공구 0인 naverData 항목을 _GLOBAL_DIST_MAP으로 보정
+// 공구 0/null/undefined 항목을 _GLOBAL_DIST_MAP으로 보정
+// 공구값이 있어도 단지명이 맵에 있으면 덮어씀 (오입력 방지)
 function fixNaverDist(arr){
   if(!arr) return arr;
   arr.forEach(function(r){
-    if(!r.공구 || r.공구 === 0){
-      var nm = r.단지명 || '';
-      var d = _GLOBAL_DIST_MAP[nm] || _GLOBAL_DIST_MAP[nm.replace('(주상복합)','')] || 0;
-      if(d) r.공구 = d;
-    }
+    var nm = r.단지명 || '';
+    if(!nm) return;
+    var mapped = _GLOBAL_DIST_MAP[nm] || _GLOBAL_DIST_MAP[nm.replace('(주상복합)','')] || 0;
+    if(mapped) r.공구 = mapped;          // 맵에 있으면 항상 덮어씀
+    else if(!r.공구) r.공구 = 0;         // 맵에 없고 공구도 없으면 0
   });
   return arr;
 }
@@ -9901,7 +9902,7 @@ function fbSaveData(){
   var payload = {
     sale_data: slimSale,
     rent_data: slimRent,
-    naver_data: G.naverData||[],
+    naver_data: fixNaverDist(G.naverData||[]),
     meta: { updated:today, sale_cnt:slimSale.length, rent_cnt:slimRent.length, naver_cnt:(G.naverData||[]).length, slim:true }
   };
   var kb = Math.round(JSON.stringify(payload).length/1024);
