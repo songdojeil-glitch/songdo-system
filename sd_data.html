@@ -4082,6 +4082,43 @@ function rptSelectPyeong(){
 
 var G_rpt = { deal:'매매', dist:'', danji:[], pyeong:[], saleSelected:[], naverSelected:[] };
 
+// ── 네이버 단지명 → 실거래 단지명 매핑 테이블
+// 실거래 엑셀(면적D) vs 네이버 매물 단지명 전수 비교로 생성
+var _DANJI_NM_MAP = {
+  '더샵센트럴파크1차(주상복합)': '더샵센트럴파크1',
+  '더샵센트럴파크1차':           '더샵센트럴파크1',
+  '더샵센트럴파크2차(주상복합)': '더샵센트럴파크2',
+  '더샵센트럴파크2차':           '더샵센트럴파크2',
+  '더샵송도센트럴파크Ⅲ(주상복합)': '더샵송도센트럴파크Ⅲ',
+  '더샵송도아크베이(주상복합)':   '더샵송도아크베이',
+  '디에트르송도시그니처뷰(주상복합)': '디에트르송도시그니처뷰',
+  '송도센트럴파크푸르지오(주상복합)': '송도센트럴파크푸르지오',
+  '송도아리스타프라임(주상복합)': '송도아리스타프라임아파트',
+  '송도아리스타프라임':           '송도아리스타프라임아파트',
+  '송도코오롱더프라우1단지(주상복합)': '송도코오롱더프라우1단지',
+  '송도코오롱더프라우2단지(주상복합)': '송도코오롱더프라우2단지',
+  '송도푸르지오월드마크1단지(주상복합)': '송도푸르지오월드마크1단지',
+  '송도푸르지오월드마크2단지(주상복합)': '송도푸르지오월드마크2단지',
+  '송도푸르지오월드마크8단지(주상복합)': '송도푸르지오월드마크8단지',
+  '인천송도힐스테이트(주상복합)': '인천송도힐스테이트3단지',
+  '인천송도힐스테이트':           '인천송도힐스테이트3단지',
+  '힐스테이트송도더스카이(주상복합)': '힐스테이트송도더스카이',
+};
+
+// 네이버 단지명 → 실거래 단지명 변환 (전 시스템 공통 사용)
+function findSaleNm(nm){
+  if(!nm) return nm;
+  // 1. 매핑 테이블에 있으면 즉시 반환
+  if(_DANJI_NM_MAP[nm]) return _DANJI_NM_MAP[nm];
+  // 2. 실거래에 그대로 있으면 반환
+  if(G.saleData && G.saleData.some(function(r){ return r['단지명']===nm; })) return nm;
+  // 3. (주상복합) 제거 후 재시도
+  var norm = nm.replace('(주상복합)','').replace('(주상)','').trim();
+  if(_DANJI_NM_MAP[norm]) return _DANJI_NM_MAP[norm];
+  if(G.saleData && G.saleData.some(function(r){ return r['단지명']===norm; })) return norm;
+  return nm;
+}
+
 // 단계 이동
 function rptGoStep(n){
   [1,2,3].forEach(function(i){
@@ -4165,7 +4202,8 @@ function rptStep1Next(){
     G_rpt.danji.forEach(function(nm){
       G_rpt.pyeong.forEach(function(p){
         var rows=G.saleData.filter(function(r){
-          return r['단지명']===nm && r['분양평형']===p && (r['계약년월']||0)>=cutoff
+          var saleNm=findSaleNm(nm);
+          return r['단지명']===saleNm && r['분양평형']===p && (r['계약년월']||0)>=cutoff
             && (G_rpt.deal==='매매'?(r['거래유형']==='매매'||!r['전월세구분']):r['전월세구분']===G_rpt.deal);
         }).sort(function(a,b){ return (b['계약년월']||0)-(a['계약년월']||0); }).slice(0,10);
         rows.forEach(function(r){
@@ -8843,7 +8881,8 @@ function renderNaverCompare(rows){
   var realByKey={};
   if(G.saleData){
     G.saleData.filter(function(r){
-      return r['단지명']===selectedUnit && (r['계약년월']||0)>=cutoff && r['거래금액']>0;
+      var sNm=findSaleNm(selectedUnit);
+      return r['단지명']===sNm && (r['계약년월']||0)>=cutoff && r['거래금액']>0;
     }).forEach(function(r){
       var p=r['분양평형']||0; if(!p) return;
       var dealT=r['전월세구분']||'매매';
