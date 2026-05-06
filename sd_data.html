@@ -4317,7 +4317,7 @@ async function generateReport(){
       method:'POST',
       headers:{'Content-Type':'application/json'},
       body:JSON.stringify({
-        model:'claude-sonnet-4-5',
+        model:'claude-sonnet-4-6',
         max_tokens:2000,
         messages:[{role:'user',content:prompt}]
       })
@@ -4471,7 +4471,7 @@ async function generateProposal(mode){
     var resp=await fetch('https://api.anthropic.com/v1/messages',{
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:1000,messages:[{role:'user',content:prompt}]})
+      body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:1000,messages:[{role:'user',content:prompt}]})
     });
     var data=await resp.json();
     var result=data.content&&data.content[0]?data.content[0].text:'제안서 생성에 실패했습니다.';
@@ -5067,12 +5067,28 @@ function openT2Detail(unitName){
   }
   var data=trade==='sale'?G.saleData:G.rentData;
   if(!data){alert('데이터 없음');return;}
+  // 기간 범위 계산 (renderTab2와 동일 로직)
+  var t2p = G.t2period||'1y';
+  var nowYm = (function(){ var d=new Date(); return d.getFullYear()*100+(d.getMonth()+1); })();
+  var periodStartYm = (function(){
+    var d=new Date();
+    if(t2p==='1y') d.setFullYear(d.getFullYear()-1);
+    else if(t2p==='3y') d.setFullYear(d.getFullYear()-3);
+    else if(t2p==='5y') d.setFullYear(d.getFullYear()-5);
+    else return 0; // 전체 기간
+    return d.getFullYear()*100+(d.getMonth()+1);
+  })();
+  function ymOkModal(ym){ return periodStartYm===0 || (ym>=periodStartYm && ym<=nowYm); }
+
   var unitRows=data.filter(function(r){
     if((r['단지명']||'')!==unitName) return false;
     if(trade==='sale'){if(r['해제사유']&&r['해제사유']==='Y') return false;}
     else{var jt=r['전월세구분']||'';if(trade==='jeonse'&&jt!=='전세') return false;if(trade==='monthly'&&jt!=='월세') return false;}
-    return true;
+    var ym=parseInt(r['계약년월']||0);
+    return ymOkModal(ym);
   });
+  // 모달 제목용 기간 레이블
+  var periodLabel = t2p==='1y'?'최근1년':t2p==='3y'?'최근3년':t2p==='5y'?'최근5년':'전체기간';
   // 분양평형 색인
   var pyeongIdx={};
   unitRows.forEach(function(r){
@@ -5132,7 +5148,7 @@ function openT2Detail(unitName){
     '<div style="display:flex;align-items:center;gap:10px;margin-bottom:20px">'+
       '<span class="badge" style="background:'+color+'33;color:'+color+';font-size:13px">'+(DIST_NAMES[g]||'-')+'</span>'+
       '<span style="font-size:18px;font-weight:700">'+unitName+'</span>'+
-      '<span style="font-size:12px;color:var(--text3)">· '+trdLabel+' · 전체기간 '+unitRows.length+'건</span>'+
+      '<span style="font-size:12px;color:var(--text3)">· '+trdLabel+' · '+periodLabel+' '+unitRows.length+'건</span>'+
     '</div>'+
     '<div style="margin-bottom:20px">'+
       '<div style="font-size:12px;font-weight:700;margin-bottom:8px;color:var(--accent3)">📐 면적(분양평형)별 시세 요약</div>'+
