@@ -1508,48 +1508,8 @@ tr.naver-fav>td:first-child{border-left:3px solid #ffd700;}
       <div class="table-scroll-hint">← 좌우로 스크롤하여 전체 내용 확인 →</div>
       <div class="table-scroll">
         <table class="data-table" id="t6-naver-table" style="table-layout:fixed;width:100%;min-width:1600px">
-          <colgroup>
-            <col style="width:28px">    <!-- ⭐ -->
-            <col style="width:52px">    <!-- 공구 -->
-            <col style="width:150px">   <!-- 단지명 -->
-            <col style="width:48px">    <!-- 거래구분 -->
-            <col style="width:54px">    <!-- 전용㎡ -->
-            <col style="width:58px">    <!-- 타입 -->
-            <col style="width:52px">    <!-- 분양평형 -->
-            <col style="width:62px">    <!-- 동 -->
-            <col style="width:82px">    <!-- 보증금 -->
-            <col style="width:64px">    <!-- 월세 -->
-            <col style="width:88px">    <!-- 환산보증금 -->
-            <col style="width:46px">    <!-- 층 -->
-            <col style="width:52px">    <!-- 방향 -->
-            <col style="width:64px">    <!-- 입력일 -->
-            <col style="width:72px">    <!-- 중개사 -->
-            <col style="width:52px">    <!-- 중복등록수 -->
-            <col>                       <!-- 특이사항 (나머지 공간) -->
-            <col style="width:200px">   <!-- 중복등록업소명 -->
-          </colgroup>
-          <thead>
-            <tr id="t6-thead-tr">
-              <th style="text-align:center">⭐</th>
-              <th>공구</th>
-              <th>단지명</th>
-              <th>거래구분</th>
-              <th class="num">전용㎡</th>
-              <th>타입</th>
-              <th class="num">분양평형</th>
-              <th style="text-align:center">동</th>
-              <th class="num" style="color:var(--accent2)">보증금</th>
-              <th class="num" style="color:var(--purple)">월세</th>
-              <th class="num" style="color:var(--yellow);padding-right:12px">환산보증금</th>
-              <th>층</th>
-              <th>방향</th>
-              <th>입력일</th>
-              <th id="t6-th-agent">중개사</th>
-              <th class="num" style="color:var(--text3)">중복등록수</th>
-              <th>특이사항</th>
-              <th id="t6-th-dupnm" style="color:var(--text3)">중복등록업소명</th>
-            </tr>
-          </thead>
+          <colgroup id="t6-colgroup"></colgroup>
+          <thead><tr id="t6-thead-tr"></tr></thead>
           <tbody id="t6-tbody"></tbody>
         </table>
       </div>
@@ -9236,11 +9196,65 @@ function renderTab6(){
   }
   // 중개업소명 제외 체크 상태
   var hideAgent = (document.getElementById('t6-hide-agent')||{}).checked||false;
-  // 헤더 컬럼 표시/숨김
-  var thAgent = document.getElementById('t6-th-agent');
-  var thDupnm = document.getElementById('t6-th-dupnm');
-  if(thAgent) thAgent.style.display = hideAgent ? 'none' : '';
-  if(thDupnm) thDupnm.style.display = hideAgent ? 'none' : '';
+
+  // ── 거래구분 모드 결정
+  var nt = G.naverType||'all';
+  var isSaleOnly  = nt==='매매';
+  var isJeonseOnly= nt==='전세';
+  var isWolseOnly = nt==='월세';
+  // 월세 포함 복합 = all 또는 매매+월세/전세+월세 등 (월세가 섞인 경우)
+  // 헤더 컬럼 모드: 'sale'|'jeonse'|'wolse'|'mixed'
+  var colMode = isSaleOnly?'sale': isJeonseOnly?'jeonse': isWolseOnly?'wolse':'mixed';
+
+  // ── 동적 colgroup + 헤더 생성
+  var cols, headers;
+  var BASE_COLS = [
+    {w:'28px',  th:'<th style="text-align:center">⭐</th>'},
+    {w:'52px',  th:'<th>공구</th>'},
+    {w:'150px', th:'<th>단지명</th>'},
+    {w:'48px',  th:'<th>거래구분</th>'},
+    {w:'54px',  th:'<th class="num">전용㎡</th>'},
+    {w:'58px',  th:'<th>타입</th>'},
+    {w:'52px',  th:'<th class="num">분양평형</th>'},
+    {w:'62px',  th:'<th style="text-align:center">동</th>'},
+  ];
+  var PRICE_COLS_SALE   = [{w:'90px', th:'<th class="num" style="color:var(--accent2)">매매의뢰가</th>'}];
+  var PRICE_COLS_JEONSE = [{w:'90px', th:'<th class="num" style="color:var(--accent)">전세의뢰가</th>'}];
+  var PRICE_COLS_WOLSE  = [
+    {w:'82px', th:'<th class="num" style="color:var(--accent2)">보증금</th>'},
+    {w:'64px', th:'<th class="num" style="color:var(--purple)">월세</th>'},
+    {w:'90px', th:'<th class="num" style="color:var(--yellow);padding-right:12px">환산보증금</th>'},
+  ];
+  var PRICE_COLS_MIXED  = [{w:'90px', th:'<th class="num" style="color:var(--accent2)">의뢰가</th>'}];
+  var TAIL_COLS_BASE = [
+    {w:'46px',  th:'<th>층</th>'},
+    {w:'52px',  th:'<th>방향</th>'},
+    {w:'64px',  th:'<th>입력일</th>'},
+  ];
+  var TAIL_COLS_AGENT = [
+    {w:'72px',  th:'<th id="t6-th-agent">중개사</th>'},
+    {w:'52px',  th:'<th class="num" style="color:var(--text3)">중복등록수</th>'},
+    {w:'',      th:'<th>특이사항</th>'},
+    {w:'200px', th:'<th id="t6-th-dupnm" style="color:var(--text3)">중복등록업소명</th>'},
+  ];
+  var TAIL_COLS_NOAGENT = [
+    {w:'52px',  th:'<th class="num" style="color:var(--text3)">중복등록수</th>'},
+    {w:'',      th:'<th>특이사항</th>'},
+  ];
+
+  var priceCols = colMode==='sale'?PRICE_COLS_SALE:
+                  colMode==='jeonse'?PRICE_COLS_JEONSE:
+                  colMode==='wolse'?PRICE_COLS_WOLSE:PRICE_COLS_MIXED;
+  var tailCols  = TAIL_COLS_BASE.concat(hideAgent?TAIL_COLS_NOAGENT:TAIL_COLS_AGENT);
+  var allCols   = BASE_COLS.concat(priceCols).concat(tailCols);
+
+  var cgHtml='', thHtml='';
+  allCols.forEach(function(col){
+    cgHtml += col.w ? '<col style="width:'+col.w+'">' : '<col>';
+    thHtml += col.th;
+  });
+  document.getElementById('t6-colgroup').innerHTML = cgHtml;
+  document.getElementById('t6-thead-tr').innerHTML  = thHtml;
 
   // 분양평형 맵 캐싱: 단지명_전용㎡(소수점1자리) → 분양평형
   if(!G._naverPyeongMap || G._naverPyeongMapSrc!==G.saleData){
@@ -9327,12 +9341,10 @@ function renderTab6(){
   }).join('');
 
   // 테이블 (렌더링 상한선 500건 - 2000건+ 렌더 시 레이아웃 붕괴 방지)
-  var MAX_T6 = 500;
-  var totalT6 = rows.length;
-  $set('t6-cnt', totalT6+'건');
-  var displayRows = rows.slice(0, MAX_T6);
+  var priceColCount = colMode==='wolse'?3:1;
+  var totalColspan  = 8 + priceColCount + 3 + (hideAgent?2:4);
   var overBanner = totalT6 > MAX_T6
-    ? '<tr><td colspan="'+(hideAgent?'12':'14')+'" style="text-align:center;padding:8px;background:rgba(255,200,0,.1);color:var(--yellow);font-size:11px">'+
+    ? '<tr><td colspan="'+totalColspan+'" style="text-align:center;padding:8px;background:rgba(255,200,0,.1);color:var(--yellow);font-size:11px">'+
       '⚠️ '+totalT6.toLocaleString()+'건 중 상위 '+MAX_T6+'건만 표시. 공구·거래구분·단지를 선택해 좁혀주세요.</td></tr>'
     : '';
   var html='';
@@ -9354,14 +9366,32 @@ function renderTab6(){
     var _trCls=(_fav?'naver-fav ':'')+(_sdj?'sdj-own':'');
     var _agentHtml=_sdj?'<span class="sdj-badge">★송도제일</span>':(r.중개사||'-');
     var _ridx=G.naverData.indexOf(r);
-    // 보증금/월세/환산보증금 계산
-    var _isW=r.거래유형==='월세';
+    // 가격 계산
     var _dep=r.호가||0;
+    var _isW=r.거래유형==='월세';
     var _wol=_isW?(r.월세||0):0;
     var _env=_isW?Math.round(_dep+_wol*12/0.058):0;
-    var _depTd=_dep>0?fmt천(_dep):'-';
-    var _wolTd=_isW&&_wol>0?'<span style="color:var(--purple);font-weight:700">'+Math.round(_wol)+'만</span>':'-';
-    var _envTd=_isW&&_env>0?'<span style="color:var(--yellow);font-weight:700">'+fmt천(_env)+'</span>':'<span style="color:var(--text3);font-size:10px">—</span>';
+    var _depFmt=_dep>0?fmt천(_dep):'-';
+    // 가격 td HTML (colMode 분기)
+    var priceTd='';
+    if(colMode==='sale'){
+      priceTd='<td class="num" style="color:var(--accent2);font-weight:700">'+_depFmt+'</td>';
+    } else if(colMode==='jeonse'){
+      priceTd='<td class="num" style="color:var(--accent);font-weight:700">'+_depFmt+'</td>';
+    } else if(colMode==='wolse'){
+      var _wolFmt=_wol>0?'<span style="color:var(--purple);font-weight:700">'+Math.round(_wol)+'만</span>':'-';
+      var _envFmt=_env>0?'<span style="color:var(--yellow);font-weight:700">'+fmt천(_env)+'</span>':'<span style="color:var(--text3);font-size:10px">—</span>';
+      priceTd='<td class="num" style="color:var(--accent2);font-weight:700">'+_depFmt+'</td>'+
+              '<td class="num">'+_wolFmt+'</td>'+
+              '<td class="num" style="padding-right:12px">'+_envFmt+'</td>';
+    } else {
+      // mixed: 매매/전세는 의뢰가, 월세는 보증금만
+      var _mixedColor=r.거래유형==='전세'?'var(--accent)':'var(--accent2)';
+      priceTd='<td class="num" style="color:'+_mixedColor+';font-weight:700">'+_depFmt+'</td>';
+    }
+    // colspan 계산
+    var priceColCount=colMode==='wolse'?3:1;
+    var totalCols=8+priceColCount+3+(hideAgent?2:4); // 기본8+가격+층방향입력일+에이전트계열
     html+='<tr class="'+_trCls+'" style="cursor:pointer" onclick="_nd('+_ridx+')">'+
       '<td style="text-align:center"><span class="fav-star '+(_fav?'on':'off')+'" onclick="event.stopPropagation();_nf('+_ridx+')">'+(_fav?'★':'☆')+'</span></td>'+
       '<td><span class="badge" style="background:'+color+'33;color:'+color+'">'+(DIST_NAMES[parseInt(r.공구)]||'-')+'</span></td>'+
@@ -9371,9 +9401,7 @@ function renderTab6(){
       '<td style="font-size:11px;color:var(--text2)">'+(r.타입||'-')+'</td>'+
       '<td class="num" style="color:var(--text3);font-size:11px">'+(r.분양평형>0?r.분양평형+'평':'-')+'</td>'+
       '<td style="font-size:11px;color:var(--text2);text-align:center">'+(r.동||'-')+'</td>'+
-      '<td class="num" style="color:var(--accent2);font-weight:700">'+_depTd+'</td>'+
-      '<td class="num">'+_wolTd+'</td>'+
-      '<td class="num" style="padding-right:12px">'+_envTd+'</td>'+
+      priceTd+
       '<td>'+(r.층||'-')+'층</td>'+
       '<td style="font-size:11px;color:var(--text3)">'+(r.방향||'-')+'</td>'+
       '<td style="font-size:11px;color:var(--text3)">'+(r.입력일||'-')+'</td>'+
