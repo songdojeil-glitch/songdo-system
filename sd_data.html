@@ -1491,7 +1491,7 @@ tr.naver-fav>td:first-child{border-left:3px solid #ffd700;}
         <div class="chart-wrap"><canvas id="chart-naver-dist"></canvas></div>
       </div>
       <div class="chart-card">
-        <div class="chart-card-title">💰 거래구분별 평균 의뢰가</div>
+        <div class="chart-card-title">💰 거래구분별 평균 의뢰가 (월세=환산보증금)</div>
         <div class="chart-wrap"><canvas id="chart-naver-price"></canvas></div>
       </div>
     </div>
@@ -1507,12 +1507,12 @@ tr.naver-fav>td:first-child{border-left:3px solid #ffd700;}
       </div>
       <div class="table-scroll-hint">← 좌우로 스크롤하여 전체 내용 확인 →</div>
       <div class="table-scroll">
-        <table class="data-table" id="t6-naver-table" style="table-layout:fixed;min-width:1100px">
+        <table class="data-table" id="t6-naver-table" style="table-layout:fixed;min-width:1240px">
           <thead>
             <tr id="t6-thead-tr">
               <th style="width:26px;text-align:center">⭐</th><th>공구</th><th>단지명</th><th>거래구분</th><th class="num">전용㎡</th><th>타입</th><th class="num">분양평형</th>
               <th>동</th>
-              <th class="num">의뢰가</th><th>층</th><th>방향</th>
+              <th class="num" style="color:var(--accent2)">보증금</th><th class="num" style="color:var(--purple)">월세</th><th class="num" style="color:var(--yellow)">환산보증금</th><th>층</th><th>방향</th>
               <th>입력일</th><th id="t6-th-agent">중개사</th><th class="num" style="color:var(--text3)">중복등록수</th><th>특이사항</th><th id="t6-th-dupnm" style="color:var(--text3)">중복등록업소명</th>
             </tr>
           </thead>
@@ -9320,6 +9320,14 @@ function renderTab6(){
     var _trCls=(_fav?'naver-fav ':'')+(_sdj?'sdj-own':'');
     var _agentHtml=_sdj?'<span class="sdj-badge">★송도제일</span>':(r.중개사||'-');
     var _ridx=G.naverData.indexOf(r);
+    // 보증금/월세/환산보증금 계산
+    var _isW=r.거래유형==='월세';
+    var _dep=r.호가||0;
+    var _wol=_isW?(r.월세||0):0;
+    var _env=_isW?Math.round(_dep+_wol*12/0.058):0;
+    var _depTd=_dep>0?fmt천(_dep):'-';
+    var _wolTd=_isW&&_wol>0?'<span style="color:var(--purple);font-weight:700">'+Math.round(_wol)+'만</span>':'-';
+    var _envTd=_isW&&_env>0?'<span style="color:var(--yellow);font-weight:700">'+fmt천(_env)+'</span>':'<span style="color:var(--text3);font-size:10px">—</span>';
     html+='<tr class="'+_trCls+'" style="cursor:pointer" onclick="_nd('+_ridx+')">'+
       '<td style="text-align:center"><span class="fav-star '+(_fav?'on':'off')+'" onclick="event.stopPropagation();_nf('+_ridx+')">'+(_fav?'★':'☆')+'</span></td>'+
       '<td><span class="badge" style="background:'+color+'33;color:'+color+'">'+(DIST_NAMES[parseInt(r.공구)]||'-')+'</span></td>'+
@@ -9329,7 +9337,9 @@ function renderTab6(){
       '<td style="font-size:11px;color:var(--text2)">'+(r.타입||'-')+'</td>'+
       '<td class="num" style="color:var(--text3);font-size:11px">'+(r.분양평형>0?r.분양평형+'평':'-')+'</td>'+
       '<td style="font-size:11px;color:var(--text2);text-align:center">'+(r.동||'-')+'</td>'+
-      '<td class="num" style="color:var(--accent2);font-weight:700">'+fmt천(r.호가)+'</td>'+
+      '<td class="num" style="color:var(--accent2);font-weight:700">'+_depTd+'</td>'+
+      '<td class="num">'+_wolTd+'</td>'+
+      '<td class="num">'+_envTd+'</td>'+
       '<td>'+(r.층||'-')+'층</td>'+
       '<td style="font-size:11px;color:var(--text3)">'+(r.방향||'-')+'</td>'+
       '<td style="font-size:11px;color:var(--text3)">'+(r.입력일||'-')+'</td>'+
@@ -9342,7 +9352,7 @@ function renderTab6(){
   });
   var _t6tbody = document.getElementById('t6-tbody');
   _t6tbody.innerHTML = overBanner+html||'<tr><td colspan="'+(hideAgent?'12':'14')+'" style="text-align:center;padding:20px;color:var(--text3)">해당 매물 없음</td></tr>';
-  setTimeout(function(){ var t=document.querySelector('.data-table[style*="1100px"]'); if(t) initColResize(t); },50);
+  setTimeout(function(){ var t=document.querySelector('.data-table[style*="1240px"]'); if(t) initColResize(t); },50);
 
   // 차트
   renderNaverDistChart(rows);
@@ -9376,17 +9386,24 @@ function renderNaverPriceChart(rows){
   rows.forEach(function(r){
     var sq=parseFloat(r.전용)||0;
     if(sq>=80&&sq<=90&&r.호가>0){
-      if(byType[r.거래유형]) byType[r.거래유형].push(r.호가);
+      if(r.거래유형==='월세'){
+        // 월세는 환산보증금 사용
+        var wol=r.월세||0;
+        var conv=Math.round(r.호가+wol*12/0.058);
+        if(conv>0) byType['월세'].push(conv);
+      } else if(byType[r.거래유형]){
+        byType[r.거래유형].push(r.호가);
+      }
     }
   });
   var avg=function(arr){return arr.length?Math.round(arr.reduce(function(a,b){return a+b;},0)/arr.length/10000*10)/10:0;};
   charts.naverPrice=new Chart(ctx,{type:'bar',data:{
-    labels:['매매 평균의뢰가','전세 평균의뢰가','월세 평균의뢰가'],
+    labels:['매매 평균의뢰가','전세 평균의뢰가','월세 환산보증금 평균'],
     datasets:[{data:[avg(byType['매매']),avg(byType['전세']),avg(byType['월세'])],
       backgroundColor:['rgba(255,107,53,.6)','rgba(0,212,255,.6)','rgba(181,123,238,.6)'],
       borderColor:['#ff6b35','#00d4ff','#b57bee'],borderWidth:2,borderRadius:4}]
   },options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:function(c){return c.raw+'억';}}}},
-  scales:{x:{ticks:{color:'#8899bb',font:{size:11}},grid:{display:false}},
+  scales:{x:{ticks:{color:'#8899bb',font:{size:10}},grid:{display:false}},
           y:{ticks:{color:'#8899bb',font:{size:10},callback:function(v){return v+'억';}},grid:{color:'rgba(42,58,82,.5)'}}}}});
 }
 
