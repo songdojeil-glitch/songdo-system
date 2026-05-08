@@ -185,9 +185,9 @@ body{margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',
 
     console.log('✅ Firebase 연결됨 (DB + Storage)');
     // 데이터 로드
-    if (typeof fromCStore === 'function') fromCStore();
+    if (typeof fromStore === 'function') fromStore().then(function(){ sw(0); refreshHub(); });
     else document.addEventListener('DOMContentLoaded', function() {
-      if (typeof fromCStore === 'function') fromCStore();
+      if (typeof fromStore === 'function' && !_storeLoaded) fromStore().then(function(){ sw(0); refreshHub(); });
     });
   } catch(e) {
     console.warn('Firebase 초기화 실패:', e.message);
@@ -1305,7 +1305,8 @@ function exportBrk(){
 }
 
 async function initAll(){await fromStore();await fromStoreTodo();await fromStoreBrk();sw(0);initCharCounters();}
-fromStore().then(function(){sw(0);setToday();initCharCounters();setTimeout(initCustColResize,300);});
+var _storeLoaded = false;
+fromStore().then(function(){ _storeLoaded=true; sw(0); setToday(); initCharCounters(); setTimeout(initCustColResize,300); });
 
 function setToday(){var t=new Date(),ds=t.getFullYear()+'-'+String(t.getMonth()+1).padStart(2,'0')+'-'+String(t.getDate()).padStart(2,'0');document.getElementById('f-rdate').value=ds;document.getElementById('f-lastdate').value=ds;}
 
@@ -1342,15 +1343,20 @@ function refreshHub(){
   document.getElementById('hub-date').textContent=now.getFullYear()+'년 '+(now.getMonth()+1)+'월 '+now.getDate()+'일 ('+days[now.getDay()]+'요일)';
   var h=now.getHours();
   document.getElementById('hub-greet').textContent=h<11?'☀️ 좋은 아침입니다, 소장님!':h<18?'🌇 오후도 화이팅입니다!':'🌆 오늘 하루도 수고 많으셨습니다!';
-  var cnt={total:0,가망고객:0,물건고객:0,계약고객:0,기존고객:0};
+  var cnt={total:0,가망고객:0,물건고객:0,'계약고객(자사)':0,'계약고객(타사)':0,기존고객:0};
   custs.forEach(function(c){
     cnt.total++;
     var tags=migrateTags(c);
-    tags.forEach(function(t){if(cnt[t]!==undefined)cnt[t]++;});
+    tags.forEach(function(t){
+      if(t==='계약고객') cnt['계약고객(자사)']++;  // 구버전 마이그레이션
+      else if(cnt[t]!==undefined) cnt[t]++;
+    });
   });
-  ['total','가망고객','물건고객','계약고객','기존고객'].forEach(function(k){
-    var el=document.getElementById('hc-'+{total:'total',가망고객:'ga',물건고객:'mul',계약고객:'ct',기존고객:'ex'}[k]);
-    if(el)el.textContent=cnt[k];
+  [{k:'total',id:'total'},{k:'가망고객',id:'ga'},{k:'물건고객',id:'mul'},
+   {k:'계약고객(자사)',id:'ct'},{k:'계약고객(타사)',id:'ct2'},{k:'기존고객',id:'ex'}
+  ].forEach(function(m){
+    var el=document.getElementById('hc-'+m.id);
+    if(el) el.textContent=cnt[m.k];
   });
   window.storage.get('sd_props').then(function(r){
     var props=r&&r.value?JSON.parse(r.value):[];
