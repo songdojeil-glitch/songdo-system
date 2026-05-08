@@ -184,15 +184,13 @@ body{margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',
     };
 
     console.log('✅ Firebase 연결됨 (DB + Storage)');
-    // 2차 로드: Firebase 준비 완료 후 재로드
+    // 2차 로드: Firebase 준비 완료 후 재로드 (localStorage보다 최신 데이터)
     setTimeout(function(){
-      console.log('[SD] Firebase 2차 로드 시작...');
       fromStore().then(function(ok){
-        console.log('[SD] Firebase 2차 로드 결과:', ok, '고객수:', custs.length);
-        if(ok){ sw(0); refreshHub(); if(typeof rtbl==='function') rtbl(); }
+        if(ok){ sw(0); refreshHub(); rtbl && rtbl(); }
       });
-      if(typeof fromStoreBrk==='function') fromStoreBrk();
-      if(typeof fromStoreTodo==='function') fromStoreTodo();
+      fromStoreBrk && fromStoreBrk();
+      fromStoreTodo && fromStoreTodo();
     }, 500);
   } catch(e) {
     console.warn('Firebase 초기화 실패:', e.message);
@@ -834,25 +832,9 @@ function migrateTags(c){
 async function toStore(){try{await window.storage.set('sd_custs',JSON.stringify(custs));}catch(e){console.warn('[SD] 고객 저장 실패',e);}}
 async function fromStore(){
   try{
-    console.log('[SD] fromStore 시작, _fbDb=', window._fbDb ? '있음' : 'null');
     var r=await window.storage.get('sd_custs');
-    console.log('[SD] storage.get 결과:', r ? ('값 있음, 길이:'+String(r.value||'').length) : '없음(null)');
-    if(r&&r.value){
-      custs=JSON.parse(r.value);
-      console.log('[SD] 고객 로드 완료:', custs.length+'명');
-      return true;
-    } else {
-      // Firebase에서 직접 조회 시도
-      if(window._fbDb){
-        console.log('[SD] Firebase 직접 조회 시도...');
-        var snap = await window._fbDb.ref('storage/sd_custs').once('value');
-        var v = snap.val();
-        console.log('[SD] Firebase 직접 결과:', v ? '값 있음' : '없음');
-        if(v){ custs=JSON.parse(v); console.log('[SD] Firebase 직접 로드:', custs.length+'명'); return true; }
-      }
-    }
-  }catch(e){ console.warn('[SD] 고객 로드 실패', e); }
-  console.log('[SD] 최종 custs:', custs.length+'명');
+    if(r&&r.value){ custs=JSON.parse(r.value); return true; }
+  }catch(e){console.warn('[SD] 고객 로드 실패',e);}
   return false;
 }
 
@@ -1375,14 +1357,18 @@ function refreshHub(){
   var h=now.getHours();
   document.getElementById('hub-greet').textContent=h<11?'☀️ 좋은 아침입니다, 소장님!':h<18?'🌇 오후도 화이팅입니다!':'🌆 오늘 하루도 수고 많으셨습니다!';
   var cnt={total:0,가망고객:0,물건고객:0,'계약고객(자사)':0,'계약고객(타사)':0,기존고객:0};
+  // ── 태그 분포 진단
+  var tagDist={};
   custs.forEach(function(c){
     cnt.total++;
     var tags=migrateTags(c);
     tags.forEach(function(t){
-      if(t==='계약고객') cnt['계약고객(자사)']++;  // 구버전 마이그레이션
+      tagDist[t]=(tagDist[t]||0)+1;
+      if(t==='계약고객') cnt['계약고객(자사)']++;
       else if(cnt[t]!==undefined) cnt[t]++;
     });
   });
+  console.log('[SD] refreshHub 태그 분포 (총'+cnt.total+'명):', JSON.stringify(tagDist));
   [{k:'total',id:'total'},{k:'가망고객',id:'ga'},{k:'물건고객',id:'mul'},
    {k:'계약고객(자사)',id:'ct'},{k:'계약고객(타사)',id:'ct2'},{k:'기존고객',id:'ex'}
   ].forEach(function(m){
