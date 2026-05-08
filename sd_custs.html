@@ -184,11 +184,14 @@ body{margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',
     };
 
     console.log('✅ Firebase 연결됨 (DB + Storage)');
-    // 데이터 로드
-    if (typeof fromStore === 'function') fromStore().then(function(){ sw(0); refreshHub(); });
-    else document.addEventListener('DOMContentLoaded', function() {
-      if (typeof fromStore === 'function' && !_storeLoaded) fromStore().then(function(){ sw(0); refreshHub(); });
-    });
+    // 2차 로드: Firebase 준비 완료 후 재로드 (localStorage보다 최신 데이터)
+    setTimeout(function(){
+      fromStore().then(function(ok){
+        if(ok){ sw(0); refreshHub(); rtbl && rtbl(); }
+      });
+      fromStoreBrk && fromStoreBrk();
+      fromStoreTodo && fromStoreTodo();
+    }, 500);
   } catch(e) {
     console.warn('Firebase 초기화 실패:', e.message);
   }
@@ -827,7 +830,19 @@ function migrateTags(c){
 }
 
 async function toStore(){try{await window.storage.set('sd_custs',JSON.stringify(custs));}catch(e){console.warn('[SD] 고객 저장 실패',e);}}
-async function fromStore(){try{var r=await window.storage.get('sd_custs');if(r&&r.value)custs=JSON.parse(r.value);}catch(e){console.warn('[SD] 고객 로드 실패 - 기존 데이터 유지',e);}}
+async function fromStore(){
+  try{
+    var r=await window.storage.get('sd_custs');
+    if(r&&r.value){ custs=JSON.parse(r.value); return true; }
+  }catch(e){console.warn('[SD] 고객 로드 실패',e);}
+  return false;
+}
+
+// 1차 로드: localStorage (즉시)
+var _storeLoaded = false;
+fromStore().then(function(){
+  _storeLoaded=true; sw(0); setToday(); initCharCounters(); setTimeout(initCustColResize,300);
+});
 // ══════════════════════════════════════════════
 // ─ 중개업소 관리 (TAB10)
 // ══════════════════════════════════════════════
@@ -1305,8 +1320,6 @@ function exportBrk(){
 }
 
 async function initAll(){await fromStore();await fromStoreTodo();await fromStoreBrk();sw(0);initCharCounters();}
-var _storeLoaded = false;
-fromStore().then(function(){ _storeLoaded=true; sw(0); setToday(); initCharCounters(); setTimeout(initCustColResize,300); });
 
 function setToday(){var t=new Date(),ds=t.getFullYear()+'-'+String(t.getMonth()+1).padStart(2,'0')+'-'+String(t.getDate()).padStart(2,'0');document.getElementById('f-rdate').value=ds;document.getElementById('f-lastdate').value=ds;}
 
