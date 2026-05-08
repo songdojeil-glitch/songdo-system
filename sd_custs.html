@@ -70,6 +70,7 @@ body{margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',
 <script>
   // ── window.storage 어댑터 (Firebase 초기화는 DOMContentLoaded 후)
   var _fbDb = null;
+  window._fbReady = false;  // Firebase 연결 완료 플래그
 
   // localStorage fallback 기반 즉시 사용 가능한 storage
   window.storage = {
@@ -183,6 +184,7 @@ body{margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',
       }
     };
 
+    window._fbReady = true;
     console.log('✅ Firebase 연결됨 (DB + Storage)');
     // 2차 로드: Firebase 준비 완료 후 재로드 (localStorage보다 최신 데이터)
     setTimeout(function(){
@@ -829,7 +831,19 @@ function migrateTags(c){
   return['기존고객'];
 }
 
-async function toStore(){try{await window.storage.set('sd_custs',JSON.stringify(custs));}catch(e){console.warn('[SD] 고객 저장 실패',e);}}
+async function toStore(){
+  try{
+    var json=JSON.stringify(custs);
+    // localStorage 즉시 저장 (빠른 백업)
+    try{ localStorage.setItem('sd_sd_custs', json); }catch(e){}
+    // Firebase 준비 대기 (최대 5초)
+    var waited=0;
+    while(!window._fbReady && waited<50){ await new Promise(function(r){setTimeout(r,100);}); waited++; }
+    await window.storage.set('sd_custs', json);
+    if(!window._fbReady) console.warn('[SD] Firebase 미연결 상태로 저장 (localStorage만)');
+    else console.log('[SD] Firebase 저장 완료, 고객수:', custs.length);
+  }catch(e){console.warn('[SD] 고객 저장 실패',e);}
+}
 async function fromStore(){
   try{
     var r=await window.storage.get('sd_custs');
@@ -1357,18 +1371,14 @@ function refreshHub(){
   var h=now.getHours();
   document.getElementById('hub-greet').textContent=h<11?'☀️ 좋은 아침입니다, 소장님!':h<18?'🌇 오후도 화이팅입니다!':'🌆 오늘 하루도 수고 많으셨습니다!';
   var cnt={total:0,가망고객:0,물건고객:0,'계약고객(자사)':0,'계약고객(타사)':0,기존고객:0};
-  // ── 태그 분포 진단
-  var tagDist={};
   custs.forEach(function(c){
     cnt.total++;
     var tags=migrateTags(c);
     tags.forEach(function(t){
-      tagDist[t]=(tagDist[t]||0)+1;
-      if(t==='계약고객') cnt['계약고객(자사)']++;
+      if(t==='계약고객') cnt['계약고객(자사)']++;  // 구버전 마이그레이션
       else if(cnt[t]!==undefined) cnt[t]++;
     });
   });
-  console.log('[SD] refreshHub 태그 분포 (총'+cnt.total+'명):', JSON.stringify(tagDist));
   [{k:'total',id:'total'},{k:'가망고객',id:'ga'},{k:'물건고객',id:'mul'},
    {k:'계약고객(자사)',id:'ct'},{k:'계약고객(타사)',id:'ct2'},{k:'기존고객',id:'ex'}
   ].forEach(function(m){
