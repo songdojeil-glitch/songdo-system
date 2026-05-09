@@ -4726,6 +4726,218 @@ function loadDemo(){
   showToast('✅ 샘플 데이터 로드 완료');
 }
 
+
+function initColResize(table) {
+  if(!table) return;
+  if(_colResizingActive) return;  // 드래그 중 재호출 차단
+  var tableId = table.id || '';
+
+  // 기존 핸들 제거
+  table.querySelectorAll('.col-resizer').forEach(function(h){
+    h.parentNode && h.parentNode.removeChild(h);
+  });
+
+  var ths = Array.from(table.querySelectorAll('thead th'));
+  if(!ths.length) return;
+
+  // ── 최초 초기화: th에 현재 렌더 너비를 style.width로 고정
+  if(table.style.tableLayout !== 'fixed'){
+    ths.forEach(function(th){
+      th.style.width = th.offsetWidth + 'px';
+    });
+    table.style.tableLayout = 'fixed';
+  }
+
+  // ── localStorage 저장 너비 복원 (th만 사용 - colgroup 없음)
+  if(tableId){
+    try{
+      var saved = JSON.parse(localStorage.getItem('sdj_col_widths')||'{}');
+      if(saved[tableId]){
+        saved[tableId].forEach(function(w,i){
+          if(w>20 && ths[i]) ths[i].style.width = w+'px';
+        });
+      }
+    }catch(e){}
+  }
+
+  // ── 드래그 핸들 추가
+  ths.forEach(function(th, thIdx){
+    var handle = document.createElement('div');
+    handle.className = 'col-resizer';
+    th.appendChild(handle);
+
+    var startX=0, startW=0;
+
+    handle.addEventListener('mousedown', function(e){
+      e.preventDefault();
+      e.stopPropagation();
+      startX = e.pageX;
+      startW = th.offsetWidth;
+      handle.classList.add('resizing');
+      document.body.style.cursor = 'col-resize';
+      _colResizingActive = true;  // 드래그 시작
+
+      function onMove(e){
+        var newW = Math.max(30, startW + (e.pageX - startX));
+        th.style.width = newW + 'px';
+      }
+      function onUp(){
+        handle.classList.remove('resizing');
+        document.body.style.cursor = '';
+        _colResizingActive = false;  // 드래그 종료
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+        // 저장
+        if(tableId){
+          try{
+            var all = JSON.parse(localStorage.getItem('sdj_col_widths')||'{}');
+            all[tableId] = ths.map(function(t){ return t.offsetWidth; });
+            localStorage.setItem('sdj_col_widths', JSON.stringify(all));
+          }catch(e){}
+        }
+      }
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    });
+  });
+}
+
+// 모든 data-table에 id 부여 후 리사이즈 초기화
+
+function renderNaverCompare(rows){
+  var compareWrap = document.getElementById('naver-compare-wrap');
+  var compareSub  = document.getElementById('compare-sub');
+
+  if(!G.t6unit || G.t6unit==='all'){
+    if(compareWrap) compareWrap.style.display='none';
+    return;
+  }
+  if(compareWrap) compareWrap.style.display='block';
+
+  var selectedUnit = G.t6unit;
+
+  // 현재 매물 (이미 필터 적용된 rows 사용)
+  var naverRows = rows.filter(function(r){ return r.호가>0; });
+  if(!naverRows.length){
+    document.getElementById('t6-compare-tbody').innerHTML=
+      '<tr><td colspan="13" style="text-align:center;padding:20px;color:var(--text3)">해당 조건 매물 없음</td></tr>';
+    if(compareSub) compareSub.textContent=selectedUnit+' — 매물 없음';
+    return;
+  }
+
+  // 실거래 1년 평균 (평형+거래구분별)
+  var now=new Date();
+  var cutoff=(now.getFullYear()-1)*100+(now.getMonth()+1);
+  var realByKey={};
+  if(G.saleData){
+    G.saleData.filter(function(r){
+      var sNm=findSaleNm(selectedUnit);
+      return r['단지명']===sNm && (r['계약년월']||0)>=cutoff && r['거래금액']>0;
+    }).forEach(function(r){
+      var p=r['분양평형']||0; if(!p) return;
+      var dealT=r['전월세구분']||'매매';
+      var key=p+'_'+dealT;
+      if(!realByKey[key]) realByKey[key]=[];
+      realByKey[key].push(r['거래금액']);
+    });
+  }
+  var avg=function(arr){return arr.length?Math.round(arr.reduce(function(a,b){return a+b;},0)/arr.length):0;};
+  var realAvg={};
+  Object.keys(realByKey).forEach(function(k){realAvg[k]=avg(realByKey[k]);});
+
+  // 판정 함수 (5등급)
+  function getGrade(ratio){
+    if(ratio===null) return {label:'실거래없음', color:'#666', bg:'#33333344'};
+    if(ratio < -10) return {label:'급매물',   color:'#ff4444', bg:'#ff222233'};
+    if(ratio <  -5) return {label:'저가매물', color:'#ff8c00', bg:'#ff6a0022'};
+    if(ratio <   5) return {label:'적정매물', color:'#4caf50', bg:'#4caf5022'};
+    if(ratio <  10) return {label:'고가매물', color:'#ffd700', bg:'#ffd70022'};
+    return                 {label:'호가매물', color:'#aaaaaa', bg:'#aaaaaa22'};
+  }
+
+  // 매물별 비교 계산
+  var cmpRows=naverRows.map(function(r){
+    var p=r.분양평형||0;
+    var dealKey=p+'_'+(r.거래유형==='매매'?'매매':r.거래유형==='전세'?'전세':'월세');
+    // 평형+거래구분 일치 → 없으면 평형만으로 fallback
+    var rp=realAvg[dealKey]||0;
+    if(!rp){
+      // 같은 평형 전체 평균 fallback
+      var fallKeys=Object.keys(realAvg).filter(function(k){return k.startsWith(p+'_');});
+      var fallVals=fallKeys.map(function(k){return realAvg[k];}).filter(function(v){return v>0;});
+      if(fallVals.length) rp=Math.round(fallVals.reduce(function(a,b){return a+b;},0)/fallVals.length);
+    }
+    var diff = rp>0 ? r.호가-rp : null;
+    var ratio= (diff!==null&&rp>0) ? Math.round(diff/rp*1000)/10 : null;
+    return {r:r, pyeong:p, diff:diff, ratio:ratio, real:rp};
+  });
+
+  // (-) 큰 순 정렬 → 급매물 먼저
+  cmpRows.sort(function(a,b){
+    if(a.diff===null&&b.diff===null) return a.r.호가-b.r.호가;
+    if(a.diff===null) return 1;
+    if(b.diff===null) return -1;
+    return a.diff-b.diff;
+  });
+
+  // TR 렌더
+  var html='';
+  cmpRows.forEach(function(row){
+    var r=row.r;
+    var grade=getGrade(row.ratio);
+    var typeCls=r.거래유형==='매매'?'badge-gold':r.거래유형==='전세'?'badge-apt':'badge-pre';
+    var color=DIST_COLORS[parseInt(r.공구)]||'#8899bb';
+
+    var diffStr  = row.diff!==null ? (row.diff<0?'▼ ':row.diff>0?'▲ +':'')+fmt천(Math.abs(row.diff)) : '—';
+    var ratioStr = row.ratio!==null ? (row.ratio<0?'-':'+')+Math.abs(row.ratio).toFixed(1)+'%' : '—';
+    var diffColor= row.diff===null?'var(--text3)':row.diff<0?'#64b5f6':row.diff>0?'#ff6b6b':'var(--text2)';
+    var realStr  = row.real>0 ? fmt천(row.real) : '<span style="color:var(--text3);font-size:10px">없음</span>';
+
+    html += '<tr onclick="openNaverDetail('+G.naverData.indexOf(r)+')" style="cursor:pointer">'
+      // 1. 판정
+      +'<td style="white-space:nowrap">'
+        +'<span style="display:inline-block;padding:2px 7px;border-radius:10px;font-size:10px;font-weight:700;'
+        +'background:'+grade.bg+';color:'+grade.color+'">'+grade.label+'</span></td>'
+      // 2. 공구
+      +'<td><span class="badge" style="background:'+color+'33;color:'+color+'">'+(DIST_NAMES[parseInt(r.공구)]||'-')+'</span></td>'
+      // 3. 단지명
+      +'<td style="font-weight:600;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+r.단지명+'</td>'
+      // 4. 거래구분
+      +'<td><span class="badge '+typeCls+'">'+r.거래유형+'</span></td>'
+      // 5. 전용㎡
+      +'<td class="num" style="font-size:11px">'+(parseFloat(r.전용)||0).toFixed(0)+'㎡</td>'
+      // 6. 타입
+      +'<td style="font-size:11px;color:var(--text3)">'+( r.타입||'-')+'</td>'
+      // 7. 분양평형
+      +'<td class="num" style="font-size:11px">'+(row.pyeong>0?row.pyeong+'평':'-')+'</td>'
+      // 8. 동
+      +'<td style="font-size:11px;color:var(--text2)">'+(r.동||'-')+'</td>'
+      // 9. 층
+      +'<td style="font-size:11px">'+(r.층||'-')+'층</td>'
+      // 10. 의뢰가
+      +'<td class="num" style="color:var(--accent2);font-weight:700;white-space:nowrap">'+fmt천(r.호가)+'</td>'
+      // 11. 실거래평균(1년)
+      +'<td class="num" style="color:var(--text3);white-space:nowrap">'+realStr+'</td>'
+      // 12. 차이금액
+      +'<td class="num" style="color:'+diffColor+';font-weight:600;white-space:nowrap">'+diffStr+'</td>'
+      // 13. 차이율
+      +'<td class="num" style="color:'+diffColor+';font-weight:700;white-space:nowrap">'+ratioStr+'</td>'
+      +'</tr>';
+  });
+
+  document.getElementById('t6-compare-tbody').innerHTML = html ||
+    '<tr><td colspan="13" style="text-align:center;padding:20px;color:var(--text3)">매물 없음</td></tr>';
+  setTimeout(function(){
+    var ct=document.getElementById('t6-compare-table'); if(ct) initColResize(ct);
+  },50);
+
+  if(compareSub){
+    var rCnt=Object.keys(realAvg).length;
+    compareSub.textContent = selectedUnit+' · 매물 '+cmpRows.length+'건'
+      +(rCnt>0?' · 실거래 평균 '+rCnt+'개 유형':' · 실거래 없음');
+  }
+}
+
 var charts={};
 var dcCharts={};
 var DIST_COLORS = {1:'#00d4ff',2:'#00e5a0',3:'#ffd700',4:'#ff6b35',5:'#b57bee',6:'#ff4d6d',7:'#4ecdc4',8:'#95a5a6',11:'#f39c12'};
@@ -6556,12 +6768,13 @@ function renderTab6(){
   _t6tbody.innerHTML = overBanner+html||'<tr><td colspan="'+(hideAgent?'12':'14')+'" style="text-align:center;padding:20px;color:var(--text3)">해당 매물 없음</td></tr>';
   setTimeout(function(){ var t=document.getElementById('t6-naver-table'); if(t) initColResize(t); },50);
 
-  // 차트
-  renderNaverDistChart(rows);
-  renderNaverPriceChart(rows);
+  // 차트 (오류 방지)
+  try { renderNaverDistChart(rows); } catch(e){ console.warn('distChart 오류',e); }
+  try { renderNaverPriceChart(rows); } catch(e){ console.warn('priceChart 오류',e); }
 
-  // 호가 vs 실거래 비교
-  renderNaverCompare(rows);
+  // 호가 vs 실거래 비교 (sd_props에서는 실거래 데이터 없으므로 숨김)
+  var cw = document.getElementById('naver-compare-wrap');
+  if(cw) cw.style.display='none';
 }
 
 function renderNaverDistChart(rows){
