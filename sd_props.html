@@ -449,7 +449,7 @@ tr.naver-fav>td:first-child{border-left:3px solid #ffd700;}
 
   <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getDatabase, ref, set, get, child } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+import { getDatabase, ref, set, get, child, onValue } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyCMYoUBhRv_NkKeHmPqgXoqqXUjVsjEJPs",
@@ -469,6 +469,7 @@ window._fbRef = ref;
 window._fbSet = set;
 window._fbGet = get;
 window._fbChild = child;
+window._fbOnValue = onValue;
 
 // module 스크립트는 DOMContentLoaded 이후 실행되므로 직접 호출
 if(typeof $set === 'function'){
@@ -1337,6 +1338,10 @@ window.addEventListener('load', function() {
   <div class="kpi-row kpi-row-4" id="kpi-naver" style="margin-bottom:12px"></div>
 
   <!-- 빈 상태 -->
+  <div style="text-align:right;padding:4px 0 8px">
+    <button onclick="reloadNaverData()" style="padding:5px 14px;background:#1565c033;border:1px solid #1565c066;border-radius:8px;font-size:12px;color:#1565c0;cursor:pointer;font-weight:600">🔄 최신 데이터 새로고침</button>
+    <span id="naver-load-status" style="font-size:11px;color:#888;margin-left:8px"></span>
+  </div>
   <div class="empty-state" id="t6-empty">
     <div class="empty-icon">📋</div>
     <div class="empty-title">네이버 매물 엑셀을 업로드해 주세요</div>
@@ -6545,9 +6550,6 @@ function setNaverArea(v,btn){ G.naverArea=v; setFilterBtn(btn.parentElement.quer
 // ── TAB6 렌더
 
 function renderTab6(){
-  try { return _renderTab6Impl(); } catch(e){ console.error("[renderTab6 오류]", e.message, e.stack); }
-}
-function _renderTab6Impl(){
   if(!G.naverData){
     document.getElementById('t6-empty').style.display='block';
     document.getElementById('t6-content').style.display='none';
@@ -6782,9 +6784,7 @@ function _renderTab6Impl(){
     '</tr>';
   });
   var _t6tbody = document.getElementById('t6-tbody');
-  var _finalHtml = overBanner+html;
-  console.log('[props] renderTab6 rows:'+displayRows.length+' html:'+(_finalHtml.length)+'자');
-  _t6tbody.innerHTML = _finalHtml || '<tr><td colspan="'+(hideAgent?'12':'14')+'" style="text-align:center;padding:20px;color:var(--text3)">해당 매물 없음</td></tr>';
+  _t6tbody.innerHTML = overBanner+html || '<tr><td colspan="'+(hideAgent?'12':'14')+'" style="text-align:center;padding:20px;color:var(--text3)">해당 매물 없음</td></tr>';
   setTimeout(function(){ var t=document.getElementById('t6-naver-table'); if(t) initColResize(t); },50);
 
   // 차트 (오류 방지)
@@ -6794,7 +6794,7 @@ function _renderTab6Impl(){
   // 호가 vs 실거래 비교 (sd_props에서는 실거래 데이터 없으므로 숨김)
   var cw = document.getElementById('naver-compare-wrap');
   if(cw) cw.style.display='none';
-} // end _renderTab6Impl
+}
 
 function renderNaverDistChart(rows){
   var ctx=document.getElementById('chart-naver-dist').getContext('2d');
@@ -6843,42 +6843,76 @@ function renderNaverPriceChart(rows){
 }
 
 // ══ 네이버 Firebase 로드 (sd_props 읽기전용) ══
-function loadNaverFromFirebase(){
-  var db     = window._fbDb;
-  var fbGet  = window._fbGet;
-  var fbRef  = window._fbRef;   // ref(db, path) — Database + path → Reference
+var _navListeners = {};  // 실시간 리스너 언서브스크라이브 핸들
 
-  if(!db || !fbGet || !fbRef){
-    setTimeout(loadNaverFromFirebase, 500); return;
+function loadNaverFromFirebase(){
+  var db       = window._fbDb;
+  var fbRef    = window._fbRef;
+  var fbOnValue= window._fbOnValue;
+  var fbGet    = window._fbGet;
+
+  if(!db || !fbRef){ setTimeout(loadNaverFromFirebase, 500); return; }
+
+  // APT: 실시간 리스너 (sd_data 저장 시 자동 갱신)
+  if(fbOnValue && !_navListeners.apt){
+    _navListeners.apt = fbOnValue(fbRef(db,'sd_data'), function(snap){
+      if(snap.exists()){
+        var d = snap.val();
+        if(d.naver_data && d.naver_data.length>0){
+          G.naverData = fixNaverDist(d.naver_data);
+          _loadFav();
+          if(document.getElementById('tc3')&&document.getElementById('tc3').classList.contains('on')) renderTab6();
+          console.log('[props] 네이버 APT 자동갱신:', G.naverData.length+'건');
+        }
+      }
+    }, function(e){ console.warn('[props] APT 리스너 오류',e); });
+  } else if(fbGet && !_navListeners.apt) {
+    fbGet(fbRef(db,'sd_data')).then(function(snap){
+      if(snap.exists()){
+        var d = snap.val();
+        if(d.naver_data && d.naver_data.length>0){
+          G.naverData = fixNaverDist(d.naver_data); _loadFav();
+          if(document.getElementById('tc3')&&document.getElementById('tc3').classList.contains('on')) renderTab6();
+        }
+      }
+    }).catch(function(e){ console.warn('[props] naver_data 로드 실패',e); });
   }
 
-  // APT 매물 — sd_data 경로: 'sd_data' → .naver_data
-  fbGet(fbRef(db,'sd_data')).then(function(snap){
-    if(snap.exists()){
-      var d = snap.val();
-      if(d.naver_data && d.naver_data.length>0){
-        G.naverData = fixNaverDist(d.naver_data);
-        _loadFav();
-        if(document.getElementById('tc3')&&document.getElementById('tc3').classList.contains('on')) renderTab6();
+  // OP/생숙: 1회 로드
+  if(fbGet && !G.naverOpData.length){
+    fbGet(fbRef(db,'sd_naver_op')).then(function(s){
+      if(s.exists()&&s.val()&&s.val().data){
+        G.naverOpData=fixNaverDist(s.val().data);
+        if(document.getElementById('tc4')&&document.getElementById('tc4').classList.contains('on')) renderTab7();
       }
-    }
-  }).catch(function(e){ console.warn('[props] naver_data 로드 실패',e); });
+    }).catch(function(){});
+  }
 
-  // OP/생숙
-  fbGet(fbRef(db,'sd_naver_op')).then(function(s){
-    if(s.exists()&&s.val()&&s.val().data){
-      G.naverOpData=fixNaverDist(s.val().data);
-      if(document.getElementById('tc4')&&document.getElementById('tc4').classList.contains('on')) renderTab7();
-    }
-  }).catch(function(){});
+  // 상가/사무실: 1회 로드
+  if(fbGet && !G.naverSanggaData.length){
+    fbGet(fbRef(db,'sd_naver_sangga')).then(function(s){
+      if(s.exists()&&s.val()&&s.val().data){
+        G.naverSanggaData=fixNaverDist(s.val().data);
+        if(document.getElementById('tc5')&&document.getElementById('tc5').classList.contains('on')) renderTab8();
+      }
+    }).catch(function(){});
+  }
+}
 
-  // 상가/사무실
-  fbGet(fbRef(db,'sd_naver_sangga')).then(function(s){
-    if(s.exists()&&s.val()&&s.val().data){
-      G.naverSanggaData=fixNaverDist(s.val().data);
-      if(document.getElementById('tc5')&&document.getElementById('tc5').classList.contains('on')) renderTab8();
-    }
-  }).catch(function(){});
+// 강제 새로고침 (수동 버튼용)
+function reloadNaverData(){
+  _navListeners = {};
+  G.naverData=[]; G.naverOpData=[]; G.naverSanggaData=[];
+  loadNaverFromFirebase();
+  showNaverToast('🔄 네이버 매물 데이터 새로고침 중...');
+}
+function showNaverToast(msg){
+  var t=document.getElementById('naver-refresh-toast');
+  if(!t){ t=document.createElement('div'); t.id='naver-refresh-toast';
+    t.style.cssText='position:fixed;bottom:20px;right:20px;background:#1565c0;color:#fff;padding:10px 18px;border-radius:8px;font-size:13px;z-index:9999;';
+    document.body.appendChild(t); }
+  t.textContent=msg; t.style.display='block';
+  clearTimeout(t._t); t._t=setTimeout(function(){t.style.display='none';},3000);
 }
 function renderNaverAPT(){
   _loadFav();
