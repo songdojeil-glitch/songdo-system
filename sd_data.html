@@ -9890,14 +9890,11 @@ window.fbAutoLoad = function(){
           buildRentStats();
           $set('rent-status','✅ FB '+G.rentData.length+'건');
         }
-        if(d.naver_data && d.naver_data.length > 0){
-          // 수동 업로드가 자동로드보다 먼저 됐으면 덮어쓰지 않음 (레이스 컨디션 방지)
-          if(!G._naverManualUploaded){
-            G.naverData = fixNaverDist(d.naver_data);
-            $set('naver-status','✅ FB '+G.naverData.length+'건');
-          } else {
-            $set('naver-status','✅ 업로드 '+G.naverData.length+'건 (자동로드 스킵)');
-          }
+        // naver_data는 이제 sd_naver_apt 경로에서 별도 로드 (아래 참고)
+        // 기존 sd_data.naver_data가 남아있으면 마이그레이션용으로 1회 로드
+        if(!G._naverManualUploaded && d.naver_data && d.naver_data.length > 0 && !(G.naverData&&G.naverData.length)){
+          G.naverData = fixNaverDist(d.naver_data);
+          $set('naver-status','✅ FB(구) '+G.naverData.length+'건');
         }
         var upd = d.meta && d.meta.updated ? d.meta.updated : '';
         $set('data-status','☁️ Firebase 데이터');
@@ -9909,6 +9906,15 @@ window.fbAutoLoad = function(){
         if(G.naverData && document.getElementById('tc6').classList.contains('on')) renderTab6();
         showToast('☁️ Firebase 자동 로드 완료! (네이버 매물 '+((G.naverData||[]).length)+'건)', 3000);
       // OP/생숙, 상가 데이터 로드
+      // sd_naver_apt: APT 네이버 매물 독립 경로 로드
+      get(child(dbRef(db),'sd_naver_apt')).then(function(sa){
+        if(sa.exists()&&sa.val()&&sa.val().data&&sa.val().data.length>0){
+          G.naverData = fixNaverDist(sa.val().data);
+          $set('naver-status','✅ FB '+G.naverData.length+'건');
+          if(document.getElementById('tc6')&&document.getElementById('tc6').classList.contains('on')) renderTab6();
+          console.log('[sd_data] naver_apt 로드 완료:', G.naverData.length+'건');
+        }
+      }).catch(function(e){ console.warn('naver_apt 로드 오류',e); });
       get(child(dbRef(db),'sd_naver_op')).then(function(s2){
         if(s2.exists()&&s2.val().data){G.naverOpData=s2.val().data;$set('op-status','✅ FB '+G.naverOpData.length+'건');}
       }).catch(function(){});
@@ -10008,12 +10014,18 @@ function fbSaveData(){
   var payload = {
     sale_data: slimSale,
     rent_data: slimRent,
-    naver_data: fixNaverDist(G.naverData||[]),
     meta: { updated:today, sale_cnt:slimSale.length, rent_cnt:slimRent.length, naver_cnt:(G.naverData||[]).length, slim:true }
   };
   var kb = Math.round(JSON.stringify(payload).length/1024);
   set(dbRef(db,'sd_data'), payload).then(function(){
     showToast('✅ Firebase 저장 완료! ('+kb+'KB)', 4000);
+    // 네이버 APT 데이터 별도 저장 (독립 경로)
+    if(G.naverData && G.naverData.length > 0){
+      var naverPayload = {data: fixNaverDist(G.naverData), updated: today, cnt: G.naverData.length};
+      set(dbRef(db,'sd_naver_apt'), naverPayload).then(function(){
+        $set('naver-status','✅ 네이버 '+G.naverData.length+'건 저장완료');
+      }).catch(function(e){ console.warn('naver_apt 저장 오류',e); });
+    }
     $set('fb-save-btn','🔥 Firebase 저장');
     $set('fb-status','🔥 저장완료 '+today+' ('+kb+'KB)');
     $style('fb-status','color','#00e5a0');
