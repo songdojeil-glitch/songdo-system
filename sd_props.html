@@ -4951,6 +4951,33 @@ function renderNaverCompare(rows){
   }
 }
 
+var _DANJI_NM_MAP = {
+  // 네이버 단지명 → 국토부 단지명 매핑 (매칭테이블 기반, 차이있는 경우만)
+  '더샵센트럴파크1차': '더샵센트럴파크1',
+  '더샵센트럴파크1차(주상복합)': '더샵센트럴파크1',
+  '더샵센트럴파크2차': '더샵센트럴파크2',
+  '더샵센트럴파크2차(주상복합)': '더샵센트럴파크2',
+  '송도아리스타프라임': '송도아리스타프라임아파트',
+  '송도아리스타프라임(주상복합)': '송도아리스타프라임아파트',
+  '인천송도힐스테이트': '인천송도힐스테이트3단지',
+  '인천송도힐스테이트(주상복합)': '인천송도힐스테이트3단지',
+};
+
+function findSaleNm(nm){
+  if(!nm) return nm;
+  // 1. 매핑 테이블에 있으면 즉시 반환
+  if(_DANJI_NM_MAP[nm]) return _DANJI_NM_MAP[nm];
+  // 2. 실거래에 그대로 있으면 반환
+  if(G.saleData && G.saleData.some(function(r){ return r['단지명']===nm; })) return nm;
+  // 3. (주상복합) 제거 후 재시도
+  var norm = nm.replace('(주상복합)','').replace('(주상)','').trim();
+  if(_DANJI_NM_MAP[norm]) return _DANJI_NM_MAP[norm];
+  if(G.saleData && G.saleData.some(function(r){ return r['단지명']===norm; })) return norm;
+  return nm;
+}
+G.saleData = G.saleData||null;
+
+
 var charts={};
 var dcCharts={};
 var DISTS = [1,2,3,4,5,6,7,8,11];
@@ -6786,9 +6813,8 @@ function renderTab6(){
   try { renderNaverDistChart(rows); } catch(e){ console.warn('distChart 오류',e); }
   try { renderNaverPriceChart(rows); } catch(e){ console.warn('priceChart 오류',e); }
 
-  // 호가 vs 실거래 비교 (sd_props에서는 실거래 데이터 없으므로 숨김)
-  var cw = document.getElementById('naver-compare-wrap');
-  if(cw) cw.style.display='none';
+  // 호가 vs 실거래 비교 (단지 선택 시 Firebase에서 saleData 로드 후 표시)
+  try{ renderNaverCompare(rows); }catch(e){ console.warn('compare 오류',e); }
 }
 
 function renderNaverDistChart(rows){
@@ -6862,6 +6888,23 @@ function loadNaverFromFirebase(){
       }).catch(function(){});
     }
   }).catch(function(e){ console.warn('[props] naver_apt 로드 실패',e); });
+
+  // 실거래 데이터 lazy load (의뢰가 vs 실거래 비교용)
+  if(!G.saleData){
+    fbGet(fbRef(db,'sd_data')).then(function(s){
+      if(s.exists()&&s.val()&&s.val().sale_data){
+        G.saleData = s.val().sale_data;
+        console.log('[props] saleData 로드:', G.saleData.length+'건');
+        // 현재 단지 선택 상태면 compare 재렌더
+        if(G.t6unit&&G.t6unit!=='all'&&document.getElementById('tc3')&&document.getElementById('tc3').classList.contains('on')){
+          try{
+            var cRows=G.naverData.filter(function(r){return r.단지명===G.t6unit;});
+            renderNaverCompare(cRows);
+          }catch(e){}
+        }
+      }
+    }).catch(function(){});
+  }
 
   // OP/생숙
   fbGet(fbRef(db,'sd_naver_op')).then(function(s){
