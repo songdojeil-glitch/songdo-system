@@ -9162,9 +9162,11 @@ function processNaverRows(rows, fileCnt){
         newParsed.forEach(function(r){ if(r.단지명) newDanjiSet[r.단지명]=true; });
         var kept=G.naverData.filter(function(r){ return !newDanjiSet[r.단지명]; });
         G.naverData = fixNaverDist(kept.concat(newParsed));
+        G._naverManualUploaded = true;
         showToast('✅ '+newParsed.length+'건 업데이트 (전체 '+G.naverData.length+'건 유지)');
       } else {
         G.naverData = fixNaverDist(newParsed);
+        G._naverManualUploaded = true;
         showToast('✅ 네이버 매물 '+G.naverData.length+'건 로드');
       }
       $set('naver-status', '✅ '+G.naverData.length+'건');
@@ -9889,17 +9891,23 @@ window.fbAutoLoad = function(){
           $set('rent-status','✅ FB '+G.rentData.length+'건');
         }
         if(d.naver_data && d.naver_data.length > 0){
-          G.naverData = fixNaverDist(d.naver_data);
-          $set('naver-status','✅ FB '+G.naverData.length+'건');
+          // 수동 업로드가 자동로드보다 먼저 됐으면 덮어쓰지 않음 (레이스 컨디션 방지)
+          if(!G._naverManualUploaded){
+            G.naverData = fixNaverDist(d.naver_data);
+            $set('naver-status','✅ FB '+G.naverData.length+'건');
+          } else {
+            $set('naver-status','✅ 업로드 '+G.naverData.length+'건 (자동로드 스킵)');
+          }
         }
         var upd = d.meta && d.meta.updated ? d.meta.updated : '';
         $set('data-status','☁️ Firebase 데이터');
         $set('data-updated', upd ? '저장: '+upd : '');
         $set('fb-status','🔥 자동로드 완료');
+        G._fbAutoLoadDone = true;  // 자동로드 완료 — 이제 업로드해도 안전
         renderAll();
         // 현재 TAB6가 활성 상태일 때만 렌더 (비활성이면 탭 전환 시 자동 렌더)
         if(G.naverData && document.getElementById('tc6').classList.contains('on')) renderTab6();
-        showToast('☁️ Firebase 데이터 자동 로드 완료!', 3000);
+        showToast('☁️ Firebase 자동 로드 완료! (네이버 매물 '+((G.naverData||[]).length)+'건)', 3000);
       // OP/생숙, 상가 데이터 로드
       get(child(dbRef(db),'sd_naver_op')).then(function(s2){
         if(s2.exists()&&s2.val().data){G.naverOpData=s2.val().data;$set('op-status','✅ FB '+G.naverOpData.length+'건');}
