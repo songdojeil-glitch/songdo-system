@@ -332,6 +332,41 @@ tr.naver-fav>td:first-child{border-left:3px solid #ffd700;}
   <!-- ═══ Firebase Storage 어댑터 (window.storage 호환 + sdImage) ═══ -->
   <script src="firebase-storage.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+
+
+  <script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getDatabase, ref, set, get, child } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyCMYoUBhRv_NkKeHmPqgXoqqXUjVsjEJPs",
+  authDomain: "songdojeil-202604.firebaseapp.com",
+  databaseURL: "https://songdojeil-202604-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "songdojeil-202604",
+  storageBucket: "songdojeil-202604.firebasestorage.app",
+  messagingSenderId: "567683904975",
+  appId: "1:567683904975:web:65a652a8e7b9a81e034eba"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getDatabase(app);
+
+window._fbDb = db;
+window._fbRef = ref;
+window._fbSet = set;
+window._fbGet = get;
+window._fbChild = child;
+
+// module 스크립트는 DOMContentLoaded 이후 실행되므로 직접 호출
+if(typeof $set === 'function'){
+  $set('fb-status','🔥 Firebase 연결됨');
+  $style('fb-status','color','#ff6600');
+}
+// Firebase 준비 완료 → 자동 로드 트리거
+if(typeof window.fbAutoLoad === 'function'){
+  window.fbAutoLoad();
+}
+</script>
 </head>
 <body>
 <!-- ═══ PIN 인증 체크 ═══ -->
@@ -6450,29 +6485,48 @@ function renderNaverPriceChart(rows){
           y:{ticks:{color:'#8899bb',font:{size:10},callback:function(v){return v+'억';}},grid:{color:'rgba(42,58,82,.5)'}}}}});
 }
 
-// ══ 네이버 Firebase 로드 (sd_props 읽기전용)
+// ══ 네이버 Firebase 로드 (sd_props 읽기전용) ══
 function loadNaverFromFirebase(){
-  if(!window.storage) { setTimeout(loadNaverFromFirebase, 500); return; }
-  window.storage.get('sd_naver_data').then(function(r){
-    if(r&&r.value){
-      G.naverData=JSON.parse(r.value); fixNaverDist(G.naverData); _loadFav();
-      if(document.getElementById('tc3')&&document.getElementById('tc3').classList.contains('on')) renderTab6();
+  var db = window._fbDb;
+  var fbGet = window.fbGet || window._fbGet;
+  var fbChild = window._fbChild || window.fbChild;
+  var fbRef = window.fbRef || (db ? function(p){ return p ? fbChild(db,p) : db; } : null);
+
+  if(!db || !fbGet){
+    setTimeout(loadNaverFromFirebase, 500); return;
+  }
+
+  // APT 매물 (sd_data 경로: 'sd_data'.naver_data)
+  fbGet(fbChild(db,'sd_data')).then(function(snap){
+    if(snap.exists()){
+      var d = snap.val();
+      if(d.naver_data && d.naver_data.length>0){
+        G.naverData = fixNaverDist(d.naver_data);
+        _loadFav();
+        if(document.getElementById('tc3')&&document.getElementById('tc3').classList.contains('on')) renderTab6();
+      }
     }
-  });
-  window.storage.get('sd_naver_op').then(function(r){
-    if(r&&r.value){ G.naverOpData=JSON.parse(r.value); fixNaverDist(G.naverOpData);
+  }).catch(function(e){ console.warn('[props] naver_data 로드 실패',e); });
+
+  // OP/생숙
+  fbGet(fbChild(db,'sd_naver_op')).then(function(s){
+    if(s.exists()&&s.val()&&s.val().data){
+      G.naverOpData=fixNaverDist(s.val().data);
       if(document.getElementById('tc4')&&document.getElementById('tc4').classList.contains('on')) renderTab7();
     }
-  });
-  window.storage.get('sd_naver_sangga').then(function(r){
-    if(r&&r.value){ G.naverSanggaData=JSON.parse(r.value); fixNaverDist(G.naverSanggaData);
+  }).catch(function(){});
+
+  // 상가/사무실
+  fbGet(fbChild(db,'sd_naver_sangga')).then(function(s){
+    if(s.exists()&&s.val()&&s.val().data){
+      G.naverSanggaData=fixNaverDist(s.val().data);
       if(document.getElementById('tc5')&&document.getElementById('tc5').classList.contains('on')) renderTab8();
     }
-  });
+  }).catch(function(){});
 }
 function renderNaverAPT(){
   _loadFav();
-  if(!G.naverData||!G.naverData.length){ document.getElementById('t6-empty')&&(document.getElementById('t6-empty').textContent='⏳ 로딩 중...'); loadNaverFromFirebase(); }
+  if(!G.naverData||!G.naverData.length){ loadNaverFromFirebase(); }
   else renderTab6();
 }
 function renderNaverOP(){
@@ -6483,8 +6537,14 @@ function renderNaverSangga(){
   if(!G.naverSanggaData||!G.naverSanggaData.length) loadNaverFromFirebase();
   else renderTab8();
 }
+
+// Firebase 준비 완료 시 자동 로드
+window.fbAutoLoad = function(){
+  setTimeout(loadNaverFromFirebase, 300);
+};
+
 document.addEventListener('DOMContentLoaded',function(){
-  setTimeout(function(){ loadNaverFromFirebase(); }, 1500);
+  setTimeout(function(){ if(window._fbDb && window.fbGet) loadNaverFromFirebase(); }, 2000);
 });
 
 </script>
@@ -6492,6 +6552,5 @@ document.addEventListener('DOMContentLoaded',function(){
 <!-- ══ TAB8/9/10 네이버 매물 ══ -->
 
 </body>
-</html>var charts={};
-var dcCharts={};
+</html>
 
