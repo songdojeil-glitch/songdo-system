@@ -1101,7 +1101,6 @@ tr.naver-fav>td:first-child{border-left:3px solid #ffd700;}
               <th>단지명</th>
               <th style="text-align:center">구분</th>
               <th class="num">전용㎡</th>
-              <th style="text-align:center">타입</th>
               <th class="num">분양평형</th>
               <th style="text-align:center">층</th>
               <th class="num" style="color:var(--yellow)">거래금액</th>
@@ -1230,15 +1229,17 @@ tr.naver-fav>td:first-child{border-left:3px solid #ffd700;}
       <div class="table-scroll-hint">← 좌우로 스크롤하여 전체 내용 확인 →</div>
     <div class="table-scroll" id="t4-table-scroll">
         <table class="data-table" id="t4-table">
-          <thead>
+          <thead id="t4-thead">
             <tr>
               <th style="text-align:center">공구</th>
               <th>단지명</th>
               <th style="text-align:center">유형</th>
               <th class="num">전용㎡</th>
-              <th class="num">층</th>
-              <th class="num" style="color:var(--accent3)">보증금</th>
-              <th class="num">월세</th>
+              <th class="num">분양평형</th>
+              <th style="text-align:center">층</th>
+              <th class="num" style="color:var(--accent3)" id="t4-th-deposit">보증금</th>
+              <th class="num" id="t4-th-monthly">월세</th>
+              <th class="num" style="color:var(--purple)" id="t4-th-convert">환산보증금</th>
               <th class="num">최근1년평균</th>
               <th class="num">차이금액</th>
               <th class="num">평균대비</th>
@@ -7907,7 +7908,7 @@ function renderTab3(){
   var totalRows = rows.length;
   var displayRows = rows.slice(0, MAX_ROWS);
   var overflowBanner = totalRows > MAX_ROWS
-    ? '<tr><td colspan="15" style="text-align:center;padding:8px;background:rgba(255,200,0,.1);color:var(--yellow);font-size:11px">'+
+    ? '<tr><td colspan="14" style="text-align:center;padding:8px;background:rgba(255,200,0,.1);color:var(--yellow);font-size:11px">'+
       '⚠️ '+totalRows.toLocaleString()+'건 중 상위 '+MAX_ROWS+'건만 표시. 면적·공구·기간 필터를 좁혀주세요.</td></tr>'
     : '';
 
@@ -7935,7 +7936,6 @@ function renderTab3(){
       '<td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+r['단지명']+'</td>'+
       '<td style="text-align:center"><span class="badge '+(r['구분']==='아파트'?'badge-apt':'badge-pre')+'">'+r['구분']+'</span></td>'+
       '<td class="num" style="font-size:11px">'+sqm.toFixed(1)+'㎡</td>'+
-      '<td style="font-size:11px;text-align:center">'+(r['타입']||'-')+'</td>'+
       '<td class="num" style="font-size:11px">'+(r['분양평형']?r['분양평형']+'평':'-')+'</td>'+
       '<td style="font-size:11px;text-align:center">'+(r['층']||'-')+'층</td>'+
       '<td class="num" style="color:var(--yellow);font-weight:700">'+fmt천(price)+'</td>'+
@@ -8111,6 +8111,18 @@ function renderTab4(){
 
   var now=new Date();
 
+  // 전세 필터 전용 여부
+  var isJeonseOnly = tradeType==='전세';
+
+  // ── 동적 헤더 컬럼 표시 전환
+  var thDeposit = document.getElementById('t4-th-deposit');
+  var thMonthly = document.getElementById('t4-th-monthly');
+  var thConvert = document.getElementById('t4-th-convert');
+  if(thDeposit) thDeposit.textContent = isJeonseOnly ? '전세가' : '보증금';
+  if(thDeposit) thDeposit.style.color = isJeonseOnly ? 'var(--accent3)' : 'var(--accent3)';
+  if(thMonthly) thMonthly.style.display = isJeonseOnly ? 'none' : '';
+  if(thConvert) thConvert.style.display = isJeonseOnly ? 'none' : '';
+
   function ymOk(ym){ return subPeriodFilter(ym, yr, period, subPeriod); }
   function areaOk(sqm){
     if(area==='all') return true;
@@ -8123,18 +8135,28 @@ function renderTab4(){
     return true;
   }
 
-  // ── 최근1년 평균 보증금 맵 (단지+평형 키)
+  // 환산보증금 계산 (환산이율 5.8%)
+  function calcConvert(deposit, monthly){
+    return monthly>0 ? Math.round(deposit + monthly*12/0.058) : 0;
+  }
+
+  // ── 최근1년 평균값 맵 (전세:보증금, 월세:환산보증금, 키=단지+평형+구분)
   var avgMap={};
   G.rentData.forEach(function(r){
-    var ym=r['계약년월'], p=parseFloat(r['보증금'])||0;
-    if(!ym||!p) return;
+    var ym=r['계약년월'];
+    var deposit=parseFloat(r['보증금'])||0;
+    var monthly=parseFloat(r['월세금'])||0;
+    if(!ym) return;
     var y=Math.floor(ym/100), m=ym%100;
     var diff=(now.getFullYear()-y)*12+(now.getMonth()+1-m);
     if(diff<0||diff>=12) return;
     if(tradeType!=='all'&&r['전월세구분']!==tradeType) return;
-    var key=(r['단지명']||'')+'^'+(r['분양평형']||r['전용(㎡)']||'');
+    var isMRow = r['전월세구분']==='월세';
+    var compareVal = isMRow ? calcConvert(deposit,monthly) : deposit;
+    if(!compareVal) return;
+    var key=(r['단지명']||'')+'^'+(r['분양평형']||r['전용(㎡)']||'')+'^'+(r['전월세구분']||'');
     if(!avgMap[key]) avgMap[key]={sum:0,cnt:0};
-    avgMap[key].sum+=p; avgMap[key].cnt++;
+    avgMap[key].sum+=compareVal; avgMap[key].cnt++;
   });
 
   // ── 필터링 (단지칩용 allFiltered)
@@ -8148,7 +8170,6 @@ function renderTab4(){
     if(renewal==='사용'&&r['갱신요구권']!=='사용') return false;
     return true;
   }
-  // 단지 칩: search 필터 포함한 allFiltered
   var allFiltered=G.rentData.filter(function(r){
     if(!baseFilter(r)) return false;
     if(search&&r['단지명']&&r['단지명'].indexOf(search)===-1) return false;
@@ -8189,12 +8210,12 @@ function renderTab4(){
   });
 
   $set('t4-cnt', rows.length+'건');
-  // 렌더링 상한선: 500건 초과 시 잘라서 표시 (브라우저 응답불가 방지)
   var MAX_ROWS = 500;
   var totalRows = rows.length;
   var displayRows = rows.slice(0, MAX_ROWS);
+  var colSpan = isJeonseOnly ? 13 : 15;
   var overflowBanner = totalRows > MAX_ROWS
-    ? '<tr><td colspan="13" style="text-align:center;padding:8px;background:rgba(255,200,0,.1);color:var(--yellow);font-size:11px">'+
+    ? '<tr><td colspan="'+colSpan+'" style="text-align:center;padding:8px;background:rgba(255,200,0,.1);color:var(--yellow);font-size:11px">'+
       '⚠️ 조건에 맞는 데이터가 '+totalRows.toLocaleString()+'건입니다. 상위 '+MAX_ROWS+'건만 표시됩니다. 면적·공구·기간 필터를 좁혀주세요.</td></tr>'
     : '';
 
@@ -8202,33 +8223,39 @@ function renderTab4(){
   displayRows.forEach(function(r){
     var dist2=parseInt(r['공구'])||0;
     var color=DIST_COLORS[dist2]||'#8899bb';
-    var price=parseFloat(r['보증금'])||0;
+    var deposit=parseFloat(r['보증금'])||0;
     var monthly=parseFloat(r['월세금'])||0;
     var sqm=parseFloat(r['전용(㎡)'])||0;
     var ym=r['계약년월'];
     var day=r['계약일']||'';
     var ymStr=ym?String(ym).slice(0,4)+'.'+String(ym).slice(4,6)+(day?'.'+String(day).padStart(2,'0'):''):'-';
-    // 최근1년 평균 보증금
-    var key=(r['단지명']||'')+'^'+(r['분양평형']||sqm||'');
+    var isJeonseRow = r['전월세구분']==='전세';
+    // 환산보증금 (월세만)
+    var convertVal = isJeonseRow ? 0 : calcConvert(deposit, monthly);
+    // 비교 기준값: 전세→보증금, 월세→환산보증금
+    var compareVal = isJeonseRow ? deposit : convertVal;
+    // 최근1년 평균 (동일 거래유형 기준)
+    var key=(r['단지명']||'')+'^'+(r['분양평형']||sqm||'')+'^'+(r['전월세구분']||'');
     var avg1y=avgMap[key]?Math.round(avgMap[key].sum/avgMap[key].cnt):0;
-    var diffAmt=avg1y&&price?Math.round(price-avg1y):null;
-    var diffPct=avg1y&&price?((price-avg1y)/avg1y*100):null;
+    var diffAmt=avg1y&&compareVal?Math.round(compareVal-avg1y):null;
+    var diffPct=avg1y&&compareVal?((compareVal-avg1y)/avg1y*100):null;
     var diffColor=diffAmt===null?'var(--text3)':diffAmt>0?'#ff6b6b':diffAmt<0?'#64b5f6':'var(--text2)';
     var diffAmtStr=diffAmt!==null?(diffAmt>=0?'▲+':'▼')+Math.abs(diffAmt).toLocaleString()+'만':'-';
     var diffPctStr=diffPct!==null?(diffPct>=0?'▲+':'▼')+Math.abs(diffPct).toFixed(1)+'%':'-';
-    var isJeonse=r['전월세구분']==='전세';
     html+='<tr>'+
-      '<td><span class="badge" style="background:'+color+'33;color:'+color+'">'+(DIST_NAMES[dist2]||'-')+'</span></td>'+
+      '<td style="text-align:center"><span class="badge" style="background:'+color+'33;color:'+color+'">'+(DIST_NAMES[dist2]||'-')+'</span></td>'+
       '<td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+r['단지명']+'</td>'+
-      '<td style="text-align:center"><span class="badge '+(isJeonse?'badge-apt':'badge-pre')+'">'+r['전월세구분']+'</span></td>'+
+      '<td style="text-align:center"><span class="badge '+(isJeonseRow?'badge-apt':'badge-pre')+'">'+r['전월세구분']+'</span></td>'+
       '<td class="num" style="font-size:11px">'+sqm.toFixed(1)+'㎡</td>'+
-      '<td class="num" style="font-size:11px;white-space:nowrap">'+(r['층']||'-')+'층</td>'+
-      '<td class="num" style="color:var(--accent3);font-weight:700">'+fmt천(price)+'</td>'+
-      '<td class="num" style="font-size:11px">'+(monthly>0?monthly+'만':'-')+'</td>'+
+      '<td class="num" style="font-size:11px">'+(r['분양평형']?r['분양평형']+'평':'-')+'</td>'+
+      '<td style="font-size:11px;text-align:center">'+(r['층']||'-')+'층</td>'+
+      '<td class="num" style="color:var(--accent3);font-weight:700">'+fmt천(deposit)+'</td>'+
+      (isJeonseOnly?'':'<td class="num" style="font-size:11px">'+(monthly>0?monthly+'만':'-')+'</td>')+
+      (isJeonseOnly?'':'<td class="num" style="color:var(--purple)">'+(convertVal>0?fmt천(convertVal):'-')+'</td>')+
       '<td class="num" style="color:#aaa">'+(avg1y?fmt천(avg1y):'-')+'</td>'+
       '<td class="num" style="color:'+diffColor+';font-weight:600;white-space:nowrap">'+diffAmtStr+'</td>'+
       '<td class="num" style="color:'+diffColor+';font-weight:700">'+diffPctStr+'</td>'+
-      '<td style="font-size:11px;color:var(--text2);white-space:nowrap">'+ymStr+'</td>'+
+      '<td class="num" style="font-size:11px;color:var(--text2);white-space:nowrap">'+ymStr+'</td>'+
       '<td style="text-align:center"><span class="badge '+(r['계약구분']==='신규'?'badge-new':'badge-warn')+'">'+(r['계약구분']||'-')+'</span></td>'+
       '<td style="text-align:center">'+(r['갱신요구권']==='사용'?'<span class="badge badge-high" style="font-size:10px">사용</span>':'-')+'</td>'+
     '</tr>';
