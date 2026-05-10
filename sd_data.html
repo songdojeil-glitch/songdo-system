@@ -314,6 +314,8 @@ body.zoom-mode .chart-wrap canvas {
   white-space:nowrap;
 }
 .data-table tr:hover td { background:rgba(255,255,255,.02); }
+.data-table tr.detail-row { cursor:pointer; transition:background .1s; }
+.data-table tr.detail-row:hover td { background:rgba(0,212,255,.06) !important; }
 .data-table .num { text-align:right; font-family:var(--font2); }
 .data-table .badge { display:inline-block; padding:1px 6px; border-radius:8px; font-size:9px; font-weight:700; }
 .badge-gold { background:rgba(255,215,0,.2); color:var(--yellow); }
@@ -7842,6 +7844,7 @@ function renderTab3(){
     if(!avgMap[key]) avgMap[key]={sum:0,cnt:0};
     avgMap[key].sum+=p; avgMap[key].cnt++;
   });
+  window._t3AvgMap = avgMap; // 상세 모달용
 
   // ── 필터링
   var rows = G.saleData.filter(function(r){
@@ -7913,7 +7916,8 @@ function renderTab3(){
     : '';
 
   var html='';
-  displayRows.forEach(function(r){
+  window._t3DetailRows = displayRows;
+  displayRows.forEach(function(r, idx){
     var price=parseFloat(r['거래금액'])||0;
     var sqm=parseFloat(r['전용(㎡)']||r['전용㎡'])||0;
     var dist2=parseInt(r['공구'])||0;
@@ -7931,7 +7935,7 @@ function renderTab3(){
     var diffPct=avg1y&&price?((price-avg1y)/avg1y*100):null;
     var diffStr=diffPct!==null?(diffPct>=0?'▲+':'▼')+Math.abs(diffPct).toFixed(1)+'%':'-';
     var diffColor=diffPct===null?'var(--text3)':diffPct>0?'#ff6b6b':diffPct<0?'#64b5f6':'var(--text2)';
-    html+='<tr>'+
+    html+='<tr class="detail-row" onclick="openTradeDetail(\'sale\','+idx+')">'+
       '<td style="text-align:center"><span class="badge" style="background:'+color+'33;color:'+color+'">'+(DIST_NAMES[dist2]||'-')+'</span></td>'+
       '<td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+r['단지명']+'</td>'+
       '<td style="text-align:center"><span class="badge '+(r['구분']==='아파트'?'badge-apt':'badge-pre')+'">'+r['구분']+'</span></td>'+
@@ -8158,6 +8162,7 @@ function renderTab4(){
     if(!avgMap[key]) avgMap[key]={sum:0,cnt:0};
     avgMap[key].sum+=compareVal; avgMap[key].cnt++;
   });
+  window._t4AvgMap = avgMap; // 상세 모달용
 
   // ── 필터링 (단지칩용 allFiltered)
   function baseFilter(r){
@@ -8220,7 +8225,9 @@ function renderTab4(){
     : '';
 
   var html='';
-  displayRows.forEach(function(r){
+  window._t4DetailRows = displayRows;
+  window._t4IsJeonseOnly = isJeonseOnly;
+  displayRows.forEach(function(r, idx){
     var dist2=parseInt(r['공구'])||0;
     var color=DIST_COLORS[dist2]||'#8899bb';
     var deposit=parseFloat(r['보증금'])||0;
@@ -8242,7 +8249,7 @@ function renderTab4(){
     var diffColor=diffAmt===null?'var(--text3)':diffAmt>0?'#ff6b6b':diffAmt<0?'#64b5f6':'var(--text2)';
     var diffAmtStr=diffAmt!==null?(diffAmt>=0?'▲+':'▼')+Math.abs(diffAmt).toLocaleString()+'만':'-';
     var diffPctStr=diffPct!==null?(diffPct>=0?'▲+':'▼')+Math.abs(diffPct).toFixed(1)+'%':'-';
-    html+='<tr>'+
+    html+='<tr class="detail-row" onclick="openTradeDetail(\'rent\','+idx+')">'+
       '<td style="text-align:center"><span class="badge" style="background:'+color+'33;color:'+color+'">'+(DIST_NAMES[dist2]||'-')+'</span></td>'+
       '<td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+r['단지명']+'</td>'+
       '<td style="text-align:center"><span class="badge '+(isJeonseRow?'badge-apt':'badge-pre')+'">'+r['전월세구분']+'</span></td>'+
@@ -10259,6 +10266,198 @@ if(typeof window.fbAutoLoad === 'function'){
   </div>
 </div>
 <!-- ╚══ 네이버 매물 삭제 모달 끝 ══╝ -->
+
+<!-- ╔══ 거래 상세 모달 ══╗ -->
+<div id="trade-detail-modal" onclick="if(event.target===this)closeTradeDetail()"
+  style="display:none;position:fixed;inset:0;z-index:3300;background:rgba(0,0,0,.82);align-items:center;justify-content:center">
+  <div id="trade-detail-box"
+    style="background:var(--card);border:1px solid var(--border);border-radius:16px;
+           width:min(680px,96vw);max-height:90vh;overflow-y:auto;padding:24px;
+           box-shadow:0 12px 48px rgba(0,0,0,.7)">
+  </div>
+</div>
+
+<script>
+// ── 거래 상세 모달
+var _tdChart = null;
+
+function openTradeDetail(type, idx) {
+  var rows = type==='sale' ? (window._t3DetailRows||[]) : (window._t4DetailRows||[]);
+  var r = rows[idx];
+  if(!r) return;
+
+  var dist2  = parseInt(r['공구'])||0;
+  var color  = DIST_COLORS[dist2]||'#8899bb';
+  var distNm = DIST_NAMES[dist2]||'-';
+  var sqm    = parseFloat(r['전용(㎡)']||r['전용㎡'])||0;
+  var ym     = r['계약년월'];
+  var day    = r['계약일']||'';
+  var ymStr  = ym ? String(ym).slice(0,4)+'.'+String(ym).slice(4,6)+(day?'.'+String(day).padStart(2,'0'):'') : '-';
+
+  var mainVal, mainLabel, avg1y=0, diffAmt=null, diffPct=null;
+  var topBadgeHtml, infoHtml='', flagHtml='';
+
+  if(type==='sale') {
+    var price   = parseFloat(r['거래금액'])||0;
+    var gudbn   = r['구분']||'-';
+    var isAbn   = r['해제사유발생일']&&r['해제사유발생일']!=='-';
+    var isNew   = !isAbn && window._t3NewHighSet && window._t3NewHighSet[r['단지명']+'_'+ym];
+    mainVal     = price;
+    mainLabel   = '이번 거래가';
+    topBadgeHtml= '<span class="badge '+(gudbn==='아파트'?'badge-apt':'badge-pre')+'">'+gudbn+'</span>';
+    var aMap = window._t3AvgMap||{};
+    var aKey = (r['단지명']||'')+'^'+(r['분양평형']||sqm||'');
+    var aEnt = aMap[aKey];
+    if(aEnt) avg1y = Math.round(aEnt.sum/aEnt.cnt);
+    if(avg1y&&price){ diffAmt=Math.round(price-avg1y); diffPct=(price-avg1y)/avg1y*100; }
+    infoHtml =
+      tdPair('전용면적', sqm.toFixed(1)+'㎡', '분양평형', r['분양평형']?r['분양평형']+'평':'-')+
+      tdPair('층', (r['층']||'-')+'층', '평당가', r['평당가']?Math.round(parseFloat(r['평당가'])).toLocaleString()+'만/평':'-')+
+      tdPair('거래금액', '<span style="color:var(--yellow);font-weight:700;font-size:15px">'+fmt천(price)+'</span>', '거래년월일', ymStr)+
+      tdPair('거래유형', r['거래유형']||'-', '이상거래', isAbn?'<span style="color:#ff6b6b">⚠️ 이상</span>':'<span style="color:var(--text3)">-</span>');
+    if(isNew)  flagHtml='<div style="margin-bottom:10px"><span class="badge badge-alltime" style="font-size:11px;padding:3px 10px">🏆 신고가 갱신</span></div>';
+    if(isAbn)  flagHtml='<div style="margin-bottom:10px"><span class="badge badge-warn" style="font-size:11px;padding:3px 10px">⚠️ 이상거래 의심</span></div>';
+
+  } else {
+    var deposit     = parseFloat(r['보증금'])||0;
+    var monthly     = parseFloat(r['월세금'])||0;
+    var isJeonseRow = r['전월세구분']==='전세';
+    var convertVal  = isJeonseRow ? 0 : Math.round(deposit + monthly*12/0.058);
+    var compareVal  = isJeonseRow ? deposit : convertVal;
+    mainVal   = compareVal;
+    mainLabel = isJeonseRow ? '이번 전세가' : '이번 환산보증금';
+    topBadgeHtml = '<span class="badge '+(isJeonseRow?'badge-apt':'badge-pre')+'">'+r['전월세구분']+'</span>';
+    var rMap = window._t4AvgMap||{};
+    var rKey = (r['단지명']||'')+'^'+(r['분양평형']||sqm||'')+'^'+(r['전월세구분']||'');
+    var rEnt = rMap[rKey];
+    if(rEnt) avg1y = Math.round(rEnt.sum/rEnt.cnt);
+    if(avg1y&&compareVal){ diffAmt=Math.round(compareVal-avg1y); diffPct=(compareVal-avg1y)/avg1y*100; }
+    if(isJeonseRow){
+      infoHtml =
+        tdPair('전용면적', sqm.toFixed(1)+'㎡', '분양평형', r['분양평형']?r['분양평형']+'평':'-')+
+        tdPair('층', (r['층']||'-')+'층', '거래년월일', ymStr)+
+        tdPair('전세가(보증금)', '<span style="color:var(--accent3);font-weight:700;font-size:15px">'+fmt천(deposit)+'</span>', '계약구분', r['계약구분']||'-')+
+        tdPair('갱신요구권', r['갱신요구권']==='사용'?'<span class="badge badge-high">사용</span>':'-', '', '');
+    } else {
+      infoHtml =
+        tdPair('전용면적', sqm.toFixed(1)+'㎡', '분양평형', r['분양평형']?r['분양평형']+'평':'-')+
+        tdPair('층', (r['층']||'-')+'층', '거래년월일', ymStr)+
+        tdPair('보증금', '<span style="color:var(--accent3);font-weight:700;font-size:15px">'+fmt천(deposit)+'</span>',
+               '월세', '<span style="color:var(--purple);font-weight:700;font-size:15px">'+(monthly>0?monthly+'만':'-')+'</span>')+
+        tdPair('환산보증금', '<span style="color:var(--purple);font-size:13px">'+fmt천(convertVal)+'</span><span style="font-size:10px;color:var(--text3);margin-left:4px">(이율 5.8%)</span>',
+               '계약구분', r['계약구분']||'-')+
+        tdPair('갱신요구권', r['갱신요구권']==='사용'?'<span class="badge badge-high">사용</span>':'-', '', '');
+    }
+  }
+
+  var diffColor  = diffAmt===null?'var(--text3)':diffAmt>0?'#ff6b6b':diffAmt<0?'#64b5f6':'var(--text2)';
+  var diffSign   = diffAmt!==null?(diffAmt>=0?'▲ +':'▼ ')+Math.abs(diffAmt).toLocaleString()+'만':null;
+  var diffPctStr = diffPct!==null?(diffPct>=0?'+':'')+diffPct.toFixed(1)+'%':null;
+
+  var box = document.getElementById('trade-detail-box');
+  box.innerHTML =
+    '<div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px;gap:8px">'+
+      '<div>'+
+        '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:6px">'+
+          '<span class="badge" style="background:'+color+'22;color:'+color+'">'+distNm+'</span>'+
+          topBadgeHtml+
+        '</div>'+
+        '<div style="font-size:16px;font-weight:700;color:var(--text)">'+r['단지명']+'</div>'+
+      '</div>'+
+      '<button onclick="closeTradeDetail()" style="background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);color:var(--text3);border-radius:50%;width:30px;height:30px;font-size:16px;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center">✕</button>'+
+    '</div>'+
+    flagHtml+
+    '<div style="display:grid;grid-template-columns:1fr 1fr;border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:16px">'+
+      infoHtml+
+    '</div>'+
+    (avg1y>0 ?
+      '<div style="background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:16px">'+
+        '<div style="font-size:11px;color:var(--text3);font-weight:700;margin-bottom:12px">📊 최근 1년 동일 평형 평균 대비</div>'+
+        '<canvas id="td-chart" height="70"></canvas>'+
+        '<div style="display:flex;justify-content:center;align-items:center;gap:16px;margin-top:10px;font-size:12px;flex-wrap:wrap">'+
+          '<span style="color:var(--text3)">1년 평균: <strong style="color:var(--text)">'+fmt천(avg1y)+'</strong></span>'+
+          (diffSign?'<span style="color:'+diffColor+';font-weight:700;font-size:13px">'+diffSign+'</span><span style="color:'+diffColor+'"> ('+diffPctStr+')</span>':'') +
+        '</div>'+
+      '</div>'
+      :
+      '<div style="padding:14px;background:var(--bg3);border-radius:8px;text-align:center;font-size:11px;color:var(--text3)">최근 1년 이내 동일 평형 비교 데이터 없음</div>'
+    );
+
+  document.getElementById('trade-detail-modal').style.display='flex';
+  document.body.style.overflow='hidden';
+
+  if(avg1y>0){
+    setTimeout(function(){
+      var canvas=document.getElementById('td-chart');
+      if(!canvas) return;
+      if(_tdChart){ _tdChart.destroy(); _tdChart=null; }
+      var barColor  = diffAmt>0?'rgba(255,107,107,.85)':diffAmt<0?'rgba(100,181,246,.85)':'rgba(0,229,160,.85)';
+      var barBorder = diffAmt>0?'#ff6b6b':diffAmt<0?'#64b5f6':'#00e5a0';
+      _tdChart=new Chart(canvas,{
+        type:'bar',
+        data:{
+          labels:['최근 1년 평균', mainLabel],
+          datasets:[{
+            data:[avg1y, mainVal],
+            backgroundColor:['rgba(136,153,187,.3)', barColor],
+            borderColor:['#556688', barBorder],
+            borderWidth:1.5,
+            borderRadius:5,
+            borderSkipped:false
+          }]
+        },
+        options:{
+          indexAxis:'y',
+          responsive:true,
+          plugins:{
+            legend:{display:false},
+            tooltip:{callbacks:{label:function(ctx){
+              return ' '+Math.round(ctx.raw).toLocaleString()+'만원';
+            }}}
+          },
+          scales:{
+            x:{
+              min:Math.round(Math.min(avg1y,mainVal)*0.93),
+              ticks:{color:'#8899bb',font:{size:10},callback:function(v){
+                return v>=10000?(v/10000).toFixed(1)+'억':v.toLocaleString()+'만';
+              }},
+              grid:{color:'rgba(255,255,255,.04)'},
+              border:{color:'transparent'}
+            },
+            y:{
+              ticks:{color:'#ccd6f0',font:{size:11}},
+              grid:{display:false},
+              border:{color:'transparent'}
+            }
+          }
+        }
+      });
+    },60);
+  }
+}
+
+function tdPair(lbl1,val1,lbl2,val2){
+  var c1='<div style="padding:9px 14px;border-bottom:1px solid var(--border)">'+
+    '<div style="font-size:10px;color:var(--text3);margin-bottom:3px">'+lbl1+'</div>'+
+    '<div style="font-size:12px;color:var(--text)">'+val1+'</div></div>';
+  var c2=lbl2
+    ?'<div style="padding:9px 14px;border-left:1px solid var(--border);border-bottom:1px solid var(--border)">'+
+      '<div style="font-size:10px;color:var(--text3);margin-bottom:3px">'+lbl2+'</div>'+
+      '<div style="font-size:12px;color:var(--text)">'+val2+'</div></div>'
+    :'<div style="border-left:1px solid var(--border);border-bottom:1px solid var(--border)"></div>';
+  return c1+c2;
+}
+
+function closeTradeDetail(){
+  document.getElementById('trade-detail-modal').style.display='none';
+  document.body.style.overflow='';
+  if(_tdChart){ _tdChart.destroy(); _tdChart=null; }
+}
+document.addEventListener('keydown',function(e){
+  if(e.key==='Escape') closeTradeDetail();
+});
+</script>
+<!-- ╚══ 거래 상세 모달 끝 ══╝ -->
 
 </body>
 </html>
