@@ -4027,7 +4027,15 @@ function sanggaSet(key,val,btn){
 // ── 상가/사무실 업로드
 function onUploadNaverSangga(input){
   _uploadNaverFiles(input, function(allRows, fileCnt){
-    var newParsed=parseNaverRows(allRows);
+    var newParsed = parseNaverSanggaRows(allRows);
+    // 0건이면 APT 범용 파서로 폴백 시도
+    if(!newParsed.length) newParsed = parseNaverRows(allRows);
+    // 여전히 0건이면 컬럼명 진단
+    if(!newParsed.length && allRows.length>0){
+      var cols=Object.keys(allRows[0]||{}).join(' / ');
+      showToast('⚠️ 파싱 0건. 컬럼명: '+cols.slice(0,120), 5000);
+      return;
+    }
     if(G.naverSanggaData&&G.naverSanggaData.length>0){
       var newSet={};
       newParsed.forEach(function(r){if(r.단지명)newSet[r.단지명]=true;});
@@ -4037,6 +4045,91 @@ function onUploadNaverSangga(input){
     document.getElementById('sangga-status').textContent='✅ '+G.naverSanggaData.length+'건';
     showToast('✅ 상가/사무실 '+G.naverSanggaData.length+'건 로드');
     renderTab8();
+  });
+}
+
+// ── 상가/사무실 전용 파서 (보증금/월세 분리 컬럼, 다양한 컬럼명 대응)
+function parseNaverSanggaRows(allRows){
+  return allRows.filter(function(r){
+    // 건물명: 단지명/건물명/상가명/매물명 등
+    var nm = r['단지명']||r['건물명']||r['상가명']||r['아파트명']||r['매물명']||'';
+    if(!nm || nm==='단지명' || nm==='건물명' || nm==='상가명') return false;
+    // 거래유형: 거래구분/거래유형/유형/임대구분/매물구분/계약구분
+    var type = r['거래구분']||r['거래유형']||r['유형']||r['임대구분']||r['매물구분']||r['계약구분']||'';
+    if(!type || type==='거래구분' || type==='거래유형') return false;
+    return true;
+  }).map(function(r){
+    var nm = r['단지명']||r['건물명']||r['상가명']||r['아파트명']||r['매물명']||'-';
+
+    // 거래유형 정규화: 임대→월세, 월세/전세 등 다양한 표현 처리
+    var rawType = r['거래구분']||r['거래유형']||r['유형']||r['임대구분']||r['매물구분']||r['계약구분']||'매매';
+    var normType = (function(){
+      var t = String(rawType).trim();
+      if(t==='매매') return '매매';
+      if(t.indexOf('월세')>=0||t.indexOf('임대')>=0||t.indexOf('임차')>=0) return '월세';
+      if(t.indexOf('전세')>=0) return '전세';
+      return t;
+    })();
+
+    // 면적: 타입(전용) / 전용(㎡) / 전용㎡ / 면적 / 전용면적 / 공급면적 순으로 탐색
+    var rawSqm = r['타입(전용)']||r['전용(㎡)']||r['전용㎡']||r['전용면적(㎡)']||r['전용면적']||r['면적(㎡)']||r['면적']||r['공급면적(㎡)']||r['공급면적']||'0';
+
+    // 가격: 상가는 보증금/월세 분리 컬럼이 많음
+    var rawDeposit = r['보증금(만원)']||r['보증금']||r['보증금액']||'';
+    var rawMonthly = r['월세(만원)']||r['월세']||r['월세금']||r['월세금액']||'';
+    var rawSalePrice = r['매매가(만원)']||r['매매가']||r['매매금액']||r['매도가']||r['분양가']||'';
+    // 통합 가격 컬럼
+    var rawPriceCombined = r['가격']||r['의뢰가']||r['호가']||r['매매가']||'';
+
+    // 최종 호가 결정
+    var hoGa = 0;
+    var wolse = 0;
+    if(normType==='매매'){
+      var pv = rawSalePrice||rawPriceCombined||rawDeposit;
+      hoGa = parseNaverPrice(String(pv||0));
+    } else {
+      // 월세/임대: 보증금을 호가로
+      hoGa = parseNaverPrice(String(rawDeposit||rawPriceCombined||0));
+      // 월세금 파싱
+      if(rawMonthly){
+        wolse = parseInt(String(rawMonthly).replace(/[^0-9]/g,''))||0;
+      } else if(rawPriceCombined && String(rawPriceCombined).indexOf('/')>-1){
+        // "5000/80" 형태 통합 컬럼
+        var parts = String(rawPriceCombined).split('/');
+        hoGa = parseNaverPrice(parts[0]);
+        wolse = parseInt(parts[1].replace(/[^0-9]/g,''))||0;
+      }
+    }
+
+    var rawFloor = r['층/총층']||r['층']||r['소재지(층)']||'-';
+    var rawDate  = r['확인 날짜']||r['확인날짜']||r['입력일']||r['등록일']||r['등록날짜']||'-';
+    var rawAgent = r['중개업소명']||r['중개사']||r['중개업소']||'-';
+
+    // 중복업소명 동적 탐색
+    var dupNm='';
+    var ks=Object.keys(r);
+    for(var ki=0;ki<ks.length;ki++){
+      if(ks[ki].indexOf('중복')>=0&&ks[ki].indexOf('업소명')>=0&&r[ks[ki]]){
+        dupNm=String(r[ks[ki]]); break;
+      }
+    }
+
+    return {
+      단지명: nm,
+      거래유형: normType,
+      타입: '-',
+      전용: parseNaverSqm(rawSqm),
+      호가: hoGa,
+      층: parseNaverFloor(rawFloor),
+      동: r['동']||r['동호']||r['호']||'-',
+      방향: r['방향']||'-',
+      입력일: rawDate,
+      중개사: rawAgent,
+      중복등록수: parseInt(r['중복 등록업소의 수']||r['중복등록수']||0)||0,
+      특이사항: r['특이사항']||r['주요정보']||r['메모']||r['비고']||'',
+      중복업소명: dupNm,
+      월세: wolse,
+    };
   });
 }
 
