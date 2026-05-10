@@ -4026,109 +4026,182 @@ function sanggaSet(key,val,btn){
 
 // ── 상가/사무실 업로드
 function onUploadNaverSangga(input){
-  _uploadNaverFiles(input, function(allRows, fileCnt){
-    var newParsed = parseNaverSanggaRows(allRows);
-    // 0건이면 APT 범용 파서로 폴백 시도
-    if(!newParsed.length) newParsed = parseNaverRows(allRows);
-    // 여전히 0건이면 컬럼명 진단
-    if(!newParsed.length && allRows.length>0){
-      var cols=Object.keys(allRows[0]||{}).join(' / ');
-      showToast('⚠️ 파싱 0건. 컬럼명: '+cols.slice(0,120), 5000);
-      return;
-    }
-    if(G.naverSanggaData&&G.naverSanggaData.length>0){
-      var newSet={};
-      newParsed.forEach(function(r){if(r.단지명)newSet[r.단지명]=true;});
-      var kept=G.naverSanggaData.filter(function(r){return !newSet[r.단지명];});
-      G.naverSanggaData=kept.concat(newParsed);
-    } else { G.naverSanggaData=newParsed; }
-    document.getElementById('sangga-status').textContent='✅ '+G.naverSanggaData.length+'건';
-    showToast('✅ 상가/사무실 '+G.naverSanggaData.length+'건 로드');
-    renderTab8();
+  if(!input.files||!input.files.length) return;
+  var files=Array.from(input.files);
+  showToast('⏳ '+files.length+'개 파일 파싱 중...');
+  var resultBuckets=new Array(files.length).fill(null);
+  var remaining=files.length;
+  var debugInfo = [];  // 진단용
+
+  files.forEach(function(file, fileIdx){
+    var reader=new FileReader();
+    reader.onload=function(e){
+      try{
+        var wb=XLSX.read(e.target.result,{type:'array'});
+        var sh=wb.Sheets[wb.SheetNames[0]];
+        // ① raw 배열로 전체 읽기 (헤더 위치 탐지용)
+        var rawAll=XLSX.utils.sheet_to_json(sh,{header:1,defval:null});
+
+        // ② 실제 헤더 행 위치 탐지 (최대 5행 탐색)
+        var HEADER_KEYWORDS=['건물명','단지명','상가명','거래','면적','가격','보증금','월세','중개','층','날짜','입력'];
+        var hdrRowIdx=0;
+        for(var ri=0;ri<Math.min(5,rawAll.length);ri++){
+          var row=rawAll[ri]||[];
+          var hits=row.filter(function(cell){
+            var s=cell?String(cell).trim():'';
+            return HEADER_KEYWORDS.some(function(k){return s.indexOf(k)>=0;});
+          }).length;
+          if(hits>=2){ hdrRowIdx=ri; break; }
+        }
+
+        // ③ 탐지된 헤더 행부터 재파싱
+        var rows=XLSX.utils.sheet_to_json(sh,{header:0,defval:null,range:hdrRowIdx});
+
+        // ④ 중복업소명 컬럼 인덱스 탐색 (hdrRowIdx 행 기준)
+        var hdr=rawAll[hdrRowIdx]||[];
+        var dupNmIdx=-1;
+        for(var hi=0;hi<hdr.length;hi++){
+          var hv=hdr[hi]?String(hdr[hi]):'';
+          if(hv.indexOf('중복')>=0&&hv.indexOf('업소명')>=0){dupNmIdx=hi;break;}
+        }
+        if(dupNmIdx>=0){
+          var dataArr=rawAll.slice(hdrRowIdx+1);
+          rows.forEach(function(r,ri2){
+            var rawVal=dataArr[ri2]?dataArr[ri2][dupNmIdx]:null;
+            r['__dupNm__']=rawVal?String(rawVal):'';
+          });
+        }
+
+        // ⑤ 진단 정보 저장
+        if(rows.length>0){
+          debugInfo.push({
+            file: file.name,
+            hdrRow: hdrRowIdx,
+            cols: Object.keys(rows[0]||{}).join(' | '),
+            sample: rows[0]
+          });
+        } else {
+          debugInfo.push({file:file.name, hdrRow:hdrRowIdx, cols:'(행 없음)', sample:{}});
+        }
+
+        resultBuckets[fileIdx]=rows;
+      }catch(err){
+        debugInfo.push({file:file.name, hdrRow:-1, cols:'오류: '+err.message, sample:{}});
+        resultBuckets[fileIdx]=[];
+      }
+      remaining--;
+      if(remaining===0){
+        var allRows=[];
+        resultBuckets.forEach(function(rows){if(rows)allRows=allRows.concat(rows);});
+
+        // ⑥ 상가 전용 파서 시도
+        var newParsed=parseNaverSanggaRows(allRows);
+        // ⑦ 0건이면 범용 파서 폴백
+        if(!newParsed.length) newParsed=parseNaverRows(allRows);
+
+        // ⑧ 여전히 0건 → 진단 패널 표시
+        if(!newParsed.length){
+          _sanggaShowDiag(allRows, debugInfo);
+          return;
+        }
+
+        if(G.naverSanggaData&&G.naverSanggaData.length>0){
+          var newSet={};
+          newParsed.forEach(function(r){if(r.단지명)newSet[r.단지명]=true;});
+          var kept=G.naverSanggaData.filter(function(r){return !newSet[r.단지명];});
+          G.naverSanggaData=kept.concat(newParsed);
+        } else { G.naverSanggaData=newParsed; }
+        document.getElementById('sangga-status').textContent='✅ '+G.naverSanggaData.length+'건';
+        showToast('✅ 상가/사무실 '+G.naverSanggaData.length+'건 로드');
+        renderTab8();
+      }
+    };
+    reader.readAsArrayBuffer(file);
   });
 }
 
-// ── 상가/사무실 전용 파서 (보증금/월세 분리 컬럼, 다양한 컬럼명 대응)
+// ── 상가 파싱 실패 시 진단 패널 표시
+function _sanggaShowDiag(allRows, debugInfo){
+  var colStr='';
+  if(allRows.length>0){
+    colStr='<div style="margin:8px 0;font-size:11px;color:var(--text2);text-align:left;max-width:600px;margin:0 auto">'
+      +'<b style="color:var(--yellow)">📋 감지된 컬럼명:</b><br>'
+      +Object.keys(allRows[0]||{}).map(function(k){return '<span style="display:inline-block;background:var(--bg3);border:1px solid var(--border);border-radius:4px;padding:1px 6px;margin:2px;font-family:monospace">'+k+'</span>';}).join('')
+      +'<br><br><b style="color:var(--accent)">🔍 첫 번째 행 샘플:</b><br>'
+      +Object.entries(allRows[0]||{}).slice(0,8).map(function(kv){
+        return '<span style="font-size:10px;color:var(--text3)">'+kv[0]+'</span>: <span style="color:var(--text)">'+kv[1]+'</span><br>';
+      }).join('')
+      +'</div>';
+  } else {
+    colStr='<p style="color:var(--accent2)">엑셀 행을 읽지 못했습니다. 파일 형식을 확인해 주세요.</p>';
+  }
+  var el=document.getElementById('sangga-empty');
+  el.innerHTML='<div style="text-align:center;padding:20px">'
+    +'<div style="font-size:16px;margin-bottom:12px">⚠️ 파싱 실패 — 컬럼명이 맞지 않습니다</div>'
+    +colStr
+    +'<div style="margin-top:14px;font-size:11px;color:var(--text3)">위 컬럼명을 캡처해서 개발자에게 전달해 주세요</div>'
+    +'</div>';
+  el.style.display='block';
+  document.getElementById('sangga-content').style.display='none';
+  document.getElementById('sangga-status').textContent='⚠️ 파싱실패';
+}
+
+// ── 상가/사무실 전용 파서 (보증금/월세 분리 컬럼, 헤더명 자동 대응)
 function parseNaverSanggaRows(allRows){
   return allRows.filter(function(r){
-    // 건물명: 단지명/건물명/상가명/매물명 등
-    var nm = r['단지명']||r['건물명']||r['상가명']||r['아파트명']||r['매물명']||'';
-    if(!nm || nm==='단지명' || nm==='건물명' || nm==='상가명') return false;
-    // 거래유형: 거래구분/거래유형/유형/임대구분/매물구분/계약구분
-    var type = r['거래구분']||r['거래유형']||r['유형']||r['임대구분']||r['매물구분']||r['계약구분']||'';
-    if(!type || type==='거래구분' || type==='거래유형') return false;
+    var nm=r['단지명']||r['건물명']||r['상가명']||r['아파트명']||r['매물명']||'';
+    if(!nm||nm==='단지명'||nm==='건물명'||nm==='상가명') return false;
+    var type=r['거래구분']||r['거래유형']||r['유형']||r['임대구분']||r['매물구분']||r['계약구분']||'';
+    if(!type||type==='거래구분'||type==='거래유형') return false;
     return true;
   }).map(function(r){
-    var nm = r['단지명']||r['건물명']||r['상가명']||r['아파트명']||r['매물명']||'-';
-
-    // 거래유형 정규화: 임대→월세, 월세/전세 등 다양한 표현 처리
-    var rawType = r['거래구분']||r['거래유형']||r['유형']||r['임대구분']||r['매물구분']||r['계약구분']||'매매';
-    var normType = (function(){
-      var t = String(rawType).trim();
+    var nm=r['단지명']||r['건물명']||r['상가명']||r['아파트명']||r['매물명']||'-';
+    var rawType=r['거래구분']||r['거래유형']||r['유형']||r['임대구분']||r['매물구분']||r['계약구분']||'매매';
+    var normType=(function(){
+      var t=String(rawType).trim();
       if(t==='매매') return '매매';
       if(t.indexOf('월세')>=0||t.indexOf('임대')>=0||t.indexOf('임차')>=0) return '월세';
       if(t.indexOf('전세')>=0) return '전세';
       return t;
     })();
-
-    // 면적: 타입(전용) / 전용(㎡) / 전용㎡ / 면적 / 전용면적 / 공급면적 순으로 탐색
-    var rawSqm = r['타입(전용)']||r['전용(㎡)']||r['전용㎡']||r['전용면적(㎡)']||r['전용면적']||r['면적(㎡)']||r['면적']||r['공급면적(㎡)']||r['공급면적']||'0';
-
-    // 가격: 상가는 보증금/월세 분리 컬럼이 많음
-    var rawDeposit = r['보증금(만원)']||r['보증금']||r['보증금액']||'';
-    var rawMonthly = r['월세(만원)']||r['월세']||r['월세금']||r['월세금액']||'';
-    var rawSalePrice = r['매매가(만원)']||r['매매가']||r['매매금액']||r['매도가']||r['분양가']||'';
-    // 통합 가격 컬럼
-    var rawPriceCombined = r['가격']||r['의뢰가']||r['호가']||r['매매가']||'';
-
-    // 최종 호가 결정
-    var hoGa = 0;
-    var wolse = 0;
+    var rawSqm=r['타입(전용)']||r['전용(㎡)']||r['전용㎡']||r['전용면적(㎡)']||r['전용면적']||r['면적(㎡)']||r['면적']||r['공급면적(㎡)']||r['공급면적']||'0';
+    // 가격: 상가는 보증금/월세 분리 컬럼이 일반적
+    var rawDeposit=r['보증금(만원)']||r['보증금']||r['보증금액']||'';
+    var rawMonthly=r['월세(만원)']||r['월세']||r['월세금']||r['월세금액']||'';
+    var rawSalePrice=r['매매가(만원)']||r['매매가']||r['매매금액']||r['매도가']||r['분양가']||r['분양가(만원)']||'';
+    var rawPriceCombined=r['가격']||r['의뢰가']||r['호가']||'';
+    var hoGa=0, wolse=0;
     if(normType==='매매'){
-      var pv = rawSalePrice||rawPriceCombined||rawDeposit;
-      hoGa = parseNaverPrice(String(pv||0));
+      hoGa=parseNaverPrice(String(rawSalePrice||rawPriceCombined||rawDeposit||0));
     } else {
-      // 월세/임대: 보증금을 호가로
-      hoGa = parseNaverPrice(String(rawDeposit||rawPriceCombined||0));
-      // 월세금 파싱
+      hoGa=parseNaverPrice(String(rawDeposit||rawPriceCombined||0));
       if(rawMonthly){
-        wolse = parseInt(String(rawMonthly).replace(/[^0-9]/g,''))||0;
-      } else if(rawPriceCombined && String(rawPriceCombined).indexOf('/')>-1){
-        // "5000/80" 형태 통합 컬럼
-        var parts = String(rawPriceCombined).split('/');
-        hoGa = parseNaverPrice(parts[0]);
-        wolse = parseInt(parts[1].replace(/[^0-9]/g,''))||0;
+        wolse=parseInt(String(rawMonthly).replace(/[^0-9]/g,''))||0;
+      } else if(rawPriceCombined&&String(rawPriceCombined).indexOf('/')>-1){
+        var parts=String(rawPriceCombined).split('/');
+        hoGa=parseNaverPrice(parts[0]);
+        wolse=parseInt(parts[1].replace(/[^0-9]/g,''))||0;
       }
     }
-
-    var rawFloor = r['층/총층']||r['층']||r['소재지(층)']||'-';
-    var rawDate  = r['확인 날짜']||r['확인날짜']||r['입력일']||r['등록일']||r['등록날짜']||'-';
-    var rawAgent = r['중개업소명']||r['중개사']||r['중개업소']||'-';
-
-    // 중복업소명 동적 탐색
-    var dupNm='';
-    var ks=Object.keys(r);
-    for(var ki=0;ki<ks.length;ki++){
-      if(ks[ki].indexOf('중복')>=0&&ks[ki].indexOf('업소명')>=0&&r[ks[ki]]){
-        dupNm=String(r[ks[ki]]); break;
+    var rawFloor=r['층/총층']||r['층']||r['소재지(층)']||'-';
+    var rawDate=r['확인 날짜']||r['확인날짜']||r['입력일']||r['등록일']||r['등록날짜']||'-';
+    var rawAgent=r['중개업소명']||r['중개사']||r['중개업소']||'-';
+    var dupNm=r['__dupNm__']||'';
+    if(!dupNm){
+      var ks=Object.keys(r);
+      for(var ki=0;ki<ks.length;ki++){
+        if(ks[ki].indexOf('중복')>=0&&ks[ki].indexOf('업소명')>=0&&r[ks[ki]]){dupNm=String(r[ks[ki]]);break;}
       }
     }
-
     return {
-      단지명: nm,
-      거래유형: normType,
-      타입: '-',
-      전용: parseNaverSqm(rawSqm),
-      호가: hoGa,
-      층: parseNaverFloor(rawFloor),
-      동: r['동']||r['동호']||r['호']||'-',
-      방향: r['방향']||'-',
-      입력일: rawDate,
-      중개사: rawAgent,
-      중복등록수: parseInt(r['중복 등록업소의 수']||r['중복등록수']||0)||0,
-      특이사항: r['특이사항']||r['주요정보']||r['메모']||r['비고']||'',
-      중복업소명: dupNm,
-      월세: wolse,
+      단지명:nm, 거래유형:normType, 타입:'-',
+      전용:parseNaverSqm(rawSqm), 호가:hoGa,
+      층:parseNaverFloor(rawFloor),
+      동:r['동']||r['동호']||r['호']||'-', 방향:r['방향']||'-',
+      입력일:rawDate, 중개사:rawAgent,
+      중복등록수:parseInt(r['중복 등록업소의 수']||r['중복등록수']||0)||0,
+      특이사항:r['특이사항']||r['주요정보']||r['메모']||r['비고']||'',
+      중복업소명:dupNm, 월세:wolse,
     };
   });
 }
