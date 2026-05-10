@@ -1637,9 +1637,13 @@ tr.naver-fav>td:first-child{border-left:3px solid #ffd700;}
     </div>
   </div>
 
-  <!-- 필터: 거래구분 (매매/월세만) -->
+  <!-- 필터 1행: 매물구분 + 거래구분 + 면적 -->
   <div class="filter-row">
-    <span class="filter-label">거래구분</span>
+    <span class="filter-label">매물구분</span>
+    <button class="filter-btn on" onclick="sanggaSet('cat','all',this)">전체</button>
+    <button class="filter-btn" onclick="sanggaSet('cat','상가',this)">상가</button>
+    <button class="filter-btn" onclick="sanggaSet('cat','사무실',this)">사무실</button>
+    <span class="filter-label" style="margin-left:12px">거래구분</span>
     <button class="filter-btn on" onclick="sanggaSet('type','all',this)">전체</button>
     <button class="filter-btn" onclick="sanggaSet('type','매매',this)">매매</button>
     <button class="filter-btn" onclick="sanggaSet('type','월세',this)">월세(임대차)</button>
@@ -1650,16 +1654,34 @@ tr.naver-fav>td:first-child{border-left:3px solid #ffd700;}
     <button class="filter-btn" onclick="sanggaSet('area','30',this)">30평대이상</button>
   </div>
 
-  <!-- 필터: 건물검색 + 관심매물 -->
-  <div class="filter-row" style="margin-top:4px;align-items:center;gap:8px;flex-wrap:wrap">
+  <!-- 필터 2행: 공구 -->
+  <div class="filter-row" style="margin-top:4px;flex-wrap:wrap">
+    <span class="filter-label">공구</span>
+    <button class="filter-btn on" onclick="sanggaSet('dist','all',this)">전체</button>
+    <button class="filter-btn" onclick="sanggaSet('dist','1',this)">1공구</button>
+    <button class="filter-btn" onclick="sanggaSet('dist','2',this)">2공구</button>
+    <button class="filter-btn" onclick="sanggaSet('dist','3',this)">3공구</button>
+    <button class="filter-btn" onclick="sanggaSet('dist','4',this)">4공구</button>
+    <button class="filter-btn" onclick="sanggaSet('dist','5',this)">5공구</button>
+    <button class="filter-btn" onclick="sanggaSet('dist','6',this)">6공구</button>
+    <button class="filter-btn" onclick="sanggaSet('dist','7',this)">7공구</button>
+    <button class="filter-btn" onclick="sanggaSet('dist','8',this)">8공구</button>
+    <button class="filter-btn" onclick="sanggaSet('dist','11',this)">11공구</button>
+  </div>
+
+  <!-- 필터 3행: 건물명 검색 + 건물명 칩 -->
+  <div class="filter-row" style="margin-top:4px;align-items:center;gap:6px;flex-wrap:wrap">
     <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:12px;color:#ffd700;font-weight:600;padding:3px 10px;border:1px solid #ffd70066;border-radius:12px;background:#ffd70011">
       <input type="checkbox" id="sangga-fav-only" onchange="renderTab8()" style="width:14px;height:14px;accent-color:#ffd700;cursor:pointer"> ⭐ 관심매물
     </label>
     <span class="filter-label">건물검색</span>
     <input type="text" id="sangga-search-input" placeholder="건물명 입력..."
-      style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:4px 10px;color:var(--text1);font-size:12px;width:150px;outline:none"
-      oninput="renderTab8()">
+      style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:4px 10px;color:var(--text1);font-size:12px;width:140px;outline:none"
+      oninput="G_sangga.bldg='';renderTab8()">
   </div>
+
+  <!-- 건물명 칩 (공구별 그룹, renderTab8에서 동적 생성) -->
+  <div id="sangga-bldg-chips" style="display:none;padding:4px 0 6px;flex-wrap:wrap;gap:4px;align-items:flex-start"></div>
 
   <div id="sangga-content">
     <!-- KPI -->
@@ -1679,6 +1701,8 @@ tr.naver-fav>td:first-child{border-left:3px solid #ffd700;}
       <table class="data-table" id="sangga-table" style="min-width:880px">
         <thead><tr>
           <th style="width:26px;text-align:center">⭐</th>
+          <th style="text-align:center">공구</th>
+          <th style="text-align:center">매물구분</th>
           <th>건물명</th><th>거래구분</th><th class="num">면적㎡</th>
           <th>층</th><th class="num">의뢰가</th>
           <th>입력일</th><th>중개사</th>
@@ -4045,10 +4069,20 @@ function renderTab7(){
 }
 
 // ── 상가/사무실 필터 상태
-var G_sangga = { type:'all', area:'all' };
+var G_sangga = { cat:'all', type:'all', area:'all', dist:'all', bldg:'' };
 function sanggaSet(key,val,btn){
   G_sangga[key]=val;
-  setFilterBtn(btn.parentElement.querySelectorAll('.filter-btn'),btn);
+  // 공구 바뀌면 건물 선택 초기화
+  if(key==='dist') G_sangga.bldg='';
+  if(btn){
+    var grp=btn.parentElement.querySelectorAll('.filter-btn[onclick*="sanggaSet(\''+key+'\'"]');
+    if(!grp.length) grp=btn.parentElement.querySelectorAll('.filter-btn');
+    setFilterBtn(grp, btn);
+  }
+  renderTab8();
+}
+function sanggaBldgChip(nm){
+  G_sangga.bldg = G_sangga.bldg===nm ? '' : nm;
   renderTab8();
 }
 
@@ -4061,6 +4095,18 @@ function onUploadNaverSangga(input){
   var remaining=files.length;
 
   files.forEach(function(file, fileIdx){
+    // ── 파일명에서 매물구분/공구 추출
+    // 예: '상가_5공구_스마트스퀘어_...' → cat='상가', dist='5'
+    var fname=file.name.replace(/\.xlsx?$/i,'');
+    var parts=fname.split('_');
+    var fileCat='';   // 상가 / 사무실
+    var fileDist='';  // 1~11
+    parts.forEach(function(p){
+      if(p==='상가'||p==='사무실') fileCat=p;
+      var dm=p.match(/^(\d+)공구$/);
+      if(dm) fileDist=dm[1];
+    });
+
     var reader=new FileReader();
     reader.onload=function(e){
       try{
@@ -4096,6 +4142,11 @@ function onUploadNaverSangga(input){
             r['__dupNm__']=rawVal?String(rawVal):'';
           });
         }
+        // 파일 메타 정보 삽입
+        rows.forEach(function(r){
+          r['__fileCat__']=fileCat;
+          r['__fileDist__']=fileDist;
+        });
         resultBuckets[fileIdx]=rows;
       }catch(err){
         console.warn('상가 파일 파싱 오류:', file.name, err);
@@ -4104,7 +4155,7 @@ function onUploadNaverSangga(input){
       remaining--;
       if(remaining===0){
         var allRows=[];
-        resultBuckets.forEach(function(rows){if(rows)allRows=allRows.concat(rows);});
+        resultBuckets.forEach(function(bucket){if(bucket)allRows=allRows.concat(bucket);});
 
         var newParsed=parseNaverSanggaRows(allRows);
         if(!newParsed.length) newParsed=parseNaverRows(allRows); // 폴백
@@ -4199,6 +4250,8 @@ function parseNaverSanggaRows(allRows){
     var isSdj=!!(r['자사 매물 여부']||r['자사매물']||'');
     return {
       단지명:nm, 거래유형:normType, 타입:'-',
+      매물구분: r['__fileCat__']||'',
+      공구: r['__fileDist__']||'',
       전용:parseNaverSqm(rawSqm), 호가:hoGa,
       층:parseNaverFloor(rawFloor),
       동:r['동']||r['동호']||r['호']||'-',
@@ -4218,6 +4271,7 @@ function renderTab8(){
   if(!G.naverSanggaData||!G.naverSanggaData.length){
     document.getElementById('sangga-empty').style.display='block';
     document.getElementById('sangga-content').style.display='none';
+    document.getElementById('sangga-bldg-chips').style.display='none';
     return;
   }
   document.getElementById('sangga-empty').style.display='none';
@@ -4225,10 +4279,14 @@ function renderTab8(){
 
   var favOnly=(document.getElementById('sangga-fav-only')||{}).checked||false;
   var search=(document.getElementById('sangga-search-input')||{}).value||'';
+
+  // ── 필터 적용
   var rows=G.naverSanggaData.filter(function(r){
-    var type=r.거래유형;
-    if(G_sangga.type==='월세'&&type!=='월세') return false;
-    if(G_sangga.type==='매매'&&type!=='매매') return false;
+    if(G_sangga.cat&&G_sangga.cat!=='all'&&(r.매물구분||'')!==G_sangga.cat) return false;
+    if(G_sangga.dist&&G_sangga.dist!=='all'&&(r.공구||'')!==G_sangga.dist) return false;
+    if(G_sangga.bldg&&r.단지명!==G_sangga.bldg) return false;
+    if(G_sangga.type==='월세'&&r.거래유형!=='월세') return false;
+    if(G_sangga.type==='매매'&&r.거래유형!=='매매') return false;
     var sqm=parseFloat(r.전용)||0;
     var ac=Math.floor(sqm/3.3/10)*10;
     if(G_sangga.area==='10'&&ac>10) return false;
@@ -4239,7 +4297,50 @@ function renderTab8(){
     return true;
   });
 
-  // KPI
+  // ── 건물명 칩 생성 (현재 공구/매물구분 필터 기준으로)
+  var baseRows=G.naverSanggaData.filter(function(r){
+    if(G_sangga.cat&&G_sangga.cat!=='all'&&(r.매물구분||'')!==G_sangga.cat) return false;
+    if(G_sangga.dist&&G_sangga.dist!=='all'&&(r.공구||'')!==G_sangga.dist) return false;
+    return true;
+  });
+  // 공구별 건물 목록
+  var distBldgMap={};  // dist → [bldg, ...]
+  var DIST_ORDER=['1','2','3','4','5','6','7','8','11',''];
+  baseRows.forEach(function(r){
+    var d=r.공구||'';
+    var nm=r.단지명||'';
+    if(!nm) return;
+    if(!distBldgMap[d]) distBldgMap[d]=[];
+    if(distBldgMap[d].indexOf(nm)<0) distBldgMap[d].push(nm);
+  });
+  var hasBldgs=Object.keys(distBldgMap).some(function(d){return distBldgMap[d].length>0;});
+  var chipsEl=document.getElementById('sangga-bldg-chips');
+  if(hasBldgs){
+    var chipHtml='';
+    // 전체 초기화 버튼
+    chipHtml+='<span onclick="sanggaBldgChip(\'\')" style="cursor:pointer;padding:2px 9px;border-radius:12px;font-size:11px;font-weight:600;white-space:nowrap;'
+      +(G_sangga.bldg===''?'background:var(--accent);color:#fff':'background:var(--bg3);color:var(--text2);border:1px solid var(--border)')+'">전체</span>';
+    DIST_ORDER.forEach(function(d){
+      var bldgs=distBldgMap[d]||[];
+      if(!bldgs.length) return;
+      var distLbl=d?d+'공구':'기타';
+      var DIST_COLORS_MAP={'1':'#4fc3f7','2':'#81c784','3':'#ffb74d','4':'#f06292','5':'#ce93d8','6':'#4dd0e1','7':'#fff176','8':'#ff8a65','11':'#a5d6a7'};
+      var dc=DIST_COLORS_MAP[d]||'#8899bb';
+      // 공구 레이블
+      chipHtml+='<span style="font-size:10px;color:'+dc+';font-weight:700;padding:2px 6px;margin-left:4px">'+distLbl+'</span>';
+      bldgs.sort().forEach(function(nm){
+        var sel=G_sangga.bldg===nm;
+        chipHtml+='<span onclick="sanggaBldgChip(\''+nm.replace(/'/g,"\\'")+'\')" style="cursor:pointer;padding:2px 9px;border-radius:12px;font-size:11px;white-space:nowrap;'
+          +(sel?'background:'+dc+'33;color:'+dc+';border:1px solid '+dc:'background:var(--bg3);color:var(--text2);border:1px solid var(--border)')+'">'+nm+'</span>';
+      });
+    });
+    chipsEl.innerHTML=chipHtml;
+    chipsEl.style.display='flex';
+  } else {
+    chipsEl.style.display='none';
+  }
+
+  // ── KPI
   var sale=rows.filter(function(r){return r.거래유형==='매매'&&r.호가>0;});
   var wolse=rows.filter(function(r){return r.거래유형==='월세';});
   var avgSale=sale.length?Math.round(sale.reduce(function(a,b){return a+b.호가;},0)/sale.length):0;
@@ -4251,6 +4352,9 @@ function renderTab8(){
   $set('sangga-avg-rent', avgRentVal?avgRentVal+'만원/월':'-');
   $set('sangga-cnt', rows.length+'건');
 
+  // ── 공구 색상맵
+  var DC={'1':'#4fc3f7','2':'#81c784','3':'#ffb74d','4':'#f06292','5':'#ce93d8','6':'#4dd0e1','7':'#fff176','8':'#ff8a65','11':'#a5d6a7'};
+
   var html='';
   rows.forEach(function(r){
     var ridx=G.naverSanggaData.indexOf(r);
@@ -4260,11 +4364,15 @@ function renderTab8(){
     var agentHtml=sdj?'<span class="sdj-badge">★송도제일</span>':(r.중개사||'-');
     var dupColor=r.중복등록수>5?'var(--red)':r.중복등록수>2?'var(--yellow)':'var(--text3)';
     var typeCls=r.거래유형==='매매'?'badge-gold':'badge-pre';
-    var priceDisp=r.거래유형==='월세'&&r.월세>0
-      ?(fmt천(r.호가)+'/'+r.월세+'만')
-      :fmt천(r.호가);
+    var priceDisp=r.거래유형==='월세'&&r.월세>0?(fmt천(r.호가)+'/'+r.월세+'만'):fmt천(r.호가);
+    var distNum=r.공구||'';
+    var dc=DC[distNum]||'#8899bb';
+    var distBadge=distNum?'<span style="background:'+dc+'22;color:'+dc+';border-radius:8px;padding:1px 6px;font-size:10px;font-weight:700">'+distNum+'공구</span>':'-';
+    var catBadge=r.매물구분?'<span class="badge" style="font-size:10px;padding:1px 7px;background:var(--bg3)">'+r.매물구분+'</span>':'-';
     html+='<tr class="'+trCls+'" style="cursor:pointer" onclick="_nd2('+ridx+',\'sangga\')">'
       +'<td style="text-align:center"><span class="fav-star '+(fav?'on':'off')+'" onclick="event.stopPropagation();_nf2('+ridx+',\'sangga\');">'+(fav?'★':'☆')+'</span></td>'
+      +'<td style="text-align:center">'+distBadge+'</td>'
+      +'<td style="text-align:center">'+catBadge+'</td>'
       +'<td style="font-weight:600">'+r.단지명+'</td>'
       +'<td><span class="badge '+typeCls+'">'+r.거래유형+'</span></td>'
       +'<td class="num">'+(parseFloat(r.전용)||0).toFixed(1)+'㎡</td>'
@@ -4277,7 +4385,7 @@ function renderTab8(){
       +'<td style="font-size:10px;color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+(r.중복업소명||'')+'">'+(r.중복업소명||'-')+'</td>'
       +'</tr>';
   });
-  document.getElementById('sangga-tbody').innerHTML=html||'<tr><td colspan="11" style="text-align:center;padding:20px;color:var(--text3)">해당 매물 없음</td></tr>';
+  document.getElementById('sangga-tbody').innerHTML=html||'<tr><td colspan="13" style="text-align:center;padding:20px;color:var(--text3)">해당 매물 없음</td></tr>';
   setTimeout(function(){
     var t=document.getElementById('sangga-table'); if(t) initColResize(t);
     var top=document.getElementById('sangga-scroll-top');
