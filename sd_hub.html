@@ -873,22 +873,6 @@ document.addEventListener('keydown',function(e){
   if(e.key==='Backspace')pinKey('del');
 });
 
-function checkPinSession(){
-  try{
-    var saved=sessionStorage.getItem(PIN_SESSION_KEY);
-    if(saved){
-      var data=JSON.parse(saved);
-      var elapsed=(Date.now()-data.ts)/60000;
-      if(elapsed<PIN_SESSION_MIN)return true;
-    }
-  }catch(e){}
-  return false;
-}
-
-function savePinSession(){
-  try{sessionStorage.setItem(PIN_SESSION_KEY,JSON.stringify({ts:Date.now()}));}catch(e){}
-}
-
 function showPinScreen(){
   document.getElementById('pin-screen').style.display='flex';
 }
@@ -1298,23 +1282,25 @@ function openSystem(key){
   style.textContent='@keyframes shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-8px)}40%{transform:translateX(8px)}60%{transform:translateX(-6px)}80%{transform:translateX(6px)}}';
   document.head.appendChild(style);
 
-  // PIN 세션 병행 체크 (안정화 기간용)
-  if(checkPinSession()){
-    hidePinScreen();
-    _hideAllScreens();
-    loadAll();
-    return;
-  }
+  // 기존 PIN 세션 초기화 (Google Auth로 전환)
+  try{ sessionStorage.removeItem('sd_pin_auth'); }catch(e){}
 
   // firebase-storage.js가 Firebase를 초기화할 때까지 대기
   var waitFb=setInterval(function(){
     if(window.firebase&&window.firebase.auth){
       clearInterval(waitFb);
-      // 로그인 화면 표시 후 Auth 관찰자 시작
       _showScreen('login-screen');
       initAuth();
     }
   },100);
+
+  // 5초 후에도 Firebase 미초기화 → PIN 폴백
+  setTimeout(function(){
+    if(!window.firebase||!window.firebase.auth){
+      console.warn('Firebase Auth 로드 실패 → PIN 폴백');
+      _showScreen('pin-screen');
+    }
+  },5000);
 })();
 </script>
 </body>
