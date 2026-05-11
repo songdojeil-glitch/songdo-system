@@ -4743,16 +4743,20 @@ document.addEventListener('DOMContentLoaded',function(){
   var SD_SCREEN="sd_sangga";
   var ROLE_LBL={master:"마스터",prime:"프라임",premium:"프리미엄",general:"제너럴"};
   var ROLE_COL={master:"#ffd700",prime:"#4f8ef7",premium:"#00e5a0",general:"#8b95b0"};
-  var PERM_SEL={firebase_save:['[onclick*=\'saveBldgPhotos\']','[onclick*=\'saveSaleAcct\']','[onclick*=\'saveEstimateImage\']'],upload:['[id*=\'bldg-photo\']'],"delete":[],ai_tools:['[onclick*=\'callGemini\']','[onclick*=\'callClaude\']'],download:['[onclick*=\'exportEstimate\']']};
+  var PERM_SEL={
+    firebase_save:['[onclick*=\'saveBldgPhotos\']','[onclick*=\'saveSaleAcct\']','[onclick*=\'saveEstimateImage\']'],
+    upload:['[id*=\'bldg-photo\']'],
+    "delete":[],
+    ai_tools:['[onclick*=\'callGemini\']','[onclick*=\'callClaude\']'],
+    download:['[onclick*=\'exportEstimate\']']
+  };
   var WRAP_FNS={};
 
-  /* 로딩 오버레이 제거 */
   function hideCover(){
     var c=document.getElementById("_sda_cover");
-    if(c){c.style.opacity="0";c.style.transition="opacity .2s";setTimeout(function(){c.remove();},200);}
+    if(c){c.style.transition="opacity .2s";c.style.opacity="0";
+      setTimeout(function(){if(c.parentNode)c.parentNode.removeChild(c);},200);}
   }
-
-  /* 토스트 */
   function toast(msg){
     var t=document.getElementById("_sda_t");
     if(!t){t=document.createElement("div");t.id="_sda_t";
@@ -4761,23 +4765,19 @@ document.addEventListener('DOMContentLoaded',function(){
     t.textContent=msg;t.style.display="block";clearTimeout(t._t);
     t._t=setTimeout(function(){t.style.display="none";},2500);
   }
-
-  /* 사용자 바 */
   function injectBar(p,user){
     if(document.getElementById("_sda_b"))return;
     var bar=document.createElement("div");bar.id="_sda_b";
     bar.style.cssText="position:fixed;top:0;right:0;z-index:9800;display:flex;align-items:center;gap:8px;padding:4px 12px;background:rgba(10,13,20,.93);border-bottom-left-radius:10px;border:1px solid rgba(255,255,255,.08)";
     var rc=ROLE_COL[p.role]||"#8b95b0";
     var nm=document.createElement("span");nm.style.cssText="font-size:11px;color:#8b95b0";nm.textContent=(p.name||user.email);
-    var badge=document.createElement("span");badge.style.cssText="font-size:10px;font-weight:700;padding:1px 7px;border-radius:8px;background:"+rc+"22;color:"+rc+";border:1px solid "+rc+"44";badge.textContent=(ROLE_LBL[p.role]||p.role);
+    var bd=document.createElement("span");bd.style.cssText="font-size:10px;font-weight:700;padding:1px 7px;border-radius:8px;background:"+rc+"22;color:"+rc+";border:1px solid "+rc+"44";bd.textContent=(ROLE_LBL[p.role]||p.role);
     var hub=document.createElement("a");hub.href="sd_hub.html";hub.textContent="허브";hub.style.cssText="color:#4f8ef7;font-size:11px;text-decoration:none;padding:2px 4px";
     var out=document.createElement("button");out.textContent="로그아웃";out.style.cssText="background:transparent;border:none;color:#556688;font-size:11px;cursor:pointer;padding:2px 4px";
     out.onclick=function(){firebase.auth().signOut().then(function(){window.location.href="sd_hub.html";});};
-    bar.appendChild(nm);bar.appendChild(badge);bar.appendChild(hub);bar.appendChild(out);
+    bar.appendChild(nm);bar.appendChild(bd);bar.appendChild(hub);bar.appendChild(out);
     document.body.appendChild(bar);
   }
-
-  /* 권한 적용 */
   function applyPerms(perms){
     Object.keys(PERM_SEL).forEach(function(perm){
       if(perms[perm]===false){
@@ -4790,8 +4790,6 @@ document.addEventListener('DOMContentLoaded',function(){
       }
     });
   }
-
-  /* 함수 래핑 */
   function wrapFns(perms){
     Object.keys(WRAP_FNS).forEach(function(perm){
       WRAP_FNS[perm].forEach(function(fn){
@@ -4803,20 +4801,18 @@ document.addEventListener('DOMContentLoaded',function(){
     });
   }
 
-  /* Firebase Auth 대기 → 인증 */
   var _w=0,_iv=setInterval(function(){
-    _w+=100;if(_w>10000){clearInterval(_iv);window.location.href="sd_hub.html";return;}
+    _w+=100;
+    if(_w>12000){clearInterval(_iv);hideCover();window.location.href="sd_hub.html";return;}
     if(!window.firebase||!window.firebase.auth)return;
+    if(!firebase.apps||!firebase.apps.length)return;
     clearInterval(_iv);
+
     firebase.auth().onAuthStateChanged(function(user){
       if(!user){
-        /* Auth 초기화 직후 null이 올 수 있으므로 200ms 대기 후 재확인 */
         setTimeout(function(){
-          if(!firebase.auth().currentUser){
-            hideCover();
-            window.location.href="sd_hub.html";
-          }
-        },200);
+          if(!firebase.auth().currentUser){hideCover();window.location.href="sd_hub.html";}
+        },3000);
         return;
       }
       firebase.database().ref("sd_users/"+user.uid).once("value").then(function(snap){
@@ -4825,8 +4821,7 @@ document.addEventListener('DOMContentLoaded',function(){
         var scr=((p.permissions||{}).screens)||{};
         if(scr["sd_sangga"]===false){hideCover();alert("접근 권한이 없습니다.");window.location.href="sd_hub.html";return;}
         window._authUser=user;window._authProfile=p;window._authPerms=p.permissions||{};
-        hideCover();
-        injectBar(p,user);
+        hideCover();injectBar(p,user);
         var perms=p.permissions||{};
         var go=function(){applyPerms(perms);wrapFns(perms);};
         if(document.readyState==="loading"){document.addEventListener("DOMContentLoaded",go);}
@@ -4841,15 +4836,22 @@ document.addEventListener('DOMContentLoaded',function(){
 /* SD Auth: sd_sangga */
 (function(){
   var SD_SCREEN="sd_sangga";
-  var FB_CFG={apiKey:"AIzaSyCMYoUBhRv_NkKeHmPqgXoqqXUjVsjEJPs",authDomain:"songdojeil-202604.firebaseapp.com",databaseURL:"https://songdojeil-202604-default-rtdb.asia-southeast1.firebasedatabase.app",projectId:"songdojeil-202604",storageBucket:"songdojeil-202604.firebasestorage.app",messagingSenderId:"567683904975",appId:"1:567683904975:web:65a652a8e7b9a81e034eba"};
+  var SESSION_MS=28800000;
   var ROLE_LBL={master:"마스터",prime:"프라임",premium:"프리미엄",general:"제너럴"};
   var ROLE_COL={master:"#ffd700",prime:"#4f8ef7",premium:"#00e5a0",general:"#8b95b0"};
-  var PERM_SEL={firebase_save:['[onclick*=\'saveBldgPhotos\']','[onclick*=\'saveSaleAcct\']','[onclick*=\'saveEstimateImage\']'],upload:['[id*=\'bldg-photo\']'],"delete":[],ai_tools:['[onclick*=\'callGemini\']','[onclick*=\'callClaude\']'],download:['[onclick*=\'exportEstimate\']']};
+  var PERM_SEL={
+    firebase_save:['[onclick*=\'saveBldgPhotos\']','[onclick*=\'saveSaleAcct\']','[onclick*=\'saveEstimateImage\']'],
+    upload:['[id*=\'bldg-photo\']'],
+    "delete":[],
+    ai_tools:['[onclick*=\'callGemini\']','[onclick*=\'callClaude\']'],
+    download:['[onclick*=\'exportEstimate\']']
+  };
   var WRAP_FNS={};
 
   function hideCover(){
     var c=document.getElementById("_sda_cover");
-    if(c){c.style.transition="opacity .2s";c.style.opacity="0";setTimeout(function(){if(c.parentNode)c.parentNode.removeChild(c);},200);}
+    if(c){c.style.transition="opacity .2s";c.style.opacity="0";
+      setTimeout(function(){if(c.parentNode)c.parentNode.removeChild(c);},200);}
   }
   function toast(msg){
     var t=document.getElementById("_sda_t");
@@ -4859,17 +4861,22 @@ document.addEventListener('DOMContentLoaded',function(){
     t.textContent=msg;t.style.display="block";clearTimeout(t._t);
     t._t=setTimeout(function(){t.style.display="none";},2500);
   }
-  function injectBar(p,user,authInst){
+  function injectBar(p){
     if(document.getElementById("_sda_b"))return;
     var bar=document.createElement("div");bar.id="_sda_b";
     bar.style.cssText="position:fixed;top:0;right:0;z-index:9800;display:flex;align-items:center;gap:8px;padding:4px 12px;background:rgba(10,13,20,.93);border-bottom-left-radius:10px;border:1px solid rgba(255,255,255,.08)";
     var rc=ROLE_COL[p.role]||"#8b95b0";
-    var nm=document.createElement("span");nm.style.cssText="font-size:11px;color:#8b95b0";nm.textContent=(p.name||user.email);
-    var badge=document.createElement("span");badge.style.cssText="font-size:10px;font-weight:700;padding:1px 7px;border-radius:8px;background:"+rc+"22;color:"+rc+";border:1px solid "+rc+"44";badge.textContent=(ROLE_LBL[p.role]||p.role);
+    var nm=document.createElement("span");nm.style.cssText="font-size:11px;color:#8b95b0";nm.textContent=(p.name||p.email||"");
+    var bd=document.createElement("span");bd.style.cssText="font-size:10px;font-weight:700;padding:1px 7px;border-radius:8px;background:"+rc+"22;color:"+rc+";border:1px solid "+rc+"44";bd.textContent=(ROLE_LBL[p.role]||p.role);
     var hub=document.createElement("a");hub.href="sd_hub.html";hub.textContent="허브";hub.style.cssText="color:#4f8ef7;font-size:11px;text-decoration:none;padding:2px 4px";
     var out=document.createElement("button");out.textContent="로그아웃";out.style.cssText="background:transparent;border:none;color:#556688;font-size:11px;cursor:pointer;padding:2px 4px";
-    out.onclick=function(){authInst.signOut().then(function(){window.location.href="sd_hub.html";});};
-    bar.appendChild(nm);bar.appendChild(badge);bar.appendChild(hub);bar.appendChild(out);
+    out.onclick=function(){
+      try{localStorage.removeItem("sd_auth_session");}catch(e){}
+      if(window.firebase&&window.firebase.auth&&firebase.apps&&firebase.apps.length)
+        {firebase.auth().signOut().catch(function(){});}
+      window.location.href="sd_hub.html";
+    };
+    bar.appendChild(nm);bar.appendChild(bd);bar.appendChild(hub);bar.appendChild(out);
     document.body.appendChild(bar);
   }
   function applyPerms(perms){
@@ -4895,49 +4902,40 @@ document.addEventListener('DOMContentLoaded',function(){
     });
   }
 
-  /* ── 핵심: auth 전용 named app 사용 (기존 Firebase 초기화와 독립) */
-  function getAuthApp(){
-    try{ return firebase.app("_sdauth"); }catch(e){}
-    return firebase.initializeApp(FB_CFG,"_sdauth");
+  function enterPage(p){
+    window._authProfile=p;window._authPerms=p.permissions||{};
+    hideCover();injectBar(p);
+    var perms=p.permissions||{};
+    var go=function(){applyPerms(perms);wrapFns(perms);};
+    if(document.readyState==="loading"){document.addEventListener("DOMContentLoaded",go);}
+    else{setTimeout(go,300);}
   }
 
-  /* ── Firebase SDK 로드 대기 → 인증 */
-  var _w=0,_iv=setInterval(function(){
-    _w+=100;if(_w>12000){clearInterval(_iv);hideCover();window.location.href="sd_hub.html";return;}
-    if(!window.firebase||!window.firebase.auth)return;
-    clearInterval(_iv);
-
-    var authApp=getAuthApp();
-    var authInst=authApp.auth();
-    var dbInst=authApp.database();
-
-    authInst.onAuthStateChanged(function(user){
-      if(!user){
-        /* 세션 복원 대기 — IndexedDB 읽기 완료까지 최대 3초 */
-        setTimeout(function(){
-          if(!authInst.currentUser){
-            hideCover();
-            window.location.href="sd_hub.html";
-          }
-          /* currentUser가 생겼으면 onAuthStateChanged가 다시 호출됨 → 그쪽에서 처리 */
-        },3000);
-        return;
+  /* ★ 1순위: localStorage 세션 즉시 확인 (비동기 없음) */
+  var _session=null;
+  try{
+    var _s=localStorage.getItem("sd_auth_session");
+    if(_s){
+      var _d=JSON.parse(_s);
+      if(_d&&_d.ts&&(Date.now()-_d.ts)<SESSION_MS&&_d.role){
+        _session=_d;
       }
-      dbInst.ref("sd_users/"+user.uid).once("value").then(function(snap){
-        var p=snap.val();
-        if(!p||!p.approved){hideCover();window.location.href="sd_hub.html";return;}
-        var scr=((p.permissions||{}).screens)||{};
-        if(scr["sd_sangga"]===false){hideCover();alert("접근 권한이 없습니다.");window.location.href="sd_hub.html";return;}
-        window._authUser=user;window._authProfile=p;window._authPerms=p.permissions||{};
-        hideCover();
-        injectBar(p,user,authInst);
-        var perms=p.permissions||{};
-        var go=function(){applyPerms(perms);wrapFns(perms);};
-        if(document.readyState==="loading"){document.addEventListener("DOMContentLoaded",go);}
-        else{setTimeout(go,300);}
-      }).catch(function(){hideCover();window.location.href="sd_hub.html";});
-    });
-  },100);
+    }
+  }catch(e){}
+
+  if(_session){
+    /* 세션 유효 → 화면 접근 권한 확인 후 즉시 진입 */
+    var _scr=((_session.permissions||{}).screens)||{};
+    if(_scr["sd_sangga"]===false){
+      hideCover();alert("접근 권한이 없습니다.");window.location.href="sd_hub.html";
+    } else {
+      enterPage(_session);
+    }
+  } else {
+    /* 세션 없음 → hub로 이동 */
+    hideCover();
+    window.location.href="sd_hub.html";
+  }
 })();
 </script>
 </body>
