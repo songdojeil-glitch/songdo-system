@@ -474,6 +474,7 @@ tr.naver-fav>td:first-child{border-left:3px solid #ffd700;}
 </style>
   <!-- ═══ Firebase SDK (compat v9) ═══ -->
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-storage-compat.js"></script>
   <!-- ═══ Firebase Storage 어댑터 (window.storage 호환 + sdImage) ═══ -->
@@ -878,7 +879,93 @@ function previewWatermark() {
             이미지 크기에 비례하여 로고 크기가 조절되며, <span class="highlight">전문적인 브랜딩 효과</span>를 제공합니다.
           </div>
         </div>
-      </body>
+      
+<script>
+/* === 공통 인증 모듈: sd_props === */
+(function(){
+  var SD_SCREEN='sd_props';
+  var ROLE_LABELS={master:'마스터',prime:'프라임',premium:'프리미엄',general:'제너럴'};
+  var ROLE_COLORS={master:'#ffd700',prime:'#4f8ef7',premium:'#00e5a0',general:'#8b95b0'};
+  var PERM_SEL={
+    firebase_save:['[onclick*=\'fbSaveData\']','[onclick*=\'fbSaveNaverOp\']'],
+    upload:['[id=\'bulk-file\']','[id=\'sync-file\']'],
+    delete:['[onclick*=\'deleteAllPhotos\']','[onclick*=\'showNaverDeleteModal\']','[onclick*=\'toggleSelectMode\'][id=\'btn-sel-mode\']'],
+    ai_tools:['[onclick*=\'genBlog\']','[onclick*=\'callClaude\']','[onclick*=\'callGemini\']'],
+    download:['[onclick*=\'exportXlsx\']','[onclick*=\'downloadXlsx\']']
+  };
+  var WRAP_FNS={'delete':['deleteAllPhotos','showNaverDeleteModal']};
+
+  function toast(msg){
+    var t=document.getElementById('_sdauth_toast');
+    if(!t){t=document.createElement('div');t.id='_sdauth_toast';
+      t.style.cssText='position:fixed;bottom:24px;right:24px;background:#e85c5c;color:#fff;padding:10px 18px;border-radius:8px;font-size:13px;font-weight:600;z-index:99999;display:none';
+      document.body.appendChild(t);}
+    t.textContent=msg;t.style.display='block';clearTimeout(t._t);
+    t._t=setTimeout(function(){t.style.display='none';},2500);
+  }
+
+  function injectBar(profile,user){
+    if(document.getElementById('_sdauth_bar'))return;
+    var bar=document.createElement('div');bar.id='_sdauth_bar';
+    var rc=ROLE_COLORS[profile.role]||'#8b95b0';
+    bar.style.cssText='position:fixed;top:0;right:0;z-index:9800;display:flex;align-items:center;gap:8px;padding:4px 12px;background:rgba(10,13,20,.93);border-bottom-left-radius:10px;border:1px solid rgba(255,255,255,.08);font-family:inherit';
+    bar.innerHTML='<span style="font-size:11px;color:#8b95b0">'+(profile.name||user.email)+'</span>'
+      +'<span style="font-size:10px;font-weight:700;padding:1px 7px;border-radius:8px;background:'+rc+'22;color:'+rc+';border:1px solid '+rc+'44">'+(ROLE_LABELS[profile.role]||profile.role)+'</span>'
+      +'<a href="sd_hub.html" style="background:transparent;border:none;color:#4f8ef7;font-size:11px;cursor:pointer;padding:2px 4px;text-decoration:none">허브</a>'
+      +'<button onclick="firebase.auth().signOut().then(function(){window.location.href=\'sd_hub.html\'})" style="background:transparent;border:none;color:#556688;font-size:11px;cursor:pointer;padding:2px 4px">로그아웃</button>';
+    document.body.appendChild(bar);
+  }
+
+  function applyPerms(perms){
+    Object.keys(PERM_SEL).forEach(function(perm){
+      if(perms[perm]===false){
+        PERM_SEL[perm].forEach(function(sel){
+          try{document.querySelectorAll(sel).forEach(function(el){
+            if(el.tagName==='INPUT'&&el.type==='file'){(el.closest('label')||el.parentElement||el).style.display='none';}
+            else{el.style.display='none';}
+          });}catch(e){}
+        });
+      }
+    });
+  }
+
+  function wrapFns(perms){
+    Object.keys(WRAP_FNS).forEach(function(perm){
+      WRAP_FNS[perm].forEach(function(fn){
+        if(typeof window[fn]==='function'){
+          var orig=window[fn];
+          window[fn]=function(){
+            if(perms[perm]===false){toast('삭제 권한이 없습니다');return;}
+            return orig.apply(this,arguments);
+          };
+        }
+      });
+    });
+  }
+
+  var _w=0,_iv=setInterval(function(){
+    _w+=100;if(_w>10000){clearInterval(_iv);window.location.href='sd_hub.html';return;}
+    if(!window.firebase||!window.firebase.auth)return;
+    clearInterval(_iv);
+    firebase.auth().onAuthStateChanged(function(user){
+      if(!user){window.location.href='sd_hub.html';return;}
+      firebase.database().ref('sd_users/'+user.uid).once('value').then(function(snap){
+        var p=snap.val();
+        if(!p||!p.approved){window.location.href='sd_hub.html';return;}
+        var scr=((p.permissions||{}).screens)||{};
+        if(scr['sd_props']===false){alert('접근 권한이 없습니다.');window.location.href='sd_hub.html';return;}
+        window._authUser=user;window._authProfile=p;window._authPerms=p.permissions||{};
+        injectBar(p,user);
+        var perms=p.permissions||{};
+        var go=function(){applyPerms(perms);wrapFns(perms);};
+        if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',go);}
+        else{setTimeout(go,300);}
+      }).catch(function(){window.location.href='sd_hub.html';});
+    });
+  },100);
+})();
+</script>
+</body>
       </html>
     `);
   });
