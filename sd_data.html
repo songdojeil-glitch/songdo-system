@@ -5812,9 +5812,65 @@ function openT2Detail(unitName){
     var volDs=pyeongs.map(function(bp,i){return {label:bp+'평',data:volByPy[bp],backgroundColor:COLORS[i%COLORS.length]+'99',borderColor:COLORS[i%COLORS.length],borderWidth:1};});
     var volLabelPlugin={id:'volLabel',afterDatasetsDraw:function(chart){var cx=chart.ctx;chart.data.datasets.forEach(function(ds,di){var meta=chart.getDatasetMeta(di);if(meta.hidden) return;meta.data.forEach(function(bar,i){var v=ds.data[i];if(!v||v<=0) return;cx.save();cx.fillStyle='#ffffff';cx.font='bold 9px sans-serif';cx.textAlign='center';cx.textBaseline='bottom';cx.fillText(v,bar.x,bar.y-2);cx.restore();});});}};
 new Chart(document.getElementById('t2-chart-vol').getContext('2d'),{type:'bar',data:{labels:labels,datasets:volDs},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:tc,font:{size:10},boxWidth:12}}},scales:{x:{ticks:{color:tc,font:{size:9}},grid:{display:false}},y:{ticks:{color:tc,font:{size:10},stepSize:1},grid:{color:gc},beginAtZero:true}}},plugins:[volLabelPlugin]});
-    var priceDs=pyeongs.map(function(bp,i){var vals=priceByPy[bp].map(function(arr){return avg2(arr);});return {label:bp+'평',data:vals,borderColor:COLORS[i%COLORS.length],backgroundColor:COLORS[i%COLORS.length]+'22',borderWidth:2,pointRadius:3,tension:0.3,spanGaps:true};});
-    var priceLabelPlugin={id:'priceLabel',afterDatasetsDraw:function(chart){var cx=chart.ctx;chart.data.datasets.forEach(function(ds,di){var meta=chart.getDatasetMeta(di);if(meta.hidden) return;var col=COLORS[di%COLORS.length];meta.data.forEach(function(pt,i){var v=ds.data[i];if(v==null) return;var align=di%2===0?-1:1;cx.save();cx.fillStyle=col;cx.font='bold 9px sans-serif';cx.textAlign='center';cx.textBaseline=di%2===0?'bottom':'top';cx.fillText(fmt만(v),pt.x,pt.y+align*12);cx.restore();});});}};
-new Chart(document.getElementById('t2-chart-price').getContext('2d'),{type:'line',data:{labels:labels,datasets:priceDs},options:{responsive:true,maintainAspectRatio:false,layout:{padding:{top:20,bottom:20}},plugins:{legend:{labels:{color:tc,font:{size:10},boxWidth:12}},tooltip:{callbacks:{label:function(ctx){return ctx.dataset.label+': '+(ctx.raw?fmt천(ctx.raw):'-');}}}},scales:{x:{ticks:{color:tc,font:{size:9}},grid:{display:false}},y:{ticks:{color:tc,font:{size:10},callback:function(v){return fmt만(v);}},grid:{color:gc}}}},plugins:[priceLabelPlugin]});
+    var priceDs=[];
+    pyeongs.forEach(function(bp,i){
+      var color=COLORS[i%COLORS.length];
+      var avgVals=priceByPy[bp].map(function(arr){return avg2(arr);});
+      var maxVals=priceByPy[bp].map(function(arr){return arr.length?Math.max.apply(null,arr):null;});
+      // 평균가 실선
+      priceDs.push({label:bp+'평 평균',data:avgVals,borderColor:color,backgroundColor:color+'22',
+        borderWidth:2,pointRadius:3,tension:0.3,spanGaps:true,_bp:bp,_type:'avg'});
+      // 최고가 점선
+      priceDs.push({label:bp+'평 최고',data:maxVals,borderColor:color,backgroundColor:'transparent',
+        borderWidth:1.2,borderDash:[4,4],pointRadius:2,pointStyle:'triangle',tension:0.3,spanGaps:true,_bp:bp,_type:'max'});
+    });
+    var priceLabelPlugin={id:'priceLabel',afterDatasetsDraw:function(chart){
+      var cx=chart.ctx;
+      chart.data.datasets.forEach(function(ds,di){
+        if(ds._type!=='avg') return; // 평균선만 레이블
+        var meta=chart.getDatasetMeta(di);if(meta.hidden) return;
+        var col=ds.borderColor;
+        meta.data.forEach(function(pt,i){
+          var v=ds.data[i];if(v==null) return;
+          var align=di%4<2?-1:1;
+          cx.save();cx.fillStyle=col;cx.font='bold 9px sans-serif';
+          cx.textAlign='center';cx.textBaseline=align<0?'bottom':'top';
+          cx.fillText(fmt만(v),pt.x,pt.y+align*12);cx.restore();
+        });
+      });
+    }};
+    new Chart(document.getElementById('t2-chart-price').getContext('2d'),{
+      type:'line',
+      data:{labels:labels,datasets:priceDs},
+      options:{
+        responsive:true,maintainAspectRatio:false,
+        layout:{padding:{top:20,bottom:20}},
+        plugins:{
+          legend:{labels:{color:tc,font:{size:10},boxWidth:12,
+            filter:function(item){return item.text.indexOf('최고')<0;} // 범례에서 최고가선 숨김
+          }},
+          tooltip:{callbacks:{
+            title:function(items){return labels[items[0].dataIndex];},
+            label:function(ctx){
+              if(ctx.dataset._type==='max') return null; // 최고가선 툴팁 숨김
+              var bp=ctx.dataset._bp;
+              var i=ctx.dataIndex;
+              var arr=priceByPy[bp][i];
+              if(!arr||!arr.length) return ctx.dataset.label+': -';
+              var mn=Math.min.apply(null,arr), mx=Math.max.apply(null,arr), av=avg2(arr);
+              if(arr.length===1) return bp+'평: '+fmt천(av)+' (1건)';
+              return bp+'평 평균 '+fmt천(av)+' | 최고 '+fmt천(mx)+' | 최저 '+fmt천(mn)+' ('+arr.length+'건)';
+            },
+            filter:function(item){return item.dataset._type!=='max';}
+          }}
+        },
+        scales:{
+          x:{ticks:{color:tc,font:{size:9}},grid:{display:false}},
+          y:{ticks:{color:tc,font:{size:10},callback:function(v){return fmt만(v);}},grid:{color:gc}}
+        }
+      },
+      plugins:[priceLabelPlugin]
+    });
   },100);
 }
 function closeT2Detail(e){
@@ -8044,8 +8100,12 @@ function renderTab2(){
   var max2=function(arr){return arr.length?Math.max.apply(null,arr):0;};
   var min2=function(arr){return arr.length?Math.min.apply(null,arr):0;};
 
-  // 정렬: 거래건수 desc
-  var units=Object.keys(byUnit).sort(function(a,b){return byUnit[b].cnt-byUnit[a].cnt;});
+  // 정렬: 공구(숫자순) → 단지명(가나다순)
+  var units=Object.keys(byUnit).sort(function(a,b){
+    var ga=byUnit[a].g, gb=byUnit[b].g;
+    if(ga!==gb) return ga-gb;
+    return a.localeCompare(b,'ko');
+  });
 
   // 제목/서브
   var trdLabel=trade==='sale'?'매매':trade==='jeonse'?'전세':'월세';
