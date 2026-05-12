@@ -1550,7 +1550,7 @@ tr.naver-fav>td:first-child{border-left:3px solid #ffd700;}
       </div>
       <div class="table-scroll-hint">← 좌우로 스크롤하여 전체 내용 확인 →</div>
       <div class="table-scroll">
-        <table class="data-table" id="t6-naver-table" translate="no" style="table-layout:fixed;width:100%;min-width:1600px">
+        <table class="data-table" id="t6-naver-table" style="table-layout:fixed;width:100%;min-width:1600px">
           <colgroup id="t6-colgroup"></colgroup>
           <thead><tr id="t6-thead-tr"></tr></thead>
           <tbody id="t6-tbody"></tbody>
@@ -5640,12 +5640,30 @@ function buildRentStats(){
 
 // ══ 렌더링
 function renderAll(){
-  renderTab0();
-  renderTab1();
-  renderTab2();
-  renderTab3();
-  renderTab4();
-  renderTab5();
+  // ★ 현재 활성 탭만 즉시 렌더, 나머지는 분산 처리 (UI 블로킹 방지)
+  var activeTc = null;
+  ['tc0','tc1','tc2','tc3','tc4','tc5'].forEach(function(id){
+    var el = document.getElementById(id);
+    if(el && el.classList.contains('on')) activeTc = id;
+  });
+
+  // 탭→렌더함수 매핑
+  var tabFns = {tc0:renderTab0, tc1:renderTab1, tc2:renderTab2,
+                tc3:renderTab3, tc4:renderTab4, tc5:renderTab5};
+
+  // 현재 탭 즉시 렌더
+  var activeId = activeTc || 'tc0';
+  if(tabFns[activeId]) tabFns[activeId]();
+
+  // 나머지는 순차 지연 렌더 (50ms 간격으로 분산)
+  var delay = 50;
+  Object.keys(tabFns).forEach(function(id){
+    if(id === activeId) return;
+    (function(fn, d){
+      setTimeout(fn, d);
+    })(tabFns[id], delay);
+    delay += 50;
+  });
 }
 
 // ══ 촬영모드 & 확대(Lightbox)
@@ -9680,12 +9698,6 @@ function setNaverSaleType(v,btn){ G.naverSaleType=v; setFilterBtn(btn.parentElem
 function setNaverArea(v,btn){ G.naverArea=v; setFilterBtn(btn.parentElement.querySelectorAll('.filter-btn'),btn); renderTab6(); }
 
 // ── TAB6 렌더
-// ── 디바운스 렌더 (입력 중 과도한 재렌더 방지)
-var _debT6=null, _debT7=null, _debT8=null;
-function debRenderTab6(){clearTimeout(_debT6);_debT6=setTimeout(renderTab6,300);}
-function debRenderTab7(){clearTimeout(_debT7);_debT7=setTimeout(renderTab7,300);}
-function debRenderTab8(){clearTimeout(_debT8);_debT8=setTimeout(renderTab8,300);}
-
 function renderTab6(){
   if(!G.naverData){
     document.getElementById('t6-empty').style.display='block';
@@ -10374,18 +10386,17 @@ window.fbAutoLoad = function(){
         $set('data-status','☁️ Firebase 데이터');
         $set('data-updated', upd ? '저장: '+upd : '');
         $set('fb-status','🔥 자동로드 완료');
-        G._fbAutoLoadDone = true;  // 자동로드 완료 — 이제 업로드해도 안전
+        G._fbAutoLoadDone = true;
         renderAll();
-        // 현재 TAB6가 활성 상태일 때만 렌더 (비활성이면 탭 전환 시 자동 렌더)
-        if(G.naverData && document.getElementById('tc6').classList.contains('on')) renderTab6();
+        if(G.naverData && document.getElementById('tc6').classList.contains('on'))
+          setTimeout(renderTab6, 100);
         showToast('☁️ Firebase 자동 로드 완료! (네이버 매물 '+((G.naverData||[]).length)+'건)', 3000);
-      // OP/생숙, 상가 데이터 로드
-      // sd_naver_apt: APT 네이버 매물 독립 경로 로드
       get(child(dbRef(db),'sd_naver_apt')).then(function(sa){
         if(sa.exists()&&sa.val()&&sa.val().data&&sa.val().data.length>0){
           G.naverData = fixNaverDist(sa.val().data);
           $set('naver-status','✅ FB '+G.naverData.length+'건');
-          if(document.getElementById('tc6')&&document.getElementById('tc6').classList.contains('on')) renderTab6();
+          if(document.getElementById('tc6')&&document.getElementById('tc6').classList.contains('on'))
+            setTimeout(renderTab6, 200);
           console.log('[sd_data] naver_apt 로드 완료:', G.naverData.length+'건');
         }
       }).catch(function(e){ console.warn('naver_apt 로드 오류',e); });
