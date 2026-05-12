@@ -432,8 +432,8 @@ tr.naver-fav>td:first-child{border-left:3px solid #ffd700;}
 #naver-detail-modal .nd-inner, #naver-detail-box{background:#1e2535;border-radius:14px;padding:24px 28px;width:680px;max-width:96vw;max-height:88vh;overflow-y:auto;position:relative;box-shadow:0 8px 40px rgba(0,0,0,.5);border:1px solid #2a3045;}
 #naver-detail-modal h3{font-size:17px;font-weight:700;color:var(--text);margin:0 0 16px;}
 #naver-detail-modal .nd-grid{display:grid;grid-template-columns:120px 1fr;gap:8px 14px;margin-bottom:14px;}
-#naver-detail-modal .nd-grid .nd-k{font-size:11px;color:var(--text3);font-weight:600;padding-top:3px;}
-#naver-detail-modal .nd-grid .nd-v{font-size:13px;color:var(--text);}
+#naver-detail-modal .nd-grid .nd-k, #naver-detail-modal .nd-grid .nd-label{font-size:11px;color:var(--text3);font-weight:600;padding-top:3px;}
+#naver-detail-modal .nd-grid .nd-v, #naver-detail-modal .nd-grid .nd-val{font-size:13px;color:var(--text);}
 #naver-detail-modal input,#naver-detail-modal select,#naver-detail-modal textarea{width:100%;border:1px solid var(--border);border-radius:7px;padding:6px 10px;font-size:13px;background:var(--bg3);color:var(--text);box-sizing:border-box;}
 #naver-detail-modal .nd-save-btn{padding:8px 22px;background:#1565c0;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;}
 #naver-detail-modal .nd-close-btn{position:absolute;top:14px;right:16px;background:none;border:none;font-size:20px;cursor:pointer;color:var(--text3);}
@@ -6251,6 +6251,82 @@ function _nf(idx){
 var _ndIdx=-1;
 function _nd(idx){ openNaverDetail(idx); }
 
+/* ── op/sangga 탭 상세 모달 (APT 모달 재사용) */
+var _ndCurrentData=null;
+function _nd2(ridx, tab){
+  var r = tab==='sangga' ? G.naverSanggaData[ridx] : G.naverOpData[ridx];
+  if(!r) return;
+  _ndIdx = -99; // 특수 인덱스 (op/sangga 구분)
+  _ndCurrentData = {r:r, tab:tab, ridx:ridx};
+  var k=_naverKey(r);
+  var isFav=!!G.naverFav[k];
+  var isSdj=(r.중개사||'').indexOf('송도제일')>=0;
+  var typeCls=r.거래유형==='매매'?'badge-gold':r.거래유형==='전세'?'badge-apt':'badge-pre';
+  var pyeong=Math.round((parseFloat(r.전용)||0)/3.3058*10)/10;
+
+  document.getElementById('nd-title').innerHTML=
+    (isSdj?'<span class="sdj-badge">★송도제일</span> ':'')+
+    '<span class="badge '+typeCls+'">'+r.거래유형+'</span> <strong>'+r.단지명+'</strong>';
+
+  var fb=document.getElementById('nd-fav-btn');
+  fb.textContent=isFav?'★':'☆';
+  fb.className='fav-star '+(isFav?'on':'off');
+
+  var fields=[
+    ['매물구분', r.매물구분||'-'],
+    ['공구', (r.공구?r.공구+'공구':'-')],
+    ['전용면적', (parseFloat(r.전용)||0).toFixed(1)+'㎡'+(pyeong>0?' ('+pyeong+'평)':'')],
+  ];
+  if(r.거래유형==='매매'){
+    fields.push(['매매의뢰가','<strong style="color:var(--accent2);font-size:16px">'+fmt천(r.호가)+'</strong>']);
+  } else if(r.거래유형==='월세'){
+    var _wol=r.월세||0, _dep=r.호가||0;
+    fields.push(['보증금','<strong style="color:var(--accent2);font-size:16px">'+fmt천(_dep)+'</strong>']);
+    if(_wol) fields.push(['월세','<strong style="color:var(--purple);font-size:16px">'+Math.round(_wol)+'만원</strong>']);
+  }
+  fields=fields.concat([
+    ['층', (r.층||'-')+'층'],
+    ['입력일', r.입력일||'-'],
+    ['중개사', isSdj?'<span class="sdj-badge">★송도제일공인</span>':(r.중개사||'-')],
+    ['중복등록수', r.중복등록수>0?'<span style="color:'+(r.중복등록수>5?'var(--red)':'var(--yellow)')+'">'+r.중복등록수+'개</span>':'-'],
+  ]);
+  document.getElementById('nd-info').innerHTML=fields.map(function(f){
+    return '<div class="nd-label">'+f[0]+'</div><div class="nd-val">'+f[1]+'</div>';
+  }).join('');
+
+  document.getElementById('nd-memo').value = r.특이사항||'';
+  var priceEl=document.getElementById('nd-price');
+  var floorEl=document.getElementById('nd-floor');
+  var hosuEl =document.getElementById('nd-hosu');
+  var dirEl  =document.getElementById('nd-dir');
+  var dongEl0=document.getElementById('nd-dong');
+  if(priceEl) priceEl.value = r.호가||'';
+  if(dongEl0) dongEl0.value = r.동||'-';
+  if(floorEl) floorEl.value = r.층||'';
+  if(hosuEl)  hosuEl.value  = r.동||'';
+  if(dirEl)   dirEl.value   = r.방향||'';
+
+  var dup=r.중복업소명||'';
+  document.getElementById('nd-dupnm').innerHTML=dup
+    ? dup.split(',').map(function(nm){
+        return '<span style="display:inline-block;background:var(--bg2);border-radius:6px;padding:2px 9px;margin:2px;font-size:11px">'+nm.trim()+'</span>';
+      }).join('')
+    : '<span style="color:var(--text3);font-size:11px">중복 등록 없음</span>';
+
+  document.getElementById('naver-detail-modal').classList.add('open');
+}
+
+function _nf2(ridx, tab){
+  var r = tab==='sangga' ? G.naverSanggaData[ridx] : G.naverOpData[ridx];
+  if(!r) return;
+  var k=_naverKey(r);
+  G.naverFav[k]=!G.naverFav[k];
+  if(!G.naverFav[k]) delete G.naverFav[k];
+  _saveFav();
+  if(tab==='sangga') renderTab8();
+  else renderTab7();
+}
+
 function openNaverDetail(idx){
   var r=G.naverData[idx]; if(!r) return;
   _ndIdx=idx;
@@ -6345,8 +6421,7 @@ function ndToggleFav(){
 }
 
 function ndSave(){
-  if(_ndIdx<0) return;
-  // APT(_ndIdx>=0) 또는 OP/상가(_ndCurrentData)
+  // APT: _ndIdx>=0 / op·상가: _ndIdx===-99 + _ndCurrentData
   var r = (_ndIdx>=0) ? G.naverData[_ndIdx]
          : (_ndCurrentData ? _ndCurrentData.r : null);
   if(!r) return;
@@ -6363,7 +6438,12 @@ function ndSave(){
   if(dirEl && dirEl.value) r.방향 = dirEl.value||r.방향;
   closeNaverDetail();
   showToast('✅ 수정 저장됨 (Firebase 저장 버튼으로 확정)');
-  renderTab6();
+  if(_ndIdx>=0){ renderTab6(); }
+  else if(_ndCurrentData){
+    if(_ndCurrentData.tab==='sangga') renderTab8();
+    else renderTab7();
+    _ndCurrentData=null;
+  }
 }
 
 function exportFavExcel(){
