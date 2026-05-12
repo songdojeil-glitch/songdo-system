@@ -5641,9 +5641,7 @@ function buildRentStats(){
 function renderAll(){
   var fns=[renderTab0,renderTab1,renderTab2,renderTab3,renderTab4,renderTab5];
   var ai=0;
-  ['tc0','tc1','tc2','tc3','tc4','tc5'].forEach(function(id,i){
-    var el=document.getElementById(id);if(el&&el.classList.contains('on'))ai=i;
-  });
+  ['tc0','tc1','tc2','tc3','tc4','tc5'].forEach(function(id,i){var el=document.getElementById(id);if(el&&el.classList.contains('on'))ai=i;});
   fns[ai]();
   var d=80;fns.forEach(function(fn,i){if(i!==ai){setTimeout(fn,d);d+=80;}});
 }
@@ -9839,7 +9837,7 @@ function renderTab6(){
   }).join('');
 
   // 테이블 (렌더링 상한선 500건 - 2000건+ 렌더 시 레이아웃 붕괴 방지)
-  var MAX_T6 = 500;
+  var MAX_T6 = 200;
   var totalT6 = rows.length;
   $set('t6-cnt', totalT6+'건');
   var displayRows = rows.slice(0, MAX_T6);
@@ -9847,7 +9845,7 @@ function renderTab6(){
   var totalColspan  = 8 + priceColCount + 3 + (hideAgent?2:4);
   var overBanner = totalT6 > MAX_T6
     ? '<tr><td colspan="'+totalColspan+'" style="text-align:center;padding:8px;background:rgba(255,200,0,.1);color:var(--yellow);font-size:11px">'+
-      '⚠️ '+totalT6.toLocaleString()+'건 중 상위 '+MAX_T6+'건만 표시. 공구·거래구분·단지를 선택해 좁혀주세요.</td></tr>'
+      '⚠️ '+totalT6.toLocaleString()+'건 중 '+MAX_T6+'건만 표시. 공구·단지를 선택해 범위를 좁혀주세요.</td></tr>'
     : '';
   var html='';
   displayRows.forEach(function(r){
@@ -9915,15 +9913,18 @@ function renderTab6(){
     '</tr>';
   });
   var _t6tbody = document.getElementById('t6-tbody');
-  _t6tbody.innerHTML = overBanner+html||'<tr><td colspan="'+(hideAgent?'12':'14')+'" style="text-align:center;padding:20px;color:var(--text3)">해당 매물 없음</td></tr>';
-  setTimeout(function(){ var t=document.getElementById('t6-naver-table'); if(t) initColResize(t); },50);
+  var _t6HtmlFinal = overBanner+html||'<tr><td colspan="'+(hideAgent?'12':'14')+'" style="text-align:center;padding:20px;color:var(--text3)">해당 매물 없음</td></tr>';
+  requestAnimationFrame(function(){
+    document.getElementById('t6-tbody').innerHTML = _t6HtmlFinal;
+    setTimeout(function(){ var t=document.getElementById('t6-naver-table'); if(t) initColResize(t); },50);
+  }); // end rAF
 
-  // 차트
-  renderNaverDistChart(rows);
-  renderNaverPriceChart(rows);
-
-  // 호가 vs 실거래 비교
-  renderNaverCompare(rows);
+  // 차트 (rAF 외부 - 비블로킹)
+  setTimeout(function(){
+    renderNaverDistChart(rows);
+    renderNaverPriceChart(rows);
+    renderNaverCompare(rows);
+  }, 50);
 }
 
 function renderNaverDistChart(rows){
@@ -10379,7 +10380,7 @@ window.fbAutoLoad = function(){
         if(sa.exists()&&sa.val()&&sa.val().data&&sa.val().data.length>0){
           G.naverData = fixNaverDist(sa.val().data);
           $set('naver-status','✅ FB '+G.naverData.length+'건');
-          if(document.getElementById('tc6')&&document.getElementById('tc6').classList.contains('on')) setTimeout(renderTab6,200);
+          if(document.getElementById('tc6')&&document.getElementById('tc6').classList.contains('on')) renderTab6();
           console.log('[sd_data] naver_apt 로드 완료:', G.naverData.length+'건');
         }
       }).catch(function(e){ console.warn('naver_apt 로드 오류',e); });
@@ -11118,14 +11119,10 @@ window.addEventListener('resize', function(){
   var SESSION_MS=86400000;
   var ROLE_LBL={master:"마스터",prime:"프라임",premium:"프리미엄",general:"제너럴"};
   var ROLE_COL={master:"#ffd700",prime:"#4f8ef7",premium:"#00e5a0",general:"#8b95b0"};
-
-  /* debounce */
   var _dT6,_dT7,_dT8;
   window.debRenderTab6=function(){clearTimeout(_dT6);_dT6=setTimeout(function(){typeof renderTab6==="function"&&renderTab6();},300);};
   window.debRenderTab7=function(){clearTimeout(_dT7);_dT7=setTimeout(function(){typeof renderTab7==="function"&&renderTab7();},300);};
   window.debRenderTab8=function(){clearTimeout(_dT8);_dT8=setTimeout(function(){typeof renderTab8==="function"&&renderTab8();},300);};
-
-  /* 사용자 바 */
   function injectBar(p){
     if(document.getElementById("_sda_b"))return;
     var bar=document.createElement("div");bar.id="_sda_b";
@@ -11139,8 +11136,6 @@ window.addEventListener('resize', function(){
     bar.appendChild(nm);bar.appendChild(bd);bar.appendChild(hub);bar.appendChild(out);
     document.body.appendChild(bar);
   }
-
-  /* ★ 순수 localStorage 체크 — Firebase Auth SDK 미사용 */
   var _s=null;
   try{var _r=localStorage.getItem("sd_auth_session");if(_r){var _d=JSON.parse(_r);if(_d&&_d.ts&&(Date.now()-_d.ts)<SESSION_MS&&_d.role)_s=_d;}}catch(e){}
   if(!_s){window.location.href="sd_hub.html";return;}
