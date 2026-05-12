@@ -939,7 +939,7 @@ window.addEventListener('load', function() {
   </div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1rem">
     <div class="card" style="margin-bottom:0"><p class="sec" style="margin-bottom:8px">🆕 최근 등록 매물</p><div id="hub-recent"></div></div>
-    <div class="card" style="margin-bottom:0"><p class="sec" style="margin-bottom:8px">📅 물건 확인 필요</p><div id="hub-check"></div><p style="font-size:10px;color:#ccc;margin:8px 0 0">최종 확인일 기준 14일 이상 경과</p></div>
+    <div class="card" style="margin-bottom:0"><p class="sec" style="margin-bottom:8px">📅 물건 확인 필요</p><div id="hub-check"></div><p style="font-size:10px;color:#ccc;margin:8px 0 0">최종 확인일 기준 21일 이상 경과</p></div>
   </div>
   <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px">
     <button onclick="sw(1)" style="padding:14px 8px;background:#fff;border:0.5px solid #e0e0e0;border-radius:12px;cursor:pointer;font-size:12px;color:#1a1a1a"><div style="font-size:20px;margin-bottom:4px">📋</div>매물 등록</button>
@@ -2007,7 +2007,10 @@ window.addEventListener('load', function() {
       </div>
       <div style="flex:1;background:#f8f8f6;border-radius:10px;padding:10px 14px">
         <div style="font-size:10px;color:#aaa;margin-bottom:3px">최종확인</div>
-        <div id="dtl-chk" style="font-size:12px;font-weight:500"></div>
+        <div style="display:flex;align-items:center;gap:6px">
+          <div id="dtl-chk" style="font-size:12px;font-weight:500"></div>
+          <button onclick="updateCheckToday()" style="padding:2px 8px;background:#e8f5e9;border:0.5px solid #a5d6a7;border-radius:6px;color:#2e7d32;font-size:10px;font-weight:600;cursor:pointer;white-space:nowrap">✅ 오늘로</button>
+        </div>
       </div>
     </div>
     <!-- 액션 버튼 -->
@@ -2486,10 +2489,21 @@ function refreshHub(){
     cts.forEach(function(c){if(!c.expiry||['매매','분양권','권리'].includes(c.deal))return;var exp=new Date(c.expiry);exp.setHours(0,0,0,0);var diff=Math.floor((exp-today)/86400000);if(diff<-180)return;if(diff<0)ov++;else if(diff<=30)d30++;else if(diff<=60)d60++;else if(diff<=90)d90++;});
     document.getElementById('hub-contracts').innerHTML=[{n:ov,l:'🔴 만기초과',c:'#c62828',bg:'#fce4ec'},{n:d30,l:'🔴 D-30 이내',c:'#e65100',bg:'#fff3e0'},{n:d60,l:'🟡 D-31~60',c:'#f57f17',bg:'#fffde7'},{n:d90,l:'🟢 D-61~90',c:'#2e7d32',bg:'#e8f5e9'}].map(function(s){return'<div style="background:'+s.bg+';border:0.5px solid #e0e0e0;border-radius:10px;padding:10px;text-align:center"><div class="stat-n" style="color:'+s.c+'">'+s.n+'</div><div class="stat-l">'+s.l+'</div></div>';}).join('');
   }).catch(function(){document.getElementById('hub-contracts').innerHTML='<div style="grid-column:span 4;font-size:12px;color:#aaa">계약관리 시스템 연동 없음</div>';});
-  document.getElementById('hub-recent').innerHTML=props.slice(0,5).map(function(p){return'<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:0.5px solid #f0f0f0"><div><span style="font-size:12px;font-weight:500">'+p.complexName+'</span><span style="font-size:10px;color:#aaa;margin-left:5px">'+p.propertyType+'</span></div><span class="bdg '+(p.status==='활성'?'bdg-on':'bdg-off')+'">'+p.status+'</span></div>';}).join('')||'<p style="font-size:12px;color:#aaa;margin:4px 0">등록된 매물이 없습니다.</p>';
+  document.getElementById('hub-recent').innerHTML=props.slice(0,5).map(function(p){
+    return'<div onclick="openDetail('+p.id+')" style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:0.5px solid #f0f0f0;cursor:pointer" onmouseover="this.style.background=\'#f9f9f9\'" onmouseout="this.style.background=\'\'">'
+      +'<div><span style="font-size:12px;font-weight:500">'+p.complexName+'</span><span style="font-size:10px;color:#aaa;margin-left:5px">'+p.propertyType+'</span></div>'
+      +'<span class="bdg '+(p.status==='활성'?'bdg-on':'bdg-off')+'">'+p.status+'</span>'
+      +'</div>';
+  }).join('')||'<p style="font-size:12px;color:#aaa;margin:4px 0">등록된 매물이 없습니다.</p>';
   var today=new Date();today.setHours(0,0,0,0);
-  var chk=active.filter(function(p){if(!p.checkDate)return true;var d=new Date(p.checkDate);d.setHours(0,0,0,0);return Math.floor((today-d)/86400000)>=14;}).sort(function(a,b){return(a.checkDate?new Date(a.checkDate):new Date('2000-01-01'))-(b.checkDate?new Date(b.checkDate):new Date('2000-01-01'));}).slice(0,5);
-  document.getElementById('hub-check').innerHTML=chk.length?chk.map(function(p){var diff=p.checkDate?Math.floor((today-new Date(p.checkDate))/86400000):-1;return'<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:0.5px solid #f0f0f0"><div><span style="font-size:12px;font-weight:500">'+p.complexName+'</span><span style="font-size:10px;color:#aaa;margin-left:4px">'+(p.unitInfo||'')+'</span></div><span style="font-size:11px;font-weight:500;color:'+(diff<0||diff>30?'#cc3333':diff>14?'#f57f17':'#aaa')+'">'+(diff<0?'미입력':diff+'일 전')+'</span></div>';}).join('')+'<button onclick="sw(2)" style="margin-top:8px;width:100%;padding:7px;background:transparent;border:0.5px solid #e0e0e0;border-radius:8px;font-size:11px;color:#666;cursor:pointer">전체 보기 →</button>':'<p style="font-size:12px;color:#aaa;margin:4px 0">확인 필요 매물 없음 👍</p>';
+  var chk=active.filter(function(p){if(!p.checkDate)return true;var d=new Date(p.checkDate);d.setHours(0,0,0,0);return Math.floor((today-d)/86400000)>=21;}).sort(function(a,b){return(a.checkDate?new Date(a.checkDate):new Date('2000-01-01'))-(b.checkDate?new Date(b.checkDate):new Date('2000-01-01'));}).slice(0,5);
+  document.getElementById('hub-check').innerHTML=chk.length?chk.map(function(p){
+    var diff=p.checkDate?Math.floor((today-new Date(p.checkDate))/86400000):-1;
+    return'<div onclick="openDetail('+p.id+')" style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:0.5px solid #f0f0f0;cursor:pointer" onmouseover="this.style.background=\'#fff8e1\'" onmouseout="this.style.background=\'\'">'
+      +'<div><span style="font-size:12px;font-weight:500">'+p.complexName+'</span><span style="font-size:10px;color:#aaa;margin-left:4px">'+(p.unitInfo||'')+'</span></div>'
+      +'<span style="font-size:11px;font-weight:500;color:'+(diff<0||diff>42?'#cc3333':diff>21?'#f57f17':'#aaa')+'">'+(diff<0?'미입력':diff+'일 전')+'</span>'
+      +'</div>';
+  }).join('')+'<button onclick="sw(2)" style="margin-top:8px;width:100%;padding:7px;background:transparent;border:0.5px solid #e0e0e0;border-radius:8px;font-size:11px;color:#666;cursor:pointer">전체 보기 →</button>':'<p style="font-size:12px;color:#aaa;margin:4px 0">확인 필요 매물 없음 👍</p>';
 }
 
 function onTC(){
@@ -2499,22 +2513,17 @@ function onTC(){
   var isDBun=t==='분양상가 매매';
   var isGw=t==='상가 임대'||t==='사무실 임대';
   var isGwRights=t==='상가 권리 양도';
-  var isWol=t.includes('월세'),isJeon=t.includes('전세');
   var noSub=isJeon||isBun||isSBun||isDBun||['토지','공장 매매','공장 임대','단독 건물 매매'].includes(t)||(!isWol&&!isGw&&!isGwRights);
   document.getElementById('fp-bun').style.display=isBun?'block':'none';
   document.getElementById('fp-sbun').style.display=isSBun?'block':'none';
   document.getElementById('fp-dbun').style.display=isDBun?'block':'none';
   document.getElementById('fp-sim').style.display=(isBun||isSBun||isDBun)?'none':'grid';
   document.getElementById('fp-gw').style.display=(isGw||isGwRights)?'block':'none';
-  // 권리 양도의 경우 권리금 라벨 변경
-  var gwLabel=document.querySelector('#fp-gw label.fl');
-  if(gwLabel) gwLabel.textContent=isGwRights?'권리금':'권리금';
   document.getElementById('fp-sw').style.display=noSub?'none':'block';
   var lm=document.getElementById('fp-ml'),pm=document.getElementById('fp-ma');
   if(isJeon){lm.textContent='전세가';pm.placeholder='예: 4억 5,000만원';}
   else if(isWol){lm.textContent='월세';pm.placeholder='예: 월 120만원';}
-  else if(isGwRights){lm.textContent='월세';pm.placeholder='예: 월 150만원';}
-  else if(isGw){lm.textContent='월세';pm.placeholder='예: 월 150만원';}
+  else if(isGwRights||isGw){lm.textContent='월세';pm.placeholder='예: 월 150만원';}
   else{lm.textContent='매매가';pm.placeholder='예: 9억 5,000만원';}
 }
 function calcSB(){
@@ -2641,7 +2650,7 @@ function cleanAreaProp(el){
 var currentView='own'; // 'own' | 'naver'
 
 function setView(v){
-  currentView='own'; // 네이버 토글 제거 — 항상 자사 매물만 표시
+  currentView='own';
   var bo=document.getElementById('vt-own');
   if(bo){bo.style.background='#1a1a1a';bo.style.color='#fff';bo.style.borderColor='#1a1a1a';}
   document.getElementById('tbl-own').style.display='';
@@ -2838,6 +2847,21 @@ function openDetail(id){
 function closeDetail(){
   document.getElementById('detail-modal').style.display='none';
   detailPropId=null;
+}
+
+function updateCheckToday(){
+  if(!detailPropId)return;
+  var p=props.find(function(x){return x.id===detailPropId;});
+  if(!p)return;
+  var ds=new Date().toISOString().slice(0,10);
+  p.checkDate=ds;
+  toStore();
+  document.getElementById('dtl-chk').textContent=ds;
+  // 버튼 피드백
+  var btn=document.querySelector('#detail-modal button[onclick="updateCheckToday()"]');
+  if(btn){btn.textContent='✔ 저장됨';btn.style.background='#c8e6c9';setTimeout(function(){btn.textContent='✅ 오늘로';btn.style.background='#e8f5e9';},1500);}
+  // 홈탭 리프레시
+  refreshHub();
 }
 
 function dtlAction(type){
@@ -6979,7 +7003,7 @@ document.addEventListener('DOMContentLoaded',function(){
   var ROLE_COL={master:"#ffd700",prime:"#4f8ef7",premium:"#00e5a0",general:"#8b95b0"};
   function hideCover(){var c=document.getElementById("_sda_cover");if(c){c.style.transition="opacity .2s";c.style.opacity="0";setTimeout(function(){if(c.parentNode)c.parentNode.removeChild(c);},200);}}
   function injectBar(p){if(document.getElementById("_sda_b"))return;var bar=document.createElement("div");bar.id="_sda_b";bar.style.cssText="position:fixed;top:0;right:0;z-index:9800;display:flex;align-items:center;gap:8px;padding:4px 12px;background:rgba(10,13,20,.93);border-bottom-left-radius:10px;border:1px solid rgba(255,255,255,.08)";var rc=ROLE_COL[p.role]||"#8b95b0";var nm=document.createElement("span");nm.style.cssText="font-size:11px;color:#8b95b0";nm.textContent=(p.name||p.email||"");var bd=document.createElement("span");bd.style.cssText="font-size:10px;font-weight:700;padding:1px 7px;border-radius:8px;background:"+rc+"22;color:"+rc+";border:1px solid "+rc+"44";bd.textContent=(ROLE_LBL[p.role]||p.role);var hub=document.createElement("a");hub.href="sd_hub.html";hub.textContent="허브";hub.style.cssText="color:#4f8ef7;font-size:11px;text-decoration:none;padding:2px 4px";var out=document.createElement("button");out.textContent="로그아웃";out.style.cssText="background:transparent;border:none;color:#556688;font-size:11px;cursor:pointer;padding:2px 4px";out.onclick=function(){try{localStorage.removeItem("sd_auth_session");}catch(e){}window.location.href="sd_hub.html";};bar.appendChild(nm);bar.appendChild(bd);bar.appendChild(hub);bar.appendChild(out);document.body.appendChild(bar);}
-  function enterPage(p){window._authProfile=p;window._authPerms=p.permissions||{};hideCover();injectBar(p);var perms=p.permissions||{};var go=function(){if(perms["upload"]===false){document.querySelectorAll("[id='bulk-file'],[id='sync-file']").forEach(function(el){(el.closest("label")||el.parentElement||el).style.display="none";});}if(perms["delete"]===false){["deleteAllPhotos","showNaverDeleteModal"].forEach(function(fn){if(typeof window[fn]==="function"){var o=window[fn];window[fn]=function(){};};});}};if(document.readyState==="loading"){document.addEventListener("DOMContentLoaded",go);}else{setTimeout(go,300);}}
+  function enterPage(p){window._authProfile=p;window._authPerms=p.permissions||{};hideCover();injectBar(p);}
   var _session=null;
   try{var _s=localStorage.getItem("sd_auth_session");if(_s){var _d=JSON.parse(_s);if(_d&&_d.ts&&(Date.now()-_d.ts)<SESSION_MS&&_d.role){_session=_d;}}}catch(e){}
   if(_session){var _scr=((_session.permissions||{}).screens)||{};if(_scr["sd_props"]===false){hideCover();alert("접근 권한이 없습니다.");window.location.href="sd_hub.html";}else{enterPage(_session);}}else{hideCover();window.location.href="sd_hub.html";}
