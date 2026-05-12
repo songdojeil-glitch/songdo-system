@@ -101,7 +101,8 @@ input[type=range]{width:100%;accent-color:#1a1a1a}
 </head>
 <body>
 <div id="_sda_cover" style="position:fixed;inset:0;background:#0a0d14;z-index:9999;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px"><div style="width:32px;height:32px;border:3px solid #2a3045;border-top-color:#4f8ef7;border-radius:50%;animation:_sda_spin .7s linear infinite"></div><div style="font-size:12px;color:#4a526a">인증 확인 중...</div></div><style>@keyframes _sda_spin{to{transform:rotate(360deg)}}</style>
-<div id="_sda_cover" style="position:fixed;inset:0;background:#0a0d14;z-index:9999;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px"><div style="width:32px;height:32px;border:3px solid #2a3045;border-top-color:#4f8ef7;border-radius:50%;animation:_sda_spin .7s linear infinite"></div><div style="font-size:12px;color:#4a526a">인증 확인 중...</div></div><style>@keyframes _sda_spin{to{transform:rotate(360deg)}}</style>
+
+
 <script>
 (function(){
   var PIN_SESSION_KEY='sd_pin_auth';
@@ -4737,205 +4738,27 @@ document.addEventListener('DOMContentLoaded',function(){
 });
 </script>
 
-<script>
-/* SD Auth: sd_sangga */
-(function(){
-  var SD_SCREEN="sd_sangga";
-  var ROLE_LBL={master:"마스터",prime:"프라임",premium:"프리미엄",general:"제너럴"};
-  var ROLE_COL={master:"#ffd700",prime:"#4f8ef7",premium:"#00e5a0",general:"#8b95b0"};
-  var PERM_SEL={
-    firebase_save:['[onclick*=\'saveBldgPhotos\']','[onclick*=\'saveSaleAcct\']','[onclick*=\'saveEstimateImage\']'],
-    upload:['[id*=\'bldg-photo\']'],
-    "delete":[],
-    ai_tools:['[onclick*=\'callGemini\']','[onclick*=\'callClaude\']'],
-    download:['[onclick*=\'exportEstimate\']']
-  };
-  var WRAP_FNS={};
 
-  function hideCover(){
-    var c=document.getElementById("_sda_cover");
-    if(c){c.style.transition="opacity .2s";c.style.opacity="0";
-      setTimeout(function(){if(c.parentNode)c.parentNode.removeChild(c);},200);}
-  }
-  function toast(msg){
-    var t=document.getElementById("_sda_t");
-    if(!t){t=document.createElement("div");t.id="_sda_t";
-      t.style.cssText="position:fixed;bottom:24px;right:24px;background:#e85c5c;color:#fff;padding:10px 18px;border-radius:8px;font-size:13px;font-weight:600;z-index:99999;display:none";
-      document.body.appendChild(t);}
-    t.textContent=msg;t.style.display="block";clearTimeout(t._t);
-    t._t=setTimeout(function(){t.style.display="none";},2500);
-  }
-  function injectBar(p,user){
-    if(document.getElementById("_sda_b"))return;
-    var bar=document.createElement("div");bar.id="_sda_b";
-    bar.style.cssText="position:fixed;top:0;right:0;z-index:9800;display:flex;align-items:center;gap:8px;padding:4px 12px;background:rgba(10,13,20,.93);border-bottom-left-radius:10px;border:1px solid rgba(255,255,255,.08)";
-    var rc=ROLE_COL[p.role]||"#8b95b0";
-    var nm=document.createElement("span");nm.style.cssText="font-size:11px;color:#8b95b0";nm.textContent=(p.name||user.email);
-    var bd=document.createElement("span");bd.style.cssText="font-size:10px;font-weight:700;padding:1px 7px;border-radius:8px;background:"+rc+"22;color:"+rc+";border:1px solid "+rc+"44";bd.textContent=(ROLE_LBL[p.role]||p.role);
-    var hub=document.createElement("a");hub.href="sd_hub.html";hub.textContent="허브";hub.style.cssText="color:#4f8ef7;font-size:11px;text-decoration:none;padding:2px 4px";
-    var out=document.createElement("button");out.textContent="로그아웃";out.style.cssText="background:transparent;border:none;color:#556688;font-size:11px;cursor:pointer;padding:2px 4px";
-    out.onclick=function(){firebase.auth().signOut().then(function(){window.location.href="sd_hub.html";});};
-    bar.appendChild(nm);bar.appendChild(bd);bar.appendChild(hub);bar.appendChild(out);
-    document.body.appendChild(bar);
-  }
-  function applyPerms(perms){
-    Object.keys(PERM_SEL).forEach(function(perm){
-      if(perms[perm]===false){
-        PERM_SEL[perm].forEach(function(sel){
-          try{document.querySelectorAll(sel).forEach(function(el){
-            if(el.tagName==="INPUT"&&el.type==="file"){(el.closest("label")||el.parentElement||el).style.display="none";}
-            else{el.style.display="none";}
-          });}catch(e){}
-        });
-      }
-    });
-  }
-  function wrapFns(perms){
-    Object.keys(WRAP_FNS).forEach(function(perm){
-      WRAP_FNS[perm].forEach(function(fn){
-        if(typeof window[fn]==="function"){
-          var orig=window[fn];
-          window[fn]=function(){if(perms[perm]===false){toast("권한이 없습니다");return;}return orig.apply(this,arguments);};
-        }
-      });
-    });
-  }
-
-  var _w=0,_iv=setInterval(function(){
-    _w+=100;
-    if(_w>12000){clearInterval(_iv);hideCover();window.location.href="sd_hub.html";return;}
-    if(!window.firebase||!window.firebase.auth)return;
-    if(!firebase.apps||!firebase.apps.length)return;
-    clearInterval(_iv);
-
-    firebase.auth().onAuthStateChanged(function(user){
-      if(!user){
-        setTimeout(function(){
-          if(!firebase.auth().currentUser){hideCover();window.location.href="sd_hub.html";}
-        },3000);
-        return;
-      }
-      firebase.database().ref("sd_users/"+user.uid).once("value").then(function(snap){
-        var p=snap.val();
-        if(!p||!p.approved){hideCover();window.location.href="sd_hub.html";return;}
-        var scr=((p.permissions||{}).screens)||{};
-        if(scr["sd_sangga"]===false){hideCover();alert("접근 권한이 없습니다.");window.location.href="sd_hub.html";return;}
-        window._authUser=user;window._authProfile=p;window._authPerms=p.permissions||{};
-        hideCover();injectBar(p,user);
-        var perms=p.permissions||{};
-        var go=function(){applyPerms(perms);wrapFns(perms);};
-        if(document.readyState==="loading"){document.addEventListener("DOMContentLoaded",go);}
-        else{setTimeout(go,300);}
-      }).catch(function(){hideCover();window.location.href="sd_hub.html";});
-    });
-  },100);
-})();
-</script>
 
 <script>
 /* SD Auth: sd_sangga */
 (function(){
-  var SD_SCREEN="sd_sangga";
-  var SESSION_MS=28800000;
+  var SESSION_MS=86400000;
   var ROLE_LBL={master:"마스터",prime:"프라임",premium:"프리미엄",general:"제너럴"};
   var ROLE_COL={master:"#ffd700",prime:"#4f8ef7",premium:"#00e5a0",general:"#8b95b0"};
-  var PERM_SEL={
-    firebase_save:['[onclick*=\'saveBldgPhotos\']','[onclick*=\'saveSaleAcct\']','[onclick*=\'saveEstimateImage\']'],
-    upload:['[id*=\'bldg-photo\']'],
-    "delete":[],
-    ai_tools:['[onclick*=\'callGemini\']','[onclick*=\'callClaude\']'],
-    download:['[onclick*=\'exportEstimate\']']
-  };
+  var PERM_SEL={firebase_save:['[onclick*=\'saveBldgPhotos\']','[onclick*=\'saveSaleAcct\']','[onclick*=\'saveEstimateImage\']'],upload:['[id*=\'bldg-photo\']'],"delete":[],ai_tools:['[onclick*=\'callGemini\']','[onclick*=\'callClaude\']'],download:['[onclick*=\'exportEstimate\']']};
   var WRAP_FNS={};
-
-  function hideCover(){
-    var c=document.getElementById("_sda_cover");
-    if(c){c.style.transition="opacity .2s";c.style.opacity="0";
-      setTimeout(function(){if(c.parentNode)c.parentNode.removeChild(c);},200);}
-  }
-  function toast(msg){
-    var t=document.getElementById("_sda_t");
-    if(!t){t=document.createElement("div");t.id="_sda_t";
-      t.style.cssText="position:fixed;bottom:24px;right:24px;background:#e85c5c;color:#fff;padding:10px 18px;border-radius:8px;font-size:13px;font-weight:600;z-index:99999;display:none";
-      document.body.appendChild(t);}
-    t.textContent=msg;t.style.display="block";clearTimeout(t._t);
-    t._t=setTimeout(function(){t.style.display="none";},2500);
-  }
-  function injectBar(p){
-    if(document.getElementById("_sda_b"))return;
-    var bar=document.createElement("div");bar.id="_sda_b";
-    bar.style.cssText="position:fixed;top:0;right:0;z-index:9800;display:flex;align-items:center;gap:8px;padding:4px 12px;background:rgba(10,13,20,.93);border-bottom-left-radius:10px;border:1px solid rgba(255,255,255,.08)";
-    var rc=ROLE_COL[p.role]||"#8b95b0";
-    var nm=document.createElement("span");nm.style.cssText="font-size:11px;color:#8b95b0";nm.textContent=(p.name||p.email||"");
-    var bd=document.createElement("span");bd.style.cssText="font-size:10px;font-weight:700;padding:1px 7px;border-radius:8px;background:"+rc+"22;color:"+rc+";border:1px solid "+rc+"44";bd.textContent=(ROLE_LBL[p.role]||p.role);
-    var hub=document.createElement("a");hub.href="sd_hub.html";hub.textContent="허브";hub.style.cssText="color:#4f8ef7;font-size:11px;text-decoration:none;padding:2px 4px";
-    var out=document.createElement("button");out.textContent="로그아웃";out.style.cssText="background:transparent;border:none;color:#556688;font-size:11px;cursor:pointer;padding:2px 4px";
-    out.onclick=function(){
-      try{localStorage.removeItem("sd_auth_session");}catch(e){}
-      if(window.firebase&&window.firebase.auth&&firebase.apps&&firebase.apps.length)
-        {firebase.auth().signOut().catch(function(){});}
-      window.location.href="sd_hub.html";
-    };
-    bar.appendChild(nm);bar.appendChild(bd);bar.appendChild(hub);bar.appendChild(out);
-    document.body.appendChild(bar);
-  }
-  function applyPerms(perms){
-    Object.keys(PERM_SEL).forEach(function(perm){
-      if(perms[perm]===false){
-        PERM_SEL[perm].forEach(function(sel){
-          try{document.querySelectorAll(sel).forEach(function(el){
-            if(el.tagName==="INPUT"&&el.type==="file"){(el.closest("label")||el.parentElement||el).style.display="none";}
-            else{el.style.display="none";}
-          });}catch(e){}
-        });
-      }
-    });
-  }
-  function wrapFns(perms){
-    Object.keys(WRAP_FNS).forEach(function(perm){
-      WRAP_FNS[perm].forEach(function(fn){
-        if(typeof window[fn]==="function"){
-          var orig=window[fn];
-          window[fn]=function(){if(perms[perm]===false){toast("권한이 없습니다");return;}return orig.apply(this,arguments);};
-        }
-      });
-    });
-  }
-
-  function enterPage(p){
-    window._authProfile=p;window._authPerms=p.permissions||{};
-    hideCover();injectBar(p);
-    var perms=p.permissions||{};
-    var go=function(){applyPerms(perms);wrapFns(perms);};
-    if(document.readyState==="loading"){document.addEventListener("DOMContentLoaded",go);}
-    else{setTimeout(go,300);}
-  }
-
-  /* ★ 1순위: localStorage 세션 즉시 확인 (비동기 없음) */
+  function hideCover(){var c=document.getElementById("_sda_cover");if(c){c.style.transition="opacity .2s";c.style.opacity="0";setTimeout(function(){if(c.parentNode)c.parentNode.removeChild(c);},200);}}
+  function toast(msg){var t=document.getElementById("_sda_t");if(!t){t=document.createElement("div");t.id="_sda_t";t.style.cssText="position:fixed;bottom:24px;right:24px;background:#e85c5c;color:#fff;padding:10px 18px;border-radius:8px;font-size:13px;font-weight:600;z-index:99999;display:none";document.body.appendChild(t);}t.textContent=msg;t.style.display="block";clearTimeout(t._t);t._t=setTimeout(function(){t.style.display="none";},2500);}
+  function injectBar(p){if(document.getElementById("_sda_b"))return;var bar=document.createElement("div");bar.id="_sda_b";bar.style.cssText="position:fixed;top:0;right:0;z-index:9800;display:flex;align-items:center;gap:8px;padding:4px 12px;background:rgba(10,13,20,.93);border-bottom-left-radius:10px;border:1px solid rgba(255,255,255,.08)";var rc=ROLE_COL[p.role]||"#8b95b0";var nm=document.createElement("span");nm.style.cssText="font-size:11px;color:#8b95b0";nm.textContent=(p.name||p.email||"");var bd=document.createElement("span");bd.style.cssText="font-size:10px;font-weight:700;padding:1px 7px;border-radius:8px;background:"+rc+"22;color:"+rc+";border:1px solid "+rc+"44";bd.textContent=(ROLE_LBL[p.role]||p.role);var hub=document.createElement("a");hub.href="sd_hub.html";hub.textContent="허브";hub.style.cssText="color:#4f8ef7;font-size:11px;text-decoration:none;padding:2px 4px";var out=document.createElement("button");out.textContent="로그아웃";out.style.cssText="background:transparent;border:none;color:#556688;font-size:11px;cursor:pointer;padding:2px 4px";out.onclick=function(){try{localStorage.removeItem("sd_auth_session");}catch(e){}window.location.href="sd_hub.html";};bar.appendChild(nm);bar.appendChild(bd);bar.appendChild(hub);bar.appendChild(out);document.body.appendChild(bar);}
+  function applyPerms(perms){Object.keys(PERM_SEL).forEach(function(perm){if(perms[perm]===false){PERM_SEL[perm].forEach(function(sel){try{document.querySelectorAll(sel).forEach(function(el){if(el.tagName==="INPUT"&&el.type==="file"){(el.closest("label")||el.parentElement||el).style.display="none";}else{el.style.display="none";}});}catch(e){}});}});}
+  function wrapFns(perms){Object.keys(WRAP_FNS).forEach(function(perm){WRAP_FNS[perm].forEach(function(fn){if(typeof window[fn]==="function"){var orig=window[fn];window[fn]=function(){if(perms[perm]===false){toast("권한이 없습니다");return;}return orig.apply(this,arguments);};}});});}
+  function enterPage(p){window._authProfile=p;window._authPerms=p.permissions||{};hideCover();injectBar(p);var go=function(){applyPerms(p.permissions||{});wrapFns(p.permissions||{});};if(document.readyState==="loading"){document.addEventListener("DOMContentLoaded",go);}else{setTimeout(go,300);}}
   var _session=null;
-  try{
-    var _s=localStorage.getItem("sd_auth_session");
-    if(_s){
-      var _d=JSON.parse(_s);
-      if(_d&&_d.ts&&(Date.now()-_d.ts)<SESSION_MS&&_d.role){
-        _session=_d;
-      }
-    }
-  }catch(e){}
-
-  if(_session){
-    /* 세션 유효 → 화면 접근 권한 확인 후 즉시 진입 */
-    var _scr=((_session.permissions||{}).screens)||{};
-    if(_scr["sd_sangga"]===false){
-      hideCover();alert("접근 권한이 없습니다.");window.location.href="sd_hub.html";
-    } else {
-      enterPage(_session);
-    }
-  } else {
-    /* 세션 없음 → hub로 이동 */
-    hideCover();
-    window.location.href="sd_hub.html";
-  }
+  try{var _s=localStorage.getItem("sd_auth_session");if(_s){var _d=JSON.parse(_s);if(_d&&_d.ts&&(Date.now()-_d.ts)<SESSION_MS&&_d.role){_session=_d;}}}
+  catch(e){}
+  if(_session){var _scr=((_session.permissions||{}).screens)||{};if(_scr["sd_sangga"]===false){hideCover();alert("접근 권한이 없습니다.");window.location.href="sd_hub.html";}else{enterPage(_session);}}
+  else{hideCover();window.location.href="sd_hub.html";}
 })();
 </script>
 </body>
