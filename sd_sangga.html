@@ -101,10 +101,13 @@ input[type=range]{width:100%;accent-color:#1a1a1a}
 /* ── 촬영모드 */
 body.zoom-mode .zoomable{cursor:default !important;}
 body.zoom-mode .zoomable:hover{box-shadow:none !important;}
-body.zoom-mode{transition:zoom .2s;}
 </style>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-storage-compat.js"></script>
 </head>
 <body>
+
 
 
 
@@ -1151,6 +1154,94 @@ document.addEventListener('DOMContentLoaded', function(){
   }
   waitStorage();
 });
+
+// ── 건물 추가
+function openAddBldg(){
+  document.getElementById('new-bldg-name').value='';
+  document.getElementById('new-bldg-file').value='';
+  document.getElementById('bldg-parse-status').style.display='none';
+  document.getElementById('bldg-modal').classList.add('open');
+}
+
+function addBldg(){
+  var name = document.getElementById('new-bldg-name').value.trim();
+  if(!name){ alert('건물명을 입력하세요.'); return; }
+
+  var fileInput = document.getElementById('new-bldg-file');
+  var file = fileInput && fileInput.files[0];
+  var statusEl = document.getElementById('bldg-parse-status');
+
+  // 이미 존재하는 건물명 중복 확인
+  if(BUILDINGS.find(function(b){ return b.name===name; })){
+    alert('이미 같은 이름의 건물이 있습니다.');
+    return;
+  }
+
+  var newId = 'bldg_' + Date.now();
+
+  function finishAdd(props){
+    var newBldg = { id: newId, name: name, props: props };
+    BUILDINGS.push(newBldg);
+    saveBuildingsToStorage();
+    document.getElementById('bldg-modal').classList.remove('open');
+    renderBldgTabs();
+    selectBldg(newId);
+    showToast('✅ 건물 "' + name + '" 추가 완료 (' + props.length + '개 호실)');
+  }
+
+  if(file){
+    // 엑셀 파싱
+    statusEl.style.display='block';
+    statusEl.style.background='#e3f2fd';
+    statusEl.style.color='#1565c0';
+    statusEl.textContent='파일 분석 중...';
+
+    var reader = new FileReader();
+    reader.onload = function(e){
+      try{
+        var wb = XLSX.read(e.target.result, {type:'array'});
+        var ws = wb.Sheets[wb.SheetNames[0]];
+        var rows = XLSX.utils.sheet_to_json(ws, {defval:''});
+        // 컬럼 매핑 (호수/호실, 층, 전용면적, 분양면적 등)
+        var props = rows.map(function(r, i){
+          var ho = String(r['호수']||r['호실']||r['호']||('H'+(i+1))).trim();
+          return {
+            ho:       ho,
+            floor:    String(r['층']||r['floor']||'').trim()||'1층',
+            area:     parseFloat(r['전용면적']||r['전용']||r['면적']||0)||0,
+            saleArea: parseFloat(r['분양면적']||r['공급면적']||0)||0,
+            price:    parseInt(String(r['분양가']||r['공급금액']||0).replace(/[^0-9]/g,''))||0,
+            status:   String(r['현황']||r['상태']||'미분양').trim()||'미분양',
+            tenant:   String(r['임차인']||r['입점업체']||'').trim(),
+            deposit:  parseInt(String(r['보증금']||0).replace(/[^0-9]/g,''))||0,
+            monthly:  parseInt(String(r['월세']||r['임대료']||0).replace(/[^0-9]/g,''))||0,
+            yieldCur: 0
+          };
+        }).filter(function(p){ return p.ho; });
+
+        if(props.length===0){ throw new Error('호실 데이터를 찾을 수 없습니다.'); }
+        statusEl.style.background='#e8f5e9';
+        statusEl.style.color='#2e7d32';
+        statusEl.textContent='✅ ' + props.length + '개 호실 인식 완료';
+        finishAdd(props);
+      }catch(err){
+        statusEl.style.background='#fce4ec';
+        statusEl.style.color='#c62828';
+        statusEl.textContent='❌ 파일 오류: ' + err.message;
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  } else {
+    // 파일 없이 빈 건물 추가
+    finishAdd([]);
+  }
+}
+
+function saveBuildingsToStorage(){
+  try{
+    window.storage.set('sd_buildings', JSON.stringify(BUILDINGS));
+  }catch(e){ console.error('건물 저장 오류', e); }
+}
 
 function initBuildings(){
   window.storage.get('sd_buildings').then(function(r){
@@ -4689,9 +4780,6 @@ function buildLeasedEstimate(selProps,bldgName,estDate,loanRate,intRate,contract
     +'</div></div></div>';
 }
 </script>
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-storage-compat.js"></script>
 <script>
 /* firebase-storage.js — 인라인 병합 */
 var FIREBASE_CONFIG = {
@@ -4703,10 +4791,18 @@ var FIREBASE_CONFIG = {
   messagingSenderId: "567683904975",
   appId:             "1:567683904975:web:65a652a8e7b9a81e034eba"
 };
-(function(){
-  try{ if(!firebase.apps||!firebase.apps.length) firebase.initializeApp(FIREBASE_CONFIG); }
-  catch(e){ console.error('[SD] Firebase 초기화 실패:',e); }
-})();
+// ★ 재시도 방식 초기화 (CDN 로드 지연 대응)
+(function initFB(retry){
+  if(typeof firebase !== 'undefined'){
+    try{
+      if(!firebase.apps||!firebase.apps.length) firebase.initializeApp(FIREBASE_CONFIG);
+    }catch(e){ console.error('[SD] Firebase 초기화 실패:',e); }
+  } else if(retry < 30){
+    setTimeout(function(){ initFB(retry+1); }, 100);
+  } else {
+    console.error('[SD] Firebase SDK 로드 실패 (CDN 연결 확인 필요)');
+  }
+})(0);
 window.storage=(function(){
   var ROOT='sd';
   function ref(k){return firebase.database().ref(ROOT+'/'+k);}
@@ -4733,6 +4829,7 @@ document.addEventListener('DOMContentLoaded',function(){
 </script>
 
 
+
 <script>
 var _zoomOn=false;
 function toggleZoom(){
@@ -4742,12 +4839,10 @@ function toggleZoom(){
     document.body.style.zoom='1.5';
     document.body.classList.add('zoom-mode');
     if(btn){btn.textContent='🎬 촬영모드 ON';btn.style.background='rgba(255,107,53,.35)';btn.style.borderColor='#ff6b35';btn.style.color='#fff';}
-    
   }else{
     document.body.style.zoom='1';
     document.body.classList.remove('zoom-mode');
     if(btn){btn.textContent='🎬 촬영모드';btn.style.background='rgba(255,107,53,.12)';btn.style.borderColor='rgba(255,107,53,.4)';btn.style.color='#ff6b35';}
-    
   }
 }
 </script>
@@ -4765,7 +4860,8 @@ function toggleZoom(){
   var _sc=((_s.permissions||{}).screens)||{};
   if(_sc["sd_sangga"]===false){alert("접근 권한이 없습니다.");window.location.href="sd_hub.html";return;}
   window._authProfile=_s;window._authPerms=_s.permissions||{};
-  if(document.readyState==="loading"){document.addEventListener("DOMContentLoaded",function(){injectBar(_s);});}else{injectBar(_s);}
+  if(document.readyState==="loading"){document.addEventListener("DOMContentLoaded",function(){injectBar(_s);});}
+  else{injectBar(_s);}
 })();
 </script>
 </body>
