@@ -9651,18 +9651,18 @@ function loadNaverDemo(){
 
 // ── TAB6 필터 세터
 function setNaverDist(v,btn){
-  G.naverDist=v; G.t6unit='all';  // 공구 바뀌면 단지 초기화
+  G.naverDist=v; G.t6unit='all';
   setFilterBtn(btn.parentElement.querySelectorAll('.filter-btn'),btn);
-  renderTab6();
+  _debT6R();
 }
-function t6SearchInput(val){ G.t6search=val; renderTab6(); }
+function t6SearchInput(val){ G.t6search=val; _debT6R(); }
 function t6ClearSearch(){
   G.t6search=''; G.t6unit='all';
   var el=document.getElementById('t6-search-input');
   if(el) el.value='';
-  renderTab6();
+  _debT6R();
 }
-function t6SetUnit(nm){ G.t6unit=nm; renderTab6(); }
+function t6SetUnit(nm){ G.t6unit=nm; _debT6R(); }
 function setNaverType(v,btn){
   G.naverType=v;
   setFilterBtn(btn.parentElement.querySelectorAll('.filter-btn'),btn);
@@ -9674,8 +9674,8 @@ function setNaverType(v,btn){
   if(grp) grp.style.display=show?'':'none';
   renderTab6();
 }
-function setNaverSaleType(v,btn){ G.naverSaleType=v; setFilterBtn(btn.parentElement.querySelectorAll('.filter-btn'),btn); renderTab6(); }
-function setNaverArea(v,btn){ G.naverArea=v; setFilterBtn(btn.parentElement.querySelectorAll('.filter-btn'),btn); renderTab6(); }
+function setNaverSaleType(v,btn){ G.naverSaleType=v; setFilterBtn(btn.parentElement.querySelectorAll('.filter-btn'),btn); _debT6R(); }
+function setNaverArea(v,btn){ G.naverArea=v; setFilterBtn(btn.parentElement.querySelectorAll('.filter-btn'),btn); _debT6R(); }
 
 // ── TAB6 렌더
 function renderTab6(){
@@ -9845,7 +9845,7 @@ function renderTab6(){
   var totalColspan  = 8 + priceColCount + 3 + (hideAgent?2:4);
   var overBanner = totalT6 > MAX_T6
     ? '<tr><td colspan="'+totalColspan+'" style="text-align:center;padding:8px;background:rgba(255,200,0,.1);color:var(--yellow);font-size:11px">'+
-      '⚠️ '+totalT6.toLocaleString()+'건 중 '+MAX_T6+'건만 표시. 공구·단지를 선택해 범위를 좁혀주세요.</td></tr>'
+      '⚠️ '+totalT6.toLocaleString()+'건 중 상위 '+MAX_T6+'건만 표시. 공구·거래구분·단지를 선택해 좁혀주세요.</td></tr>'
     : '';
   var html='';
   displayRows.forEach(function(r){
@@ -9913,18 +9913,25 @@ function renderTab6(){
     '</tr>';
   });
   var _t6tbody = document.getElementById('t6-tbody');
-  var _t6HtmlFinal = overBanner+html||'<tr><td colspan="'+(hideAgent?'12':'14')+'" style="text-align:center;padding:20px;color:var(--text3)">해당 매물 없음</td></tr>';
-  requestAnimationFrame(function(){
-    document.getElementById('t6-tbody').innerHTML = _t6HtmlFinal;
-    setTimeout(function(){ var t=document.getElementById('t6-naver-table'); if(t) initColResize(t); },50);
-  }); // end rAF
+  var _t6html = overBanner+html||'<tr><td colspan="'+(hideAgent?'12':'14')+'" style="text-align:center;padding:20px;color:var(--text3)">해당 매물 없음</td></tr>';
 
-  // 차트 (rAF 외부 - 비블로킹)
+  // ★ DOM 삽입을 rAF으로 분리 → 버튼 클릭 즉각 반응
+  requestAnimationFrame(function(){
+    _t6tbody.innerHTML = _t6html;
+
+    // initColResize: 최초 1회만 (매 렌더마다 실행 X)
+    setTimeout(function(){
+      var t=document.getElementById('t6-naver-table');
+      if(t && !t._crDone){ initColResize(t); t._crDone=true; }
+    },50);
+  });
+
+  // 차트: 200ms 후 별도 실행 (DOM 삽입과 분리)
   setTimeout(function(){
     renderNaverDistChart(rows);
     renderNaverPriceChart(rows);
     renderNaverCompare(rows);
-  }, 50);
+  }, 200);
 }
 
 function renderNaverDistChart(rows){
@@ -11119,8 +11126,11 @@ window.addEventListener('resize', function(){
   var SESSION_MS=86400000;
   var ROLE_LBL={master:"마스터",prime:"프라임",premium:"프리미엄",general:"제너럴"};
   var ROLE_COL={master:"#ffd700",prime:"#4f8ef7",premium:"#00e5a0",general:"#8b95b0"};
+  // ★ 모든 TAB6 필터에 적용되는 통합 디바운스
+  var _t6Timer=null;
+  window._debT6R=function(){clearTimeout(_t6Timer);_t6Timer=setTimeout(function(){typeof renderTab6==="function"&&renderTab6();},200);};
   var _dT6,_dT7,_dT8;
-  window.debRenderTab6=function(){clearTimeout(_dT6);_dT6=setTimeout(function(){typeof renderTab6==="function"&&renderTab6();},300);};
+  window.debRenderTab6=window._debT6R;
   window.debRenderTab7=function(){clearTimeout(_dT7);_dT7=setTimeout(function(){typeof renderTab7==="function"&&renderTab7();},300);};
   window.debRenderTab8=function(){clearTimeout(_dT8);_dT8=setTimeout(function(){typeof renderTab8==="function"&&renderTab8();},300);};
   function injectBar(p){
