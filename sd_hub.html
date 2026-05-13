@@ -1302,14 +1302,41 @@ function openSystem(key){
   // 기존 PIN 세션 초기화 (Google Auth로 전환)
   try{ sessionStorage.removeItem('sd_pin_auth'); }catch(e){}
 
-  // firebase-storage.js가 Firebase를 초기화할 때까지 대기
+  // ★ 1순위: localStorage 세션으로 즉시 사용자 정보 표시
+  (function(){
+    try{
+      var _s=localStorage.getItem('sd_auth_session');
+      if(_s){
+        var _d=JSON.parse(_s);
+        if(_d&&_d.ts&&(Date.now()-_d.ts)<86400000&&_d.role){
+          // 세션 유효 → 헤더에 사용자 정보 즉시 표시
+          var nameEl=document.getElementById('hdr-user-name');
+          var roleEl=document.getElementById('hdr-user-role');
+          var userEl=document.getElementById('hdr-user');
+          var signoutEl=document.getElementById('btn-signout');
+          var mgrEl=document.getElementById('btn-account-mgr');
+          var RLBL={master:'마스터',prime:'프라임',premium:'프리미엄',general:'제너럴'};
+          var RCOL={master:'#ffd700',prime:'#4f8ef7',premium:'#00e5a0',general:'#8b95b0'};
+          var rc=RCOL[_d.role]||'#8b95b0';
+          if(nameEl) nameEl.textContent=_d.name||_d.email||'';
+          if(roleEl){roleEl.textContent=RLBL[_d.role]||_d.role;roleEl.style.background=rc+'22';roleEl.style.color=rc;roleEl.style.border='1px solid '+rc+'55';}
+          if(userEl) userEl.style.display='flex';
+          if(signoutEl) signoutEl.style.display='block';
+          if(mgrEl) mgrEl.style.display=_d.role==='master'?'block':'none';
+          // 로그인 화면 숨기고 허브 표시
+          _hideAllScreens();
+        }
+      }
+    }catch(e){}
+  })();
+
+  // firebase-storage.js가 Firebase를 초기화할 때까지 대기 (Firebase Auth 동기화)
   var waitFb=setInterval(function(){
     if(window.firebase&&window.firebase.auth&&firebase.apps&&firebase.apps.length){
       clearInterval(waitFb);
-      initAuth(); // login-screen은 이미 표시 중
+      initAuth();
     }
   },100);
-  // 10초 후에도 미초기화 → 로그인 버튼만 비활성화 안내
   setTimeout(function(){
     if(!window.firebase||!window.firebase.auth){
       var btn=document.getElementById('google-login-btn');
