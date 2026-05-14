@@ -1092,14 +1092,19 @@ body.zoom-mode .zoomable:hover{box-shadow:none !important;}
 <!-- 건물 추가 모달 -->
 <div id="bldg-modal" class="modal-bg">
   <div class="modal-box" style="max-width:500px">
-    <h2 style="font-size:16px;font-weight:600;margin:0 0 1rem">🏢 건물 추가</h2>
-    <div style="margin-bottom:12px"><label class="fl">건물명</label><input id="new-bldg-name" class="fi" placeholder="예: 송도에스파이브시티"></div>
+    <h2 id="bldg-modal-title" style="font-size:16px;font-weight:600;margin:0 0 1rem">🏢 건물 추가</h2>
+    <div style="margin-bottom:12px"><label class="fl">건물명</label>
+      <input id="new-bldg-name" class="fi" placeholder="예: 송도더샵그란알레" oninput="onBldgNameInput(this.value)">
+    </div>
+    <div id="bldg-update-notice" style="display:none;padding:8px 12px;background:#fff3e0;border-radius:8px;font-size:12px;color:#e65100;margin-bottom:10px">
+      ⚠️ 이미 등록된 건물입니다. 엑셀 파일을 선택하면 <strong>호실 데이터가 갱신</strong>됩니다.
+    </div>
     <div style="margin-bottom:12px"><label class="fl">엑셀 파일 (.xlsx) — 호실 데이터</label>
       <input type="file" id="new-bldg-file" accept=".xlsx,.xls" class="fi" style="padding:6px">
     </div>
     <div id="bldg-parse-status" style="display:none;padding:8px 12px;border-radius:8px;font-size:12px;margin-bottom:10px"></div>
     <div style="display:flex;gap:8px">
-      <button onclick="addBldg()" class="btn-p" style="flex:1">추가</button>
+      <button id="bldg-modal-btn" onclick="addBldg()" class="btn-p" style="flex:1">추가</button>
       <button onclick="document.getElementById('bldg-modal').classList.remove('open')" class="btn-s">취소</button>
     </div>
   </div>
@@ -1156,12 +1161,31 @@ document.addEventListener('DOMContentLoaded', function(){
   waitStorage();
 });
 
-// ── 건물 추가
+// ── 건물 추가 / 갱신
 function openAddBldg(){
   document.getElementById('new-bldg-name').value='';
   document.getElementById('new-bldg-file').value='';
   document.getElementById('bldg-parse-status').style.display='none';
+  document.getElementById('bldg-update-notice').style.display='none';
+  document.getElementById('bldg-modal-title').textContent='🏢 건물 추가';
+  document.getElementById('bldg-modal-btn').textContent='추가';
   document.getElementById('bldg-modal').classList.add('open');
+}
+
+function onBldgNameInput(val){
+  var exists = BUILDINGS.find(function(b){ return b.name===val.trim(); });
+  var notice = document.getElementById('bldg-update-notice');
+  var btn    = document.getElementById('bldg-modal-btn');
+  var title  = document.getElementById('bldg-modal-title');
+  if(exists){
+    notice.style.display='block';
+    btn.textContent='📥 데이터 갱신';
+    title.textContent='🏢 건물 데이터 갱신';
+  } else {
+    notice.style.display='none';
+    btn.textContent='추가';
+    title.textContent='🏢 건물 추가';
+  }
 }
 
 function addBldg(){
@@ -1172,26 +1196,45 @@ function addBldg(){
   var file = fileInput && fileInput.files[0];
   var statusEl = document.getElementById('bldg-parse-status');
 
-  // 이미 존재하는 건물명 중복 확인
-  if(BUILDINGS.find(function(b){ return b.name===name; })){
-    alert('이미 같은 이름의 건물이 있습니다.');
+  // 기존 건물 여부 확인
+  var existingIdx = BUILDINGS.findIndex(function(b){ return b.name===name; });
+  var isUpdate = existingIdx >= 0;
+
+  // 갱신 모드: 파일 필수
+  if(isUpdate && !file){
+    alert('데이터를 갱신하려면 엑셀 파일을 선택해 주세요.');
     return;
   }
 
-  var newId = 'bldg_' + Date.now();
+  var newId = isUpdate ? BUILDINGS[existingIdx].id : 'bldg_'+Date.now();
 
   function finishAdd(props){
-    var newBldg = { id: newId, name: name, props: props };
-    BUILDINGS.push(newBldg);
+    if(isUpdate){
+      // 기존 건물 데이터 갱신 (임차인/보증금/월세/수익률 기존값 유지)
+      var oldProps = BUILDINGS[existingIdx].props || [];
+      var oldMap = {};
+      oldProps.forEach(function(p){ oldMap[p.ho]=p; });
+      props.forEach(function(p){
+        if(oldMap[p.ho]){
+          p.status   = oldMap[p.ho].status   || p.status;
+          p.tenant   = oldMap[p.ho].tenant   || p.tenant;
+          p.deposit  = oldMap[p.ho].deposit  || p.deposit;
+          p.monthly  = oldMap[p.ho].monthly  || p.monthly;
+          p.yieldCur = oldMap[p.ho].yieldCur || p.yieldCur;
+        }
+      });
+      BUILDINGS[existingIdx].props = props;
+    } else {
+      BUILDINGS.push({ id:newId, name:name, props:props });
+    }
     saveBuildingsToStorage();
     document.getElementById('bldg-modal').classList.remove('open');
     renderBldgTabs();
-    selectBldg(newId);
-    showToast('✅ 건물 "' + name + '" 추가 완료 (' + props.length + '개 호실)');
+    selectBldg(isUpdate ? BUILDINGS[existingIdx].id : newId);
+    showToast((isUpdate?'🔄 갱신':'✅ 추가')+' 완료: "'+name+'" ('+props.length+'개 호실)');
   }
 
   if(file){
-    // 엑셀 파싱
     statusEl.style.display='block';
     statusEl.style.background='#e3f2fd';
     statusEl.style.color='#1565c0';
@@ -1202,59 +1245,37 @@ function addBldg(){
       try{
         var wb = XLSX.read(e.target.result, {type:'array'});
         var ws = wb.Sheets[wb.SheetNames[0]];
-
-        // ★ 위치 기반 파싱 (헤더명이 아닌 컬럼 인덱스 사용)
-        // 분양가 시트 구조:
-        //   행 0~3: 헤더/단위 행 → 스킵
-        //   행 4~  : 데이터
-        //   컬럼1=층(1F/2F), 컬럼2=호수, 컬럼3=전용㎡, 컬럼4=전용평
-        //   컬럼5=분양㎡, 컬럼6=분양평, 컬럼7=평당가, 컬럼10=공급금액, 컬럼13=부가세, 컬럼14=총분양가
         var raw = XLSX.utils.sheet_to_json(ws, {header:1, defval:''});
 
         var floorMap = {'1F':'지상1층','2F':'지상2층','3F':'지상3층','4F':'지상4층',
                         '5F':'지상5층','6F':'지상6층','7F':'지상7층','8F':'지상8층',
                         '9F':'지상9층','B1':'지하1층','B2':'지하2층'};
-
         var lastFloor = '';
         var props = [];
 
         for(var i=4; i<raw.length; i++){
           var row = raw[i];
-          // 층 forward-fill
           if(row[1] && String(row[1]).trim()) lastFloor = String(row[1]).trim();
           var ho = String(row[2]||'').trim();
-          if(!ho || !ho.includes('호')) continue; // 호수 없으면 스킵
-
-          var area    = parseFloat(row[3])||0;
-          var areaPy  = parseFloat(row[4])||0;
-          var supArea = parseFloat(row[5])||0;
-          var supAreaPy = parseFloat(row[6])||0;
-          var pricePerPy = parseFloat(row[7])||0;
-          var price   = parseInt(row[10])||0;
-          var vat     = parseInt(row[13])||0;
-          var total   = parseInt(row[14])||0;
+          if(!ho || !ho.includes('호')) continue;
 
           props.push({
-            ho:       ho,
-            floor:    floorMap[lastFloor] || lastFloor || '지상1층',
-            area:     area,
-            areaPy:   areaPy,
-            supArea:  supArea,
-            supAreaPy:supAreaPy,
-            price:    price,
-            land:     Math.round(price*0.601452),
-            bldg:     Math.round(price*0.398548),
-            vat:      vat,
-            total:    total,
-            status:   '미분양',
-            tenant:   '',
-            deposit:  0,
-            monthly:  0,
-            yieldCur: 0
+            ho:        ho,
+            floor:     floorMap[lastFloor] || lastFloor || '지상1층',
+            area:      parseFloat(row[3])||0,
+            areaPy:    parseFloat(row[4])||0,
+            supArea:   parseFloat(row[5])||0,
+            supAreaPy: parseFloat(row[6])||0,
+            price:     parseInt(row[10])||0,
+            land:      Math.round((parseInt(row[10])||0)*0.601452),
+            bldg:      Math.round((parseInt(row[10])||0)*0.398548),
+            vat:       parseInt(row[13])||0,
+            total:     parseInt(row[14])||0,
+            status:    '미분양', tenant:'', deposit:0, monthly:0, yieldCur:0
           });
         }
 
-        if(props.length===0){ throw new Error('호실 데이터를 찾을 수 없습니다. (헤더 확인 필요)'); }
+        if(props.length===0){ throw new Error('호실 데이터를 찾을 수 없습니다.'); }
         statusEl.style.background='#e8f5e9';
         statusEl.style.color='#2e7d32';
         statusEl.textContent='✅ '+props.length+'개 호실 인식 완료';
@@ -1267,7 +1288,6 @@ function addBldg(){
     };
     reader.readAsArrayBuffer(file);
   } else {
-    // 파일 없이 빈 건물 추가
     finishAdd([]);
   }
 }
