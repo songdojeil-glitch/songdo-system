@@ -1245,27 +1245,37 @@ function addBldg(){
       try{
         var wb = XLSX.read(e.target.result, {type:'array'});
         var ws = wb.Sheets[wb.SheetNames[0]];
-        var raw = XLSX.utils.sheet_to_json(ws, {header:1, defval:'', raw:false});
+        var raw = XLSX.utils.sheet_to_json(ws, {header:1, defval:'', raw:true});
 
-        // ★ 송도더샵그란알레 분양가 시트 컬럼 매핑 (0-based)
-        // row[0]=A, row[1]=B(층), row[2]=C(호수)
-        // row[3]=D(전용㎡), row[4]=E(전용평), row[5]=F(분양㎡), row[6]=G(분양평)
-        // row[10]=K(공급금액), row[13]=N(부가세), row[14]=O(총분양가)
-        // 데이터 시작: 행 인덱스 4 (openpyxl 행5)
+        // ★ 디버그: 처음 10행 출력
+        console.log('[SD] 시트명:', wb.SheetNames[0]);
+        console.log('[SD] 전체 행수:', raw.length);
+        for(var di=0; di<Math.min(10,raw.length); di++){
+          console.log('[SD] row['+di+']:', JSON.stringify(raw[di]).slice(0,200));
+        }
+
         var floorMap = {'1F':'지상1층','2F':'지상2층','3F':'지상3층','4F':'지상4층',
                         '5F':'지상5층','6F':'지상6층','7F':'지상7층','8F':'지상8층',
                         '9F':'지상9층','B1':'지하1층','B2':'지하2층'};
         var lastFloor = '';
         var props = [];
 
-        for(var i=4; i<raw.length; i++){
+        // 데이터 행 자동 감지 (호수 패턴 있는 첫 행 찾기)
+        var dataStart = 4;
+        for(var si=0; si<raw.length; si++){
+          var sv = String(raw[si][2]||'');
+          if(sv.includes('호') || /[A-Z]\d{4}/.test(sv)){ dataStart=si; break; }
+        }
+        console.log('[SD] dataStart:', dataStart);
+
+        for(var i=dataStart; i<raw.length; i++){
           var row = raw[i];
-          // 층 forward-fill (B5:B110 병합셀 대응)
           var floorVal = String(row[1]||'').trim();
           if(floorVal && /[0-9FB]/i.test(floorVal)) lastFloor = floorVal;
 
           var ho = String(row[2]||'').trim();
-          if(!ho || !ho.includes('호')) continue;
+          // '호' 포함 OR 영문자+숫자 패턴 (A1001, B101 등)
+          if(!ho || (!ho.includes('호') && !/^[A-Za-z]\d/.test(ho))) continue;
 
           var area      = parseFloat(String(row[3]).replace(/[^0-9.]/g,''))||0;
           var areaPy    = parseFloat(String(row[4]).replace(/[^0-9.]/g,''))||0;
@@ -1278,18 +1288,16 @@ function addBldg(){
           props.push({
             ho:        ho,
             floor:     floorMap[lastFloor] || lastFloor || '지상1층',
-            area:      area,
-            areaPy:    areaPy,
-            supArea:   supArea,
-            supAreaPy: supAreaPy,
+            area:      area,   areaPy:    areaPy,
+            supArea:   supArea, supAreaPy: supAreaPy,
             price:     price,
             land:      Math.round(price*0.601452),
             bldg:      Math.round(price*0.398548),
-            vat:       vat,
-            total:     total,
+            vat:       vat,    total:     total,
             status:    '미분양', tenant:'', deposit:0, monthly:0, yieldCur:0
           });
         }
+        console.log('[SD] 파싱된 호실 수:', props.length);
 
         if(props.length===0){ throw new Error('호실 데이터를 찾을 수 없습니다.'); }
         statusEl.style.background='#e8f5e9';
