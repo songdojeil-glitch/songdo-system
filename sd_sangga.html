@@ -1245,8 +1245,13 @@ function addBldg(){
       try{
         var wb = XLSX.read(e.target.result, {type:'array'});
         var ws = wb.Sheets[wb.SheetNames[0]];
-        var raw = XLSX.utils.sheet_to_json(ws, {header:1, defval:''});
+        var raw = XLSX.utils.sheet_to_json(ws, {header:1, defval:'', raw:false});
 
+        // ★ 송도더샵그란알레 분양가 시트 컬럼 매핑 (0-based)
+        // row[0]=A, row[1]=B(층), row[2]=C(호수)
+        // row[3]=D(전용㎡), row[4]=E(전용평), row[5]=F(분양㎡), row[6]=G(분양평)
+        // row[10]=K(공급금액), row[13]=N(부가세), row[14]=O(총분양가)
+        // 데이터 시작: 행 인덱스 4 (openpyxl 행5)
         var floorMap = {'1F':'지상1층','2F':'지상2층','3F':'지상3층','4F':'지상4층',
                         '5F':'지상5층','6F':'지상6층','7F':'지상7층','8F':'지상8층',
                         '9F':'지상9층','B1':'지하1층','B2':'지하2층'};
@@ -1255,22 +1260,33 @@ function addBldg(){
 
         for(var i=4; i<raw.length; i++){
           var row = raw[i];
-          if(row[1] && String(row[1]).trim()) lastFloor = String(row[1]).trim();
+          // 층 forward-fill (B5:B110 병합셀 대응)
+          var floorVal = String(row[1]||'').trim();
+          if(floorVal && /[0-9FB]/i.test(floorVal)) lastFloor = floorVal;
+
           var ho = String(row[2]||'').trim();
           if(!ho || !ho.includes('호')) continue;
+
+          var area      = parseFloat(String(row[3]).replace(/[^0-9.]/g,''))||0;
+          var areaPy    = parseFloat(String(row[4]).replace(/[^0-9.]/g,''))||0;
+          var supArea   = parseFloat(String(row[5]).replace(/[^0-9.]/g,''))||0;
+          var supAreaPy = parseFloat(String(row[6]).replace(/[^0-9.]/g,''))||0;
+          var price     = parseInt(String(row[10]).replace(/[^0-9]/g,''))||0;
+          var vat       = parseInt(String(row[13]).replace(/[^0-9]/g,''))||0;
+          var total     = parseInt(String(row[14]).replace(/[^0-9]/g,''))||0;
 
           props.push({
             ho:        ho,
             floor:     floorMap[lastFloor] || lastFloor || '지상1층',
-            area:      parseFloat(row[3])||0,
-            areaPy:    parseFloat(row[4])||0,
-            supArea:   parseFloat(row[5])||0,
-            supAreaPy: parseFloat(row[6])||0,
-            price:     parseInt(row[10])||0,
-            land:      Math.round((parseInt(row[10])||0)*0.601452),
-            bldg:      Math.round((parseInt(row[10])||0)*0.398548),
-            vat:       parseInt(row[13])||0,
-            total:     parseInt(row[14])||0,
+            area:      area,
+            areaPy:    areaPy,
+            supArea:   supArea,
+            supAreaPy: supAreaPy,
+            price:     price,
+            land:      Math.round(price*0.601452),
+            bldg:      Math.round(price*0.398548),
+            vat:       vat,
+            total:     total,
             status:    '미분양', tenant:'', deposit:0, monthly:0, yieldCur:0
           });
         }
@@ -1955,8 +1971,22 @@ function saveBldgs(){
 function renderBldgTabs(){
   var el = document.getElementById('bldg-tabs');
   el.innerHTML = BUILDINGS.map(function(b){
-    return '<button onclick="selectBldg(\''+b.id+'\')" id="btab-'+b.id+'" class="floor-tab'+(b.id===curBldgId?' on':'')+'">'+b.name+'</button>';
+    return '<span style="display:inline-flex;align-items:center;gap:2px">'
+      +'<button onclick="selectBldg(\''+b.id+'\')" id="btab-'+b.id+'" class="floor-tab'+(b.id===curBldgId?' on':'')+'">'+b.name+'</button>'
+      +'<button onclick="deleteBldg(\''+b.id+'\',\''+b.name+'\')" title="건물 삭제" style="background:none;border:none;color:#cc3333;font-size:11px;cursor:pointer;padding:0 2px;line-height:1;opacity:.6" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=.6">✕</button>'
+      +'</span>';
   }).join('');
+}
+
+function deleteBldg(id, name){
+  if(!confirm('"'+name+'" 건물을 삭제하시겠습니까?\n호실 데이터 전체가 삭제됩니다.')) return;
+  BUILDINGS = BUILDINGS.filter(function(b){ return b.id!==id; });
+  saveBuildingsToStorage();
+  if(curBldgId===id) curBldgId = BUILDINGS.length ? BUILDINGS[0].id : null;
+  renderBldgTabs();
+  if(curBldgId) selectBldg(curBldgId);
+  else document.getElementById('bldg-main').innerHTML='<p style="text-align:center;color:#aaa;padding:40px">등록된 건물이 없습니다.</p>';
+  showToast('🗑️ "'+name+'" 삭제 완료');
 }
 
 function selectBldg(id){
