@@ -108,6 +108,7 @@ body.zoom-mode .zoomable:hover{box-shadow:none !important;}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head>
 <body>
+<div id="_sda_cover" style="position:fixed;inset:0;background:#f9f9f6;z-index:9999;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px"><div style="width:28px;height:28px;border:3px solid #e0e0e0;border-top-color:#e06c3c;border-radius:50%;animation:_sda_spin .7s linear infinite"></div><div style="font-size:12px;color:#aaa">인증 확인 중...</div></div><style>@keyframes _sda_spin{to{transform:rotate(360deg)}}</style>
 
 
 
@@ -1253,17 +1254,19 @@ function addBldg(){
 
         // 1단계: 헤더 행 찾기 (호수/전용면적 같은 키워드가 있는 행)
         var HEADER_KEYS = {
-          ho:    ['호수','호  수','호실','호'],
-          floor: ['층','구분','구  분'],
-          area:  ['전용면적','전용㎡','전용 면적'],
-          areaPy:['전용평','전용 평'],
-          supArea:['분양면적','공급면적','분양㎡','공급㎡'],
+          ho:      ['호수','호  수','호실','호'],
+          floor:   ['층','구분','구  분'],
+          area:    ['전용면적','전용㎡','전용 면적'],
+          areaPy:  ['전용평','전용 평'],
+          supArea: ['분양면적','공급면적','분양㎡','공급㎡'],
           supAreaPy:['분양평','공급평'],
-          price: ['공급금액','분양가','공급가'],
-          land:  ['토지가격','토지가','토지'],
-          bldg:  ['건물가격','건물가','건물'],
-          vat:   ['부가세','VAT'],
-          total: ['총분양가','총가격','합계'],
+          price:   ['공급금액','분양가','공급가'],
+          land:    ['토지가격','토지가','토지'],
+          bldg:    ['건물가격','건물가','건물'],
+          vat:     ['부가세','VAT'],
+          total:   ['총분양가','총가격','합계'],
+          deposit: ['보증금'],
+          monthly: ['월세','임대료','월임대료'],
         };
 
         for(var ri=0; ri<Math.min(10, raw.length); ri++){
@@ -1313,6 +1316,8 @@ function addBldg(){
         if(COL.bldg     === undefined) COL.bldg     = H + 10;
         if(COL.vat      === undefined) COL.vat      = H + 11;
         if(COL.total    === undefined) COL.total    = H + 12;
+        if(COL.deposit  === undefined) COL.deposit  = H + 21; // 그란알레 엑셀 기준
+        if(COL.monthly  === undefined) COL.monthly  = H + 22; // 그란알레 엑셀 기준
 
         var floorMap = {'1F':'지상1층','2F':'지상2층','3F':'지상3층','4F':'지상4층',
                         '5F':'지상5층','6F':'지상6층','7F':'지상7층','8F':'지상8층',
@@ -1336,21 +1341,33 @@ function addBldg(){
 
           var toNum = function(v){ return parseFloat(String(v||0).replace(/[^0-9.]/g,''))||0; };
           var toInt = function(v){ return parseInt(String(v||0).replace(/[^0-9]/g,''))||0; };
+          var round2 = function(v){ return Math.round(toNum(v)*100)/100; };
 
-          var price = toInt(row[COL.price]);
+          var price   = toInt(row[COL.price]);
+          var deposit = toInt(row[COL.deposit]) || 0;
+          var monthly = toInt(row[COL.monthly])  || 0;
+          // 수익률 자동 계산: (월세×12×만원) / (분양가 - 보증금×만원) × 100
+          var yieldCur = 0;
+          if(monthly > 0 && price > 0){
+            var invest = price - deposit * 10000;
+            if(invest > 0) yieldCur = parseFloat(((monthly*10000*12)/invest*100).toFixed(4));
+          }
           props.push({
             ho:        ho,
             floor:     floorMap[lastFloor] || lastFloor || '지상1층',
-            area:      toNum(row[COL.area]),
-            areaPy:    toNum(row[COL.areaPy]),
-            supArea:   toNum(row[COL.supArea]),
-            supAreaPy: toNum(row[COL.supAreaPy]),
+            area:      round2(row[COL.area]),
+            areaPy:    round2(row[COL.areaPy]),
+            supArea:   round2(row[COL.supArea]),
+            supAreaPy: round2(row[COL.supAreaPy]),
             price:     price,
             land:      toInt(row[COL.land])  || Math.round(price*0.601452),
             bldg:      toInt(row[COL.bldg])  || Math.round(price*0.398548),
             vat:       toInt(row[COL.vat]),
             total:     toInt(row[COL.total]) || price,
-            status:    '미분양', tenant:'', deposit:0, monthly:0, yieldCur:0
+            deposit:   deposit,
+            monthly:   monthly,
+            yieldCur:  yieldCur,
+            status:    '미분양', tenant:''
           });
         }
 
@@ -4995,19 +5012,22 @@ function toggleZoom(){
 }
 </script>
 
+
 <script>
 /* SD Auth: sd_sangga */
 (function(){
   var SESSION_MS=86400000;
   var ROLE_LBL={master:"마스터",prime:"프라임",premium:"프리미엄",general:"제너럴"};
   var ROLE_COL={master:"#ffd700",prime:"#4f8ef7",premium:"#00e5a0",general:"#8b95b0"};
+  function hideCover(){var c=document.getElementById("_sda_cover");if(c){c.style.transition="opacity .2s";c.style.opacity="0";setTimeout(function(){if(c.parentNode)c.parentNode.removeChild(c);},200);}}
   function injectBar(p){if(document.getElementById("_sda_b"))return;var bar=document.createElement("div");bar.id="_sda_b";bar.style.cssText="position:fixed;top:0;right:0;z-index:9800;display:flex;align-items:center;gap:8px;padding:4px 12px;background:rgba(10,13,20,.93);border-bottom-left-radius:10px;border:1px solid rgba(255,255,255,.08)";var rc=ROLE_COL[p.role]||"#8b95b0";var nm=document.createElement("span");nm.style.cssText="font-size:11px;color:#8b95b0";nm.textContent=p.name||p.email||"";var bd=document.createElement("span");bd.style.cssText="font-size:10px;font-weight:700;padding:1px 7px;border-radius:8px;background:"+rc+"22;color:"+rc+";border:1px solid "+rc+"44";bd.textContent=ROLE_LBL[p.role]||p.role;var hub=document.createElement("a");hub.href="sd_hub.html";hub.textContent="허브";hub.style.cssText="color:#4f8ef7;font-size:11px;text-decoration:none;padding:2px 4px";var out=document.createElement("button");out.textContent="로그아웃";out.style.cssText="background:transparent;border:none;color:#556688;font-size:11px;cursor:pointer;padding:2px 4px";out.onclick=function(){try{localStorage.removeItem("sd_auth_session");}catch(e){}window.location.href="sd_hub.html";};bar.appendChild(nm);bar.appendChild(bd);bar.appendChild(hub);bar.appendChild(out);document.body.appendChild(bar);}
   var _s=null;
   try{var _r=localStorage.getItem("sd_auth_session");if(_r){var _d=JSON.parse(_r);if(_d&&_d.ts&&(Date.now()-_d.ts)<SESSION_MS&&_d.role)_s=_d;}}catch(e){}
-  if(!_s){window.location.href="sd_hub.html";return;}
+  if(!_s){hideCover();window.location.href="sd_hub.html";return;}
   var _sc=((_s.permissions||{}).screens)||{};
-  if(_sc["sd_sangga"]===false){alert("접근 권한이 없습니다.");window.location.href="sd_hub.html";return;}
+  if(_sc["sd_sangga"]===false){hideCover();alert("접근 권한이 없습니다.");window.location.href="sd_hub.html";return;}
   window._authProfile=_s;window._authPerms=_s.permissions||{};
+  hideCover();
   if(document.readyState==="loading"){document.addEventListener("DOMContentLoaded",function(){injectBar(_s);});}
   else{injectBar(_s);}
 })();
