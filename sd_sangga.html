@@ -1247,43 +1247,38 @@ function addBldg(){
         var ws = wb.Sheets[wb.SheetNames[0]];
         var raw = XLSX.utils.sheet_to_json(ws, {header:1, defval:'', raw:true});
 
-        // ★ 디버그: 처음 10행 출력
-        console.log('[SD] 시트명:', wb.SheetNames[0]);
-        console.log('[SD] 전체 행수:', raw.length);
-        for(var di=0; di<Math.min(10,raw.length); di++){
-          console.log('[SD] row['+di+']:', JSON.stringify(raw[di]).slice(0,200));
-        }
-
+        // 실제 컬럼 매핑 (row[4] 로그 기준):
+        // [0]=층, [1]=호수, [2]=전용㎡, [3]=전용평
+        // [4]=분양㎡, [5]=분양평, [6]=평당가(분양), [9]=공급금액
+        // [10]=토지가, [11]=건물가, [12]=부가세, [13]=총분양가
         var floorMap = {'1F':'지상1층','2F':'지상2층','3F':'지상3층','4F':'지상4층',
                         '5F':'지상5층','6F':'지상6층','7F':'지상7층','8F':'지상8층',
                         '9F':'지상9층','B1':'지하1층','B2':'지하2층'};
         var lastFloor = '';
         var props = [];
 
-        // 데이터 행 자동 감지 (호수 패턴 있는 첫 행 찾기)
         var dataStart = 4;
         for(var si=0; si<raw.length; si++){
-          var sv = String(raw[si][2]||'');
-          if(sv.includes('호') || /[A-Z]\d{4}/.test(sv)){ dataStart=si; break; }
+          var sv = String(raw[si][1]||'');
+          if(sv.includes('호') || /^[A-Z]\d{4}/.test(sv)){ dataStart=si; break; }
         }
-        console.log('[SD] dataStart:', dataStart);
 
         for(var i=dataStart; i<raw.length; i++){
           var row = raw[i];
-          var floorVal = String(row[1]||'').trim();
+          // 층 forward-fill
+          var floorVal = String(row[0]||'').trim();
           if(floorVal && /[0-9FB]/i.test(floorVal)) lastFloor = floorVal;
 
-          var ho = String(row[2]||'').trim();
-          // '호' 포함 OR 영문자+숫자 패턴 (A1001, B101 등)
+          var ho = String(row[1]||'').trim();
           if(!ho || (!ho.includes('호') && !/^[A-Za-z]\d/.test(ho))) continue;
 
-          var area      = parseFloat(String(row[3]).replace(/[^0-9.]/g,''))||0;
-          var areaPy    = parseFloat(String(row[4]).replace(/[^0-9.]/g,''))||0;
-          var supArea   = parseFloat(String(row[5]).replace(/[^0-9.]/g,''))||0;
-          var supAreaPy = parseFloat(String(row[6]).replace(/[^0-9.]/g,''))||0;
-          var price     = parseInt(String(row[10]).replace(/[^0-9]/g,''))||0;
-          var vat       = parseInt(String(row[13]).replace(/[^0-9]/g,''))||0;
-          var total     = parseInt(String(row[14]).replace(/[^0-9]/g,''))||0;
+          var area      = parseFloat(row[2])||0;
+          var areaPy    = parseFloat(row[3])||0;
+          var supArea   = parseFloat(row[4])||0;
+          var supAreaPy = parseFloat(row[5])||0;
+          var price     = parseInt(String(row[9]).replace(/[^0-9]/g,''))||0;
+          var vat       = parseInt(String(row[12]).replace(/[^0-9]/g,''))||0;
+          var total     = parseInt(String(row[13]).replace(/[^0-9]/g,''))||0;
 
           props.push({
             ho:        ho,
@@ -1291,13 +1286,12 @@ function addBldg(){
             area:      area,   areaPy:    areaPy,
             supArea:   supArea, supAreaPy: supAreaPy,
             price:     price,
-            land:      Math.round(price*0.601452),
-            bldg:      Math.round(price*0.398548),
+            land:      parseInt(String(row[10]).replace(/[^0-9]/g,''))||Math.round(price*0.601452),
+            bldg:      parseInt(String(row[11]).replace(/[^0-9]/g,''))||Math.round(price*0.398548),
             vat:       vat,    total:     total,
             status:    '미분양', tenant:'', deposit:0, monthly:0, yieldCur:0
           });
         }
-        console.log('[SD] 파싱된 호실 수:', props.length);
 
         if(props.length===0){ throw new Error('호실 데이터를 찾을 수 없습니다.'); }
         statusEl.style.background='#e8f5e9';
