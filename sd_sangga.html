@@ -2189,12 +2189,24 @@ function rebuildUnitCards(){
   wrap.style.display='block';
   sumP.style.display = selProps.length>1 ? 'block' : 'none';
 
-  // 각 호실별 초기값 설정
+  // 각 호실별 초기값 설정 — 대시보드 보증금/월세 우선 사용
   selProps.forEach(function(p){
-    if(!_unitData[p.ho]) _unitData[p.ho]={
-      disc:0, depRate:8, monYield:4.5, mon:0,
-      discMode:'pct', monMode:'yield', totDepInput:0, totMonInput:0
-    };
+    if(!_unitData[p.ho]){
+      var hasDep = p.deposit && p.deposit > 0;
+      var hasMon = p.monthly && p.monthly > 0;
+      _unitData[p.ho]={
+        disc:0,
+        // 보증금: 대시보드 값 있으면 사용, 없으면 8% 기본
+        depRate: hasDep ? null : 5,
+        _dep:    hasDep ? p.deposit : null,
+        // 월세: 대시보드 값 있으면 monFix로 설정
+        monYield: 5.0,
+        monFix:  hasMon ? p.monthly : null,
+        _mon:    hasMon ? p.monthly : null,
+        discMode:'pct', monMode: hasMon ? 'fix' : 'yield',
+        totDepInput:0, totMonInput:0
+      };
+    }
   });
 
   // 카드 HTML 생성 - grid로 나란히
@@ -2249,8 +2261,9 @@ function makeUnitCard(p){
     + '<span style="font-size:11px;color:#aaa">→</span>'
     + '<span id="dep-amt-'+p.ho+'" style="font-size:13px;font-weight:800;color:#1565c0;min-width:80px">—</span>'
     + '</div></div>'
-    + '<input type="range" min="0.5" max="10" step="0.1" value="'+d.depRate+'" style="width:100%" '
-    + 'data-ho="'+p.ho+'" oninput="onUnitDep(this)">'
+    + '<input type="range" min="500" max="30000" step="500" id="dep-slider-'+p.ho+'" '
+    + 'value="'+(d._dep||Math.round((p.price/10000*0.06)/500)*500)+'" style="width:100%" '
+    + 'data-ho="'+p.ho+'" oninput="onUnitDepAmt(this)">'
     + '</div>'
 
     // 월세 수익률 슬라이더
@@ -2344,6 +2357,17 @@ function onUnitDisc(el){
   var mf=document.getElementById('mon-fix-'+ho); if(mf) mf.value='';
   updateUnit(ho); updateSummary();
 }
+// ── 보증금 금액 직접 슬라이더 (500만원 단위)
+function onUnitDepAmt(el){
+  var ho=el.dataset.ho;
+  var d=_unitData[ho]; if(!d) return;
+  var amt=parseInt(el.value)||0;
+  d._dep=amt;
+  d.depRate=null;
+  updateUnit(ho);
+  updateSummary();
+}
+
 function onUnitDep(el){
   var ho=el.dataset.ho; var v=parseFloat(el.value);
   _unitData[ho].depRate=v;
@@ -2420,11 +2444,12 @@ function updateUnit(ho){
   var price=p.price;
   var disc=d.disc||0;
   var pr=Math.round(price*(1-disc/100));
-  var depR=d.depRate||8;
-  var dep=Math.round(pr/10000*depR/100/100)*100; // 100만원 단위
+  // 보증금: _dep 직접 설정값 있으면 우선, 없으면 depRate%로 계산
+  var dep = (d._dep != null && d._dep > 0) ? d._dep : Math.round(pr/10000*(d.depRate||5)/100/100)*100;
+  var depR= (d._dep != null && d._dep > 0) ? Math.round(dep/(pr/10000)/100*100)/100 : (d.depRate||5);
   var yr=d.monYield||4.5;
   var ni=pr-dep*10000;
-  var monCalc=ni>0?Math.max(0,Math.round(ni*yr/100/12/10000/5)*5):0;
+  var monCalc=ni>0?Math.max(0,Math.round(ni*yr/100/12/10000/10)*10):0;
   var mon=d.monFix!=null?d.monFix:monCalc;
   d._dep=dep; d._mon=mon; d._pr=pr;
 
@@ -2443,6 +2468,9 @@ function updateUnit(ho){
   if(depAmtEl)  depAmtEl.textContent=fmt(dep)+'만';
   if(monYEl)    monYEl.textContent=yr.toFixed(1)+'%';
   if(monAmtEl)  monAmtEl.textContent=fmt(mon)+'만';
+  // 보증금 슬라이더 위치 동기화
+  var depSlEl=document.getElementById('dep-slider-'+ho);
+  if(depSlEl) depSlEl.value=Math.round(dep/500)*500;
 
   if(resEl){
     var yld=ni>0&&mon?(mon*10000*12/ni*100):0;
@@ -2655,7 +2683,7 @@ function rebuildSaleCards(){
   wrap.style.display='block';
   sumP.style.display=selProps.length>1?'block':'none';
   selProps.forEach(function(p){
-    if(!_saleUnitData[p.ho]) _saleUnitData[p.ho]={disc:0,depRate:5,monYield:4.5,monFix:null};
+    if(!_saleUnitData[p.ho]) _saleUnitData[p.ho]={disc:0,depRate:5,monYield:5.0,monFix:null};
   });
   var cols=selProps.length+(selProps.length>1?1:0);
   wrap.innerHTML='<div style="display:grid;grid-template-columns:repeat('+cols+',1fr);gap:12px;margin-bottom:1rem">'
@@ -2667,7 +2695,7 @@ function rebuildSaleCards(){
 
 // ── 분양 단일 카드
 function makeSaleUnitCard(p){
-  var d=_saleUnitData[p.ho]||{disc:0,depRate:5,monYield:4.5};
+  var d=_saleUnitData[p.ho]||{disc:0,depRate:5,monYield:5.0};
   return '<div id="sale-card-'+p.ho+'" style="background:#fff;border:1.5px solid #e3e8f0;border-radius:12px;padding:14px;box-shadow:0 2px 8px rgba(0,0,0,0.06)">'
     +'<div style="background:#1a2744;color:#fff;border-radius:8px;padding:8px 12px;margin-bottom:12px;display:flex;justify-content:space-between">'
     +'<span style="font-size:15px;font-weight:700">'+p.ho+'</span><span style="font-size:11px;color:#90caf9">'+p.floor+'</span></div>'
@@ -2685,11 +2713,12 @@ function makeSaleUnitCard(p){
     +'data-ho="'+p.ho+'" oninput="onSaleUnitDisc(this)"></div>'
     // 보증금
     +'<div style="margin-bottom:12px"><div style="display:flex;justify-content:space-between;margin-bottom:4px">'
-    +'<label style="font-size:11px;color:#666;font-weight:600">💰 보증금 비율</label>'
+    +'<label style="font-size:11px;color:#666;font-weight:600">💰 보증금 조정 (±500만원)</label>'
     +'<div><span id="su-dep-pct-'+p.ho+'" style="font-size:13px;font-weight:800;color:#1565c0">'+d.depRate+'%</span>'
     +' → <span id="su-dep-amt-'+p.ho+'" style="font-size:13px;font-weight:800;color:#1565c0"></span></div></div>'
-    +'<input type="range" min="0.5" max="10" step="0.1" value="'+d.depRate+'" style="width:100%" '
-    +'data-ho="'+p.ho+'" oninput="onSaleUnitDep(this)"></div>'
+    +'<input type="range" min="500" max="30000" step="500" id="su-dep-slider-'+p.ho+'" '
+    +'value="'+(d._dep||Math.round((p.price/10000*0.06)/500)*500)+'" style="width:100%" '
+    +'data-ho="'+p.ho+'" oninput="onSaleUnitDepAmt(this)"></div>'
     // 수익률 → 월세
     +'<div style="margin-bottom:12px"><div style="display:flex;justify-content:space-between;margin-bottom:4px">'
     +'<label style="font-size:11px;color:#666;font-weight:600">🏷️ 수익률 기준 월세</label>'
@@ -2728,6 +2757,14 @@ function onSaleUnitDisc(el){
   var ho=el.dataset.ho; var v=parseFloat(el.value);
   _saleUnitData[ho].disc=v; updateSaleUnit(ho); updateSaleSummary();
 }
+function onSaleUnitDepAmt(el){
+  var ho=el.dataset.ho;
+  var d=_saleUnitData[ho]; if(!d) return;
+  var amt=parseInt(el.value)||0;
+  d._dep=amt; d.depRate=null;
+  updateSaleUnit(ho);
+}
+
 function onSaleUnitDep(el){
   var ho=el.dataset.ho; var v=parseFloat(el.value);
   _saleUnitData[ho].depRate=v; updateSaleUnit(ho); updateSaleSummary();
@@ -2755,11 +2792,12 @@ function updateSaleUnit(ho){
   var d=_saleUnitData[ho]; if(!d) return;
   var disc=d.disc||0;
   var pr=Math.round(p.price*(1-disc/100));
-  var depR=d.depRate||5;
-  var dep=Math.round(pr/10000*depR/100/100)*100; // 100만원 단위
-  var yr=d.monYield||4.5;
+  // 보증금: _dep 직접 값 있으면 우선, 없으면 depRate%로 계산
+  var dep = (d._dep != null && d._dep > 0) ? d._dep : Math.round(pr/10000*(d.depRate||5)/100/100)*100;
+  var depR= (d._dep != null && d._dep > 0) ? Math.round(dep/(pr/10000)/100*100)/100 : (d.depRate||5);
+  var yr=d.monYield||5.0;
   var ni=pr-dep*10000;
-  var monCalc=ni>0?Math.max(0,Math.round(ni*yr/100/12/10000/5)*5):0;
+  var monCalc=ni>0?Math.max(0,Math.round(ni*yr/100/12/10000/10)*10):0;
   var mon=d.monFix!=null?d.monFix:monCalc;
   d._dep=dep; d._mon=mon; d._pr=pr;
   var yld=ni>0&&mon?(mon*10000*12/ni*100):0;
@@ -2769,6 +2807,7 @@ function updateSaleUnit(ho){
   el=document.getElementById('su-disc-price-'+ho); if(el) el.textContent=disc>0?fmt(Math.round(pr/10000))+'만':'—';
   el=document.getElementById('su-dep-pct-'+ho);    if(el) el.textContent=depR.toFixed(1)+'%';
   el=document.getElementById('su-dep-amt-'+ho);    if(el) el.textContent=fmt(dep)+'만';
+  var suDepSl=document.getElementById('su-dep-slider-'+ho); if(suDepSl) suDepSl.value=Math.round(dep/500)*500;
   el=document.getElementById('su-yield-'+ho);      if(el) el.textContent=yr.toFixed(1)+'%';
   el=document.getElementById('su-mon-'+ho);        if(el) el.textContent=fmt(mon)+'만';
   // 대출 수익률
@@ -4374,7 +4413,7 @@ function genEstimate(type){
     if(!selProps.length){alert('유효한 호실을 선택해 주세요.');return;}
     // 호실별 카드값 적용
     selProps.forEach(function(p){
-      var d=_saleUnitData[p.ho]||{disc:0,depRate:5,monYield:4.5,monFix:null};
+      var d=_saleUnitData[p.ho]||{disc:0,depRate:5,monYield:5.0,monFix:null};
       p._saleDisc    = d.disc||0;
       p._salePrice   = Math.round(p.price*(1-d.disc/100));
       p._saleDep     = d._dep  || Math.round(p._salePrice/10000*(d.depRate||5)/100/100)*100;
