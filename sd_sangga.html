@@ -1379,8 +1379,21 @@ function addBldg(){
 
 function saveBuildingsToStorage(){
   try{
-    window.storage.set('sd_buildings', JSON.stringify(BUILDINGS));
-  }catch(e){ console.error('건물 저장 오류', e); }
+    // 에스파이브시티(es5)는 delta만 저장 (props 전체 저장 안 함 → 빈값 문제 방지)
+    var saveData = BUILDINGS.map(function(b){
+      if(b.id === 'es5'){
+        var deltas = (b.props||[]).filter(function(p){
+          return p.status!=='미분양' || p.tenant || p.deposit || p.monthly || p.yieldCur;
+        }).map(function(p){
+          return {ho:p.ho, status:p.status, tenant:p.tenant||'',
+                  deposit:p.deposit||0, monthly:p.monthly||0, yieldCur:p.yieldCur||0};
+        });
+        return {id:'es5', name:b.name, deltas:deltas};
+      }
+      return b;
+    });
+    window.storage.set('sd_buildings', JSON.stringify(saveData));
+  }catch(e){}
 }
 
 function initBuildings(){
@@ -1397,31 +1410,41 @@ function initBuildings(){
       BUILDINGS.unshift({id:'es5', name:'송도에스파이브시티', props: JSON.parse(JSON.stringify(ES5_PROPS))});
       es5 = BUILDINGS[0];
     }
-    // Firebase에 전체 props가 저장된 경우 우선 사용 (225개 보장)
-    if(es5.props && es5.props.length >= 200){
-      // Firebase props 그대로 사용 (소장님이 입력한 전체 데이터)
-      // status 빈값 보정
-      es5.props.forEach(function(p){ if(!p.status) p.status='미분양'; });
-    } else if(es5.deltas && es5.deltas.length > 0){
-      // delta 방식: ES5_PROPS에 수정값 적용
-      var baseProps = JSON.parse(JSON.stringify(ES5_PROPS));
+
+    // ★ 에스파이브시티는 항상 ES5_PROPS 기반으로 delta 적용
+    var baseProps = JSON.parse(JSON.stringify(ES5_PROPS));
+    if(es5.deltas && es5.deltas.length > 0){
       var deltaMap = {};
       es5.deltas.forEach(function(d){ deltaMap[d.ho]=d; });
       baseProps.forEach(function(p){
         if(deltaMap[p.ho]){
-          p.status  = deltaMap[p.ho].status;
-          p.tenant  = deltaMap[p.ho].tenant;
-          p.deposit = deltaMap[p.ho].deposit;
-          p.monthly = deltaMap[p.ho].monthly;
-          p.yieldCur= deltaMap[p.ho].yieldCur;
+          p.status   = deltaMap[p.ho].status   || p.status;
+          p.tenant   = deltaMap[p.ho].tenant   || p.tenant;
+          p.deposit  = deltaMap[p.ho].deposit  || p.deposit;
+          p.monthly  = deltaMap[p.ho].monthly  || p.monthly;
+          p.yieldCur = deltaMap[p.ho].yieldCur || p.yieldCur;
         }
       });
-      es5.props = baseProps;
-    } else {
-      // 둘 다 없으면 ES5_PROPS 기본값
-      es5.props = JSON.parse(JSON.stringify(ES5_PROPS));
-      es5.props.forEach(function(p){ if(!p.status) p.status='미분양'; });
+    } else if(es5.props && es5.props.length >= 200){
+      // 구버전 전체 저장 방식 → delta로 전환
+      var oldProps = es5.props;
+      var base2 = JSON.parse(JSON.stringify(ES5_PROPS));
+      var oldMap = {};
+      oldProps.forEach(function(p){ oldMap[p.ho]=p; });
+      base2.forEach(function(p){
+        if(oldMap[p.ho]){
+          p.status   = oldMap[p.ho].status   || p.status;
+          p.tenant   = oldMap[p.ho].tenant   || p.tenant;
+          p.deposit  = oldMap[p.ho].deposit  || p.deposit;
+          p.monthly  = oldMap[p.ho].monthly  || p.monthly;
+          p.yieldCur = oldMap[p.ho].yieldCur || p.yieldCur;
+        }
+      });
+      baseProps = base2;
     }
+    baseProps.forEach(function(p){ if(!p.status) p.status='미분양'; });
+    es5.props = baseProps;
+
     renderBldgTabs();
     selectBldg(BUILDINGS[0].id);
     loadBldgPhotos();
