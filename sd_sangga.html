@@ -1247,48 +1247,109 @@ function addBldg(){
         var ws = wb.Sheets[wb.SheetNames[0]];
         var raw = XLSX.utils.sheet_to_json(ws, {header:1, defval:'', raw:true});
 
-        // 실제 컬럼 매핑 (row[4] 로그 기준):
-        // [0]=층, [1]=호수, [2]=전용㎡, [3]=전용평
-        // [4]=분양㎡, [5]=분양평, [6]=평당가(분양), [9]=공급금액
-        // [10]=토지가, [11]=건물가, [12]=부가세, [13]=총분양가
+        // ★ 컬럼 자동 감지 — 헤더 텍스트로 위치 탐색
+        var COL = {};
+        var dataStart = 0;
+
+        // 1단계: 헤더 행 찾기 (호수/전용면적 같은 키워드가 있는 행)
+        var HEADER_KEYS = {
+          ho:    ['호수','호  수','호실','호'],
+          floor: ['층','구분','구  분'],
+          area:  ['전용면적','전용㎡','전용 면적'],
+          areaPy:['전용평','전용 평'],
+          supArea:['분양면적','공급면적','분양㎡','공급㎡'],
+          supAreaPy:['분양평','공급평'],
+          price: ['공급금액','분양가','공급가'],
+          land:  ['토지가격','토지가','토지'],
+          bldg:  ['건물가격','건물가','건물'],
+          vat:   ['부가세','VAT'],
+          total: ['총분양가','총가격','합계'],
+        };
+
+        for(var ri=0; ri<Math.min(10, raw.length); ri++){
+          var row = raw[ri];
+          var matched = 0;
+          Object.keys(HEADER_KEYS).forEach(function(key){
+            HEADER_KEYS[key].forEach(function(kw){
+              row.forEach(function(cell, ci){
+                if(String(cell).replace(/\s/g,'').includes(kw.replace(/\s/g,''))){
+                  if(!COL[key]) { COL[key]=ci; matched++; }
+                }
+              });
+            });
+          });
+          if(matched >= 3){ dataStart = ri+1; break; } // 헤더 행 발견
+        }
+
+        // 2단계: 헤더 못 찾으면 첫 번째 호수 패턴 행으로 dataStart 설정
+        if(dataStart === 0){
+          for(var si=0; si<raw.length; si++){
+            var hasHo = raw[si].some(function(c){
+              return String(c).includes('호') || /^[A-Z]\d{3,4}$/.test(String(c));
+            });
+            if(hasHo){ dataStart=si; break; }
+          }
+        }
+
+        // 3단계: 호수 컬럼 위치 자동 감지 (첫 데이터 행 기준)
+        if(COL.ho === undefined){
+          var firstDataRow = raw[dataStart] || [];
+          firstDataRow.forEach(function(cell, ci){
+            if(COL.ho===undefined && (String(cell).includes('호') || /^[A-Z]\d{3,4}/.test(String(cell)))){
+              COL.ho = ci;
+            }
+          });
+        }
+
+        // 4단계: 나머지 컬럼을 호수 기준 상대 위치로 추정
+        var H = COL.ho || 1; // 호수 컬럼 기준
+        if(COL.floor    === undefined) COL.floor    = H - 1;
+        if(COL.area     === undefined) COL.area     = H + 1;
+        if(COL.areaPy   === undefined) COL.areaPy   = H + 2;
+        if(COL.supArea  === undefined) COL.supArea  = H + 3;
+        if(COL.supAreaPy=== undefined) COL.supAreaPy= H + 4;
+        if(COL.price    === undefined) COL.price    = H + 8;
+        if(COL.land     === undefined) COL.land     = H + 9;
+        if(COL.bldg     === undefined) COL.bldg     = H + 10;
+        if(COL.vat      === undefined) COL.vat      = H + 11;
+        if(COL.total    === undefined) COL.total    = H + 12;
+
         var floorMap = {'1F':'지상1층','2F':'지상2층','3F':'지상3층','4F':'지상4층',
                         '5F':'지상5층','6F':'지상6층','7F':'지상7층','8F':'지상8층',
-                        '9F':'지상9층','B1':'지하1층','B2':'지하2층'};
+                        '9F':'지상9층','B1':'지하1층','B2':'지하2층',
+                        '지상1층':'지상1층','지상2층':'지상2층','지상3층':'지상3층',
+                        '1층':'지상1층','2층':'지상2층','3층':'지상3층'};
+
         var lastFloor = '';
         var props = [];
 
-        var dataStart = 4;
-        for(var si=0; si<raw.length; si++){
-          var sv = String(raw[si][1]||'');
-          if(sv.includes('호') || /^[A-Z]\d{4}/.test(sv)){ dataStart=si; break; }
-        }
-
         for(var i=dataStart; i<raw.length; i++){
           var row = raw[i];
-          // 층 forward-fill
-          var floorVal = String(row[0]||'').trim();
-          if(floorVal && /[0-9FB]/i.test(floorVal)) lastFloor = floorVal;
 
-          var ho = String(row[1]||'').trim();
+          // 층 forward-fill
+          var floorVal = String(row[COL.floor]||'').trim();
+          if(floorVal && floorVal!=='') lastFloor = floorVal;
+
+          // 호수 확인
+          var ho = String(row[COL.ho]||'').trim();
           if(!ho || (!ho.includes('호') && !/^[A-Za-z]\d/.test(ho))) continue;
 
-          var area      = parseFloat(row[2])||0;
-          var areaPy    = parseFloat(row[3])||0;
-          var supArea   = parseFloat(row[4])||0;
-          var supAreaPy = parseFloat(row[5])||0;
-          var price     = parseInt(String(row[9]).replace(/[^0-9]/g,''))||0;
-          var vat       = parseInt(String(row[12]).replace(/[^0-9]/g,''))||0;
-          var total     = parseInt(String(row[13]).replace(/[^0-9]/g,''))||0;
+          var toNum = function(v){ return parseFloat(String(v||0).replace(/[^0-9.]/g,''))||0; };
+          var toInt = function(v){ return parseInt(String(v||0).replace(/[^0-9]/g,''))||0; };
 
+          var price = toInt(row[COL.price]);
           props.push({
             ho:        ho,
             floor:     floorMap[lastFloor] || lastFloor || '지상1층',
-            area:      area,   areaPy:    areaPy,
-            supArea:   supArea, supAreaPy: supAreaPy,
+            area:      toNum(row[COL.area]),
+            areaPy:    toNum(row[COL.areaPy]),
+            supArea:   toNum(row[COL.supArea]),
+            supAreaPy: toNum(row[COL.supAreaPy]),
             price:     price,
-            land:      parseInt(String(row[10]).replace(/[^0-9]/g,''))||Math.round(price*0.601452),
-            bldg:      parseInt(String(row[11]).replace(/[^0-9]/g,''))||Math.round(price*0.398548),
-            vat:       vat,    total:     total,
+            land:      toInt(row[COL.land])  || Math.round(price*0.601452),
+            bldg:      toInt(row[COL.bldg])  || Math.round(price*0.398548),
+            vat:       toInt(row[COL.vat]),
+            total:     toInt(row[COL.total]) || price,
             status:    '미분양', tenant:'', deposit:0, monthly:0, yieldCur:0
           });
         }
