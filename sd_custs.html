@@ -355,10 +355,16 @@ body.zoom-mode .zoomable:hover{box-shadow:none !important;}
   <!-- 기본 정보 (공통) -->
   <div class="card">
     <p class="sec">기본 정보</p>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:12px">
       <div><label class="fl">고객 등록일</label><input id="f-rdate" type="date" class="fi"></div>
       <div><label class="fl">접수 경로</label>
         <select id="f-route" class="fi"><option value="">선택</option><option>내방</option><option>전화</option><option>문자</option><option>카톡</option><option>지인소개</option><option>기존고객</option><option>네이버부동산</option><option>유튜브</option><option>홈페이지</option><option>타업소</option></select>
+      </div>
+      <div><label class="fl">담당자 <span style="font-size:11px;color:#4f8ef7">● 자동설정</span></label>
+        <select id="f-staff" class="fi">
+          <option value="">선택</option>
+          <option>문형은</option><option>직원1</option><option>직원2</option><option>직원3</option>
+        </select>
       </div>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:12px;margin-bottom:12px;align-items:end">
@@ -536,6 +542,10 @@ body.zoom-mode .zoomable:hover{box-shadow:none !important;}
       <select id="ft-area" class="fi" style="width:auto;font-size:12px" onchange="rtbl()"><option value="">전체 공구</option><option>1공구</option><option>2공구</option><option>3공구</option><option>4공구</option><option>5공구</option><option>6공구</option><option>7공구</option><option>랜드마크시티</option></select>
       <input id="ft-name" type="text" class="fi" style="width:100px;font-size:12px" placeholder="이름 검색" oninput="rtbl()">
       <input id="ft-bldg" type="text" class="fi" style="width:120px;font-size:12px" placeholder="거래단지 검색" oninput="rtbl()">
+      <select id="ft-staff" class="fi" style="width:auto;font-size:12px" onchange="rtbl()">
+        <option value="">전체 담당자</option>
+        <option>문형은</option><option>직원1</option><option>직원2</option><option>직원3</option>
+      </select>
     </div>
     <div style="display:flex;gap:8px;align-items:center"><span id="tbl-cnt" style="font-size:12px;color:#666"></span><button onclick="exportXL()" class="btn-s">📥 엑셀</button></div>
   </div>
@@ -548,6 +558,7 @@ body.zoom-mode .zoomable:hover{box-shadow:none !important;}
       <col style="width:140px">  <!-- 거래·단지 -->
       <col style="width:100px">  <!-- 지역·예산 -->
       <col style="width:110px">  <!-- 물건정보 -->
+      <col style="width:70px">   <!-- 담당자 -->
       <col style="width:80px">   <!-- 등록일 -->
       <col style="width:80px">   <!-- 경로 -->
       <col style="width:100px">  <!-- 최종연락 -->
@@ -562,11 +573,12 @@ body.zoom-mode .zoomable:hover{box-shadow:none !important;}
       <th data-col="4">거래·단지</th>
       <th data-col="5">지역·예산</th>
       <th data-col="6">물건정보</th>
-      <th data-col="7">등록일</th>
-      <th data-col="8">경로</th>
-      <th data-col="9">최종연락</th>
-      <th data-col="10">최종메모</th>
-      <th data-col="11" style="min-width:110px">액션</th>
+      <th data-col="7">담당자</th>
+      <th data-col="8">등록일</th>
+      <th data-col="9">경로</th>
+      <th data-col="10">최종연락</th>
+      <th data-col="11">최종메모</th>
+      <th data-col="12" style="min-width:110px">액션</th>
     </tr></thead>
     <tbody id="tbdy"></tbody></table>
   </div>
@@ -1628,6 +1640,7 @@ function saveCust(){
     pipe:tags.indexOf('가망고객')>=0?(parseInt(document.getElementById('f-pipe').value)||1):0,
     name:nm,tel1:document.getElementById('f-tel1').value.trim(),tel1carrier:document.getElementById('f-tel1carrier').value,tel2:document.getElementById('f-tel2').value.trim(),tel2carrier:document.getElementById('f-tel2carrier').value,
     rdate:document.getElementById('f-rdate').value,route:document.getElementById('f-route').value,
+    staff:document.getElementById('f-staff').value||((window._authProfile||{}).name||''),
     lastdate:document.getElementById('f-lastdate').value,lastmemo:document.getElementById('f-lastmemo').value.trim(),
     consult:document.getElementById('f-consult').value.trim(),
     regAt:editId?(custs.find(function(x){return x.id===editId;})||{}).regAt||ds:ds,
@@ -1672,6 +1685,9 @@ function clearF(){
   ['f-route','f-deal','f-ptype','f-area','f-size','f-prop-deal','f-prop-ptype','f-ex-rel','f-ex-intro'].forEach(function(id){var el=document.getElementById(id);if(el)el.value='';});
   ['f-tag-ga','f-tag-mul','f-tag-ct','f-tag-ct2','f-tag-ex'].forEach(function(id){var el=document.getElementById(id);if(el)el.checked=false;});
   onTagChange();selPipe(1);setToday();editId=null;document.getElementById('save-btn').textContent='💾 고객 저장';
+  // 담당자: 로그인 사용자로 자동 초기화
+  var staffEl=document.getElementById('f-staff');
+  if(staffEl){var me=(window._authProfile||{}).name||'';if(me)staffEl.value=me;}
 }
 
 // ── 면적 ㎡ 헬퍼 함수
@@ -1696,7 +1712,27 @@ function rtbl(){
   var af=document.getElementById('ft-area').value;
   var nf=(document.getElementById('ft-name')||{}).value||'';
   var bf=(document.getElementById('ft-bldg')||{}).value||'';
-  var _curFilter=tf+'|'+df+'|'+af+'|'+nf+'|'+bf;
+  var sf=(document.getElementById('ft-staff')||{}).value||'';
+
+  // ★ 권한 기반 자동 필터
+  // - 제너럴: 항상 본인만 (고정)
+  // - 나머지: cust_view 권한값으로 결정 (기본 'all', 마스터가 'own'으로 설정 가능)
+  var myRole=(window._authProfile||{}).role||'master';
+  var myName=(window._authProfile||{}).name||'';
+  var myPerms=(window._authPerms||{});
+  var custView = myPerms.cust_view || (myRole==='general' ? 'own' : 'all');
+  var autoStaff = (myRole==='general' || custView==='own') ? myName : '';
+
+  // 담당자 필터 UI: 본인만인 경우 고정/비활성화
+  var staffFt=document.getElementById('ft-staff');
+  if(staffFt){
+    if(autoStaff){ staffFt.value=myName; staffFt.disabled=true; }
+    else { staffFt.disabled=false; }
+  }
+
+  var effectiveStaff = autoStaff || sf;
+
+  var _curFilter=tf+'|'+df+'|'+af+'|'+nf+'|'+bf+'|'+effectiveStaff;
   if(_curFilter!==window._custLastFilter){ window._custPage=0; window._custLastFilter=_curFilter; }
   var f=custs.filter(function(c){
     var tags=migrateTags(c);
@@ -1705,6 +1741,11 @@ function rtbl(){
     if(af&&c.area!==af)return false;
     if(nf&&c.name.indexOf(nf)<0)return false;
     if(bf){var bldg=(c.ctCx||c.propCx||c.cx||'');if(bldg.indexOf(bf)<0)return false;}
+    // 담당자 필터 (권한 기반 or 수동 선택)
+    if(effectiveStaff){
+      var cs=c.staff||'';
+      if(!cs||cs!==effectiveStaff)return false;
+    }
     return true;
   });
   document.getElementById('tbl-cnt').textContent=f.length+'명';
@@ -1753,6 +1794,7 @@ function rtbl(){
       +'<td style="font-size:11px;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+dealStr+'</td>'
       +'<td style="font-size:11px">'+locInfo+'</td>'
       +'<td style="font-size:11px;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+propStr+'</td>'
+      +'<td style="font-size:11px;color:'+(c.staff&&c.staff!==(window._authProfile||{}).name?'#1565c0':'#333')+'">'+((c.staff||'—'))+'</td>'
       +'<td style="font-size:11px">'+(c.rdate||'—')+'</td>'
       +'<td style="font-size:11px">'+(c.route||'—')+'</td>'
       +'<td style="font-size:11px;white-space:nowrap">'+(c.lastdate||'—')+' '+dTag+'</td>'
@@ -2905,6 +2947,8 @@ function toggleZoom(){
   }
 }
 </script>
+
+
 
 <script>
 /* SD Auth: sd_custs */

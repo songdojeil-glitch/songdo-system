@@ -214,7 +214,6 @@ body.zoom-mode .zoomable:hover{box-shadow:none !important;}
   <!-- ═══ Firebase SDK (compat v9) ═══ -->
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
   <!-- ═══ Firebase Storage 어댑터 (window.storage 호환) ═══ -->
   <script src="firebase-storage.js"></script>
 </head>
@@ -777,6 +776,16 @@ function loadAccountPanel(){
           pk[1]+'</label>';
       }).join('');
 
+      // ★ 고객 조회 범위 — 제너럴은 항상 본인만(고정), 나머지는 마스터가 토글 가능
+      var custView = (perms.cust_view) || (u.role==='general' ? 'own' : 'all');
+      var isAll = custView === 'all';
+      var custViewHtml = u.role==='general'
+        ? '<span style="font-size:10px;color:#4a526a;padding:2px 8px;border:1px solid #1e2535;border-radius:4px">👤 본인만 (고정)</span>'
+        : '<label style="display:inline-flex;align-items:center;gap:5px;font-size:11px;cursor:pointer;padding:4px 10px;border:1px solid '+(isAll?'#4f8ef7':'#2a3045')+';border-radius:6px;color:'+(isAll?'#4f8ef7':'#8b95b0')+';background:'+(isAll?'#0f2040':'transparent')+'">'
+          +'<input type="checkbox" '+(isAll?'checked':'')+' onchange="toggleCustView(\''+uid+'\',this.checked)" style="accent-color:#4f8ef7;width:12px;height:12px">'
+          +(isAll?'👥 전체 고객 조회 가능':'👤 본인 담당 고객만')
+          +'</label>';
+
       userHtml+=
         '<div style="background:#141824;border:1px solid #2a3045;border-radius:12px;padding:14px 16px;margin-bottom:10px">'+
         '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap">'+
@@ -790,7 +799,8 @@ function loadAccountPanel(){
           (u.role!=='master'?'<button onclick="revokeUser(\''+uid+'\')" style="padding:4px 10px;background:#e85c5c22;border:1px solid #e85c5c44;border-radius:8px;color:#e85c5c;font-size:11px;cursor:pointer">비활성화</button>':'')+
         '</div>'+
         '<div style="margin-bottom:6px"><div style="font-size:10px;color:#556688;margin-bottom:4px">시스템 접근</div>'+screenChecks+'</div>'+
-        '<div><div style="font-size:10px;color:#556688;margin-bottom:4px">기능 권한</div>'+permChecks+'</div>'+
+        '<div style="margin-bottom:6px"><div style="font-size:10px;color:#556688;margin-bottom:4px">기능 권한</div>'+permChecks+'</div>'+
+        '<div><div style="font-size:10px;color:#556688;margin-bottom:4px">👥 고객 조회 범위</div>'+custViewHtml+'</div>'+
         '</div>';
     });
 
@@ -826,6 +836,13 @@ function revokeUser(uid){
 function changeRole(uid, role){
   var defaults=JSON.parse(JSON.stringify(ROLE_DEFAULTS[role]||ROLE_DEFAULTS.general));
   firebase.database().ref('sd_users/'+uid).update({role:role, permissions:defaults}).then(function(){ loadAccountPanel(); });
+}
+
+// ── 고객 조회 범위 토글 (마스터만 변경 가능)
+function toggleCustView(uid, isAll){
+  firebase.database().ref('sd_users/'+uid+'/permissions/cust_view')
+    .set(isAll ? 'all' : 'own')
+    .then(function(){ loadAccountPanel(); });
 }
 
 // ── 시스템 접근 토글
