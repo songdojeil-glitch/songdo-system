@@ -1118,7 +1118,7 @@ function saveDetail(){
   c.agencySeller=sdjSel;c.agencyBuyer=sdjBuy;c.manager=gdv('manager');
   c.landlord=gdv('landlord')||'';c.landlordTel=gdv('landlordtel')||'';c.landlordExp=gdv('landlordexp')||'';
   c.tenant=gdv('tenant')||'';
-  toCStore();syncMidToSchedule(c);renderCT();
+  toCStore();autoSyncToSchedule(c);renderCT();
   var msg=document.getElementById('detail-msg');
   msg.textContent='✅ 저장됐습니다!';msg.style.background='#e8f5e9';msg.style.color='#2e7d32';msg.style.display='block';
   setTimeout(function(){msg.style.display='none';},2500);
@@ -1196,19 +1196,46 @@ function regCust(side){
 }
 
 function syncMidToSchedule(c){
-  if(!c.mid1&&!c.mid2)return;
-  window.storage.get('sd_schedule').then(function(r){
-    var evts=r&&r.value?JSON.parse(r.value):[];
-    var title=c.bldg+(c.dong?' '+c.dong:'')+(c.ho?' '+c.ho:'')+' '+c.deal;
-    ['mid1','mid2'].forEach(function(k,ki){
-      if(!c[k])return;
-      var eid='CT_MID_'+c.id+'_'+k;
-      var idx=evts.findIndex(function(e){return e.id===eid;});
-      var evt={id:eid,date:c[k],title:'💰 중도금'+(ki+1)+' — '+title,type:'계약',color:'#e65100',source:'contract'};
-      if(idx>=0)evts[idx]=evt;else evts.push(evt);
-    });
-    window.storage.set('sd_schedule',JSON.stringify(evts));
-  }).catch(function(){});
+  autoSyncToSchedule(c);
+}
+function autoSyncToSchedule(c){
+  // 중도금(있는 경우)과 잔금일을 sd_todos_public 업무일정으로 자동 등록
+  var bldgTitle=c.bldg+(c.dong?" "+c.dong:"")+(c.ho?" "+c.ho:"")+" "+c.deal;
+  var myUid=(window._authProfile||{}).uid||"anon";
+  var myName=(window._authProfile||{}).name||"";
+  var now=new Date().toISOString();
+
+  window.storage.get("sd_todos_public").then(function(r){
+    var todos=r&&r.value?JSON.parse(r.value):[];
+    // 중도금1
+    if(c.mid1){
+      var eid1="CT_MID1_"+c.id;
+      todos=todos.filter(function(t){return t.id!==eid1;});
+      todos.push({id:eid1,kind:"schedule",type:"💰 잔금",title:"💰 중도금① — "+bldgTitle,
+        date:c.mid1,timemode:"allday",priority:"high",done:false,
+        isPublic:true,owner:myUid,ownerName:myName,
+        memo:"계약관리 자동 등록",createdAt:now,source:"contract",contractId:String(c.id)});
+    }
+    // 중도금2
+    if(c.mid2){
+      var eid2="CT_MID2_"+c.id;
+      todos=todos.filter(function(t){return t.id!==eid2;});
+      todos.push({id:eid2,kind:"schedule",type:"💰 잔금",title:"💰 중도금② — "+bldgTitle,
+        date:c.mid2,timemode:"allday",priority:"high",done:false,
+        isPublic:true,owner:myUid,ownerName:myName,
+        memo:"계약관리 자동 등록",createdAt:now,source:"contract",contractId:String(c.id)});
+    }
+    // 잔금일 (항상 등록)
+    if(c.fdate){
+      var eidF="CT_FDATE_"+c.id;
+      todos=todos.filter(function(t){return t.id!==eidF;});
+      todos.push({id:eidF,kind:"schedule",type:"💰 잔금",title:"💰 잔금 — "+bldgTitle,
+        date:c.fdate,timemode:"allday",priority:"very",done:false,
+        isPublic:true,owner:myUid,ownerName:myName,
+        memo:"계약관리 자동 등록",createdAt:now,source:"contract",contractId:String(c.id)});
+    }
+    window.storage.set("sd_todos_public",JSON.stringify(todos));
+  }).catch(function(e){console.error("[계약→일정]",e);});
 }
 
 function calcPTotal(){
@@ -2011,7 +2038,7 @@ function saveContract(){
   // 계약 저장 시 고객 자동 등록
   autoRegisterCusts([obj]);
   if(!cEditId&&propId&&confirm('연결된 매물을 "거래완료"로 변경할까요?')){window.storage.get('sd_props').then(function(r){var props=r&&r.value?JSON.parse(r.value):[];var p=props.find(function(x){return String(x.id)===String(propId);});if(p){p.status='거래완료';window.storage.set('sd_props',JSON.stringify(props));}});}
-  syncMidToSchedule(obj);var ok=document.getElementById('csave-ok');ok.textContent='계약이 저장되었습니다! 📑';ok.style.display='block';setTimeout(function(){ok.style.display='none';},3000);clearCF();
+  autoSyncToSchedule(obj);var ok=document.getElementById('csave-ok');ok.textContent='계약이 저장되었습니다! 📑';ok.style.display='block';setTimeout(function(){ok.style.display='none';},3000);clearCF();
 }
 
 function clearCF(){
@@ -2761,7 +2788,7 @@ function saveDetail(){
   c.agencySeller=sdjSel;c.agencyBuyer=sdjBuy;c.manager=gdv('manager');
   c.landlord=gdv('landlord')||'';c.landlordTel=gdv('landlordtel')||'';c.landlordExp=gdv('landlordexp')||'';
   c.tenant=gdv('tenant')||'';
-  toCStore();syncMidToSchedule(c);renderCT();
+  toCStore();autoSyncToSchedule(c);renderCT();
   var msg=document.getElementById('detail-msg');
   msg.textContent='✅ 저장됐습니다!';msg.style.background='#e8f5e9';msg.style.color='#2e7d32';msg.style.display='block';
   setTimeout(function(){msg.style.display='none';},2500);
@@ -2839,19 +2866,46 @@ function regCust(side){
 }
 
 function syncMidToSchedule(c){
-  if(!c.mid1&&!c.mid2)return;
-  window.storage.get('sd_schedule').then(function(r){
-    var evts=r&&r.value?JSON.parse(r.value):[];
-    var title=c.bldg+(c.dong?' '+c.dong:'')+(c.ho?' '+c.ho:'')+' '+c.deal;
-    ['mid1','mid2'].forEach(function(k,ki){
-      if(!c[k])return;
-      var eid='CT_MID_'+c.id+'_'+k;
-      var idx=evts.findIndex(function(e){return e.id===eid;});
-      var evt={id:eid,date:c[k],title:'💰 중도금'+(ki+1)+' — '+title,type:'계약',color:'#e65100',source:'contract'};
-      if(idx>=0)evts[idx]=evt;else evts.push(evt);
-    });
-    window.storage.set('sd_schedule',JSON.stringify(evts));
-  }).catch(function(){});
+  autoSyncToSchedule(c);
+}
+function autoSyncToSchedule(c){
+  // 중도금(있는 경우)과 잔금일을 sd_todos_public 업무일정으로 자동 등록
+  var bldgTitle=c.bldg+(c.dong?" "+c.dong:"")+(c.ho?" "+c.ho:"")+" "+c.deal;
+  var myUid=(window._authProfile||{}).uid||"anon";
+  var myName=(window._authProfile||{}).name||"";
+  var now=new Date().toISOString();
+
+  window.storage.get("sd_todos_public").then(function(r){
+    var todos=r&&r.value?JSON.parse(r.value):[];
+    // 중도금1
+    if(c.mid1){
+      var eid1="CT_MID1_"+c.id;
+      todos=todos.filter(function(t){return t.id!==eid1;});
+      todos.push({id:eid1,kind:"schedule",type:"💰 잔금",title:"💰 중도금① — "+bldgTitle,
+        date:c.mid1,timemode:"allday",priority:"high",done:false,
+        isPublic:true,owner:myUid,ownerName:myName,
+        memo:"계약관리 자동 등록",createdAt:now,source:"contract",contractId:String(c.id)});
+    }
+    // 중도금2
+    if(c.mid2){
+      var eid2="CT_MID2_"+c.id;
+      todos=todos.filter(function(t){return t.id!==eid2;});
+      todos.push({id:eid2,kind:"schedule",type:"💰 잔금",title:"💰 중도금② — "+bldgTitle,
+        date:c.mid2,timemode:"allday",priority:"high",done:false,
+        isPublic:true,owner:myUid,ownerName:myName,
+        memo:"계약관리 자동 등록",createdAt:now,source:"contract",contractId:String(c.id)});
+    }
+    // 잔금일 (항상 등록)
+    if(c.fdate){
+      var eidF="CT_FDATE_"+c.id;
+      todos=todos.filter(function(t){return t.id!==eidF;});
+      todos.push({id:eidF,kind:"schedule",type:"💰 잔금",title:"💰 잔금 — "+bldgTitle,
+        date:c.fdate,timemode:"allday",priority:"very",done:false,
+        isPublic:true,owner:myUid,ownerName:myName,
+        memo:"계약관리 자동 등록",createdAt:now,source:"contract",contractId:String(c.id)});
+    }
+    window.storage.set("sd_todos_public",JSON.stringify(todos));
+  }).catch(function(e){console.error("[계약→일정]",e);});
 }
 
 function calcPTotal(){
@@ -2903,6 +2957,7 @@ function toggleZoom(){
   }
 }
 </script>
+
 
 <script>
 /* SD Auth: sd_contracts */
