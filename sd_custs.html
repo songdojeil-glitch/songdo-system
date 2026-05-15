@@ -100,7 +100,6 @@ body{margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',
 /* ── 촬영모드 */
 body.zoom-mode .zoomable{cursor:default !important;}
 body.zoom-mode .zoomable:hover{box-shadow:none !important;}
-body.zoom-mode{transition:zoom .2s;}
 </style>
   <!-- ═══ Firebase SDK (compat v9) ═══ -->
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
@@ -239,6 +238,7 @@ body.zoom-mode{transition:zoom .2s;}
   </script>
 </head>
 <body>
+
 
 
 <!-- ═══ 시스템 네비게이션 바 ═══ -->
@@ -441,16 +441,41 @@ body.zoom-mode{transition:zoom .2s;}
   <div id="sec-ct" style="display:none">
     <div class="card" style="border-color:#a5d6a7;background:#f9fdf9">
       <p class="sec" style="color:#2e7d32">📑 계약고객 — 계약 정보</p>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
-        <div><label class="fl">거래단지&amp;건물명 🏢</label><input id="f-ct-cx" type="text" class="fi" placeholder="예: 더샵하버뷰14단지, 에스파이브시티 상가동"></div>
-        <div><label class="fl">계약 만기일</label><input id="f-ct-expiry" type="date" class="fi"></div>
+      <!-- 1행: 거래단지&건물명 + 동/호수 -->
+      <div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:12px;margin-bottom:12px">
+        <div><label class="fl">거래단지&amp;건물명 🏢</label><input id="f-ct-cx" type="text" class="fi" placeholder="예: 더샵하버뷰14단지, 에스파이브시티"></div>
+        <div><label class="fl">동</label><input id="f-ct-dong" type="text" class="fi" placeholder="예: 102동"></div>
+        <div><label class="fl">호수</label><input id="f-ct-ho" type="text" class="fi" placeholder="예: 1304호"></div>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-        <div><label class="fl">재계약 의향</label>
-          <select id="f-ct-renew" class="fi"><option value="">미확인</option><option>재계약 희망</option><option>이사 예정</option><option>매수 전환 검토</option><option>확인 필요</option></select>
+      <!-- 2행: 거래구분 + 거래당사자 역할 -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+        <div><label class="fl">거래구분</label>
+          <select id="f-ct-deal" class="fi">
+            <option value="">선택</option>
+            <option>매매</option><option>전세</option><option>월세</option>
+            <option>분양권매매</option><option>권리양도</option>
+          </select>
         </div>
-        <div><label class="fl">소개 가능성</label>
-          <select id="f-ct-intro" class="fi"><option value="">미확인</option><option>높음</option><option>보통</option><option>낮음</option></select>
+        <div><label class="fl">거래인 구분</label>
+          <select id="f-ct-role" class="fi">
+            <option value="">선택</option>
+            <option>매도인</option><option>매수인</option>
+            <option>임대인</option><option>임차인</option>
+            <option>권리양도인</option><option>권리양수인</option>
+          </select>
+        </div>
+      </div>
+      <!-- 3행: 계약일 + 잔금일 -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+        <div><label class="fl">계약일</label><input id="f-ct-cdate" type="date" class="fi"></div>
+        <div><label class="fl">잔금일</label><input id="f-ct-fdate" type="date" class="fi"></div>
+      </div>
+      <!-- 4행: 계약관리 연결 링크 -->
+      <div style="margin-bottom:4px">
+        <label class="fl">계약관리 연결 ID <span style="font-size:11px;color:#aaa">(계약관리에서 자동 입력)</span></label>
+        <div style="display:flex;gap:8px;align-items:center">
+          <input id="f-ct-id" type="text" class="fi" placeholder="계약 ID (자동)" readonly style="background:#f5f5f3;color:#888;flex:1">
+          <button type="button" onclick="goToContract()" id="btn-go-contract" style="display:none;padding:6px 14px;background:#e8f5e9;border:0.5px solid #a5d6a7;border-radius:8px;color:#2e7d32;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap">📑 계약 보기</button>
         </div>
       </div>
     </div>
@@ -1564,6 +1589,34 @@ function initCustColResize(){
   });
 }
 
+// ── 계약관리 바로가기
+function goToContract(){
+  var ctId = (document.getElementById('f-ct-id')||{}).value||'';
+  if(!ctId){ alert('연결된 계약 ID가 없습니다.'); return; }
+  // sd_contracts.html?ctId=xxx 로 이동
+  window.open('sd_contracts.html?ctId='+encodeURIComponent(ctId), '_blank');
+}
+
+// 계약 ID 입력 시 버튼 표시
+document.addEventListener('DOMContentLoaded', function(){
+  var ctIdEl = document.getElementById('f-ct-id');
+  var ctBtn  = document.getElementById('btn-go-contract');
+  if(ctIdEl && ctBtn){
+    ctIdEl.addEventListener('input', function(){
+      ctBtn.style.display = this.value.trim() ? 'inline-block' : 'none';
+    });
+  }
+});
+
+function showFld(id, v){
+  var el=document.getElementById(id); if(el) el.value=v||'';
+  // 계약 ID 입력 시 버튼 토글
+  if(id==='f-ct-id'){
+    var btn=document.getElementById('btn-go-contract');
+    if(btn) btn.style.display=v?'inline-block':'none';
+  }
+}
+
 function saveCust(){
   var nm=document.getElementById('f-name').value.trim();if(!nm){alert('고객 성명을 입력해 주세요.');return;}
   var tags=getTags();
@@ -1589,8 +1642,15 @@ function saveCust(){
     propArea:document.getElementById('f-prop-area').value.trim(),propPrice:document.getElementById('f-prop-price').value.trim(),
     propMemo:document.getElementById('f-prop-memo').value.trim(),
     // 계약고객 필드
-    ctCx:document.getElementById('f-ct-cx').value.trim(),ctExpiry:document.getElementById('f-ct-expiry').value,
-    ctRenew:document.getElementById('f-ct-renew').value,ctIntro:document.getElementById('f-ct-intro').value,
+    ctCx:document.getElementById('f-ct-cx').value.trim(),
+    ctDong:(document.getElementById('f-ct-dong')||{}).value.trim()||'',
+    ctHo:(document.getElementById('f-ct-ho')||{}).value.trim()||'',
+    ctDeal:(document.getElementById('f-ct-deal')||{}).value||'',
+    ctRole:(document.getElementById('f-ct-role')||{}).value||'',
+    ctCdate:(document.getElementById('f-ct-cdate')||{}).value||'',
+    ctFdate:(document.getElementById('f-ct-fdate')||{}).value||'',
+    ctId:(document.getElementById('f-ct-id')||{}).value.trim()||'',
+    
     // 기존고객 필드
     exRel:document.getElementById('f-ex-rel').value,exIntro:document.getElementById('f-ex-intro').value
   };
@@ -1606,10 +1666,10 @@ function saveCust(){
 
 function clearF(){
   ['f-name','f-tel1','f-tel2','f-budget','f-cx','f-cond','f-consult','f-lastmemo','f-propmemo',
-   'f-prop-cx','f-prop-dong','f-prop-price','f-prop-memo','f-ct-cx','f-ct-expiry'].forEach(function(id){var el=document.getElementById(id);if(el)el.value='';});
+   'f-prop-cx','f-prop-dong','f-prop-price','f-prop-memo','f-ct-cx','f-ct-dong','f-ct-ho','f-ct-id','f-ct-cdate','f-ct-fdate'].forEach(function(id){var el=document.getElementById(id);if(el)el.value='';});
   // 면적 필드는 ㎡ 기본값 복원
   var propArea=document.getElementById('f-prop-area');if(propArea)propArea.value='㎡';
-  ['f-route','f-deal','f-ptype','f-area','f-size','f-prop-deal','f-prop-ptype','f-ct-renew','f-ct-intro','f-ex-rel','f-ex-intro'].forEach(function(id){var el=document.getElementById(id);if(el)el.value='';});
+  ['f-route','f-deal','f-ptype','f-area','f-size','f-prop-deal','f-prop-ptype','f-ex-rel','f-ex-intro'].forEach(function(id){var el=document.getElementById(id);if(el)el.value='';});
   ['f-tag-ga','f-tag-mul','f-tag-ct','f-tag-ct2','f-tag-ex'].forEach(function(id){var el=document.getElementById(id);if(el)el.checked=false;});
   onTagChange();selPipe(1);setToday();editId=null;document.getElementById('save-btn').textContent='💾 고객 저장';
 }
@@ -1829,10 +1889,12 @@ function showDetail(id){
   // 계약고객
   if(tags.indexOf('계약고객')>=0){
     html+=section('📑 계약고객','#2e7d32',[
-      row('계약단지', c.ctCx||'—'),
-      row('만기일', c.ctExpiry||'—'),
-      row('재계약', c.ctRenew||'미확인'),
-      row('소개가능성', c.ctIntro||'미확인')
+      row('계약단지', c.ctCx||(c.ctDong||c.ctHo ? '' : '—')),
+      c.ctDong||c.ctHo ? row('동/호수', (c.ctDong||'')+(c.ctHo?' '+c.ctHo:'')) : '',
+      c.ctDeal ? row('거래구분', c.ctDeal) : '',
+      c.ctRole ? row('거래인구분', c.ctRole) : '',
+      c.ctCdate ? row('계약일', c.ctCdate) : '',
+      c.ctFdate ? row('잔금일', c.ctFdate) : '',
     ]);
   }
   // 기존고객
@@ -1881,7 +1943,7 @@ function editC(id){
   var tc1=document.getElementById('f-tel1carrier');if(tc1)tc1.value=c.tel1carrier||'';
   var tc2=document.getElementById('f-tel2carrier');if(tc2)tc2.value=c.tel2carrier||'';
   ['rdate','route','deal','ptype','area','size','lastdate'].forEach(function(k){var el=document.getElementById('f-'+k);if(el)el.value=c[k]||'';});
-  var propMap={propDeal:'f-prop-deal',propPtype:'f-prop-ptype',propCx:'f-prop-cx',propDong:'f-prop-dong',propArea:'f-prop-area',propPrice:'f-prop-price',propMemo:'f-prop-memo',ctCx:'f-ct-cx',ctExpiry:'f-ct-expiry',ctRenew:'f-ct-renew',ctIntro:'f-ct-intro',exRel:'f-ex-rel',exIntro:'f-ex-intro'};
+  var propMap={propDeal:'f-prop-deal',propPtype:'f-prop-ptype',propCx:'f-prop-cx',propDong:'f-prop-dong',propArea:'f-prop-area',propPrice:'f-prop-price',propMemo:'f-prop-memo',ctCx:'f-ct-cx',ctDong:'f-ct-dong',ctHo:'f-ct-ho',ctDeal:'f-ct-deal',ctRole:'f-ct-role',ctCdate:'f-ct-cdate',ctFdate:'f-ct-fdate',ctId:'f-ct-id',exRel:'f-ex-rel',exIntro:'f-ex-intro'};
   Object.keys(propMap).forEach(function(k){var el=document.getElementById(propMap[k]);if(el)el.value=c[k]||'';});
   document.getElementById('save-btn').textContent='💾 수정 저장';
 }
@@ -2826,6 +2888,7 @@ function resetCallTab(){
 <script>document.addEventListener('DOMContentLoaded',function(){initAll();});</script>
 
 
+
 <script>
 var _zoomOn=false;
 function toggleZoom(){
@@ -2835,12 +2898,10 @@ function toggleZoom(){
     document.body.style.zoom='1.5';
     document.body.classList.add('zoom-mode');
     if(btn){btn.textContent='🎬 촬영모드 ON';btn.style.background='rgba(255,107,53,.35)';btn.style.borderColor='#ff6b35';btn.style.color='#fff';}
-    
   }else{
     document.body.style.zoom='1';
     document.body.classList.remove('zoom-mode');
     if(btn){btn.textContent='🎬 촬영모드';btn.style.background='rgba(255,107,53,.12)';btn.style.borderColor='rgba(255,107,53,.4)';btn.style.color='#ff6b35';}
-    
   }
 }
 </script>
@@ -2858,7 +2919,8 @@ function toggleZoom(){
   var _sc=((_s.permissions||{}).screens)||{};
   if(_sc["sd_custs"]===false){alert("접근 권한이 없습니다.");window.location.href="sd_hub.html";return;}
   window._authProfile=_s;window._authPerms=_s.permissions||{};
-  if(document.readyState==="loading"){document.addEventListener("DOMContentLoaded",function(){injectBar(_s);});}else{injectBar(_s);}
+  if(document.readyState==="loading"){document.addEventListener("DOMContentLoaded",function(){injectBar(_s);});}
+  else{injectBar(_s);}
 })();
 </script>
 </body>
