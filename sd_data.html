@@ -4133,6 +4133,20 @@ function sanggaBldgChip(nm){
   renderTab8();
 }
 
+function deleteSanggaBldg(nm){
+  var dispNm=nm.replace(/^(상가|사무실)_\d+공구_/,'');
+  var cnt=(G.naverSanggaData||[]).filter(function(r){return r.단지명===nm;}).length;
+  if(!confirm('"'+dispNm+'" 단지를 삭제하시겠습니까?\n\n등록된 매물 '+cnt+'건이 모두 삭제됩니다.\n이 작업은 되돌릴 수 없습니다.')) return;
+  G.naverSanggaData=(G.naverSanggaData||[]).filter(function(r){return r.단지명!==nm;});
+  if(G_sangga.bldg===nm) G_sangga.bldg='';
+  if(window.storage) window.storage.set('sd_naver_sangga', JSON.stringify(G.naverSanggaData));
+  var remain=(G.naverSanggaData||[]).length;
+  var stEl=document.getElementById('sangga-status');
+  if(stEl) stEl.textContent='✅ '+remain+'건';
+  showToast('🗑️ "'+dispNm+'" 삭제 완료 (남은 매물: '+remain+'건)');
+  renderTab8();
+}
+
 // ── 상가/사무실 업로드
 function onUploadNaverSangga(input){
   if(!input.files||!input.files.length) return;
@@ -4383,10 +4397,18 @@ function renderTab8(){
       chipHtml+='<span style="font-size:10px;color:'+dc+';font-weight:700;padding:2px 6px;margin-left:4px">'+distLbl+'</span>';
       bldgs.sort().forEach(function(nm){
         var sel=G_sangga.bldg===nm;
-        // ★ 표시 시 '상가_N공구_', '사무실_N공구_' 접두사 제거
         var dispNm=nm.replace(/^(상가|사무실)_\d+공구_/,'');
-        chipHtml+='<span onclick="sanggaBldgChip(\''+nm.replace(/'/g,"\\'")+'\')" style="cursor:pointer;padding:2px 9px;border-radius:12px;font-size:11px;white-space:nowrap;'
-          +(sel?'background:'+dc+'33;color:'+dc+';border:1px solid '+dc:'background:var(--bg3);color:var(--text2);border:1px solid var(--border)')+'">'+dispNm+'</span>';
+        var safeNm=nm.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+        chipHtml+=
+          '<span style="display:inline-flex;align-items:center;gap:0;margin:1px">'
+          +'<span onclick="sanggaBldgChip(\''+safeNm+'\')" style="cursor:pointer;padding:2px 9px;border-radius:12px 0 0 12px;font-size:11px;white-space:nowrap;'
+          +(sel?'background:'+dc+'33;color:'+dc+';border:1px solid '+dc:'background:var(--bg3);color:var(--text2);border:1px solid var(--border)')+'">'+dispNm+'</span>'
+          +'<span onclick="deleteSanggaBldg(\''+safeNm+'\')" title="이 단지 데이터 삭제" '
+          +'style="cursor:pointer;padding:2px 6px;border-radius:0 12px 12px 0;font-size:10px;line-height:1.5;'
+          +(sel?'background:'+dc+'22;color:'+dc+';border:1px solid '+dc+';border-left:none':'background:var(--bg3);color:var(--text3);border:1px solid var(--border);border-left:none')+'\" '
+          +'onmouseover="this.style.background=\'rgba(220,50,50,.25)\';this.style.color=\'#ff6060\'" '
+          +'onmouseout="this.style.background=\'\';this.style.color=\'\'">✕</span>'
+          +'</span>';
       });
     });
     chipsEl.innerHTML=chipHtml;
