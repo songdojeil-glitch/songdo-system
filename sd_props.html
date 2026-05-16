@@ -6685,24 +6685,22 @@ function renderTab8(){
     if(!distBldgMap[d]) distBldgMap[d]=[];
     if(distBldgMap[d].indexOf(nm)<0) distBldgMap[d].push(nm);
   });
-  var DIST_CHIP_C={'1':'#1565c0','2':'#1976d2','3':'#0288d1','4':'#00796b','5':'#388e3c','6':'#f57f17','7':'#e65100','8':'#6a1b9a','11':'#c62828','':'#777'};
+  var DIST_COLORS={'1':'#1565c0','2':'#1976d2','3':'#0288d1','4':'#00796b','5':'#388e3c','6':'#f57f17','7':'#e65100','8':'#6a1b9a','11':'#c62828','':'#555'};
   var chipEl=document.getElementById('sangga-bldg-chips');
   if(chipEl){
     var chipHtml='';
-    var showGrouped=(G_sangga.dist==='all');
     DIST_ORDER.forEach(function(d){
-      var bldgs=(distBldgMap[d]||[]).slice().sort();
-      if(!bldgs.length) return;
-      var dc=DIST_CHIP_C[d]||'#777';
-      // 전체 공구 보기 시 → 공구 레이블 1회
-      if(showGrouped) chipHtml+='<span style="font-size:10px;color:'+dc+';font-weight:700;padding:2px 5px;margin-left:6px;white-space:nowrap">'+(d?d+'공구':'기타')+'</span>';
-      bldgs.forEach(function(nm){
+      if(!distBldgMap[d]||!distBldgMap[d].length) return;
+      distBldgMap[d].forEach(function(nm){
         var sel=G_sangga.bldg===nm;
-        var safe=nm.replace(/'/g,"\\'");
-        chipHtml+='<span onclick="G_sangga.bldg=(G_sangga.bldg===\''+safe+'\'?\'\':\''+safe+'\');renderTab8()" '
-          +'style="display:inline-block;padding:2px 9px;border-radius:12px;font-size:11px;cursor:pointer;white-space:nowrap;'
-          +(sel?'background:'+dc+';color:#fff;border:1px solid '+dc:'background:#f0f0ee;color:#444;border:1px solid #ddd;')
-          +'">'+nm+'</span>';
+        var dc=DIST_COLORS[d]||'#555';
+        chipHtml+='<span onclick="G_sangga.bldg=(G_sangga.bldg===\''+nm.replace(/'/g,"\\'")+'\'?\'\':\'' +nm.replace(/'/g,"\\'")+'\');renderTab8()" '
+          +'style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px 2px 2px;border-radius:10px;font-size:11px;cursor:pointer;'
+          +(sel?'background:#1a1a1a;color:#fff;border:1px solid #1a1a1a;':'background:#f0f0ee;color:#444;border:1px solid #ddd;')
+          +'">'
+          +(d?'<span style="background:'+dc+';color:#fff;border-radius:8px;padding:1px 6px;font-size:10px;font-weight:700">'+d+'공구</span>':'')
+          +'<span>'+nm+'</span>'
+          +'</span>';
       });
     });
     chipEl.innerHTML=chipHtml;
@@ -6901,49 +6899,40 @@ function renderTab6(){
     return true;
   }
 
-  // 단지 칩: 공구+거래+면적+검색어 기준
+  // 단지 칩: 공구+거래+면적+검색어 기준 — 1회 순회로 UnitSet + UnitDist 동시 구축
   var chipBase = G.naverData.filter(naverBaseFilter);
-  var t6UnitSet={};
-  chipBase.forEach(function(r){ if(r.단지명) t6UnitSet[r.단지명]=(t6UnitSet[r.단지명]||0)+1; });
+  var t6UnitSet={}, t6UnitDist={};
+  chipBase.forEach(function(r){
+    if(!r.단지명) return;
+    t6UnitSet[r.단지명]=(t6UnitSet[r.단지명]||0)+1;
+    if(!t6UnitDist[r.단지명]) t6UnitDist[r.단지명]=String(parseInt(r.공구)||0);
+  });
   if(t6unit!=='all'&&!t6UnitSet[t6unit]){ G.t6unit='all'; t6unit='all'; }
   var t6UnitList=Object.keys(t6UnitSet).sort();
   var t6chipsEl=document.getElementById('t6-unit-chips');
   if(t6chipsEl){
+    var P_DC={'1':'#1565c0','2':'#1976d2','3':'#0288d1','4':'#00796b','5':'#388e3c','6':'#f57f17','7':'#e65100','8':'#6a1b9a','11':'#c62828','0':'#777'};
+    var P_DO=['1','2','3','4','5','6','7','8','11','0'];
     var t6chipHtml='';
-    var t6ShowGrouped=(G.naverDist==='all');
     if(!t6search){
       t6chipHtml='<span onclick="t6SetUnit(\'all\')" style="cursor:pointer;padding:3px 8px;border-radius:12px;font-size:11px;white-space:nowrap;'+(t6unit==='all'?'background:#1565c0;color:#fff':'background:#f0f0f8;color:#333355;border:1px solid #d0d0e0')+'">전체('+chipBase.length+')</span>';
     }
-    if(t6ShowGrouped){
-      // 공구별로 그룹핑
-      var t6DistMap={};
-      var T6_DIST_ORDER=['1','2','3','4','5','6','7','8','11','0'];
-      var T6_DIST_C={'1':'#1565c0','2':'#1976d2','3':'#0288d1','4':'#00796b','5':'#388e3c','6':'#f57f17','7':'#e65100','8':'#6a1b9a','11':'#c62828','0':'#777'};
-      chipBase.forEach(function(r){
-        var d=String(parseInt(r.공구)||0);
-        var nm=r.단지명||'';
-        if(!nm) return;
-        if(!t6DistMap[d]) t6DistMap[d]={};
-        t6DistMap[d][nm]=(t6DistMap[d][nm]||0)+1;
-      });
-      T6_DIST_ORDER.forEach(function(d){
-        var bldgMap=t6DistMap[d]||{};
-        var bldgs=Object.keys(bldgMap).sort();
-        if(!bldgs.length) return;
-        var dc=T6_DIST_C[d]||'#777';
+    if(G.naverDist==='all'){
+      var t6DG={};
+      t6UnitList.forEach(function(nm){ var d=t6UnitDist[nm]||'0'; if(!t6DG[d])t6DG[d]=[]; t6DG[d].push(nm); });
+      P_DO.forEach(function(d){
+        var bldgs=t6DG[d]||[]; if(!bldgs.length) return;
+        var dc=P_DC[d]||'#777';
         t6chipHtml+='<span style="font-size:10px;color:'+dc+';font-weight:700;padding:2px 5px;margin-left:6px;white-space:nowrap">'+(d!=='0'?d+'공구':'기타')+'</span>';
         bldgs.forEach(function(nm){
-          var sel=t6unit===nm;
-          var safeNm=nm.replace(/"/g,'&quot;');
-          t6chipHtml+='<span onclick="t6SetUnit(this.dataset.nm)" data-nm="'+safeNm+'" style="cursor:pointer;padding:3px 8px;border-radius:12px;font-size:11px;white-space:nowrap;'+(sel?'background:#1565c0;color:#fff':'background:#f0f0f8;color:#333355;border:1px solid #d0d0e0')+'">'+nm+'('+bldgMap[nm]+')</span>';
+          var sel=t6unit===nm; var s=nm.replace(/"/g,'&quot;');
+          t6chipHtml+='<span onclick="t6SetUnit(this.dataset.nm)" data-nm="'+s+'" style="cursor:pointer;padding:3px 8px;border-radius:12px;font-size:11px;white-space:nowrap;'+(sel?'background:#1565c0;color:#fff':'background:#f0f0f8;color:#333355;border:1px solid #d0d0e0')+'">'+nm+'('+t6UnitSet[nm]+')</span>';
         });
       });
     } else {
-      // 특정 공구 선택 시: 평면 나열
       t6UnitList.forEach(function(nm){
-        var sel=t6unit===nm;
-        var safeNm=nm.replace(/"/g,'&quot;');
-        t6chipHtml+='<span onclick="t6SetUnit(this.dataset.nm)" data-nm="'+safeNm+'" style="cursor:pointer;padding:3px 8px;border-radius:12px;font-size:11px;white-space:nowrap;'+(sel?'background:var(--accent);color:#fff':'background:var(--bg3);color:var(--text2);border:1px solid var(--border)')+'">'+nm+'('+t6UnitSet[nm]+')</span>';
+        var sel=t6unit===nm; var s=nm.replace(/"/g,'&quot;');
+        t6chipHtml+='<span onclick="t6SetUnit(this.dataset.nm)" data-nm="'+s+'" style="cursor:pointer;padding:3px 8px;border-radius:12px;font-size:11px;white-space:nowrap;'+(sel?'background:var(--accent);color:#fff':'background:var(--bg3);color:var(--text2);border:1px solid var(--border)')+'">'+nm+'('+t6UnitSet[nm]+')</span>';
       });
     }
     t6chipsEl.innerHTML=t6chipHtml;
