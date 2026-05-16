@@ -11206,23 +11206,27 @@ function updBackupSel(){
 }
 async function doBackup(){
   var st=document.getElementById('backup-status');
-  st.style.display='block';st.style.background='#0f2040';st.style.color='#4f8ef7';st.textContent='⏳ Firebase 연결 중...';
+  st.style.display='block';st.style.background='#0f2040';st.style.color='#4f8ef7';st.textContent='⏳ Firebase 연결 확인 중...';
   try{
-    // ★ Firebase 전체 sd/ 경로를 한 번에 읽기 (개별 호출 대신)
-    if(!window.firebase||!firebase.apps||!firebase.apps.length) throw new Error('Firebase 미초기화');
-    var snap = await firebase.database().ref('sd').once('value');
+    // sd_data.html은 모듈러 SDK 사용 (window._fbGet, _fbChild, _fbDb, _fbRef)
+    if(!window._fbGet||!window._fbChild||!window._fbDb||!window._fbRef)
+      throw new Error('Firebase 모듈 미초기화 — 잠시 후 다시 시도해 주세요.');
+
+    st.textContent='⏳ 전체 데이터 읽는 중...';
+    var rootRef = window._fbRef(window._fbDb);
+    var sdRef   = window._fbChild(rootRef, 'sd');
+    var snap    = await window._fbGet(sdRef);
     var allData = snap.val()||{};
 
     st.textContent='⏳ 백업 파일 생성 중...';
-    var obj={_meta:{createdAt:new Date().toISOString(),createdBy:(window._authProfile||{}).name||'unknown',version:'1.1',keys:_selectedBackupKeys}};
+    var obj={_meta:{createdAt:new Date().toISOString(),createdBy:(window._authProfile||{}).name||'unknown',version:'1.2',keys:_selectedBackupKeys}};
 
     _selectedBackupKeys.forEach(function(k){
       obj[k] = (k in allData) ? allData[k] : null;
     });
 
-    // 내용 검증
-    var nullKeys = _selectedBackupKeys.filter(function(k){return obj[k]===null;});
-    if(nullKeys.length===_selectedBackupKeys.length) throw new Error('읽은 데이터가 모두 null입니다. Firebase 경로를 확인해 주세요.');
+    var nonNull = _selectedBackupKeys.filter(function(k){return obj[k]!==null;});
+    if(!nonNull.length) throw new Error('읽은 데이터가 모두 null입니다. Firebase 경로를 확인해 주세요.');
 
     var now=new Date();
     var ts=now.getFullYear()+String(now.getMonth()+1).padStart(2,'0')+String(now.getDate()).padStart(2,'0')
@@ -11232,19 +11236,18 @@ async function doBackup(){
     var blob=new Blob([jsonStr],{type:'application/json'});
     var url=URL.createObjectURL(blob);var a=document.createElement('a');a.href=url;a.download=fname;a.click();URL.revokeObjectURL(url);
 
-    var sz=(jsonStr.length/1024).toFixed(0);
-    var summary=_selectedBackupKeys.map(function(k){
-      var d=obj[k];
-      if(!d)return k+'(없음)';
-      var cnt=Array.isArray(d)?d.length:typeof d==='object'?Object.keys(d).length:1;
-      return cnt+'건';
+    var sz=(jsonStr.length/1024/1024).toFixed(1);
+    var summary=nonNull.map(function(k){
+      var d=obj[k];var cnt=Array.isArray(d)?d.length:typeof d==='object'?Object.keys(d).length:1;
+      var info=BACKUP_KEYS.find(function(b){return b.key===k;})||{label:k};
+      return info.label.replace(/[📑🏢👥📋🏪🏠🤝👤]/g,'').trim()+'('+cnt+')';
     }).join(' / ');
     st.style.background='#0d3020';st.style.color='#4caf50';
-    st.textContent='✅ 백업 완료! '+fname+' ('+sz+'KB) — '+summary;
+    st.textContent='✅ '+fname+' ('+sz+'MB) — '+summary;
   }catch(e){
     st.style.background='#3d0000';st.style.color='#e85c5c';
     st.textContent='❌ 백업 실패: '+e.message;
-    console.error('[백업 오류]', e);
+    console.error('[백업 오류]',e);
   }
 }
 function onRestoreFileSelect(input){
@@ -11280,15 +11283,16 @@ async function doRestore(){
   var st=document.getElementById('restore-status');
   st.style.display='block';st.style.background='#0f2040';st.style.color='#4f8ef7';st.textContent='⏳ 복원 중...';
   try{
-    if(!window.firebase||!firebase.apps||!firebase.apps.length) throw new Error('Firebase 미초기화');
+    if(!window._fbDb||!window._fbRef) throw new Error('Firebase 모듈 미초기화');
     for(var i=0;i<selKeys.length;i++){
       var k=selKeys[i];
       st.textContent='⏳ 복원 중... ('+k+')';
+      var kRef=window._fbChild(window._fbRef(window._fbDb),'sd/'+k);
       var val=_restoreData[k];
       if(val===null||val===undefined){
-        await firebase.database().ref('sd/'+k).remove();
+        await kRef.remove();
       }else{
-        await firebase.database().ref('sd/'+k).set(val);
+        await kRef.set(val);
       }
     }
     st.style.background='#0d3020';st.style.color='#4caf50';st.textContent='✅ 복원 완료! 잠시 후 새로고침됩니다.';
