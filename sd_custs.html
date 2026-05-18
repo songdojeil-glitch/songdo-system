@@ -1714,20 +1714,22 @@ function rtbl(){
   var bf=(document.getElementById('ft-bldg')||{}).value||'';
   var sf=(document.getElementById('ft-staff')||{}).value||'';
 
-  // ★ 권한 기반 자동 필터
-  // - 제너럴: 항상 본인만 (고정)
+  // ★ 권한 기반 자동 필터 — 가망고객 태그에만 적용
+  // - 제너럴: 항상 본인 가망고객만 (고정)
   // - 나머지: cust_view 권한값으로 결정 (기본 'all', 마스터가 'own'으로 설정 가능)
+  // - 계약고객/기존고객/물건고객: 제한 없이 전체 조회
   var myRole=(window._authProfile||{}).role||'master';
   var myName=(window._authProfile||{}).name||'';
   var myPerms=(window._authPerms||{});
   var custView = myPerms.cust_view || (myRole==='general' ? 'own' : 'all');
   var autoStaff = (myRole==='general' || custView==='own') ? myName : '';
 
-  // 담당자 필터 UI: 본인만인 경우 고정/비활성화
+  // 담당자 필터 UI: 가망고객 탭일 때만 비활성화
   var staffFt=document.getElementById('ft-staff');
+  var isGaFilter = (tf==='가망고객');
   if(staffFt){
-    if(autoStaff){ staffFt.value=myName; staffFt.disabled=true; }
-    else { staffFt.disabled=false; }
+    if(autoStaff && isGaFilter){ staffFt.value=myName; staffFt.disabled=true; }
+    else if(!autoStaff){ staffFt.disabled=false; }
   }
 
   var effectiveStaff = autoStaff || sf;
@@ -1741,10 +1743,17 @@ function rtbl(){
     if(af&&c.area!==af)return false;
     if(nf&&c.name.indexOf(nf)<0)return false;
     if(bf){var bldg=(c.ctCx||c.propCx||c.cx||'');if(bldg.indexOf(bf)<0)return false;}
-    // 담당자 필터 (권한 기반 or 수동 선택)
+    // ★ 담당자 필터: 가망고객 태그일 때만 적용 (계약/기존/물건 고객은 무제한)
     if(effectiveStaff){
-      var cs=c.staff||'';
-      if(!cs||cs!==effectiveStaff)return false;
+      var hasGa = tags.indexOf('가망고객')>=0;
+      var hasNonGa = tags.indexOf('계약고객(자사)')>=0 || tags.indexOf('계약고객(타사)')>=0
+                  || tags.indexOf('기존고객')>=0 || tags.indexOf('물건고객')>=0;
+      // 가망고객 전용이거나 전체조회 시: 담당자 필터 적용
+      // 단, 계약/기존/물건 태그도 함께 있으면 제한 없이 표시
+      if(hasGa && !hasNonGa){
+        var cs=c.staff||'';
+        if(!cs||cs!==effectiveStaff)return false;
+      }
     }
     return true;
   });
@@ -2950,6 +2959,7 @@ function toggleZoom(){
 
 
 
+
 <script>
 /* SD Auth: sd_custs */
 (function(){
@@ -2963,8 +2973,7 @@ function toggleZoom(){
   var _sc=((_s.permissions||{}).screens)||{};
   if(_sc["sd_custs"]===false){alert("접근 권한이 없습니다.");window.location.href="sd_hub.html";return;}
   window._authProfile=_s;window._authPerms=_s.permissions||{};
-  if(document.readyState==="loading"){document.addEventListener("DOMContentLoaded",function(){injectBar(_s);});}
-  else{injectBar(_s);}
+  if(document.readyState==="loading"){document.addEventListener("DOMContentLoaded",function(){injectBar(_s);});}else{injectBar(_s);}
 })();
 </script>
 </body>
