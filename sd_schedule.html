@@ -459,8 +459,8 @@ body.zoom-mode .zoomable:hover{box-shadow:none !important;}
       <div style="display:flex;align-items:center;gap:10px">
         <span style="font-size:14px">📢</span>
         <span style="font-size:12px;font-weight:600;color:#f57f17">공유 설정</span>
-        <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;margin-left:auto">
-          <input type="checkbox" id="sch-is-public" checked onchange="onPublicToggle(this)">
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;margin-left:auto" onclick="onPublicToggle()">
+          <input type="checkbox" id="sch-is-public" checked style="pointer-events:none">
           <span id="sch-public-label" style="font-weight:600;color:#1565c0">📋 업무 일정 (전 직원 공유)</span>
         </label>
       </div>
@@ -584,17 +584,26 @@ function setShareFilter(v){
   renderAllTodos();
 }
 
-function onPublicToggle(cb){
+// 공용/개인 토글 — 체크박스는 항상 ✅, 클릭할 때마다 공용↔개인 전환
+var _isPublicValue = true; // 실제 상태값 별도 관리
+function onPublicToggle(){
+  _isPublicValue = !_isPublicValue;
+  var cb=document.getElementById('sch-is-public');
   var lbl=document.getElementById('sch-public-label');
   var desc=document.getElementById('sch-public-desc');
-  if(cb.checked){
+  var wrap=cb&&cb.closest('div[style*="fff8e1"]');
+  // 체크박스는 항상 체크 유지 (시각적 혼동 방지)
+  cb.checked = true;
+  if(_isPublicValue){
     lbl.textContent='📋 업무 일정 (전 직원 공유)';
     lbl.style.color='#1565c0';
     desc.textContent='전 직원이 볼 수 있는 업무 일정입니다.';
+    if(wrap){wrap.style.background='#fff8e1';wrap.style.borderColor='#ffe082';}
   } else {
     lbl.textContent='🔒 개인 일정 (본인만)';
     lbl.style.color='#c62828';
     desc.textContent='나만 볼 수 있는 개인 일정입니다.';
+    if(wrap){wrap.style.background='#fce4ec';wrap.style.borderColor='#ef9a9a';}
   }
 }
 
@@ -1097,6 +1106,20 @@ function editFromDetail(){
     if(typeEl&&t.type)typeEl.value=t.type;
     // 수정 모드 표시
     window._editingSchId=editId;
+    // 공용/개인 상태 복원
+    _isPublicValue = t.isPublic!==false;
+    var pubCb=document.getElementById('sch-is-public');
+    if(pubCb){ pubCb.checked=true; }
+    var lbl=document.getElementById('sch-public-label');
+    var desc=document.getElementById('sch-public-desc');
+    var wrap=pubCb&&pubCb.closest&&pubCb.closest('div');
+    if(_isPublicValue){
+      if(lbl){lbl.textContent='📋 업무 일정 (전 직원 공유)';lbl.style.color='#1565c0';}
+      if(desc)desc.textContent='전 직원이 볼 수 있는 업무 일정입니다.';
+    } else {
+      if(lbl){lbl.textContent='🔒 개인 일정 (본인만)';lbl.style.color='#c62828';}
+      if(desc)desc.textContent='나만 볼 수 있는 개인 일정입니다.';
+    }
     var btn=document.querySelector('#tc4 .btn-p[onclick*="saveSchedule"]');
     if(btn)btn.textContent='💾 수정 저장';
     var sec=document.querySelector('#tc4 .sec');
@@ -1393,7 +1416,7 @@ function saveSchedule(){
   var kind=(document.getElementById('sch-kind')||{}).value||'schedule';
   var timemode=(document.getElementById('sch-timemode')||{}).value||'time';
   var now=new Date().toISOString();
-  var _isPublic=document.getElementById('sch-is-public').checked;
+  var _isPublic=_isPublicValue!==undefined?_isPublicValue:document.getElementById('sch-is-public').checked;
   var _myUid=(window._authProfile||{}).uid||'anon';
   var _myName=(window._authProfile||{}).name||'';
   var t={id:Date.now(),kind:kind,type:document.getElementById('sch-type').value,priority:document.getElementById('sch-priority').value,title:title,date:start,endDate:end,withName:withName.trim(),withTel:withTel.trim(),timemode:timemode,location:document.getElementById('sch-location').value.trim(),memo:document.getElementById('sch-memo').value.trim(),done:false,createdAt:now,isPublic:_isPublic,owner:_myUid,ownerName:_myName};
@@ -1709,40 +1732,6 @@ function toggleZoom(){
   window._authProfile=_s;window._authPerms=_s.permissions||{};
   if(document.readyState==="loading"){document.addEventListener("DOMContentLoaded",function(){injectBar(_s);});}else{injectBar(_s);}
 })();
-</script>
-<script>
-// ── 권한 헬퍼 (sd_auth_session 기반)
-function sdPerm(key){
-  try{
-    var s=JSON.parse(localStorage.getItem('sd_auth_session')||'{}');
-    if(!s.role) return true;
-    if(s.role==='master'||s.role==='prime') return true;
-    var p=s.permissions&&s.permissions[key];
-    return p!==false;
-  }catch(e){return true;}
-}
-function sdCheckScreen(screenKey){
-  try{
-    var s=JSON.parse(localStorage.getItem('sd_auth_session')||'{}');
-    if(!s.role) return;
-    if(s.role==='master'||s.role==='prime') return;
-    var sc=(s.permissions&&s.permissions.screens)||{};
-    if(sc[screenKey]===false){
-      alert('⛔ 접근 권한이 없습니다.\n관리자에게 문의하세요.');
-      window.location.href='sd_hub.html';
-    }
-  }catch(e){}
-}
-function sdApplyPerms(){
-  if(!sdPerm('del_bulk'))
-    document.querySelectorAll('[data-perm="del_bulk"]').forEach(function(el){el.style.display='none';});
-  if(!sdPerm('dl_bulk'))
-    document.querySelectorAll('[data-perm="dl_bulk"]').forEach(function(el){el.style.display='none';});
-  if(!sdPerm('up_bulk'))
-    document.querySelectorAll('[data-perm="up_bulk"]').forEach(function(el){el.style.display='none';});
-  if(!sdPerm('del_single'))
-    document.querySelectorAll('[data-perm="del_single"]').forEach(function(el){el.style.display='none';});
-}
 </script>
 </body>
 </html>
