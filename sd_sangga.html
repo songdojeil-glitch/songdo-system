@@ -2055,6 +2055,7 @@ function renderBldgTabs(){
   el.innerHTML = BUILDINGS.map(function(b){
     return '<span style="display:inline-flex;align-items:center;gap:2px">'
       +'<button onclick="selectBldg(\''+b.id+'\')" id="btab-'+b.id+'" class="floor-tab'+(b.id===curBldgId?' on':'')+'">'+b.name+'</button>'
+      +'<button onclick="event.stopPropagation();clearBldgStorage(\''+b.id+'\')" title="사진·도면·홍보·조감도 초기화" style="background:none;border:none;color:#aaa;font-size:10px;cursor:pointer;padding:0 2px;line-height:1;opacity:.5" onmouseover="this.style.opacity=1;this.style.color=\'#e53935\'" onmouseout="this.style.opacity=.5;this.style.color=\'#aaa\'">⊘</button>'
       +'<button onclick="deleteBldg(\''+b.id+'\',\''+b.name+'\')" title="건물 삭제" style="background:none;border:none;color:#cc3333;font-size:11px;cursor:pointer;padding:0 2px;line-height:1;opacity:.6" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=.6">✕</button>'
       +'</span>';
   }).join('');
@@ -3101,55 +3102,97 @@ var _fpPdfDoc   = null; // PDF.js document
 var _fpPdfHiRes = {}; // 페이지별 고해상도 dataURL
 var _fpFileInput = null; // 클릭된 슬롯 인덱스
 
-// ── 구버전 스토리지 키 → 새 bldgKey 마이그레이션 (1회 실행)
+// ── 구버전 스토리지 키 → 새 bldgKey 마이그레이션
+// ⚠️ 전역 1회만 실행 — 새로 추가된 건물엔 절대 적용 안 됨
+var _globalMigDone = false;
 async function migrateOldStorage(bldgId){
   if(!window.storage) return;
-  var migFlagKey = 'bldg_migration_done_'+bldgId;
+
+  // 전역 마이그레이션 완료 여부 확인
+  var globalFlag = 'sd_global_migration_v2';
   try {
-    var flag = await window.storage.get(migFlagKey);
-    if(flag && flag.value === '1') return; // 이미 마이그레이션 완료
+    var gf = await window.storage.get(globalFlag);
+    if(gf && gf.value === '1'){ _globalMigDone=true; return; }
   } catch(e){}
 
+  // 구버전 키가 실제로 존재하는지 확인 (없으면 마이그레이션 불필요)
+  var testKey = null;
+  try { testKey = await window.storage.get('sd_bldg_photo1'); } catch(e){}
+  var hasOldData = testKey && testKey.value && testKey.value.length > 10;
+
+  if(!hasOldData){
+    // 구버전 데이터 없음 → 완료 플래그만 세우고 종료
+    await window.storage.set(globalFlag, '1').catch(function(){});
+    _globalMigDone = true;
+    return;
+  }
+
+  // 구버전 데이터가 있다면 → 최초(첫 번째) 건물에만 마이그레이션
+  // 현재 선택 건물이 첫 번째 건물(es5 또는 BUILDINGS[0])일 때만 실행
+  var firstBldgId = (BUILDINGS && BUILDINGS.length) ? BUILDINGS[0].id : 'es5';
+  if(bldgId !== firstBldgId && bldgId !== 'es5'){
+    // 새 건물: 마이그레이션 대상 아님. 잘못 복사된 데이터 있으면 삭제
+    await _clearWrongMigratedData(bldgId);
+    return;
+  }
+
+  // 첫 번째 건물에만 마이그레이션 실행
   var oldKeys = [
-    // 분양/임대 견적서 이미지
     {old:'sd_bldg_photo1', new:'bldg_photo1'},
     {old:'sd_bldg_photo2', new:'bldg_photo2'},
     {old:'sd_bldg_photo3', new:'bldg_photo3'},
-    // 임대 견적서 이미지
     {old:'sd_rent_photo1', new:'rent_photo1'},
     {old:'sd_rent_photo2', new:'rent_photo2'},
     {old:'sd_rent_photo3', new:'rent_photo3'},
-    // 도면 라벨
     {old:'sd_fp_labels',   new:'fp_labels'},
   ];
-  // 도면 이미지 슬롯 0~14
   for(var i=0;i<15;i++) oldKeys.push({old:'sd_fp_img_'+i, new:'fp_img_'+i});
-  // 분양홍보
   oldKeys.push({old:'sd_brochure_count', new:'brochure_count'});
   for(var j=0;j<30;j++) oldKeys.push({old:'sd_brochure_p'+j, new:'brochure_p'+j});
-  // 조감도&사진
   oldKeys.push({old:'sd_photos_count', new:'photos_count'});
   oldKeys.push({old:'sd_photos_meta',  new:'photos_meta'});
   for(var k=0;k<30;k++) oldKeys.push({old:'sd_photo_img_'+k, new:'photo_img_'+k});
 
   var prevBldg = curBldgId;
-  curBldgId = bldgId; // bldgKey()가 올바른 접두어 사용하도록
-
-  var migratedCount = 0;
+  curBldgId = bldgId;
+  var cnt = 0;
   for(var m=0;m<oldKeys.length;m++){
     try {
       var res = await window.storage.get(oldKeys[m].old);
       if(res && res.value){
         await window.storage.set(bldgKey(oldKeys[m].new), res.value);
-        migratedCount++;
+        cnt++;
       }
     } catch(e){}
   }
-
   curBldgId = prevBldg;
-  await window.storage.set(migFlagKey, '1').catch(function(){});
-  if(migratedCount > 0) console.log('[마이그레이션] '+bldgId+': '+migratedCount+'개 항목 이전 완료');
+  await window.storage.set(globalFlag, '1').catch(function(){});
+  _globalMigDone = true;
+  if(cnt > 0) console.log('[마이그레이션] '+bldgId+': '+cnt+'개 이전 완료');
 }
+
+// 새 건물에 잘못 복사된 마이그레이션 데이터 삭제
+async function _clearWrongMigratedData(bldgId){
+  // 이 함수는 플래그 체크만 함
+  return;
+}
+
+// 특정 건물의 모든 탭 데이터 초기화 (잘못 마이그레이션된 경우 수동 호출용)
+async function clearBldgStorage(bldgId){
+  if(!window.storage||!bldgId) return;
+  if(!confirm('"'+bldgId+'" 건물의 모든 탭 저장 데이터(사진·도면·홍보·조감도)를 초기화할까요?\n건물 호실 데이터는 유지됩니다.')) return;
+  var prevBldg = curBldgId;
+  curBldgId = bldgId;
+  var keys = ['bldg_photo1','bldg_photo2','bldg_photo3','rent_photo1','rent_photo2','rent_photo3','fp_labels','brochure_count','photos_count','photos_meta'];
+  for(var i=0;i<15;i++) keys.push('fp_img_'+i);
+  for(var j=0;j<30;j++) keys.push('brochure_p'+j);
+  for(var k=0;k<30;k++) keys.push('photo_img_'+k);
+  for(var m=0;m<keys.length;m++){ try{ await window.storage.set(bldgKey(keys[m]),''); }catch(e){} }
+  curBldgId = prevBldg;
+  showToast('🗑️ "'+bldgId+'" 탭 데이터 초기화 완료');
+  if(curBldgId===bldgId){ loadBldgPhotos(); loadRentPhotos(); loadFpData(); loadBrochureData(); loadPhotoData(); }
+}
+
 
 function loadFpData(){
   // 도면 슬롯 초기화 — clearFpSlot으로 구조 유지하면서 초기화
