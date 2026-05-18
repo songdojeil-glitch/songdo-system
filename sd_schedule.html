@@ -834,18 +834,33 @@ function renderToday(){
   renderLinkedAlerts();
 }
 
-function makeTodoRow(t, onDel){
+function makeTodoRow(t){
   var timeStr=t.date&&t.date.length>10?t.date.slice(11,16):'';
   var ds=t.date?t.date.slice(0,10):'';
   var priLabels={very:'아주 중요',imp:'중요',normal:'일반',high:'긴급',mid:'보통',low:'여유'};
-  return '<div style="display:flex;gap:10px;align-items:flex-start;padding:9px 0;border-bottom:0.5px solid #f0f0f0;cursor:pointer;'+(t.cancelled?'background:#fff8f6;opacity:0.7;':t.done?'background:#f9fafb;':'')+'" onclick="openSchDetail('+t.id+')">'
-    +'<input type="checkbox" '+(t.done?'checked':'')+' onclick="event.stopPropagation();togTodo('+t.id+')" style="margin-top:2px;cursor:pointer">'
-    +'<div style="flex:1">'
+  // 지난 일정 미조치 여부
+  var isPast=ds&&ds<todayStr()&&!t.done&&!t.cancelled;
+  var titleStyle='font-size:13px;'
+    +(t.cancelled?'text-decoration:line-through;color:#aaa;':
+      t.done?'color:#aaa;':
+      isPast?'color:#c62828;font-weight:600;':'');
+  // 우측 버튼 — 취소: 기록 남김 / 삭제: 완전 삭제
+  var btns=t.cancelled
+    ?'<button onclick="event.stopPropagation();hardDelTodo('+t.id+')" class="btn-d" title="완전삭제" style="font-size:10px;padding:2px 5px">🗑️</button>'
+    :'<button onclick="event.stopPropagation();cancelTodo('+t.id+')" style="font-size:10px;padding:2px 6px;background:#fff3e0;border:0.5px solid #ffcc80;border-radius:5px;color:#e65100;cursor:pointer" title="취소(기록 남김)">🚫</button>'
+     +'<button onclick="event.stopPropagation();hardDelTodo('+t.id+')" style="font-size:10px;padding:2px 5px;background:#fff;border:0.5px solid #ffaaaa;border-radius:5px;color:#cc3333;cursor:pointer;margin-left:2px" title="완전삭제">🗑️</button>';
+  return '<div style="display:flex;gap:8px;align-items:flex-start;padding:9px 0;border-bottom:0.5px solid #f0f0f0;cursor:pointer;'+(t.cancelled?'opacity:0.65;':t.done?'opacity:0.8;':'')+'" onclick="openSchDetail('+t.id+')">'
+    +'<div style="display:flex;flex-direction:column;align-items:center;gap:2px;margin-top:1px">'
+    +'<input type="checkbox" '+(t.done?'checked':'')+' onclick="event.stopPropagation();togTodo('+t.id+')" style="cursor:pointer;width:14px;height:14px">'
+    +(t.done?'<span style="font-size:9px;color:#aaa">완료</span>':'')
+    +'</div>'
+    +'<div style="flex:1;min-width:0">'
     +'<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">'
     +(ds&&ds!==todayStr()?'<span style="font-size:10px;color:#888;background:#f5f5f3;padding:1px 5px;border-radius:4px">'+ds+'</span>':'')
     +(timeStr?'<span style="font-size:12px;color:#1565c0;font-weight:500;min-width:36px">'+timeStr+'</span>':'')
-    +'<span style="font-size:13px;'+(t.cancelled?'text-decoration:line-through;color:#e65100;':t.done?'text-decoration:line-through;color:#aaa;':'')+'">'+(t.cancelled?'🚫 ':'')+(t.type||'')+'  '+t.title+'</span>'
+    +'<span style="'+titleStyle+'">'+(t.cancelled?'🚫 ':'')+(t.type||'')+'  '+t.title+'</span>'
     +'<span class="pri-'+(t.priority||'mid')+'">'+(priLabels[t.priority||'mid']||t.priority)+'</span>'
+    +(isPast?'<span style="font-size:9px;background:#fde;color:#c62828;padding:1px 5px;border-radius:4px;font-weight:600">미조치</span>':'')
     +(t.withName?'<span style="font-size:10px;background:#e3f2fd;color:#1565c0;padding:1px 6px;border-radius:5px">👥 '+t.withName+(t.withTel?' '+t.withTel:'')+'</span>':'')
     +(t.custName&&!t.withName?'<span style="font-size:10px;background:#e3f2fd;color:#1565c0;padding:1px 6px;border-radius:5px">'+t.custName+'</span>':'')
     +(t.repeatId?'<span style="font-size:9px;color:#7b1fa2;background:#ede7f6;padding:1px 5px;border-radius:4px">🔁</span>':'')
@@ -853,7 +868,7 @@ function makeTodoRow(t, onDel){
     +'</div>'
     +(t.memo?'<p style="font-size:11px;color:#888;margin:2px 0 0">'+t.memo+'</p>':'')
     +'</div>'
-    +'<button onclick="'+onDel+'" class="btn-d" style="font-size:10px;padding:2px 5px">'+(t.cancelled?'🗑️':'🚫')+'</button>'
+    +btns
     +'</div>';
 }
 
@@ -975,7 +990,13 @@ function renderCal(){
       var hasItem=items.length>0;
       html+='<div class="cal-cell'+(isToday?' today':'')+(hasItem&&!isToday?' has-item':'')+(isToday&&hasItem?' today has-item':'')+'" onclick="showDay(\''+ds+'\')">'
         +'<div class="cal-date" style="color:'+(isToday?'#c62828':cell%7===0?'#c62828':cell%7===6?'#1565c0':'#1a1a1a')+'">'+day+'</div>'
-        +'<div class="cal-dot">'+items.slice(0,3).map(function(t){var isSch=t.kind==="schedule";return'<div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:9px;color:'+(t.done?'#aaa':isSch?'#1565c0':'#2e7d32')+'">'+(isSch?'📅':'✅')+' '+t.title+'</div>';}).join('')+(items.length>3?'<div style="color:#aaa;font-size:9px">+'+(items.length-3)+'</div>':'')+'</div>'
+        +'<div class="cal-dot">'+items.slice(0,3).map(function(t){
+          var isSch=t.kind==="schedule";
+          var isPastUnact=ds<todStr&&!t.done&&!t.cancelled;
+          var clr=t.cancelled?'#bbb':t.done?'#bbb':isPastUnact?'#c62828':(isSch?'#1565c0':'#2e7d32');
+          var deco=t.cancelled?'text-decoration:line-through;':'';
+          return'<div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:9px;color:'+clr+';'+deco+'">'+(isSch?'📅':'✅')+' '+t.title+'</div>';
+        }).join('')+(items.length>3?'<div style="color:#aaa;font-size:9px">+'+(items.length-3)+'</div>':'')+'</div>'
         +'</div>';
       day++;
     }
@@ -991,13 +1012,19 @@ function showDay(ds){
     var timeStr=t.date&&t.date.length>10?t.date.slice(11,16):'';
     var isSchedule=t.kind==='schedule';
     var tmBadge=t.timemode==='allday'?'<span style="font-size:9px;background:#e3f2fd;color:#1565c0;padding:1px 4px;border-radius:4px;margin-left:3px">종일</span>':t.timemode==='unknown'?'<span style="font-size:9px;background:#fff8e1;color:#f57f17;padding:1px 4px;border-radius:4px;margin-left:3px">미정</span>':'';
+    var isPast=ds<todayStr()&&!t.done&&!t.cancelled;
+    var ttStyle='flex:1;font-size:12px;'+(t.cancelled?'text-decoration:line-through;color:#aaa;':t.done?'color:#aaa;':isPast?'color:#c62828;font-weight:600;':'');
+    var rowBtns=t.cancelled
+      ?'<button onclick="event.stopPropagation();hardDelTodo('+t.id+');showDay(\''+ds+'\')" style="font-size:10px;padding:2px 5px;background:#fff;border:0.5px solid #ffaaaa;border-radius:5px;color:#cc3333;cursor:pointer" title="완전삭제">🗑️</button>'
+      :'<button onclick="event.stopPropagation();cancelTodo('+t.id+');showDay(\''+ds+'\')" style="font-size:10px;padding:2px 5px;background:#fff3e0;border:0.5px solid #ffcc80;border-radius:5px;color:#e65100;cursor:pointer" title="취소">🚫</button>'
+       +'<button onclick="event.stopPropagation();hardDelTodo('+t.id+');showDay(\''+ds+'\')" style="font-size:10px;padding:2px 4px;background:#fff;border:0.5px solid #ffaaaa;border-radius:5px;color:#cc3333;cursor:pointer;margin-left:2px" title="완전삭제">🗑️</button>';
     return'<div style="display:flex;gap:8px;align-items:center;padding:8px 0;border-bottom:0.5px solid #f0f0f0;cursor:pointer" onclick="openSchDetail('+t.id+')">'
       +'<input type="checkbox" '+(t.done?'checked':'')+' onclick="event.stopPropagation();togTodo('+t.id+');showDay(\''+ds+'\')" style="cursor:pointer">'
       +'<span style="font-size:9px;padding:1px 5px;border-radius:4px;background:'+(isSchedule?'#e3f2fd':'#e8f5e9')+';color:'+(isSchedule?'#1565c0':'#2e7d32')+'">'+(isSchedule?'📅':'✅')+'</span>'
       +(timeStr&&t.timemode!=='allday'&&t.timemode!=='unknown'?'<span style="font-size:11px;color:#1565c0;min-width:32px">'+timeStr+'</span>':'')
-      +'<span style="flex:1;font-size:12px;'+(t.done?'text-decoration:line-through;color:#aaa':'')+'">'+t.title+'</span>'
+      +'<span style="'+ttStyle+'">'+t.title+'</span>'
       +tmBadge
-      +'<button onclick="event.stopPropagation();delTodo('+t.id+');showDay(\''+ds+'\')" class="btn-d" style="font-size:10px;padding:2px 5px">삭제</button>'
+      +rowBtns
       +'</div>';
   }).join(''):'<p style="font-size:12px;color:#aaa;padding:6px 0">일정 없음</p>';
   dd.style.display='block';
@@ -1472,14 +1499,29 @@ function cpGCalText(){
 // ─────────────────────────────────────────
 function togTodo(id){
   var t=todos.find(function(x){return x.id===id;});
-  if(t){t.done=!t.done;saveTodos();renderToday();if(document.getElementById('tc2').classList.contains('on'))renderAllTodos();if(document.getElementById('tc1').classList.contains('on'))renderCal();}
+  if(!t)return;
+  t.done=!t.done;
+  if(t.done){t.completedAt=new Date().toISOString();}else{delete t.completedAt;}
+  saveTodos();renderToday();
+  if(document.getElementById('tc2').classList.contains('on'))renderAllTodos();
+  if(document.getElementById('tc1').classList.contains('on'))renderCal();
 }
-function delTodo(id){
-  if(!confirm('일정을 취소하시겠습니까?'))return;
+function cancelTodo(id){
+  if(!confirm('일정을 취소하시겠습니까?\n취소 이력은 기록에 남습니다.'))return;
   var t=todos.find(function(x){return x.id===id;});
   if(t){t.cancelled=true;t.cancelledAt=new Date().toISOString();}
-  saveTodos();renderToday();if(document.getElementById('tc2').classList.contains('on'))renderAllTodos();
+  saveTodos();renderToday();
+  if(document.getElementById('tc2').classList.contains('on'))renderAllTodos();
+  if(document.getElementById('tc1').classList.contains('on'))renderCal();
 }
+function hardDelTodo(id){
+  if(!confirm('완전 삭제하시겠습니까?\n이 일정의 모든 기록이 사라집니다.'))return;
+  todos=todos.filter(function(x){return x.id!==id;});
+  saveTodos();renderToday();
+  if(document.getElementById('tc2').classList.contains('on'))renderAllTodos();
+  if(document.getElementById('tc1').classList.contains('on'))renderCal();
+}
+function delTodo(id){ cancelTodo(id); } // 하위 호환
 
 function quickAdd(){
   var title=document.getElementById('quick-title').value.trim();if(!title)return;
@@ -1665,17 +1707,16 @@ function applyUrlParams(){
         <div id="sdtl-memo" style="font-size:12px;line-height:1.6;white-space:pre-wrap"></div>
       </div>
     </div>
-    <!-- 완료 여부 -->
-    <div style="padding:0 18px 14px;display:flex;align-items:center;gap:8px">
-      <input type="checkbox" id="sdtl-done-chk" onchange="toggleDoneFromDetail()" style="width:16px;height:16px;cursor:pointer">
-      <label for="sdtl-done-chk" style="font-size:13px;cursor:pointer">완료 처리</label>
+    <!-- 완료 여부 (모달 버튼으로 통합, 상태 표시만) -->
+    <div id="sdtl-status-badge" style="padding:0 18px 10px;display:none">
+      <span id="sdtl-status-text" style="font-size:11px;padding:3px 10px;border-radius:10px"></span>
     </div>
     <!-- 액션 버튼 -->
     <div style="padding:12px 18px;border-top:0.5px solid #f0f0f0;display:flex;gap:8px;flex-wrap:wrap">
       <button onclick="editFromDetail()" style="flex:1;min-width:60px;padding:10px;border:0.5px solid #ddd;border-radius:10px;background:#fff;font-size:12px;font-weight:600;cursor:pointer">✏️ 수정</button>
-      <button onclick="completeFromDetail()" style="flex:1;min-width:60px;padding:10px;border:0.5px solid #a5d6a7;border-radius:10px;background:#e8f5e9;color:#2e7d32;font-size:12px;font-weight:600;cursor:pointer">✅ 완료</button>
-      <button onclick="deleteFromDetail()" style="flex:1;min-width:60px;padding:10px;border:0.5px solid #ffcc80;border-radius:10px;background:#fff3e0;color:#e65100;font-size:12px;font-weight:600;cursor:pointer">🚫 취소</button>
-      <button onclick="hardDeleteFromDetail()" style="padding:10px 14px;border:0.5px solid #ffaaaa;border-radius:10px;background:#fff;color:#cc3333;font-size:12px;font-weight:600;cursor:pointer">🗑️</button>
+      <button onclick="completeFromDetail()" class="btn-complete-detail" style="flex:1;min-width:60px;padding:10px;border:0.5px solid #a5d6a7;border-radius:10px;background:#e8f5e9;color:#2e7d32;font-size:12px;font-weight:600;cursor:pointer">✅ 완료</button>
+      <button onclick="deleteFromDetail()" class="btn-cancel-detail" style="flex:1;min-width:60px;padding:10px;border:0.5px solid #ffcc80;border-radius:10px;background:#fff3e0;color:#e65100;font-size:12px;font-weight:600;cursor:pointer">🚫 취소<br><span style="font-size:9px;font-weight:400">기록 남김</span></button>
+      <button onclick="hardDeleteFromDetail()" style="flex:1;min-width:60px;padding:10px;border:0.5px solid #ffaaaa;border-radius:10px;background:#fff;color:#cc3333;font-size:12px;font-weight:600;cursor:pointer">🗑️ 삭제<br><span style="font-size:9px;font-weight:400">완전삭제</span></button>
     </div>
   </div>
 </div>
