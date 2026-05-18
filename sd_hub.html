@@ -471,31 +471,31 @@ body.zoom-mode .zoomable:hover{box-shadow:none !important;}
   <!-- ⑤ 시스템 바로가기 -->
   <div class="section-title">🚀 시스템 바로가기</div>
   <div class="sys-grid">
-    <div class="sys-card" style="--c:#4f8ef7" onclick="openSystem('props')">
+    <div class="sys-card" data-screen="sd_props" style="--c:#4f8ef7" onclick="openSystem('props')">
       <div class="sys-emoji">🏠</div>
       <div class="sys-name">매물관리</div>
       <div class="sys-desc">등록·관리<br>블로그·카톡</div>
       <div class="sys-badge">sd_props</div>
     </div>
-    <div class="sys-card" style="--c:#e85c5c" onclick="openSystem('contracts')">
+    <div class="sys-card" data-screen="sd_contracts" style="--c:#e85c5c" onclick="openSystem('contracts')">
       <div class="sys-emoji">📑</div>
       <div class="sys-name">계약관리</div>
       <div class="sys-desc">계약·만기<br>알림관리</div>
       <div class="sys-badge">sd_contracts</div>
     </div>
-    <div class="sys-card" style="--c:#4caf7d" onclick="openSystem('custs')">
+    <div class="sys-card" data-screen="sd_custs" style="--c:#4caf7d" onclick="openSystem('custs')">
       <div class="sys-emoji">👥</div>
       <div class="sys-name">고객관리</div>
       <div class="sys-desc">CRM·메시지<br>기념일·등급</div>
       <div class="sys-badge">sd_custs</div>
     </div>
-    <div class="sys-card" style="--c:#9b7fe8" onclick="openSystem('schedule')">
+    <div class="sys-card" data-screen="sd_schedule" style="--c:#9b7fe8" onclick="openSystem('schedule')">
       <div class="sys-emoji">📅</div>
       <div class="sys-name">일정관리</div>
       <div class="sys-desc">캘린더·할일<br>구글 연동</div>
       <div class="sys-badge">sd_schedule</div>
     </div>
-    <div class="sys-card" style="--c:#e8c46a" onclick="openSystem('marketing')">
+    <div class="sys-card" data-screen="sd_marketing" style="--c:#e8c46a" onclick="openSystem('marketing')">
       <div class="sys-emoji">📢</div>
       <div class="sys-name">마케팅</div>
       <div class="sys-desc">뉴스·블로그<br>SNS·명함</div>
@@ -552,12 +552,24 @@ var ROLE_COLORS = {master:'#ffd700',prime:'#4f8ef7',premium:'#00e5a0',general:'#
 // ── 역할별 기본 권한 (마스터가 개인별 조정 가능)
 var ROLE_DEFAULTS = {
   master:   {upload:true, download:true, delete:true, ai_tools:true, firebase_save:true,
+             dl_single:true,  dl_bulk:true,
+             del_single:true, del_bulk:true,
+             up_single:true,  up_bulk:true,
              screens:{sd_hub:true,sd_data:true,sd_props:true,sd_custs:true,sd_contracts:true,sd_marketing:true,sd_sangga:true,sd_schedule:true}},
   prime:    {upload:true, download:true, delete:false, ai_tools:true, firebase_save:true,
+             dl_single:true,  dl_bulk:true,
+             del_single:true, del_bulk:false,
+             up_single:true,  up_bulk:true,
              screens:{sd_hub:true,sd_data:true,sd_props:true,sd_custs:true,sd_contracts:true,sd_marketing:true,sd_sangga:true,sd_schedule:true}},
   premium:  {upload:false, download:false, delete:false, ai_tools:false, firebase_save:false,
+             dl_single:true,  dl_bulk:false,
+             del_single:true, del_bulk:false,
+             up_single:true,  up_bulk:false,
              screens:{sd_hub:true,sd_data:false,sd_props:true,sd_custs:false,sd_contracts:false,sd_marketing:true,sd_sangga:false,sd_schedule:true}},
   general:  {upload:false, download:false, delete:false, ai_tools:false, firebase_save:false,
+             dl_single:true,  dl_bulk:false,
+             del_single:false, del_bulk:false,
+             up_single:true,  up_bulk:false,
              screens:{sd_hub:true,sd_data:false,sd_props:false,sd_custs:false,sd_contracts:false,sd_marketing:false,sd_sangga:false,sd_schedule:true}},
 };
 
@@ -681,6 +693,7 @@ function _onAuthSuccess(profile){
   if(userEl) userEl.style.display='flex';
   if(signoutEl) signoutEl.style.display='block';
   if(mgrEl) mgrEl.style.display = profile.role==='master' ? 'block' : 'none';
+  applyScreenPerms(profile.permissions && profile.permissions.screens);
   loadAll();
 }
 
@@ -768,14 +781,34 @@ function loadAccountPanel(){
           SCREEN_LABELS[s]+'</label>';
       }).join('');
 
-      // 권한 체크박스
-      var permKeys=[['upload','업로드'],['download','다운로드'],['delete','삭제'],['ai_tools','AI'],['firebase_save','저장']];
+      // 권한 체크박스 — 기존 통합 + 신규 세분화
+      var permKeys=[
+        ['upload','업로드(구)'],['download','다운(구)'],['delete','삭제(구)'],['ai_tools','AI'],['firebase_save','저장']
+      ];
       var permChecks=permKeys.map(function(pk){
         var val=perms[pk[0]];
         return '<label style="display:inline-flex;align-items:center;gap:3px;font-size:10px;color:'+(val?'#e8ecf4':'#4a526a')+';cursor:pointer;padding:2px 4px;border:1px solid '+(val?'#2a3a5c':'#1e2535')+';border-radius:4px;margin:2px">'+
           '<input type="checkbox" '+(val?'checked':'')+' onchange="togglePerm(\''+uid+'\',\''+pk[0]+'\',this.checked)" style="accent-color:#4f8ef7;width:11px;height:11px">'+
           pk[1]+'</label>';
       }).join('');
+
+      // 세분화 권한 체크박스
+      var granularKeys=[
+        ['dl_single','건별다운'],['dl_bulk','일괄다운'],
+        ['del_single','건별삭제'],['del_bulk','일괄삭제'],
+        ['up_single','건별업로드'],['up_bulk','일괄업로드']
+      ];
+      var granularColors={dl_single:'#00b4d8',dl_bulk:'#0096c7',del_single:'#e85c5c',del_bulk:'#c62828',up_single:'#4caf7d',up_bulk:'#2e7d52'};
+      var granularChecks='<div style="margin-top:6px;padding-top:6px;border-top:1px solid #1e2535">'+
+        '<div style="font-size:9px;color:#4a526a;margin-bottom:3px">세분화 권한</div>'+
+        granularKeys.map(function(pk){
+          var val=perms[pk[0]]!==false; // undefined=허용
+          var c=granularColors[pk[0]]||'#4f8ef7';
+          return '<label style="display:inline-flex;align-items:center;gap:3px;font-size:10px;color:'+(val?c:'#4a526a')+';cursor:pointer;padding:2px 4px;border:1px solid '+(val?c+'44':'#1e2535')+';border-radius:4px;margin:2px">'+
+            '<input type="checkbox" '+(val?'checked':'')+' onchange="togglePerm(\''+uid+'\',\''+pk[0]+'\',this.checked)" style="accent-color:'+c+';width:11px;height:11px">'+
+            pk[1]+'</label>';
+        }).join('')+
+        '</div>';
 
       // ★ 고객 조회 범위
       var custView=(perms.cust_view)||(u.role==='general'?'own':'all');
@@ -810,7 +843,7 @@ function loadAccountPanel(){
           (u.role!=='master'?'<button onclick="revokeUser(\''+uid+'\')" style="padding:4px 10px;background:#e85c5c22;border:1px solid #e85c5c44;border-radius:8px;color:#e85c5c;font-size:11px;cursor:pointer">비활성화</button>':'')+
         '</div>'+
         '<div style="margin-bottom:6px"><div style="font-size:10px;color:#556688;margin-bottom:4px">시스템 접근</div>'+screenChecks+'</div>'+
-        '<div style="margin-bottom:6px"><div style="font-size:10px;color:#556688;margin-bottom:4px">기능 권한</div>'+permChecks+'</div>'+
+        '<div style="margin-bottom:6px"><div style="font-size:10px;color:#556688;margin-bottom:4px">기능 권한</div>'+permChecks+granularChecks+'</div>'+
         '<div><div style="font-size:10px;color:#556688;margin-bottom:4px">👥 가망고객 조회 범위</div>'+custViewHtml+'</div>'+
         '</div>';
     });
@@ -1314,8 +1347,31 @@ function showToast(msg){
   clearTimeout(t._timer);t._timer=setTimeout(function(){t.style.opacity='0';},3000);
 }
 
+// ── 화면 권한 적용: 허브 sys-card 숨김/표시
+function applyScreenPerms(screens){
+  if(!screens) return;
+  document.querySelectorAll('.sys-card[data-screen]').forEach(function(el){
+    var key = el.getAttribute('data-screen');
+    if(screens[key] === false){
+      el.style.display = 'none';
+    } else {
+      el.style.display = '';
+    }
+  });
+}
+
 function openSystem(key){
   var s=sysInfo[key];if(!s)return;
+  // 권한 체크
+  try{
+    var sess=JSON.parse(localStorage.getItem('sd_auth_session')||'{}');
+    var screens=(sess.permissions&&sess.permissions.screens)||{};
+    var screenKey='sd_'+key;
+    if(screens[screenKey]===false){
+      showToast('⛔ 이 시스템에 대한 접근 권한이 없습니다.');
+      return;
+    }
+  }catch(e){}
   window.location.href=s.file;
 }
 
@@ -1351,6 +1407,10 @@ function openSystem(key){
           if(userEl) userEl.style.display='flex';
           if(signoutEl) signoutEl.style.display='block';
           if(mgrEl) mgrEl.style.display=_d.role==='master'?'block':'none';
+          // 권한에 따라 sys-card 즉시 숨김
+          if(_d.permissions && _d.permissions.screens){
+            applyScreenPerms(_d.permissions.screens);
+          }
           // 로그인 화면 숨기고 허브 표시
           _hideAllScreens();
         }

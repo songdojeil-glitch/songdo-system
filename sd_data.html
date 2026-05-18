@@ -553,7 +553,7 @@ tr.naver-fav>td:first-child{border-left:3px solid #ffd700;}
       </button>
       <button onclick="exportFavExcel()" style="padding:4px 10px;background:#1a2a1a;border:1px solid #ffd700;border-radius:6px;color:#ffd700;font-size:11px;cursor:pointer">⭐ 엑셀</button>
       <button onclick="printFavList()" style="padding:4px 10px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:11px;cursor:pointer">🖨️ 인쇄</button>
-      <button onclick="showNaverDeleteModal()" style="padding:4px 10px;background:#2a1a1a;border:1px solid #ff4444;border-radius:6px;color:#ff7777;font-size:11px;cursor:pointer" title="단지별 또는 전체 삭제">🗑️ 삭제</button>
+      <button onclick="showNaverDeleteModal()" data-perm="del_bulk" style="padding:4px 10px;background:#2a1a1a;border:1px solid #ff4444;border-radius:6px;color:#ff7777;font-size:11px;cursor:pointer" title="단지별 또는 전체 삭제">🗑️ 삭제</button>
       <button onclick="fbLoadData()" id="fb-load-btn" style="padding:4px 12px;background:#1e3a5f;border:1px solid #00d4ff;color:#00d4ff;border-radius:6px;cursor:pointer;font-size:11px;font-weight:700;">
         ☁️ Firebase 불러오기
       </button>
@@ -1729,7 +1729,7 @@ tr.naver-fav>td:first-child{border-left:3px solid #ffd700;}
       oninput="G_sangga.bldg='';renderTab8()">
     <!-- 건물명 칩 (공구별 그룹, renderTab8에서 동적 생성) -->
     <div id="sangga-bldg-chips" style="display:none;flex-wrap:wrap;gap:4px;align-items:center"></div>
-    <button onclick="deleteAllSanggaData()" id="sangga-clear-btn" style="display:none;padding:3px 10px;background:#2a1a1a;border:1px solid #ff4444;border-radius:8px;color:#ff7777;font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap" title="전체 상가/사무실 데이터 삭제">🗑️ 전체 삭제</button>
+    <button onclick="deleteAllSanggaData()" data-perm="del_bulk" id="sangga-clear-btn" style="display:none;padding:3px 10px;background:#2a1a1a;border:1px solid #ff4444;border-radius:8px;color:#ff7777;font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap" title="전체 상가/사무실 데이터 삭제">🗑️ 전체 삭제</button>
   </div>
 
   <div id="sangga-content">
@@ -4159,6 +4159,7 @@ function deleteSanggaBldg(nm){
 }
 
 function deleteAllSanggaData(){
+  if(!sdPerm('del_bulk')){ alert('⛔ 일괄 삭제 권한이 없습니다.'); return; }
   var total=(G.naverSanggaData||[]).length;
   if(!total){ showToast('삭제할 데이터가 없습니다.'); return; }
   if(!confirm('상가/사무실 전체 매물을 삭제하시겠습니까?\n\n총 '+total+'건 + Firebase까지 완전 삭제됩니다.\n이 작업은 되돌릴 수 없습니다.')) return;
@@ -5051,7 +5052,41 @@ function printReport2(){
   var w=window.open('','_blank');
   w.document.write('<meta charset=utf-8><title>단지모델 리포트</title>'
     +'<style>body{font-family:"맑은 고딕",sans-serif;font-size:13px;line-height:1.9;padding:30px 40px;white-space:pre-wrap}</style>'
-    +'<body>'+txt.replace(/</g,'&lt;')+'</body>');
+    +'<body>'+txt.replace(/</g,'&lt;')+'<script>
+// ── 권한 헬퍼 (sd_auth_session 기반)
+function sdPerm(key){
+  try{
+    var s=JSON.parse(localStorage.getItem('sd_auth_session')||'{}');
+    if(!s.role) return true;
+    if(s.role==='master'||s.role==='prime') return true;
+    var p=s.permissions&&s.permissions[key];
+    return p!==false;
+  }catch(e){return true;}
+}
+function sdCheckScreen(screenKey){
+  try{
+    var s=JSON.parse(localStorage.getItem('sd_auth_session')||'{}');
+    if(!s.role) return;
+    if(s.role==='master'||s.role==='prime') return;
+    var sc=(s.permissions&&s.permissions.screens)||{};
+    if(sc[screenKey]===false){
+      alert('⛔ 접근 권한이 없습니다.\n관리자에게 문의하세요.');
+      window.location.href='sd_hub.html';
+    }
+  }catch(e){}
+}
+function sdApplyPerms(){
+  if(!sdPerm('del_bulk'))
+    document.querySelectorAll('[data-perm="del_bulk"]').forEach(function(el){el.style.display='none';});
+  if(!sdPerm('dl_bulk'))
+    document.querySelectorAll('[data-perm="dl_bulk"]').forEach(function(el){el.style.display='none';});
+  if(!sdPerm('up_bulk'))
+    document.querySelectorAll('[data-perm="up_bulk"]').forEach(function(el){el.style.display='none';});
+  if(!sdPerm('del_single'))
+    document.querySelectorAll('[data-perm="del_single"]').forEach(function(el){el.style.display='none';});
+}
+</script>
+</body>');
   w.document.close(); w.print();
 }
 function downloadAsWord(){
@@ -5235,6 +5270,7 @@ function printProposal(){
 
 // ══ 네이버 APT 단지 삭제 (칩 ✕ 버튼용) ══
 function deleteNaverBldg(nm){
+  if(!sdPerm('del_single')){ alert('⛔ 삭제 권한이 없습니다.'); return; }
   var cnt=(G.naverData||[]).filter(function(r){return r.단지명===nm;}).length;
   if(!confirm('"'+nm+'" 단지를 삭제하시겠습니까?\n\n'+cnt+'건이 모두 삭제됩니다.\n삭제 후 Firebase 저장 버튼으로 확정하세요.')) return;
   G.naverData=(G.naverData||[]).filter(function(r){return r.단지명!==nm;});
@@ -5245,6 +5281,7 @@ function deleteNaverBldg(nm){
 }
 
 function deleteAllNaverBldgData(){
+  if(!sdPerm('del_bulk')){ alert('⛔ 일괄 삭제 권한이 없습니다.'); return; }
   var total=(G.naverData||[]).length;
   if(!total){ showToast('삭제할 데이터가 없습니다.'); return; }
   if(!confirm('APT 전체 매물을 삭제하시겠습니까?\n\n총 '+total+'건이 모두 삭제됩니다.\n삭제 후 Firebase 저장 버튼으로 확정하세요.')) return;

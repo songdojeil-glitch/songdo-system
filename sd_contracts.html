@@ -443,7 +443,7 @@ body.zoom-mode .zoomable:hover{box-shadow:none !important;}
     <div style="display:flex;gap:8px;align-items:center">
       <span id="ct-cnt" style="font-size:12px;color:#666"></span>
       <button onclick="importBatch2()" class="btn-s" id="import-btn" style="background:#e3f2fd;border-color:#90caf9;color:#1565c0;font-size:11px">📥 21-40p 추가</button>
-      <button onclick="exportCtXL()" class="btn-s">📥 엑셀</button>
+      <button onclick="exportCtXL()" data-perm="dl_bulk" class="btn-s">📥 엑셀</button>
     </div>
   </div>
   <!-- 상단 스크롤바 -->
@@ -2229,6 +2229,7 @@ function copyTmpl(){
 }
 
 function exportCtXL(){
+  if(!sdPerm('dl_bulk')){ alert('⛔ 일괄 다운로드 권한이 없습니다.'); return; }
   if(!window.XLSX){alert('엑셀 라이브러리 준비 중입니다.');return;}
   var tf=document.getElementById('cft-type').value,df=document.getElementById('cft-deal').value;
   var f=contracts.filter(function(c){return(!tf||c.type===tf)&&(!df||c.deal===df);});
@@ -2975,6 +2976,40 @@ function toggleZoom(){
   if(document.readyState==="loading"){document.addEventListener("DOMContentLoaded",function(){injectBar(_s);});}
   else{injectBar(_s);}
 })();
+</script>
+<script>
+// ── 권한 헬퍼 (sd_auth_session 기반)
+function sdPerm(key){
+  try{
+    var s=JSON.parse(localStorage.getItem('sd_auth_session')||'{}');
+    if(!s.role) return true;
+    if(s.role==='master'||s.role==='prime') return true;
+    var p=s.permissions&&s.permissions[key];
+    return p!==false;
+  }catch(e){return true;}
+}
+function sdCheckScreen(screenKey){
+  try{
+    var s=JSON.parse(localStorage.getItem('sd_auth_session')||'{}');
+    if(!s.role) return;
+    if(s.role==='master'||s.role==='prime') return;
+    var sc=(s.permissions&&s.permissions.screens)||{};
+    if(sc[screenKey]===false){
+      alert('⛔ 접근 권한이 없습니다.\n관리자에게 문의하세요.');
+      window.location.href='sd_hub.html';
+    }
+  }catch(e){}
+}
+function sdApplyPerms(){
+  if(!sdPerm('del_bulk'))
+    document.querySelectorAll('[data-perm="del_bulk"]').forEach(function(el){el.style.display='none';});
+  if(!sdPerm('dl_bulk'))
+    document.querySelectorAll('[data-perm="dl_bulk"]').forEach(function(el){el.style.display='none';});
+  if(!sdPerm('up_bulk'))
+    document.querySelectorAll('[data-perm="up_bulk"]').forEach(function(el){el.style.display='none';});
+  if(!sdPerm('del_single'))
+    document.querySelectorAll('[data-perm="del_single"]').forEach(function(el){el.style.display='none';});
+}
 </script>
 </body>
 </html>

@@ -1242,6 +1242,7 @@ async function restoreBrk(id){
   await toStoreBrk();renderBrk();
 }
 async function delBrk(id){
+  if(!sdPerm('del_single')){ alert('⛔ 삭제 권한이 없습니다.'); return; }
   var b=brks.find(function(x){return String(x.id)===String(id);});
   if(!b||!confirm('"'+b.name+'" 완전 삭제할까요?'))return;
   brks=brks.filter(function(x){return String(x.id)!==String(id);});
@@ -1253,6 +1254,7 @@ function toggleAllBrkChk(chk){
 }
 
 async function delSelectedBrks(){
+  if(!sdPerm('del_bulk')){ alert('⛔ 일괄 삭제 권한이 없습니다.'); return; }
   var ids=[];
   document.querySelectorAll('.brk-chk:checked').forEach(function(c){ids.push(parseInt(c.value));});
   if(!ids.length){alert('삭제할 업소를 선택해 주세요.');return;}
@@ -1263,6 +1265,7 @@ async function delSelectedBrks(){
 }
 
 async function delAllBrks(){
+  if(!sdPerm('del_bulk')){ alert('⛔ 일괄 삭제 권한이 없습니다.'); return; }
   var statusF=document.getElementById('bfStatus').value;
   var assocF=document.getElementById('bfAssoc').value;
   var target=brks.filter(function(b){
@@ -1283,6 +1286,7 @@ async function delAllBrks(){
 
 
 function openBrkUpload(){
+  if(!sdPerm('up_bulk')){ alert('⛔ 일괄 업로드 권한이 없습니다.'); return; }
   document.getElementById('brkUploadModal').style.display='flex';
   document.getElementById('brkUpPreview').style.display='none';
   var btnArea=document.getElementById('brkUpBtnArea');if(btnArea)btnArea.style.display='none';
@@ -1425,6 +1429,7 @@ async function applyBrkUpload(){
 
 // 엑셀 내보내기
 function exportBrk(){
+  if(!sdPerm('dl_bulk')){ alert('⛔ 일괄 다운로드 권한이 없습니다.'); return; }
   if(!brks.length){alert('내보낼 데이터가 없습니다.');return;}
   var cols=['소속','공구','단지&건물명','업소명','대표자','등록번호','대표번호','핸드폰번호','관계등급','전문1','전문2','팩스번호','주소','메모','상태','등록일'];
   var rows=[cols].concat(brks.map(function(b){return[
@@ -2299,7 +2304,41 @@ function printProposal(){
     +'@media print{@page{margin:1.5cm 2cm}body{padding:0}}</style>'
     +'</head><body><pre>'+txt.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')+'</pre>'
     +'<script>window.onload=function(){window.print();}<\/script>'
-    +'</body></html>');
+    +'<script>
+// ── 권한 헬퍼 (sd_auth_session 기반)
+function sdPerm(key){
+  try{
+    var s=JSON.parse(localStorage.getItem('sd_auth_session')||'{}');
+    if(!s.role) return true;
+    if(s.role==='master'||s.role==='prime') return true;
+    var p=s.permissions&&s.permissions[key];
+    return p!==false;
+  }catch(e){return true;}
+}
+function sdCheckScreen(screenKey){
+  try{
+    var s=JSON.parse(localStorage.getItem('sd_auth_session')||'{}');
+    if(!s.role) return;
+    if(s.role==='master'||s.role==='prime') return;
+    var sc=(s.permissions&&s.permissions.screens)||{};
+    if(sc[screenKey]===false){
+      alert('⛔ 접근 권한이 없습니다.\n관리자에게 문의하세요.');
+      window.location.href='sd_hub.html';
+    }
+  }catch(e){}
+}
+function sdApplyPerms(){
+  if(!sdPerm('del_bulk'))
+    document.querySelectorAll('[data-perm="del_bulk"]').forEach(function(el){el.style.display='none';});
+  if(!sdPerm('dl_bulk'))
+    document.querySelectorAll('[data-perm="dl_bulk"]').forEach(function(el){el.style.display='none';});
+  if(!sdPerm('up_bulk'))
+    document.querySelectorAll('[data-perm="up_bulk"]').forEach(function(el){el.style.display='none';});
+  if(!sdPerm('del_single'))
+    document.querySelectorAll('[data-perm="del_single"]').forEach(function(el){el.style.display='none';});
+}
+</script>
+</body></html>');
   w.document.close();
 }
 
@@ -2745,10 +2784,10 @@ function resetCallTab(){
       <p class="sec" style="margin:0">🏢 중개업소 관리</p>
       <div style="display:flex;gap:6px;flex-wrap:wrap">
         <button onclick="openBrkForm(null)" class="btn-p" style="font-size:12px;padding:6px 14px">➕ 신규 등록</button>
-        <button onclick="openBrkUpload()" class="btn-s" style="font-size:12px">📥 일괄 업로드</button>
-        <button onclick="exportBrk()" class="btn-s" style="font-size:12px">📤 엑셀 내보내기</button>
-        <button onclick="delSelectedBrks()" class="btn-s" style="font-size:12px;color:#e65100;border-color:#ffb74d">☑️ 선택 삭제</button>
-        <button onclick="delAllBrks()" class="btn-d" style="font-size:12px">🗑️ 전체 삭제</button>
+        <button onclick="openBrkUpload()" data-perm="up_bulk" class="btn-s" style="font-size:12px">📥 일괄 업로드</button>
+        <button onclick="exportBrk()" data-perm="dl_bulk" class="btn-s" style="font-size:12px">📤 엑셀 내보내기</button>
+        <button onclick="delSelectedBrks()" data-perm="del_bulk" class="btn-s" style="font-size:12px;color:#e65100;border-color:#ffb74d">☑️ 선택 삭제</button>
+        <button onclick="delAllBrks()" data-perm="del_bulk" class="btn-d" style="font-size:12px">🗑️ 전체 삭제</button>
       </div>
     </div>
     <!-- 필터 -->

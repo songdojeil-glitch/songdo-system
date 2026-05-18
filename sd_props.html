@@ -874,7 +874,41 @@ function previewWatermark() {
             이미지 크기에 비례하여 로고 크기가 조절되며, <span class="highlight">전문적인 브랜딩 효과</span>를 제공합니다.
           </div>
         </div>
-      </body>
+      <script>
+// ── 권한 헬퍼 (sd_auth_session 기반)
+function sdPerm(key){
+  try{
+    var s=JSON.parse(localStorage.getItem('sd_auth_session')||'{}');
+    if(!s.role) return true;
+    if(s.role==='master'||s.role==='prime') return true;
+    var p=s.permissions&&s.permissions[key];
+    return p!==false;
+  }catch(e){return true;}
+}
+function sdCheckScreen(screenKey){
+  try{
+    var s=JSON.parse(localStorage.getItem('sd_auth_session')||'{}');
+    if(!s.role) return;
+    if(s.role==='master'||s.role==='prime') return;
+    var sc=(s.permissions&&s.permissions.screens)||{};
+    if(sc[screenKey]===false){
+      alert('⛔ 접근 권한이 없습니다.\n관리자에게 문의하세요.');
+      window.location.href='sd_hub.html';
+    }
+  }catch(e){}
+}
+function sdApplyPerms(){
+  if(!sdPerm('del_bulk'))
+    document.querySelectorAll('[data-perm="del_bulk"]').forEach(function(el){el.style.display='none';});
+  if(!sdPerm('dl_bulk'))
+    document.querySelectorAll('[data-perm="dl_bulk"]').forEach(function(el){el.style.display='none';});
+  if(!sdPerm('up_bulk'))
+    document.querySelectorAll('[data-perm="up_bulk"]').forEach(function(el){el.style.display='none';});
+  if(!sdPerm('del_single'))
+    document.querySelectorAll('[data-perm="del_single"]').forEach(function(el){el.style.display='none';});
+}
+</script>
+</body>
       </html>
     `);
   });
@@ -3172,6 +3206,7 @@ function onLoadSavedListing(){
 }
 
 function deleteSavedListing(){
+  if(!sdPerm('del_single')){ alert('⛔ 삭제 권한이 없습니다.'); return; }
   var sel=document.getElementById('ls-saved-sel');
   if(!sel||!sel.value){alert('삭제할 항목을 선택하세요.');return;}
   if(!confirm('['+sel.value+'] 삭제하시겠습니까?'))return;

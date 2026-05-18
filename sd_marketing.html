@@ -10,6 +10,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <!-- ═══ Firebase SDK (compat v9) ═══ -->
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 <!-- ═══ Firebase Storage 어댑터 (window.storage 호환) ═══ -->
 <script src="firebase-storage.js"></script>
@@ -120,10 +121,10 @@ body{font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif;background:#f7
 /* ── 촬영모드 */
 body.zoom-mode .zoomable{cursor:default !important;}
 body.zoom-mode .zoomable:hover{box-shadow:none !important;}
-body.zoom-mode{transition:zoom .2s;}
 </style>
 </head>
 <body>
+<div id="_sda_cover" style="position:fixed;inset:0;background:#0a0d14;z-index:9999;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px"><div style="width:32px;height:32px;border:3px solid #2a3045;border-top-color:#4f8ef7;border-radius:50%;animation:_sda_spin .7s linear infinite"></div><div style="font-size:12px;color:#4a526a">인증 확인 중...</div></div><style>@keyframes _sda_spin{to{transform:rotate(360deg)}}</style>
 
 
 <!-- ═══ PIN 인증 체크 ═══ -->
@@ -1502,7 +1503,41 @@ function doPrint(id){
   if(el.tagName==='TEXTAREA'){txt='<pre style="font-family:inherit;white-space:pre-wrap;font-size:13px;line-height:1.9">'+el.value.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')+'</pre>';}
   else{txt=el.outerHTML;}
   var w=window.open('','_blank');
-  w.document.write('<html><head><meta charset="UTF-8"><style>body{font-family:"Malgun Gothic",AppleGothic,sans-serif;padding:2cm;max-width:21cm;margin:0 auto}@media print{@page{margin:1.5cm 2cm}body{padding:0}}</style></head><body>'+txt+'<script>window.onload=function(){window.print()}<\/script></body></html>');
+  w.document.write('<html><head><meta charset="UTF-8"><style>body{font-family:"Malgun Gothic",AppleGothic,sans-serif;padding:2cm;max-width:21cm;margin:0 auto}@media print{@page{margin:1.5cm 2cm}body{padding:0}}</style></head><body>'+txt+'<script>window.onload=function(){window.print()}<\/script><script>
+// ── 권한 헬퍼 (sd_auth_session 기반)
+function sdPerm(key){
+  try{
+    var s=JSON.parse(localStorage.getItem('sd_auth_session')||'{}');
+    if(!s.role) return true;
+    if(s.role==='master'||s.role==='prime') return true;
+    var p=s.permissions&&s.permissions[key];
+    return p!==false;
+  }catch(e){return true;}
+}
+function sdCheckScreen(screenKey){
+  try{
+    var s=JSON.parse(localStorage.getItem('sd_auth_session')||'{}');
+    if(!s.role) return;
+    if(s.role==='master'||s.role==='prime') return;
+    var sc=(s.permissions&&s.permissions.screens)||{};
+    if(sc[screenKey]===false){
+      alert('⛔ 접근 권한이 없습니다.\n관리자에게 문의하세요.');
+      window.location.href='sd_hub.html';
+    }
+  }catch(e){}
+}
+function sdApplyPerms(){
+  if(!sdPerm('del_bulk'))
+    document.querySelectorAll('[data-perm="del_bulk"]').forEach(function(el){el.style.display='none';});
+  if(!sdPerm('dl_bulk'))
+    document.querySelectorAll('[data-perm="dl_bulk"]').forEach(function(el){el.style.display='none';});
+  if(!sdPerm('up_bulk'))
+    document.querySelectorAll('[data-perm="up_bulk"]').forEach(function(el){el.style.display='none';});
+  if(!sdPerm('del_single'))
+    document.querySelectorAll('[data-perm="del_single"]').forEach(function(el){el.style.display='none';});
+}
+</script>
+</body></html>');
   w.document.close();
 }
 
@@ -3506,6 +3541,28 @@ document.addEventListener('DOMContentLoaded', function(){ initAll(); });
 </div>
 
 
+
+<script>
+/* SD Auth: sd_marketing */
+(function(){
+  var SESSION_MS=86400000;
+  var ROLE_LBL={master:"마스터",prime:"프라임",premium:"프리미엄",general:"제너럴"};
+  var ROLE_COL={master:"#ffd700",prime:"#4f8ef7",premium:"#00e5a0",general:"#8b95b0"};
+  var PERM_SEL={firebase_save:['[onclick*=\'saveAllNews\']','[onclick*=\'saveCardToLib\']','[onclick*=\'saveAIConfig\']'],upload:['[id=\'blog-doc-file\']','[id=\'yt-doc-file\']','[id=\'blog-img-file\']'],"delete":['[onclick*=\'clearSavedNews\']'],ai_tools:['[onclick*=\'genBlog\']','[onclick*=\'callGemini\']','[onclick*=\'callClaude\']'],download:['[onclick*=\'downloadCard\']']};
+  var WRAP_FNS={"delete":['clearSavedNews']};
+  function hideCover(){var c=document.getElementById("_sda_cover");if(c){c.style.transition="opacity .2s";c.style.opacity="0";setTimeout(function(){if(c.parentNode)c.parentNode.removeChild(c);},200);}}
+  function toast(msg){var t=document.getElementById("_sda_t");if(!t){t=document.createElement("div");t.id="_sda_t";t.style.cssText="position:fixed;bottom:24px;right:24px;background:#e85c5c;color:#fff;padding:10px 18px;border-radius:8px;font-size:13px;font-weight:600;z-index:99999;display:none";document.body.appendChild(t);}t.textContent=msg;t.style.display="block";clearTimeout(t._t);t._t=setTimeout(function(){t.style.display="none";},2500);}
+  function injectBar(p){if(document.getElementById("_sda_b"))return;var bar=document.createElement("div");bar.id="_sda_b";bar.style.cssText="position:fixed;top:0;right:0;z-index:9800;display:flex;align-items:center;gap:8px;padding:4px 12px;background:rgba(10,13,20,.93);border-bottom-left-radius:10px;border:1px solid rgba(255,255,255,.08)";var rc=ROLE_COL[p.role]||"#8b95b0";var nm=document.createElement("span");nm.style.cssText="font-size:11px;color:#8b95b0";nm.textContent=(p.name||p.email||"");var bd=document.createElement("span");bd.style.cssText="font-size:10px;font-weight:700;padding:1px 7px;border-radius:8px;background:"+rc+"22;color:"+rc+";border:1px solid "+rc+"44";bd.textContent=(ROLE_LBL[p.role]||p.role);var hub=document.createElement("a");hub.href="sd_hub.html";hub.textContent="허브";hub.style.cssText="color:#4f8ef7;font-size:11px;text-decoration:none;padding:2px 4px";var out=document.createElement("button");out.textContent="로그아웃";out.style.cssText="background:transparent;border:none;color:#556688;font-size:11px;cursor:pointer;padding:2px 4px";out.onclick=function(){try{localStorage.removeItem("sd_auth_session");}catch(e){}window.location.href="sd_hub.html";};bar.appendChild(nm);bar.appendChild(bd);bar.appendChild(hub);bar.appendChild(out);document.body.appendChild(bar);}
+  function applyPerms(perms){Object.keys(PERM_SEL).forEach(function(perm){if(perms[perm]===false){PERM_SEL[perm].forEach(function(sel){try{document.querySelectorAll(sel).forEach(function(el){if(el.tagName==="INPUT"&&el.type==="file"){(el.closest("label")||el.parentElement||el).style.display="none";}else{el.style.display="none";}});}catch(e){}});}});}
+  function wrapFns(perms){Object.keys(WRAP_FNS).forEach(function(perm){WRAP_FNS[perm].forEach(function(fn){if(typeof window[fn]==="function"){var orig=window[fn];window[fn]=function(){if(perms[perm]===false){toast("권한이 없습니다");return;}return orig.apply(this,arguments);};}});});}
+  function enterPage(p){window._authProfile=p;window._authPerms=p.permissions||{};hideCover();injectBar(p);var go=function(){applyPerms(p.permissions||{});wrapFns(p.permissions||{});};if(document.readyState==="loading"){document.addEventListener("DOMContentLoaded",go);}else{setTimeout(go,300);}}
+  var _session=null;
+  try{var _s=localStorage.getItem("sd_auth_session");if(_s){var _d=JSON.parse(_s);if(_d&&_d.ts&&(Date.now()-_d.ts)<SESSION_MS&&_d.role){_session=_d;}}}
+  catch(e){}
+  if(_session){var _scr=((_session.permissions||{}).screens)||{};if(_scr["sd_marketing"]===false){hideCover();alert("접근 권한이 없습니다.");window.location.href="sd_hub.html";}else{enterPage(_session);}}
+  else{hideCover();window.location.href="sd_hub.html";}
+})();
+</script>
 <script>
 var _zoomOn=false;
 function toggleZoom(){
@@ -3515,31 +3572,12 @@ function toggleZoom(){
     document.body.style.zoom='1.5';
     document.body.classList.add('zoom-mode');
     if(btn){btn.textContent='🎬 촬영모드 ON';btn.style.background='rgba(255,107,53,.35)';btn.style.borderColor='#ff6b35';btn.style.color='#fff';}
-    
   }else{
     document.body.style.zoom='1';
     document.body.classList.remove('zoom-mode');
     if(btn){btn.textContent='🎬 촬영모드';btn.style.background='rgba(255,107,53,.12)';btn.style.borderColor='rgba(255,107,53,.4)';btn.style.color='#ff6b35';}
-    
   }
 }
-</script>
-
-<script>
-/* SD Auth: sd_marketing */
-(function(){
-  var SESSION_MS=86400000;
-  var ROLE_LBL={master:"마스터",prime:"프라임",premium:"프리미엄",general:"제너럴"};
-  var ROLE_COL={master:"#ffd700",prime:"#4f8ef7",premium:"#00e5a0",general:"#8b95b0"};
-  function injectBar(p){if(document.getElementById("_sda_b"))return;var bar=document.createElement("div");bar.id="_sda_b";bar.style.cssText="position:fixed;top:0;right:0;z-index:9800;display:flex;align-items:center;gap:8px;padding:4px 12px;background:rgba(10,13,20,.93);border-bottom-left-radius:10px;border:1px solid rgba(255,255,255,.08)";var rc=ROLE_COL[p.role]||"#8b95b0";var nm=document.createElement("span");nm.style.cssText="font-size:11px;color:#8b95b0";nm.textContent=p.name||p.email||"";var bd=document.createElement("span");bd.style.cssText="font-size:10px;font-weight:700;padding:1px 7px;border-radius:8px;background:"+rc+"22;color:"+rc+";border:1px solid "+rc+"44";bd.textContent=ROLE_LBL[p.role]||p.role;var hub=document.createElement("a");hub.href="sd_hub.html";hub.textContent="허브";hub.style.cssText="color:#4f8ef7;font-size:11px;text-decoration:none;padding:2px 4px";var out=document.createElement("button");out.textContent="로그아웃";out.style.cssText="background:transparent;border:none;color:#556688;font-size:11px;cursor:pointer;padding:2px 4px";out.onclick=function(){try{localStorage.removeItem("sd_auth_session");}catch(e){}window.location.href="sd_hub.html";};bar.appendChild(nm);bar.appendChild(bd);bar.appendChild(hub);bar.appendChild(out);document.body.appendChild(bar);}
-  var _s=null;
-  try{var _r=localStorage.getItem("sd_auth_session");if(_r){var _d=JSON.parse(_r);if(_d&&_d.ts&&(Date.now()-_d.ts)<SESSION_MS&&_d.role)_s=_d;}}catch(e){}
-  if(!_s){window.location.href="sd_hub.html";return;}
-  var _sc=((_s.permissions||{}).screens)||{};
-  if(_sc["sd_marketing"]===false){alert("접근 권한이 없습니다.");window.location.href="sd_hub.html";return;}
-  window._authProfile=_s;window._authPerms=_s.permissions||{};
-  if(document.readyState==="loading"){document.addEventListener("DOMContentLoaded",function(){injectBar(_s);});}else{injectBar(_s);}
-})();
 </script>
 </body>
 </html>

@@ -1656,7 +1656,41 @@ function doPrintImage(el, fname){
           +'body{background:#fff}'
           +'@media print{@page{margin:0;size:A4 portrait}body{margin:0}div{page-break-inside:avoid}img{max-width:210mm!important;height:auto!important}}'
           +'@media screen{body{background:#555;padding:8px}div{margin-bottom:8px;box-shadow:0 2px 8px rgba(0,0,0,.3)}}'
-          +'</style></head><body>'+pageHtmls+'</body></html>');
+          +'</style></head><body>'+pageHtmls+'<script>
+// ── 권한 헬퍼 (sd_auth_session 기반)
+function sdPerm(key){
+  try{
+    var s=JSON.parse(localStorage.getItem('sd_auth_session')||'{}');
+    if(!s.role) return true;
+    if(s.role==='master'||s.role==='prime') return true;
+    var p=s.permissions&&s.permissions[key];
+    return p!==false;
+  }catch(e){return true;}
+}
+function sdCheckScreen(screenKey){
+  try{
+    var s=JSON.parse(localStorage.getItem('sd_auth_session')||'{}');
+    if(!s.role) return;
+    if(s.role==='master'||s.role==='prime') return;
+    var sc=(s.permissions&&s.permissions.screens)||{};
+    if(sc[screenKey]===false){
+      alert('⛔ 접근 권한이 없습니다.\n관리자에게 문의하세요.');
+      window.location.href='sd_hub.html';
+    }
+  }catch(e){}
+}
+function sdApplyPerms(){
+  if(!sdPerm('del_bulk'))
+    document.querySelectorAll('[data-perm="del_bulk"]').forEach(function(el){el.style.display='none';});
+  if(!sdPerm('dl_bulk'))
+    document.querySelectorAll('[data-perm="dl_bulk"]').forEach(function(el){el.style.display='none';});
+  if(!sdPerm('up_bulk'))
+    document.querySelectorAll('[data-perm="up_bulk"]').forEach(function(el){el.style.display='none';});
+  if(!sdPerm('del_single'))
+    document.querySelectorAll('[data-perm="del_single"]').forEach(function(el){el.style.display='none';});
+}
+</script>
+</body></html>');
         setTimeout(function(){w.print();},800);
       }
     });
@@ -2062,6 +2096,7 @@ function renderBldgTabs(){
 }
 
 function deleteBldg(id, name){
+  if(!sdPerm('del_bulk')){ alert('⛔ 일괄 삭제 권한이 없습니다.'); return; }
   if(!confirm('"'+name+'" 건물을 삭제하시겠습니까?\n호실 데이터 전체가 삭제됩니다.')) return;
   BUILDINGS = BUILDINGS.filter(function(b){ return b.id!==id; });
   saveBuildingsToStorage();
@@ -3179,6 +3214,7 @@ async function _clearWrongMigratedData(bldgId){
 
 // 특정 건물의 모든 탭 데이터 초기화 (잘못 마이그레이션된 경우 수동 호출용)
 async function clearBldgStorage(bldgId){
+  if(!sdPerm('del_bulk')){ alert('⛔ 일괄 삭제 권한이 없습니다.'); return; }
   if(!window.storage||!bldgId) return;
   if(!confirm('"'+bldgId+'" 건물의 모든 탭 저장 데이터(사진·도면·홍보·조감도)를 초기화할까요?\n건물 호실 데이터는 유지됩니다.')) return;
   var prevBldg = curBldgId;
