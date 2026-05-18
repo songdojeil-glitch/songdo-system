@@ -950,8 +950,33 @@ function syncBrkScrollInner(){
   if(tbl&&inner)inner.style.width=tbl.scrollWidth+'px';
 }
 
-async function fromStoreBrk(){try{var r=await window.storage.get('sd_brokers');if(r&&r.value)brks=JSON.parse(r.value);}catch(e){console.warn('[SD] 중개업소 로드 실패 - 기존 데이터 유지',e);}}
-async function toStoreBrk(){try{await window.storage.set('sd_brokers',JSON.stringify(brks));}catch(e){console.warn('중개업소 저장 실패',e);}}
+async function fromStoreBrk(){
+  try{
+    // 1순위: Firebase
+    var waited=0;
+    while(!window._fbReady && waited<50){ await new Promise(function(r){setTimeout(r,100);}); waited++; }
+    if(window._fbReady){
+      var r=await window.storage.get('sd_brokers');
+      if(r&&r.value){ brks=JSON.parse(r.value); localStorage.setItem('sd_brokers_bak',r.value); return; }
+    }
+    // 2순위: localStorage 백업
+    var lsVal=localStorage.getItem('sd_brokers_bak');
+    if(lsVal){ brks=JSON.parse(lsVal); console.warn('[SD] 중개업소: localStorage 백업에서 복구'); return; }
+  }catch(e){ console.warn('[SD] 중개업소 로드 실패',e); }
+}
+async function toStoreBrk(){
+  try{
+    var json=JSON.stringify(brks);
+    // localStorage 즉시 백업
+    try{ localStorage.setItem('sd_brokers_bak', json); }catch(e){}
+    // Firebase 저장
+    var waited=0;
+    while(!window._fbReady && waited<50){ await new Promise(function(r){setTimeout(r,100);}); waited++; }
+    await window.storage.set('sd_brokers', json);
+    if(!window._fbReady) console.warn('[SD] Firebase 미연결 - localStorage만 저장됨');
+    else console.log('[SD] 중개업소 Firebase 저장 완료:', brks.length+'개');
+  }catch(e){ console.warn('[SD] 중개업소 저장 실패',e); }
+}
 
 // 주소에서 단지/건물명 자동 추출
 function extractBldg(addr){
