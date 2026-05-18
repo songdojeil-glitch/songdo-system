@@ -2094,12 +2094,14 @@ function selectBldg(id){
   renderTable();
   runSim();
 
-  // ── 건물별 탭 데이터 리로드
-  loadBldgPhotos();      // 견적서 상단 이미지 3장
-  loadRentPhotos();      // 임대 견적서 이미지
-  loadFpData();          // 도면
-  loadBrochureData();    // 분양홍보
-  loadPhotoData();       // 조감도&사진
+  // ── 건물별 탭 데이터 리로드 (마이그레이션 후)
+  migrateOldStorage(id).then(function(){
+    loadBldgPhotos();
+    loadRentPhotos();
+    loadFpData();
+    loadBrochureData();
+    loadPhotoData();
+  });
 }
 
 function getCurProps(){
@@ -3099,14 +3101,60 @@ var _fpPdfDoc   = null; // PDF.js document
 var _fpPdfHiRes = {}; // 페이지별 고해상도 dataURL
 var _fpFileInput = null; // 클릭된 슬롯 인덱스
 
-// ── 건물 전환 시 탭별 데이터 리셋 + 리로드 래퍼
-function loadFpData(){
-  // 도면 슬롯 초기화 후 현재 건물 데이터 로드
-  _fpSlotData={};
-  for(var i=0;i<15;i++){
-    var el=document.getElementById('fp-slot-'+i);
-    if(el){ el.style.backgroundImage=''; el.innerHTML='<span style="color:#bbb;font-size:11px">+</span>'; }
+// ── 구버전 스토리지 키 → 새 bldgKey 마이그레이션 (1회 실행)
+async function migrateOldStorage(bldgId){
+  if(!window.storage) return;
+  var migFlagKey = 'bldg_migration_done_'+bldgId;
+  try {
+    var flag = await window.storage.get(migFlagKey);
+    if(flag && flag.value === '1') return; // 이미 마이그레이션 완료
+  } catch(e){}
+
+  var oldKeys = [
+    // 분양/임대 견적서 이미지
+    {old:'sd_bldg_photo1', new:'bldg_photo1'},
+    {old:'sd_bldg_photo2', new:'bldg_photo2'},
+    {old:'sd_bldg_photo3', new:'bldg_photo3'},
+    // 임대 견적서 이미지
+    {old:'sd_rent_photo1', new:'rent_photo1'},
+    {old:'sd_rent_photo2', new:'rent_photo2'},
+    {old:'sd_rent_photo3', new:'rent_photo3'},
+    // 도면 라벨
+    {old:'sd_fp_labels',   new:'fp_labels'},
+  ];
+  // 도면 이미지 슬롯 0~14
+  for(var i=0;i<15;i++) oldKeys.push({old:'sd_fp_img_'+i, new:'fp_img_'+i});
+  // 분양홍보
+  oldKeys.push({old:'sd_brochure_count', new:'brochure_count'});
+  for(var j=0;j<30;j++) oldKeys.push({old:'sd_brochure_p'+j, new:'brochure_p'+j});
+  // 조감도&사진
+  oldKeys.push({old:'sd_photos_count', new:'photos_count'});
+  oldKeys.push({old:'sd_photos_meta',  new:'photos_meta'});
+  for(var k=0;k<30;k++) oldKeys.push({old:'sd_photo_img_'+k, new:'photo_img_'+k});
+
+  var prevBldg = curBldgId;
+  curBldgId = bldgId; // bldgKey()가 올바른 접두어 사용하도록
+
+  var migratedCount = 0;
+  for(var m=0;m<oldKeys.length;m++){
+    try {
+      var res = await window.storage.get(oldKeys[m].old);
+      if(res && res.value){
+        await window.storage.set(bldgKey(oldKeys[m].new), res.value);
+        migratedCount++;
+      }
+    } catch(e){}
   }
+
+  curBldgId = prevBldg;
+  await window.storage.set(migFlagKey, '1').catch(function(){});
+  if(migratedCount > 0) console.log('[마이그레이션] '+bldgId+': '+migratedCount+'개 항목 이전 완료');
+}
+
+function loadFpData(){
+  // 도면 슬롯 초기화 — clearFpSlot으로 구조 유지하면서 초기화
+  _fpSlotData={};
+  for(var i=0;i<15;i++) clearFpSlot(i);
   if(typeof initFloorPlanTab==='function') initFloorPlanTab();
 }
 function loadBrochureData(){
