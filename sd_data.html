@@ -3648,20 +3648,23 @@ function initColResize(table) {
   if(!ths.length) return;
 
   // ── 최초 초기화: th에 현재 렌더 너비를 style.width로 고정
-  if(table.style.tableLayout !== 'fixed'){
-    ths.forEach(function(th){
-      th.style.width = th.offsetWidth + 'px';
-    });
-    table.style.tableLayout = 'fixed';
-  }
+  // (table-layout:fixed가 이미 HTML에 있어도 th width는 재설정 필요)
+  ths.forEach(function(th){
+    if(!th.style.width) th.style.width = th.offsetWidth + 'px';
+  });
+  table.style.tableLayout = 'fixed';
 
-  // ── localStorage 저장 너비 복원 (th만 사용 - colgroup 없음)
+  // ── localStorage 저장 너비 복원 (col + th 둘 다)
   if(tableId){
     try{
       var saved = JSON.parse(localStorage.getItem('sdj_col_widths')||'{}');
       if(saved[tableId]){
+        var colEls2 = Array.from(table.querySelectorAll('colgroup col'));
         saved[tableId].forEach(function(w,i){
-          if(w>20 && ths[i]) ths[i].style.width = w+'px';
+          if(w>20){
+            if(colEls2[i]) colEls2[i].style.width = w+'px';  // col 먼저
+            if(ths[i])     ths[i].style.width     = w+'px';
+          }
         });
       }
     }catch(e){}
@@ -3684,21 +3687,30 @@ function initColResize(table) {
       document.body.style.cursor = 'col-resize';
       _colResizingActive = true;  // 드래그 시작
 
+      // colgroup의 col 요소도 같이 변경
+      var colEls = Array.from(table.querySelectorAll('colgroup col'));
+
       function onMove(e){
         var newW = Math.max(30, startW + (e.pageX - startX));
+        // col 먼저 변경 (col이 th보다 우선순위 높음)
+        var liveCol = table.querySelectorAll('colgroup col')[thIdx];
+        if(liveCol) liveCol.style.width = newW + 'px';
         th.style.width = newW + 'px';
       }
       function onUp(){
         handle.classList.remove('resizing');
         document.body.style.cursor = '';
-        _colResizingActive = false;  // 드래그 종료
+        _colResizingActive = false;
         document.removeEventListener('mousemove', onMove);
         document.removeEventListener('mouseup', onUp);
-        // 저장
+        // col 기준으로 저장 (col이 실제 렌더 폭 결정)
         if(tableId){
           try{
             var all = JSON.parse(localStorage.getItem('sdj_col_widths')||'{}');
-            all[tableId] = ths.map(function(t){ return t.offsetWidth; });
+            var liveCols = table.querySelectorAll('colgroup col');
+            all[tableId] = liveCols.length
+              ? Array.from(liveCols).map(function(c){ return parseInt(c.style.width)||c.offsetWidth||0; })
+              : ths.map(function(t){ return t.offsetWidth; });
             localStorage.setItem('sdj_col_widths', JSON.stringify(all));
           }catch(e){}
         }
@@ -9867,6 +9879,22 @@ function renderTab6(){
   });
   document.getElementById('t6-colgroup').innerHTML = cgHtml;
   document.getElementById('t6-thead-tr').innerHTML  = thHtml;
+
+  // ── 저장된 컬럼 폭 복원 (렌더 후에도 유지)
+  try{
+    var _saved = JSON.parse(localStorage.getItem('sdj_col_widths')||'{}');
+    var _tid = 't6-naver-table';
+    if(_saved[_tid]){
+      var _ths = document.querySelectorAll('#t6-naver-table thead th');
+      var _cols = document.querySelectorAll('#t6-colgroup col');
+      _saved[_tid].forEach(function(w,i){
+        if(w>20){
+          if(_ths[i]) _ths[i].style.width = w+'px';
+          if(_cols[i]) _cols[i].style.width = w+'px';
+        }
+      });
+    }
+  }catch(e){}
 
   // 분양평형 맵 캐싱: 단지명_전용㎡(소수점1자리) → 분양평형
   if(!G._naverPyeongMap || G._naverPyeongMapSrc!==G.saleData){
