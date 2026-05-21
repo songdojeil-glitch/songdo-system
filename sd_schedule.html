@@ -1089,8 +1089,20 @@ function openSchDetail(id){
   var mb=document.getElementById('sdtl-memo-box');
   if(t.memo){mb.style.display='block';document.getElementById('sdtl-memo').textContent=t.memo;}
   else mb.style.display='none';
-  // 완료
-  document.getElementById('sdtl-done-chk').checked=!!t.done;
+  // 상태 뱃지 표시 (완료/취소)
+  var badge=document.getElementById('sdtl-status-badge');
+  var badgeTxt=document.getElementById('sdtl-status-text');
+  var doneChk=document.getElementById('sdtl-done-chk');
+  if(doneChk) doneChk.checked=!!t.done;
+  if(t.cancelled){
+    if(badge)badge.style.display='block';
+    if(badgeTxt){badgeTxt.textContent='🚫 취소된 일정';badgeTxt.style.cssText='font-size:11px;padding:3px 10px;border-radius:10px;background:#fff3e0;color:#e65100;';}
+  }else if(t.done){
+    if(badge)badge.style.display='block';
+    if(badgeTxt){badgeTxt.textContent='✅ 완료된 일정';badgeTxt.style.cssText='font-size:11px;padding:3px 10px;border-radius:10px;background:#e8f5e9;color:#2e7d32;';}
+  }else{
+    if(badge)badge.style.display='none';
+  }
   document.getElementById('sch-detail-modal').style.display='flex';
 }
 
@@ -1102,7 +1114,13 @@ function closeSchDetail(){
 function toggleDoneFromDetail(){
   if(!schDetailId)return;
   var t=todos.find(function(x){return x.id===schDetailId;});
-  if(t){t.done=document.getElementById('sdtl-done-chk').checked;saveTodos();renderToday();if(document.getElementById('tc1').classList.contains('on'))renderCal();}
+  if(t){
+    t.done=!t.done;
+    if(t.done) t.completedAt=new Date().toISOString(); else delete t.completedAt;
+    saveTodos();renderToday();
+    if(document.getElementById('tc1').classList.contains('on'))renderCal();
+    openSchDetail(schDetailId); // 모달 상태 갱신
+  }
 }
 
 function editFromDetail(){
