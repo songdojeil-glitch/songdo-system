@@ -1136,10 +1136,15 @@ document.addEventListener('DOMContentLoaded', function(){
   var estLEl = document.getElementById('est-l-date');
   if(estLEl) estLEl.value = todayStr2;
 
-  // firebase-storage.js 준비 대기 후 건물 로드
+  // localStorage 또는 window.storage 준비 후 건물 로드
   function waitStorage(retry){
     retry = retry||0;
-    if(window.storage && typeof window.storage.get === 'function'){
+    // localStorage는 항상 사용 가능, window.storage는 옵션
+    // localStorage에 데이터가 있으면 즉시 진행
+    var hasLsData = (function(){
+      try{ return !!localStorage.getItem('sd_buildings'); }catch(e){ return false; }
+    })();
+    if(hasLsData || window.storage && typeof window.storage.get === 'function' || retry >= 10){
       initBuildings();
       if(typeof loadPhotos==='function') loadPhotos();
       if(typeof loadFpSlots==='function') loadFpSlots();
@@ -1150,9 +1155,7 @@ document.addEventListener('DOMContentLoaded', function(){
     } else if(retry < 20){
       setTimeout(function(){ waitStorage(retry+1); }, 200);
     } else {
-      BUILDINGS = [{id:'es5', name:'송도에스파이브시티', props: ES5_PROPS}];
-      renderBldgTabs();
-      selectBldg('es5');
+      initBuildings(); // 타임아웃 시 기본값으로 진행
       if(typeof loadPhotos==='function') loadPhotos();
       if(typeof loadFpSlots==='function') loadFpSlots();
       if(typeof loadBrochureFromStorage==='function') loadBrochureFromStorage();
@@ -1392,16 +1395,18 @@ function addBldg(){
 
 function saveBuildingsToStorage(){
   try{
-    window.storage.set('sd_buildings', JSON.stringify(BUILDINGS));
+    // localStorage 저장 (실제 배포 환경)
+    localStorage.setItem('sd_buildings', JSON.stringify(BUILDINGS));
+    // window.storage도 지원하면 함께 저장
+    if(window.storage && typeof window.storage.set === 'function'){
+      window.storage.set('sd_buildings', JSON.stringify(BUILDINGS));
+    }
   }catch(e){ console.error('건물 저장 오류', e); }
 }
 
 function initBuildings(){
-  window.storage.get('sd_buildings').then(function(r){
-    var loaded = [];
-    if(r&&r.value){
-      try{ loaded = JSON.parse(r.value); }catch(e){}
-    }
+  // localStorage에서 먼저 시도 (실제 배포 환경)
+  function doInit(loaded){
     if(loaded && loaded.length > 0){
       BUILDINGS = loaded;
     }
@@ -1410,13 +1415,9 @@ function initBuildings(){
       BUILDINGS.unshift({id:'es5', name:'송도에스파이브시티', props: JSON.parse(JSON.stringify(ES5_PROPS))});
       es5 = BUILDINGS[0];
     }
-    // Firebase에 전체 props가 저장된 경우 우선 사용 (225개 보장)
     if(es5.props && es5.props.length >= 200){
-      // Firebase props 그대로 사용 (소장님이 입력한 전체 데이터)
-      // status 빈값 보정
       es5.props.forEach(function(p){ if(!p.status) p.status='미분양'; });
     } else if(es5.deltas && es5.deltas.length > 0){
-      // delta 방식: ES5_PROPS에 수정값 적용
       var baseProps = JSON.parse(JSON.stringify(ES5_PROPS));
       var deltaMap = {};
       es5.deltas.forEach(function(d){ deltaMap[d.ho]=d; });
@@ -1431,7 +1432,6 @@ function initBuildings(){
       });
       es5.props = baseProps;
     } else {
-      // 둘 다 없으면 ES5_PROPS 기본값
       es5.props = JSON.parse(JSON.stringify(ES5_PROPS));
       es5.props.forEach(function(p){ if(!p.status) p.status='미분양'; });
     }
@@ -1441,13 +1441,32 @@ function initBuildings(){
     loadRentPhotos();
     loadAcct();
     loadStaff();
-  }).catch(function(e){
-    console.warn('[SD상가] Firebase 로드 실패, 기본 데이터 사용:', e);
-    BUILDINGS = [{id:'es5', name:'송도에스파이브시티', props: JSON.parse(JSON.stringify(ES5_PROPS))}];
-    BUILDINGS[0].props.forEach(function(p){ if(!p.status) p.status='미분양'; });
-    renderBldgTabs();
-    selectBldg('es5');
-  });
+  }
+
+  // 1) localStorage 우선 시도
+  var lsRaw = null;
+  try{ lsRaw = localStorage.getItem('sd_buildings'); }catch(e){}
+  if(lsRaw){
+    try{
+      var lsData = JSON.parse(lsRaw);
+      if(lsData && lsData.length > 0){ doInit(lsData); return; }
+    }catch(e){}
+  }
+
+  // 2) window.storage 시도 (Artifacts 환경)
+  if(window.storage && typeof window.storage.get === 'function'){
+    window.storage.get('sd_buildings').then(function(r){
+      var loaded = [];
+      if(r&&r.value){ try{ loaded = JSON.parse(r.value); }catch(e){} }
+      doInit(loaded);
+    }).catch(function(e){
+      console.warn('[SD상가] storage 로드 실패, 기본 데이터 사용:', e);
+      doInit([]);
+    });
+  } else {
+    // 3) 둘 다 없으면 기본값
+    doInit([]);
+  }
 }
 
 
@@ -1656,78 +1675,14 @@ function doPrintImage(el, fname){
           +'body{background:#fff}'
           +'@media print{@page{margin:0;size:A4 portrait}body{margin:0}div{page-break-inside:avoid}img{max-width:210mm!important;height:auto!important}}'
           +'@media screen{body{background:#555;padding:8px}div{margin-bottom:8px;box-shadow:0 2px 8px rgba(0,0,0,.3)}}'
-          +'</style></head><body>'+pageHtmls+'<script>
-// ── 권한 헬퍼 (항상 최신 세션 반영)
-function sdPerm(key){
-  try{
-    var s=JSON.parse(localStorage.getItem('sd_auth_session')||'{}');
-    if(!s.role) return true;
-    if(s.role==='master'||s.role==='prime') return true;
-    var p=s.permissions&&s.permissions[key];
-    return p!==false;
-  }catch(e){return true;}
+          +'</style></head><body>'+pageHtmls+'</body></html>');
+        w.document.close();
+        setTimeout(function(){w.print();},800);
+      } // end if(done===cardArr.length)
+    }); // end .then(function(cv)
+  }); // end cardArr.forEach
 }
-function sdGetScreens(){
-  try{
-    var s=JSON.parse(localStorage.getItem('sd_auth_session')||'{}');
-    if(!s.role||s.role==='master'||s.role==='prime') return null; // 전체 허용
-    return (s.permissions&&s.permissions.screens)||{};
-  }catch(e){return null;}
-}
-function sdCheckScreen(screenKey){
-  var sc=sdGetScreens();
-  if(sc&&sc[screenKey]===false){
-    alert('⛔ 접근 권한이 없습니다.
-관리자에게 문의하세요.');
-    window.location.href='sd_hub.html';
-  }
-}
-function sdApplyPerms(){
-  // 기능 권한 버튼 숨김
-  if(!sdPerm('del_bulk'))   document.querySelectorAll('[data-perm="del_bulk"]').forEach(function(el){el.style.display='none';});
-  if(!sdPerm('dl_bulk'))    document.querySelectorAll('[data-perm="dl_bulk"]').forEach(function(el){el.style.display='none';});
-  if(!sdPerm('up_bulk'))    document.querySelectorAll('[data-perm="up_bulk"]').forEach(function(el){el.style.display='none';});
-  if(!sdPerm('del_single')) document.querySelectorAll('[data-perm="del_single"]').forEach(function(el){el.style.display='none';});
-  // 권한 없는 시스템 nav 링크 숨김
-  var sc=sdGetScreens();
-  if(!sc) return;
-  document.querySelectorAll('a[data-screen]').forEach(function(el){
-    var key=el.getAttribute('data-screen');
-    if(sc[key]===false) el.style.display='none';
-  });
-}
-sdCheckScreen('sd_sangga');
-document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
-
-  // ── 권한 실시간 갱신: Firebase에서 최신 권한 읽어 localStorage 업데이트
-  (function(){
-    try{
-      var _ls=JSON.parse(localStorage.getItem('sd_auth_session')||'{}');
-      if(!_ls.uid||!_ls.role||_ls.role==='master') return;
-      // Firebase에서 최신 프로필 조회
-      var _db=window._fbDb||firebase.database();
-      firebase.database().ref('users/'+_ls.uid).once('value').then(function(snap){
-        var p=snap.val();
-        if(!p) return;
-        // 권한 업데이트
-        _ls.role=p.role||_ls.role;
-        _ls.permissions=p.permissions||_ls.permissions||{};
-        _ls.ts=Date.now();
-        localStorage.setItem('sd_auth_session',JSON.stringify(_ls));
-        // 접근 권한 재확인
-        var sc=(_ls.permissions&&_ls.permissions.screens)||{};
-        if(sc['sd_sangga']===false){
-          alert('⛔ 접근 권한이 없습니다.\n관리자에게 문의하세요.');
-          window.location.href='sd_hub.html';
-          return;
-        }
-        // nav 재적용
-        sdApplyPerms();
-      }).catch(function(){});
-    }catch(e){}
-  })();
 </script>
-
 
 
 <script>
