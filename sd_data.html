@@ -9362,25 +9362,9 @@ function onUploadNaver(input){
       try{
         var wb = XLSX.read(e.target.result, {type:'array'});
         var sh = wb.Sheets[wb.SheetNames[0]];
-        // header:1로 읽어서 헤더행과 데이터행 분리
-        var allArr = XLSX.utils.sheet_to_json(sh, {header:1, defval:null});
-        var hdr = allArr[0] || [];
-        // 중복업소명 컬럼 인덱스를 헤더에서 직접 탐색
-        var dupNmIdx = -1;
-        for(var hi=0; hi<hdr.length; hi++){
-          var hv = hdr[hi] ? String(hdr[hi]) : '';
-          if(hv.indexOf('중복')>=0 && hv.indexOf('업소명')>=0){ dupNmIdx=hi; break; }
-        }
-        // header:0 방식으로도 파싱 (기존 키 호환)
+        // header:0 방식으로 파싱 - 중복업소명은 processNaverRows에서 키 직접 탐색
+        // (allArr 인덱스 방식은 blank행/반복헤더행 존재 시 row-dataArr 불일치 버그 발생)
         var rows = XLSX.utils.sheet_to_json(sh, {header:0, defval:null});
-        // 각 행에 중복업소명 직접 주입
-        if(dupNmIdx >= 0){
-          var dataArr = allArr.slice(1);
-          rows.forEach(function(r, ri){
-            var rawVal = dataArr[ri] ? dataArr[ri][dupNmIdx] : null;
-            r['__dupNm__'] = rawVal ? String(rawVal) : '';
-          });
-        }
         resultBuckets[fileIdx] = rows;
       }catch(err){
         console.warn('파일 파싱 오류:', file.name, err);
@@ -9755,13 +9739,22 @@ function processNaverRows(rows, fileCnt){
           방향: r['방향']||'-',
           입력일: rawDate,
           중개사: rawAgent,
-          중복등록수: parseInt(r['중복등록수']||r['중복등록업소수']||r['중복 등록업소의 수']||0)||0,
+          중복등록수: (function(){
+              // 여러 키 이름 대응 + 헤더 반복행의 텍스트값 제외
+              var _raw = r['중복등록수']||r['중복등록업소수']||r['중복 등록업소의 수']||null;
+              var _n = parseInt(_raw)||0;
+              return isNaN(_n)?0:_n;
+            })(),
           특이사항: r['특이사항']||r['주요정보']||r['메모']||'',
           중복업소명: (function(){
               // 중복업소명 컬럼 동적 탐색 (날짜 포함 헤더 대응)
-              if(r['__dupNm__']) return r['__dupNm__'];
+              // r['중복 등록업소명 (날짜)'] 등 키 직접 탐색
               for(var _k in r){
-                if(_k.indexOf('중복업소명')===0||_k.indexOf('중복 등록업소명')===0) return r[_k]||'';
+                if((_k.indexOf('중복')>=0 && _k.indexOf('업소명')>=0)){
+                  var _v = r[_k];
+                  // 값이 헤더 텍스트 자체인 경우(반복헤더행) 제외
+                  if(_v && _k !== String(_v)) return String(_v);
+                }
               }
               return '';
             })(),
