@@ -363,17 +363,20 @@ body.zoom-mode .zoomable:hover{box-shadow:none !important;}
       <div><label class="fl">담당자 <span style="font-size:11px;color:#4f8ef7">● 자동설정</span></label>
         <select id="f-staff" class="fi">
           <option value="">선택</option>
-          <option>문형은</option><option>직원1</option><option>직원2</option><option>직원3</option>
+          <option value="문형은">문형은 대표</option>
+          <option value="최지훈">최지훈 부장</option>
+          <option value="이서정">이서정 실장</option>
+          <option value="인턴직원">인턴직원</option>
         </select>
       </div>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:12px;margin-bottom:12px;align-items:end">
       <div><label class="fl">고객 성명 / 호칭</label><input id="f-name" type="text" class="fi" placeholder="예: 김철수 고객님"></div>
-      <div><label class="fl">연락처1</label><input id="f-tel1" type="text" class="fi" placeholder="예: 010-1234-5678"></div>
+      <div><label class="fl">연락처1</label><input id="f-tel1" type="text" class="fi" placeholder="예: 010-1234-5678" oninput="fmtTel(this)" maxlength="13"></div>
       <div><label class="fl">통신사</label><select id="f-tel1carrier" class="fi" style="width:90px;font-size:12px;padding:6px 4px"><option value="">통신사</option><option>SKT</option><option>KT</option><option>LGU+</option><option>SKT알뜰</option><option>KT알뜰</option><option>LGU알뜰</option><option>기타</option></select></div>
     </div>
     <div style="display:grid;grid-template-columns:1fr auto 1fr;gap:12px;align-items:end">
-      <div><label class="fl">연락처2 <span style="font-size:11px;color:#aaa">(선택)</span></label><input id="f-tel2" type="text" class="fi" placeholder="예: 010-9876-5432"></div>
+      <div><label class="fl">연락처2 <span style="font-size:11px;color:#aaa">(선택)</span></label><input id="f-tel2" type="text" class="fi" placeholder="예: 010-9876-5432" oninput="fmtTel(this)" maxlength="13"></div>
       <div><label class="fl">통신사 <span style="font-size:11px;color:#aaa">(선택)</span></label><select id="f-tel2carrier" class="fi" style="width:90px;font-size:12px;padding:6px 4px"><option value="">통신사</option><option>SKT</option><option>KT</option><option>LGU+</option><option>SKT알뜰</option><option>KT알뜰</option><option>LGU알뜰</option><option>기타</option></select></div>
       <div><label class="fl">최종 연락일</label><input id="f-lastdate" type="date" class="fi"></div>
     </div>
@@ -404,8 +407,8 @@ body.zoom-mode .zoomable:hover{box-shadow:none !important;}
         <div><label class="fl">희망 지역</label>
           <select id="f-area" class="fi"><option value="">선택/무관</option><option>1공구</option><option>2공구</option><option>3공구</option><option>4공구</option><option>5공구</option><option>6공구</option><option>7공구</option><option>랜드마크시티</option><option>송도 전체</option></select>
         </div>
-        <div><label class="fl">희망 평형</label>
-          <select id="f-size" class="fi"><option value="">선택/무관</option><option>20평대 이하</option><option>30평대</option><option>40평대</option><option>50평대</option><option>60평대 이상</option><option>평형 무관</option></select>
+        <div><label class="fl">희망 면적(평)</label>
+          <select id="f-size" class="fi"><option value="">선택/무관</option><option>10평 미만</option><option>10평 이상~15평 미만</option><option>15평 이상~20평 미만</option><option>20평대</option><option>30평대</option><option>40평대</option><option>50평대</option><option>60평대</option><option>70평대</option><option>80평대</option><option>80평 이상</option><option>면적 무관</option></select>
         </div>
         <div><label class="fl">예산 상한</label><input id="f-budget" type="text" class="fi" placeholder="예: 10억 이내"></div>
       </div>
@@ -544,7 +547,10 @@ body.zoom-mode .zoomable:hover{box-shadow:none !important;}
       <input id="ft-bldg" type="text" class="fi" style="width:120px;font-size:12px" placeholder="거래단지 검색" oninput="rtbl()">
       <select id="ft-staff" class="fi" style="width:auto;font-size:12px" onchange="rtbl()">
         <option value="">전체 담당자</option>
-        <option>문형은</option><option>직원1</option><option>직원2</option><option>직원3</option>
+        <option value="문형은">문형은 대표</option>
+        <option value="최지훈">최지훈 부장</option>
+        <option value="이서정">이서정 실장</option>
+        <option value="인턴직원">인턴직원</option>
       </select>
     </div>
     <div style="display:flex;gap:8px;align-items:center"><span id="tbl-cnt" style="font-size:12px;color:#666"></span><button onclick="exportXL()" class="btn-s">📥 엑셀</button></div>
@@ -1717,10 +1723,40 @@ function clearF(){
   onTagChange();selPipe(1);setToday();editId=null;document.getElementById('save-btn').textContent='💾 고객 저장';
   // 담당자: 로그인 사용자로 자동 초기화
   var staffEl=document.getElementById('f-staff');
-  if(staffEl){var me=(window._authProfile||{}).name||'';if(me)staffEl.value=me;}
+  if(staffEl){
+    var me=(window._authProfile||{}).name||'';
+    // 로그인 이름(성명만)으로 option value 매칭
+    if(me){
+      var matched=false;
+      var opts=staffEl.options;
+      for(var oi=0;oi<opts.length;oi++){
+        if(opts[oi].value===me||opts[oi].text.indexOf(me)===0){staffEl.value=opts[oi].value;matched=true;break;}
+      }
+      if(!matched) staffEl.value=me;
+    }
+  }
 }
 
 // ── 면적 ㎡ 헬퍼 함수
+// ── 전화번호 자동 하이픈 포매터
+function fmtTel(el){
+  var digits = el.value.replace(/\D/g,'');
+  var fmt = '';
+  if(digits.startsWith('02')){
+    // 02 지역번호: 02-XXXX-XXXX or 02-XXX-XXXX
+    if(digits.length<=9)       fmt = digits.replace(/^(\d{2})(\d{3})(\d{0,4})$/,'$1-$2-$3');
+    else                       fmt = digits.replace(/^(\d{2})(\d{4})(\d{0,4})$/,'$1-$2-$3');
+  } else if(digits.startsWith('0') || digits.length===0){
+    // 010/011/016/017/018/019 + 지역번호 3자리
+    if(digits.length<=10)      fmt = digits.replace(/^(\d{3})(\d{3})(\d{0,4})$/,'$1-$2-$3');
+    else                       fmt = digits.replace(/^(\d{3})(\d{4})(\d{0,4})$/,'$1-$2-$3');
+  } else {
+    fmt = digits;
+  }
+  fmt = fmt.replace(/-$/,''); // 끝 하이픈 제거
+  el.value = fmt;
+}
+
 function posArea(el){
   // 클릭 시 ㎡ 앞에 커서 위치
   setTimeout(function(){
@@ -1950,7 +1986,7 @@ function showDetail(id){
       row('거래방식', c.deal||'—'),
       row('물건종류', c.ptype||'—'),
       row('희망지역', c.area||'—'),
-      row('평형', c.size||'—'),
+      row('면적(평)', c.size||'—'),
       row('예산', c.budget||'—'),
       row('희망단지', c.cx||'—'),
       row('기타조건', c.cond||'—'),
@@ -2108,7 +2144,7 @@ function callMatchAPI(c,ext,propsStr){
   var custInfo='성명: '+c.name+' | 유형: '+tags.join('+')+'\n';
   if(tags.indexOf('가망고객')>=0){
     custInfo+='[ 가망고객 ] 거래: '+(c.deal||'—')+' | 종류: '+(c.ptype||'—')+' | 지역: '+(c.area||'—')+'\n';
-    custInfo+='평형: '+(c.size||'—')+' | 예산: '+(c.budget||'—')+' | 희망단지: '+(c.cx||'없음')+'\n';
+    custInfo+='면적(평): '+(c.size||'—')+' | 예산: '+(c.budget||'—')+' | 희망단지: '+(c.cx||'없음')+'\n';
     custInfo+='기타조건: '+(c.cond||'없음')+'\n';
     if(c.propmemo)custInfo+='추천매물 이력: '+c.propmemo+'\n';
   }
@@ -2236,7 +2272,7 @@ function genProposal(){
     :'(업로드 없음 — 웹검색으로 최근 실거래가 수집)';
 
   var custInfo=cust
-    ?'고객명: '+cust.name+' | 거래방식: '+(cust.deal||'미입력')+' | 평형희망: '+(cust.size||'미입력')+' | 예산: '+(cust.budget||'미입력')+'\n희망단지: '+(cust.cx||'미입력')+' | 기타조건: '+(cust.cond||'없음')+'\n상담내용: '+(cust.consult||'없음')
+    ?'고객명: '+cust.name+' | 거래방식: '+(cust.deal||'미입력')+' | 면적(평): '+(cust.size||'미입력')+' | 예산: '+(cust.budget||'미입력')+'\n희망단지: '+(cust.cx||'미입력')+' | 기타조건: '+(cust.cond||'없음')+'\n상담내용: '+(cust.consult||'없음')
     :'(고객 미선택)';
 
   var prompt='당신은 인천 연수구 송도국제도시 송도제일공인중개사사무소의 부동산 전문가입니다.\n'
