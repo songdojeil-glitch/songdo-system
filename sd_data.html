@@ -10592,23 +10592,10 @@ window.fbAutoLoad = function(){
       // sd_naver_apt: APT 네이버 매물 독립 경로 로드
       get(child(dbRef(db),'sd_naver_apt')).then(function(sa){
         if(sa.exists()&&sa.val()&&sa.val().data&&sa.val().data.length>0){
-          var rawData = sa.val().data;
-          // 보정 전 기타(공구=0) 단지 수 체크
-          var beforeFix = rawData.filter(function(r){return !parseInt(r.공구);}).length;
-          G.naverData = fixNaverDist(rawData);
-          var afterFix = G.naverData.filter(function(r){return !parseInt(r.공구);}).length;
+          G.naverData = fixNaverDist(sa.val().data);
           $set('naver-status','✅ FB '+G.naverData.length+'건');
           if(document.getElementById('tc6')&&document.getElementById('tc6').classList.contains('on')) renderTab6();
           console.log('[sd_data] naver_apt 로드 완료:', G.naverData.length+'건');
-          // 공구 보정이 발생한 경우 Firebase에 자동 재저장 (기타→공구 영구 수정)
-          if(beforeFix !== afterFix){
-            var today=new Date().toISOString().slice(0,10);
-            var payload={data:G.naverData, updated:today, cnt:G.naverData.length};
-            set(dbRef(db,'sd_naver_apt'),payload).then(function(){
-              console.log('[sd_data] 공구 보정 자동 저장 완료 (기타→공구 '+(beforeFix-afterFix)+'건 수정)');
-              showToast('🔧 공구 자동 보정 저장: '+(beforeFix-afterFix)+'건 수정됨',3000);
-            }).catch(function(e){console.warn('공구 보정 저장 실패',e);});
-          }
         }
       }).catch(function(e){ console.warn('naver_apt 로드 오류',e); });
       get(child(dbRef(db),'sd_naver_op')).then(function(s2){
