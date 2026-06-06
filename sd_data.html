@@ -10044,6 +10044,14 @@ function renderTab6(){
       '<div class="kpi-sub">'+k.sub+'</div></div>';
   }).join('');
 
+  // ── 인덱스 캐시: G.naverData.indexOf(r) O(n²) 방지
+  // G.naverData가 바뀔 때만 재빌드 (단지 선택 등 단순 필터 변경 시 재사용)
+  if(!G._naverIdxMap || G._naverIdxMapSrc !== G.naverData){
+    G._naverIdxMap = new Map();
+    G.naverData.forEach(function(r,i){ G._naverIdxMap.set(r,i); });
+    G._naverIdxMapSrc = G.naverData;
+  }
+
   // 테이블 (렌더링 상한선 500건 - 2000건+ 렌더 시 레이아웃 붕괴 방지)
   var MAX_T6 = 500;
   var totalT6 = rows.length;
@@ -10073,7 +10081,7 @@ function renderTab6(){
     var _sdj=(r.중개사||'').indexOf('송도제일')>=0;
     var _trCls=(_fav?'naver-fav ':'')+(_sdj?'sdj-own':'');
     var _agentHtml=_sdj?'<span class="sdj-badge">★송도제일</span>':(r.중개사||'-');
-    var _ridx=G.naverData.indexOf(r);
+    var _ridx = G._naverIdxMap.has(r) ? G._naverIdxMap.get(r) : G.naverData.indexOf(r);
     // 가격 계산
     var _dep=r.호가||0;
     var _isW=r.거래유형==='월세';
@@ -10125,12 +10133,13 @@ function renderTab6(){
   _t6tbody.innerHTML = overBanner+html||'<tr><td colspan="'+(hideAgent?'12':'14')+'" style="text-align:center;padding:20px;color:var(--text3)">해당 매물 없음</td></tr>';
   setTimeout(function(){ var t=document.getElementById('t6-naver-table'); if(t) initColResize(t); },50);
 
-  // 차트
-  renderNaverDistChart(rows);
-  renderNaverPriceChart(rows);
-
-  // 호가 vs 실거래 비교
-  renderNaverCompare(rows);
+  // 차트: 연속 클릭 시 중복 렌더 방지 (150ms 디바운스)
+  clearTimeout(G._t6ChartTimer);
+  G._t6ChartTimer = setTimeout(function(){
+    renderNaverDistChart(rows);
+    renderNaverPriceChart(rows);
+    renderNaverCompare(rows);
+  }, 150);
 }
 
 function renderNaverDistChart(rows){
@@ -10592,10 +10601,25 @@ window.fbAutoLoad = function(){
       // sd_naver_apt: APT 네이버 매물 독립 경로 로드
       get(child(dbRef(db),'sd_naver_apt')).then(function(sa){
         if(sa.exists()&&sa.val()&&sa.val().data&&sa.val().data.length>0){
-          G.naverData = fixNaverDist(sa.val().data);
+          var rawData = sa.val().data;
+          // 보정 전 기타(공구=0) 단지 수 체크
+          var beforeFix = rawData.filter(function(r){return !parseInt(r.공구);}).length;
+          G.naverData = fixNaverDist(rawData);
+          var afterFix = G.naverData.filter(function(r){return !parseInt(r.공구);}).length;
           $set('naver-status','✅ FB '+G.naverData.length+'건');
           if(document.getElementById('tc6')&&document.getElementById('tc6').classList.contains('on')) renderTab6();
           console.log('[sd_data] naver_apt 로드 완료:', G.naverData.length+'건');
+          // 공구 보정이 발생한 경우 Firebase에 자동 재저장 (기타→공구 영구 수정)
+          if(beforeFix !== afterFix && window._fbSet && window._fbRef && window._fbDb){
+            var today=new Date().toISOString().slice(0,10);
+            // undefined 필드 제거 (Firebase undefined 오류 방지)
+            var cleanData = JSON.parse(JSON.stringify(G.naverData));
+            var payload={data:cleanData, updated:today, cnt:cleanData.length};
+            window._fbSet(window._fbRef(window._fbDb,'sd_naver_apt'),payload).then(function(){
+              console.log('[sd_data] 공구 보정 자동 저장 완료: '+(beforeFix-afterFix)+'건');
+              showToast('🔧 공구 자동 보정 저장: '+(beforeFix-afterFix)+'건 수정됨',3000);
+            }).catch(function(e){console.warn('공구 보정 저장 실패',e);});
+          }
         }
       }).catch(function(e){ console.warn('naver_apt 로드 오류',e); });
       get(child(dbRef(db),'sd_naver_op')).then(function(s2){
