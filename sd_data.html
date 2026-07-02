@@ -6739,11 +6739,13 @@ function renderTab0(){
 
   // ── '전체 송도' 카드 앞에 추가
   var allPrices=[], allPyeongs=[], allCnt=0, allRentPrices=[], allRentPyeongs=[], allRentCnt=0;
+  var allTurnCnt=0;
   DISTS.forEach(function(g){
     var ds=distStats[g]||{}; var rds=distRentStats[g]||{};
     if(ds.prices) allPrices=allPrices.concat(ds.prices);
     if(ds.pyeongs) allPyeongs=allPyeongs.concat(ds.pyeongs);
     allCnt+=(ds.cnt||0);
+    allTurnCnt+=(ds.turnCnt||ds.cnt||0);
     if(rds.prices) allRentPrices=allRentPrices.concat(rds.prices);
     if(rds.pyeongs) allRentPyeongs=allRentPyeongs.concat(rds.pyeongs);
     allRentCnt+=(rds.prices?rds.prices.length:0);
@@ -6751,6 +6753,26 @@ function renderTab0(){
   var allAvg=avg(allPrices), allPyeong=avg(allPyeongs);
   var allRentAvg=avg(allRentPrices), allRentPyeong=avg(allRentPyeongs);
   var totalUnits=DISTS.reduce(function(s,g){var d=dd[String(g)];return s+(d?d.units:0);},0);
+
+  // 전체 역대 최고가 + 최근1년 최고가 실시간 계산
+  var allHistMax=0, allHistUnit='', allHistYm='';
+  var allRecentMax=0, allRecentUnit='', allRecentYm='';
+  if(G.saleData){
+    G.saleData.forEach(function(r){
+      if(r['해제사유']&&r['해제사유']==='Y') return;
+      if(!areaFilter(r)) return;
+      var p=parseFloat(r['거래금액']||0); if(!p) return;
+      var ym2=String(r['계약년월']||'');
+      var ymStr2=ym2.length>=6?ym2.slice(0,4)+'.'+ym2.slice(4,6):'';
+      if(p>allHistMax){ allHistMax=p; allHistUnit=r['단지명']||''; allHistYm=ymStr2; }
+      if(yrFilter(r,'recent')&&p>allRecentMax){ allRecentMax=p; allRecentUnit=r['단지명']||''; allRecentYm=ymStr2; }
+    });
+  }
+  // 전환율
+  var allTurnRaw=totalUnits>0?allTurnCnt/totalUnits*100:0;
+  var allTurnPct=Math.min(allTurnRaw/15*100,100);
+  var allTurnDisp=allTurnRaw.toFixed(1);
+
   var allCardHtml='<div class="dist-card" style="--dist-color:#aabbcc;cursor:pointer;border-color:#aabbcc44" onclick="openDistModal(0)">'+
     '<div class="dist-card-header">'+
       '<span class="dist-name" style="color:#aabbcc">전체 송도</span>'+
@@ -6761,6 +6783,25 @@ function renderTab0(){
       '<div class="dist-stat-item"><div class="dist-stat-label">매매 평당가</div><div class="dist-stat-val" style="font-size:12px">'+fmt평(allPyeong)+'</div></div>'+
       '<div class="dist-stat-item"><div class="dist-stat-label">전세 평균가</div><div class="dist-stat-val" style="font-size:12px;color:var(--accent3)">'+fmt만(allRentAvg)+'</div></div>'+
       '<div class="dist-stat-item"><div class="dist-stat-label">전세 평당가</div><div class="dist-stat-val" style="font-size:12px;color:var(--accent3)">'+fmt평(allRentPyeong)+'</div></div>'+
+      '<div class="dist-stat-item" style="grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr;gap:6px;border-top:1px solid rgba(42,58,82,.5);padding-top:5px;margin-top:2px">'+
+        '<div>'+
+          '<div class="dist-stat-label" style="color:var(--yellow)">🏆 역대 최고가</div>'+
+          '<div style="font-size:12px;font-weight:700;color:var(--yellow)">'+fmt만(allHistMax)+'</div>'+
+          '<div style="font-size:10px;color:var(--text3);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(allHistUnit||'-')+'</div>'+
+          '<div style="font-size:10px;color:var(--text3);margin-top:1px">'+(allHistYm?'<span style="color:#777">'+allHistYm+'</span>':'')+'</div>'+
+        '</div>'+
+        '<div>'+
+          '<div class="dist-stat-label" style="color:var(--accent2)">📅 최근1년 최고가</div>'+
+          '<div style="font-size:12px;font-weight:700;color:var(--accent2)">'+fmt만(allRecentMax)+'</div>'+
+          '<div style="font-size:10px;color:var(--text3);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(allRecentUnit||'-')+'</div>'+
+          '<div style="font-size:10px;color:var(--text3);margin-top:1px">'+(allRecentYm?'<span style="color:#777">'+allRecentYm+'</span>':'')+'</div>'+
+        '</div>'+
+      '</div>'+
+    '</div>'+
+    '<div class="dist-turnover">'+
+      '<span style="font-size:9px;color:var(--text3);min-width:50px">전환율<span style="color:var(--border);font-size:8px">(연간)</span></span>'+
+      '<div class="turnover-bar-wrap"><div class="turnover-bar" style="width:'+allTurnPct.toFixed(0)+'%"></div></div>'+
+      '<span class="turnover-val">'+allTurnDisp+'%</span>'+
     '</div>'+
   '</div>';
   document.getElementById('district-cards').innerHTML = allCardHtml + document.getElementById('district-cards').innerHTML;
@@ -11111,7 +11152,7 @@ if(typeof window.fbAutoLoad === 'function'){
   style="display:none;position:fixed;inset:0;z-index:3300;background:rgba(0,0,0,.82);align-items:center;justify-content:center">
   <div id="trade-detail-box"
     style="background:var(--card);border:1px solid var(--border);border-radius:16px;
-           width:min(680px,96vw);max-height:90vh;overflow-y:auto;padding:24px;
+           width:min(1020px,96vw);max-height:90vh;overflow-y:auto;padding:24px;
            box-shadow:0 12px 48px rgba(0,0,0,.7)">
   </div>
 </div>
@@ -11478,14 +11519,14 @@ function openDistModal(distNum){
       '<div style="font-size:11px;color:var(--text3);font-weight:700;margin-bottom:10px">📊 최근 12개월 월별 매매 거래량</div>'+
       '<canvas id="td-dist-chart" height="80"></canvas>'+
     '</div>'+
-    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">'+
+    '<div style="display:flex;flex-direction:column;gap:10px;margin-bottom:14px">'+
       '<div style="background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:14px">'+
         '<div style="font-size:11px;color:var(--yellow);font-weight:700;margin-bottom:8px">💰 월별 평균 매매가 (억원)</div>'+
-        '<canvas id="td-price-chart" height="100"></canvas>'+
+        '<canvas id="td-price-chart" height="80"></canvas>'+
       '</div>'+
       '<div style="background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:14px">'+
         '<div style="font-size:11px;color:#ff6b35;font-weight:700;margin-bottom:8px">📐 월별 매매 평당가 (만원/평)</div>'+
-        '<canvas id="td-pyeong-chart" height="100"></canvas>'+
+        '<canvas id="td-pyeong-chart" height="80"></canvas>'+
       '</div>'+
     '</div>'+
     (recentTableHtml?
