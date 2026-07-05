@@ -750,7 +750,7 @@ tr.naver-fav>td:first-child{border-left:3px solid #ffd700;}
         <div class="chart-wrap"><canvas id="dc-sale-pyeong"></canvas></div>
       </div>
       <div class="chart-card zoomable" onclick="openZoom(this)">
-        <div class="chart-card-title">🔄 매매전환율 (기간별, 공구별)</div>
+        <div class="chart-card-title">🔄 매매전환율 (기간별 % 추이)</div>
         <div class="chart-wrap"><canvas id="dc-turnover"></canvas></div>
       </div>
     </div>
@@ -6835,7 +6835,10 @@ function renderTab0(){
     }).forEach(function(r){
       var g=parseInt(r['공구'])||0; if(!g) return;
       if(!distStatsAll[g]) distStatsAll[g]={prices:[],pyeongs:[],cnt:0};
-      var p=parseFloat(r['거래금액']||0), py=parseFloat(r['평당가']||0);
+      var p=parseFloat(r['거래금액']||0);
+      var py=parseFloat(r['평당가']||0);
+      var sqm=parseFloat(r['전용(㎡)']||r['전용']||0);
+      if(!py&&sqm>0&&p>0) py=Math.round(p/(sqm/3.3058)); // sqm 폴백
       if(p>0){distStatsAll[g].prices.push(p); distStatsAll[g].cnt++;}
       if(py>0) distStatsAll[g].pyeongs.push(py);
     });
@@ -6849,7 +6852,8 @@ function renderTab0(){
       var g=parseInt(r['공구'])||0; if(!g) return;
       var p=parseFloat(r['보증금']||r['보증금액']||0);
       var py=parseFloat(r['평당가']||0);
-      if(!py&&p>0){var sqm=parseFloat(r['전용(㎡)']||0); if(sqm>0) py=Math.round(p/(sqm/3.3058));}
+      var sqm2=parseFloat(r['전용(㎡)']||0);
+      if(!py&&sqm2>0&&p>0) py=Math.round(p/(sqm2/3.3058)); // sqm 폴백
       if(!distRentStatsAll[g]) distRentStatsAll[g]={prices:[],pyeongs:[]};
       if(p>0) distRentStatsAll[g].prices.push(p);
       if(py>0) distRentStatsAll[g].pyeongs.push(py);
@@ -7164,13 +7168,22 @@ function renderTurnoverChart(){
   var ctx = document.getElementById('chart-turnover').getContext('2d');
   if(charts.turnover) charts.turnover.destroy();
   var dd = DATA.district||{};
+  var yr = G.yr;
   var labels=[],vals=[],colors=[];
-  // G._distStatsAll: 기준연도+면적 필터 반영 연간 집계 (공구 필터 무관)
-  var ds = G._distStatsAll||{};
+  // 전환율: 연간 전체 거래(면적 무관) / 총 세대수 — 면적 필터 미적용이 의미있음
+  var distCntAll={};
+  if(G.saleData){
+    G.saleData.forEach(function(r){
+      if(r['해제사유']&&r['해제사유']!=='-'&&r['해제사유']!=='') return;
+      if(!yrFilter(r,yr)) return;
+      var g=parseInt(r['공구'])||0; if(!g) return;
+      distCntAll[g]=(distCntAll[g]||0)+1;
+    });
+  }
   DISTS.forEach(function(g){
     var d=dd[String(g)]; if(!d) return;
     var units=(d.units||0)+(d.units_pre||0); if(!units) return;
-    var cnt=(ds[g]&&ds[g].cnt)||0;
+    var cnt=distCntAll[g]||0;
     var pct=Math.round(cnt/units*1000)/10;
     labels.push(DIST_NAMES[g]); vals.push(pct);
     colors.push(pct>5?'#00e5a0':pct>3?'#ffd700':'#ff6b35');
@@ -7194,7 +7207,7 @@ function renderTurnoverChart(){
     options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,
       plugins:{legend:{display:false},tooltip:{callbacks:{label:function(c){return c.raw+'%';}}}},
       scales:{
-        x:{ticks:{color:'#8899bb',font:{size:10},callback:function(v){return v+'%';}},grid:{color:'rgba(42,58,82,.5)'}},
+        x:{beginAtZero:true,ticks:{color:'#8899bb',font:{size:10},callback:function(v){return v+'%';}},grid:{color:'rgba(42,58,82,.5)'}},
         y:{ticks:{color:'#aabbcc',font:{size:11}},grid:{display:false}}}}});
 }
 
@@ -7832,27 +7845,28 @@ function renderDistCharts(){
 
   var gc='rgba(42,58,82,.5)', tc='#8899bb';
 
-  // 수치 직접 표시 플러그인
+  // 수치 직접 표시 플러그인 (전년 점선도 흰색으로 표시)
   function makeLabelPlugin(color, fmt, size){
     return {
       id:'customLabel',
       afterDatasetsDraw:function(chart){
         var ctx2=chart.ctx;
         chart.data.datasets.forEach(function(ds,di){
-          if(ds._noLabel) return;
+          var isPrev=ds._noLabel;
           var meta=chart.getDatasetMeta(di);
+          if(meta.hidden) return;
           meta.data.forEach(function(pt,i){
             var val=ds.data[i]; if(!val||val<=0) return;
             var label=fmt?fmt(val):val.toLocaleString();
             var pos=pt.tooltipPosition?pt.tooltipPosition():{x:pt.x,y:pt.y};
             ctx2.save();
-            ctx2.fillStyle=ds._labelColor||color||'#ffffff';
-            ctx2.font='bold '+(size||11)+'px Noto Sans KR,sans-serif';
+            ctx2.fillStyle=isPrev?'#ffffff':(ds._labelColor||color||'#ffffff');
+            ctx2.font='bold '+(isPrev?9:(size||11))+'px Noto Sans KR,sans-serif';
             ctx2.textAlign='center';
             ctx2.textBaseline='bottom';
-            ctx2.shadowColor='rgba(0,0,0,0.8)';
+            ctx2.shadowColor='rgba(0,0,0,0.9)';
             ctx2.shadowBlur=3;
-            ctx2.fillText(label, pos.x, pos.y-4);
+            ctx2.fillText(label, pos.x, pos.y-(isPrev?2:4));
             ctx2.restore();
           });
         });
@@ -7934,49 +7948,30 @@ function renderDistCharts(){
   mkC('dc-sale-pyeong','line',sale.pyeong,'#ff6b35',null,fmtPy,
       null,salePrev.pyeong,null, null, 2000,yPy,fmtPy);
 
-  // ── dc-turnover: 4번째 차트 — 기간별 공구별 매매전환율
+  // ── dc-turnover: 4번째 차트 — 기간별 전체 매매전환율 (시계열, 전년 점선)
   (function(){
     var dd2=DATA.district||{};
-    var distVol2={};
-    DISTS.forEach(function(g){ distVol2[g]=0; });
-    if(G.saleData) G.saleData.forEach(function(r){
-      if(r['해제사유']&&r['해제사유']==='Y') return;
-      if(!saleFilter(r)) return;
-      var g=parseInt(r['공구'])||0;
-      if(distVol2[g]!==undefined) distVol2[g]++;
-    });
-    var tl=[],tv=[],tc=[];
-    DISTS.forEach(function(g){
-      var d=dd2[String(g)]; if(!d) return;
-      var units=(d.units||0)+(d.units_pre||0); if(!units) return;
-      var pct=Math.round(distVol2[g]/units*1000)/10;
-      tl.push(DIST_NAMES[g]); tv.push(pct);
-      tc.push(pct>5?'#00e5a0':pct>3?'#ffd700':'#ff6b35');
-    });
-    var tPlugin={id:'dcTO',afterDatasetsDraw:function(chart){
-      var ctx2=chart.ctx, meta=chart.getDatasetMeta(0);
-      meta.data.forEach(function(bar,i){
-        if(!tv[i]) return;
-        var pos=bar.tooltipPosition?bar.tooltipPosition():{x:bar.x,y:bar.y};
-        ctx2.save(); ctx2.fillStyle=tc[i]; ctx2.font='bold 10px sans-serif';
-        ctx2.textAlign='left'; ctx2.textBaseline='middle';
-        ctx2.shadowColor='rgba(0,0,0,.9)'; ctx2.shadowBlur=4;
-        ctx2.fillText(tv[i]+'%',pos.x+4,pos.y); ctx2.restore();
+    var totalUnits=DISTS.reduce(function(s,g){
+      var d=dd2[String(g)]; return s+(d?(d.units||0)+(d.units_pre||0):0);
+    },0)||1;
+
+    // 기간별 거래량 집계 (면적 필터 반영, t0DistFilter 미적용)
+    function collectTurnVol(rows, targetYr){
+      var vol=[]; for(var i=0;i<maxPeriods;i++) vol.push(0);
+      rows.forEach(function(r){
+        if(r['해제사유']&&r['해제사유']==='Y') return;
+        if(!areaFilter(r)) return;
+        var idx=getIdx(r, targetYr); if(idx<1||idx>maxPeriods) return;
+        vol[idx-1]++;
       });
-    }};
-    var cvs=document.getElementById('dc-turnover');
-    if(cvs){
-      if(charts.dcTurnover){charts.dcTurnover.destroy();charts.dcTurnover=null;}
-      charts.dcTurnover=new Chart(cvs,{type:'bar',plugins:[tPlugin],
-        data:{labels:tl,datasets:[{data:tv,
-          backgroundColor:tc.map(function(c){return c+'55';}),
-          borderColor:tc,borderWidth:2,borderRadius:4}]},
-        options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,
-          plugins:{legend:{display:false},tooltip:{callbacks:{label:function(c){return c.raw+'%';}}}},
-          scales:{
-            x:{ticks:{color:'#8899bb',font:{size:10},callback:function(v){return v+'%';}},grid:{color:gc}},
-            y:{ticks:{color:'#aabbcc',font:{size:11}},grid:{display:false}}}}});
+      return vol.map(function(cnt){ return Math.round(cnt/totalUnits*1000)/10; });
     }
+
+    var turnNow  = G.saleData ? collectTurnVol(G.saleData, yr)     : labels.map(function(){return 0;});
+    var turnPrev2= G.saleData ? collectTurnVol(G.saleData, prevYr)  : labels.map(function(){return 0;});
+    var fmtTO=function(v){return v>0?v+'%':''};
+    mkC('dc-turnover','line',turnNow,'#00e5a0',null,fmtTO,
+        null,turnPrev2,null,null,0,function(v){return v+'%';},function(v){return v+'%';});
   })();
 
   mkC('dc-rent-vol',   'line',rent.vol,  '#00e5a0',null,fmtVol,
