@@ -7955,16 +7955,26 @@ function renderDistCharts(){
       var d=dd2[String(g)]; return s+(d?(d.units||0)+(d.units_pre||0):0);
     },0)||1;
 
-    // 기간별 거래량 집계 (면적 필터 반영, t0DistFilter 미적용)
+    // 기간별 거래량 집계
+    // 핵심 버그 수정:
+    //  1) 특정연도(2025 등)일 때 연도 사전 필터 추가 — getIdx는 연도 체크 안 함
+    //  2) t0DistFilter 추가 — 공구 선택 반영
+    //  3) recent_prev는 getIdx rolling range가 처리하므로 사전 필터 불필요
     function collectTurnVol(rows, targetYr){
       var vol=[]; for(var i=0;i<maxPeriods;i++) vol.push(0);
       rows.forEach(function(r){
         if(r['해제사유']&&r['해제사유']==='Y') return;
         if(!areaFilter(r)) return;
+        if(!t0DistFilter(r)) return;
+        // 특정 연도면 연도 먼저 필터 (getIdx는 mo만 반환해 연도 무관하게 집계됨)
+        if(targetYr!=='recent'&&targetYr!=='recent_prev'){
+          var ym=parseInt(r['계약년월']||0);
+          if(!ym||Math.floor(ym/100)!==parseInt(targetYr)) return;
+        }
         var idx=getIdx(r, targetYr); if(idx<1||idx>maxPeriods) return;
         vol[idx-1]++;
       });
-      return vol.map(function(cnt){ return Math.round(cnt/totalUnits*1000)/10; });
+      return vol.map(function(cnt){ return totalUnits>0?Math.round(cnt/totalUnits*1000)/10:0; });
     }
 
     var turnNow  = G.saleData ? collectTurnVol(G.saleData, yr)     : labels.map(function(){return 0;});
