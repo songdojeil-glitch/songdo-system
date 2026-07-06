@@ -6514,8 +6514,54 @@ function renderTab12(){
   var DATA_district=DATA&&DATA.district?DATA.district:{};
   var jeonseStats={}, wolseStats={}, jeonseAll={cnt:0,prices:[],pyeongs:[],newCnt:0,renewCnt:0};
   var wolseAll={cnt:0,convs:[],pyeongs:[]};
-  // 월세 비교 차트용: areaFilter 미적용 (84㎡ 월세는 드물어 차트 공백 발생)
+
+  // ── 월세 비교 차트용: 완전 독립 집계 (areaFilter 무관, 연도+공구 필터만)
+  // 진단 카운터 포함
   var wolseStatsAll={};
+  var _wd={total:G.rentData?G.rentData.length:0, yrPass:0, distPass:0, isWolse:0, hasG:0, hasDep:0};
+  if(G.rentData) G.rentData.forEach(function(r){
+    var ym=parseInt(r['계약년월']||0); if(!ym) return;
+    // 연도 필터 (recent 포함)
+    if(yr==='recent'){if(!yrFilter(r,'recent')) return;}
+    else {if(Math.floor(ym/100)!==parseInt(yr)) return;}
+    _wd.yrPass++;
+    // 공구 필터
+    if(!t0DistFilter(r)) return;
+    _wd.distPass++;
+    // 월세 여부
+    var jt2=(r['전월세구분']||'').toString().trim();
+    if(jt2!=='월세') return;
+    _wd.isWolse++;
+    var g2=parseInt(r['공구'])||0; if(!g2) return;
+    _wd.hasG++;
+    var dep=parseFloat(r['보증금']||r['보증금액']||r['보증금(만원)']||0);
+    var mon=parseFloat(r['월세금']||r['월세금액']||r['월세(만원)']||0);
+    if(dep>0) _wd.hasDep++;
+    var conv=Math.round(dep+mon*12/CONV_RATE);
+    if(!conv&&dep>0) conv=dep;
+    if(!conv&&mon>0) conv=Math.round(mon*12/CONV_RATE);
+    var sqm2=parseFloat(r['전용(㎡)']||r['전용㎡']||r['전용면적(㎡)']||r['전용']||0);
+    var py2=parseFloat(r['평당가']||0);
+    if(!py2&&sqm2>0&&conv>0) py2=Math.round(conv/(sqm2/3.3058));
+    if(!wolseStatsAll[g2]) wolseStatsAll[g2]={convs:[],pyeongs:[],cnt:0};
+    wolseStatsAll[g2].cnt++;
+    if(conv>0) wolseStatsAll[g2].convs.push(conv);
+    if(py2>0) wolseStatsAll[g2].pyeongs.push(py2);
+  });
+  // 진단 패널 표시
+  (function(){
+    var el=document.getElementById('t12-wolse-diag');
+    if(!el){el=document.createElement('div');el.id='t12-wolse-diag';
+      el.style='font-size:10px;color:#8899bb;background:rgba(0,0,0,.3);padding:6px 10px;border-radius:6px;margin-bottom:8px;font-family:monospace';
+      var anchor=document.getElementById('t12-district-cards');
+      if(anchor&&anchor.parentNode) anchor.parentNode.insertBefore(el,anchor);
+    }
+    var wKeys=Object.keys(wolseStatsAll);
+    el.innerHTML='🔍 월세 집계 진단: 전체 '+_wd.total+'건 → 연도통과 '+_wd.yrPass+
+      '건 → 공구통과 '+_wd.distPass+'건 → 월세구분 '+_wd.isWolse+
+      '건 → 공구>0 '+_wd.hasG+'건 → 보증금>0 '+_wd.hasDep+
+      '건 | wolseStatsAll 공구 수: '+wKeys.length+'개 ['+wKeys.join(',')+']';
+  })();
 
   G.rentData.forEach(function(r){
     if(!areaFilter(r)) {
