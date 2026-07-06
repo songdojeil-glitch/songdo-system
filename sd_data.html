@@ -6524,11 +6524,12 @@ function renderTab12(){
       var jt2=r['전월세구분']||'';
       if(jt2==='월세'){
         var g2=parseInt(r['공구'])||0; if(!g2) return;
-        var p2=parseFloat(r['보증금']||r['보증금액']||0);
-        var m2=parseFloat(r['월세(만원)']||r['월세금']||r['월세금액']||0);
+        var p2=parseFloat(r['보증금(만원)']||r['보증금']||r['보증금액']||0);
+        var m2=parseFloat(r['월세(만원)']||r['월세금(만원)']||r['월세금']||r['월세금액']||0);
         var conv2=Math.round(p2+m2*12/CONV_RATE);
+        if(!conv2&&p2>0) conv2=p2; // 월세금 없는 경우 보증금만으로 환산
         var py2=parseFloat(r['평당가']||0);
-        var sqm2=parseFloat(r['전용(㎡)']||0);
+        var sqm2=parseFloat(r['전용면적(㎡)']||r['전용(㎡)']||r['전용㎡']||0);
         if(!py2&&sqm2>0&&conv2>0) py2=Math.round(conv2/(sqm2/3.3058));
         if(!wolseStatsAll[g2]) wolseStatsAll[g2]={convs:[],pyeongs:[],cnt:0};
         wolseStatsAll[g2].cnt++;
@@ -6543,10 +6544,10 @@ function renderTab12(){
     var g=parseInt(r['공구'])||0; if(!g) return;
     var jt=r['전월세구분']||'';
     var ct=r['계약구분']||'';
-    var p=parseFloat(r['보증금']||r['보증금액']||0);
-    var m=parseFloat(r['월세(만원)']||r['월세금']||r['월세금액']||0); // 필드명 통합
+    var p=parseFloat(r['보증금(만원)']||r['보증금']||r['보증금액']||0); // 필드명 통합
+    var m=parseFloat(r['월세(만원)']||r['월세금(만원)']||r['월세금']||r['월세금액']||0);
     var py=parseFloat(r['평당가']||0);
-    var sqm=parseFloat(r['전용(㎡)']||0);
+    var sqm=parseFloat(r['전용면적(㎡)']||r['전용(㎡)']||r['전용㎡']||0);
 
     if(jt==='전세'){
       if(!jeonseStats[g]) jeonseStats[g]={prices:[],pyeongs:[],cnt:0};
@@ -6558,8 +6559,8 @@ function renderTab12(){
       if(ct==='신규'||ct.indexOf('신규')>=0) jeonseAll.newCnt++;
       else if(ct==='갱신'||ct.indexOf('갱신')>=0) jeonseAll.renewCnt++;
     } else if(jt==='월세'){
-      var m=parseFloat(r['월세(만원)']||r['월세금']||r['월세금액']||0);
       var conv=Math.round(p+m*12/CONV_RATE);
+      if(!conv&&p>0) conv=p; // 월세금 필드 없는 경우 보증금만으로 집계
       if(!wolseStats[g]) wolseStats[g]={convs:[],pyeongs:[],cnt:0};
       wolseStats[g].cnt++;
       if(conv>0){wolseStats[g].convs.push(conv); wolseAll.convs.push(conv);}
@@ -8211,7 +8212,7 @@ function renderJeonseRateChart(){
   });
   G.rentData.forEach(function(r){
     if(!yrFilter(r,G.yr)||!areaFilter(r)) return;
-    var g=parseInt(r['공구'])||0, p=parseFloat(r['보증금액']||0);
+    var g=parseInt(r['공구'])||0, p=parseFloat(r['보증금(만원)']||r['보증금']||r['보증금액']||0);
     var type=r['전월세구분']||r['계약구분']||'';
     if(type.indexOf('전세')>=0&&rentByDist[g]!==undefined&&p>0) rentByDist[g].push(p);
   });
@@ -8227,7 +8228,31 @@ function renderJeonseRateChart(){
   var gc='rgba(42,58,82,.5)', tc='#8899bb';
   var ctx1=document.getElementById('chart-jeonse-rate').getContext('2d');
   if(charts.jeonseRate) charts.jeonseRate.destroy();
-  charts.jeonseRate=new Chart(ctx1,{type:'bar',data:{labels:labels,datasets:[
+
+  // 값 라벨 플러그인 (매매·전세 막대 + 전세가율 라인)
+  var jrLblPlugin={id:'jrLbl',afterDatasetsDraw:function(chart){
+    var cx=chart.ctx;
+    chart.data.datasets.forEach(function(ds,di){
+      var meta=chart.getDatasetMeta(di); if(meta.hidden) return;
+      meta.data.forEach(function(pt,i){
+        var v=ds.data[i]; if(!v) return;
+        var pos=pt.tooltipPosition?pt.tooltipPosition():{x:pt.x,y:pt.y};
+        cx.save();
+        cx.font='bold 9px sans-serif'; cx.textAlign='center'; cx.textBaseline='bottom';
+        cx.shadowColor='rgba(0,0,0,.9)'; cx.shadowBlur=3;
+        if(di===2){ // 전세가율 라인
+          cx.fillStyle='#ffd700'; cx.font='bold 10px sans-serif';
+          cx.fillText(v+'%', pos.x, pos.y-4);
+        } else { // 매매/전세 막대
+          cx.fillStyle=di===0?'#ff9f7f':'#81d4fa';
+          cx.fillText(Math.round(v*10)/10+'억', pos.x, pos.y-2);
+        }
+        cx.restore();
+      });
+    });
+  }};
+
+  charts.jeonseRate=new Chart(ctx1,{type:'bar',plugins:[jrLblPlugin],data:{labels:labels,datasets:[
     {label:'매매 평균(억)',data:saleVals,backgroundColor:'rgba(255,107,53,.5)',borderColor:'#ff6b35',borderWidth:2,borderRadius:4,yAxisID:'y'},
     {label:'전세 평균(억)',data:rentVals,backgroundColor:'rgba(0,212,255,.5)',borderColor:'#00d4ff',borderWidth:2,borderRadius:4,yAxisID:'y'},
     {label:'전세가율(%)',data:rateVals,type:'line',borderColor:'#ffd700',borderWidth:2.5,pointBackgroundColor:'#ffd700',pointRadius:5,fill:false,yAxisID:'y2',tension:0.3},
@@ -8247,7 +8272,7 @@ function renderJeonseRateChart(){
     });
     G.rentData.forEach(function(r){
       if(parseInt(r['연도'])!==y||!areaFilter(r)) return;
-      var p=parseFloat(r['보증금액']||0);
+      var p=parseFloat(r['보증금(만원)']||r['보증금']||r['보증금액']||0);
       var type=r['전월세구분']||r['계약구분']||'';
       if(type.indexOf('전세')>=0&&p>0) ra.push(p);
     });
