@@ -511,6 +511,7 @@ tr.naver-fav>td:first-child{border-left:3px solid #ffd700;}
 <div class="tab-nav">
   <div class="tab-nav-inner">
     <button class="tab-btn on" onclick="sw(0)">📡 매매 시황판</button>
+    <button class="tab-btn" onclick="sw(12)">🏠 전월세 시황판</button>
     <button class="tab-btn" onclick="sw(1)">🏘️ 공구별 현황</button>
     <button class="tab-btn" onclick="sw(2)">🏢 단지 시세</button>
     <button class="tab-btn" onclick="sw(3)">📈 매매 실거래</button>
@@ -522,7 +523,6 @@ tr.naver-fav>td:first-child{border-left:3px solid #ffd700;}
     <button class="tab-btn" onclick="sw(9)">📊 단지모델 리포트</button>
     <button class="tab-btn" onclick="sw(10)">🎯 매물 제안서</button>
     <button class="tab-btn" onclick="sw(11)">🎬 유튜브 리포트</button>
-    <button class="tab-btn" onclick="sw(12)">🏠 전월세 시황판</button>
   </div>
 </div>
 
@@ -6811,7 +6811,7 @@ function renderTab12(){
   })();
 
   // ── 공구별 비교 차트 6개 (전세 3 + 월세 3)
-  var makeAnnPlugin=function(fmt2,color2){return {id:'annLbl',afterDatasetsDraw:function(chart){
+  var makeAnnPlugin=function(fmt2,color2,chartId){return {id:'annLbl_'+(chartId||Date.now()),afterDatasetsDraw:function(chart){
     var ctx2=chart.ctx,meta=chart.getDatasetMeta(0);
     meta.data.forEach(function(bar,i){
       var v=chart.data.datasets[0].data[i]; if(!v) return;
@@ -6827,7 +6827,7 @@ function renderTab12(){
     var el=document.getElementById(canvasId); if(!el) return;
     var key=canvasId.replace(/-/g,'_');
     if(charts[key]){charts[key].destroy();charts[key]=null;}
-    var plugin=makeAnnPlugin(labelFmt||function(v){return v;}, labelColor||'#e8eef8');
+    var plugin=makeAnnPlugin(labelFmt||function(v){return v;}, labelColor||'#e8eef8', key);
     charts[key]=new Chart(el.getContext('2d'),{type:'bar',plugins:[plugin],
       data:{labels:labels,datasets:[{data:vals,
         backgroundColor:colors.map(function(c){return c+'55';}),
@@ -7028,7 +7028,18 @@ function openT12DistModal(distNum){
     var gc='rgba(255,255,255,.04)';
     function mkBarChart(id, labels, data, color2){
       var cvs=document.getElementById(id); if(!cvs) return null;
-      return new Chart(cvs,{type:'bar',
+      var barLblPlugin={id:'bl_'+id.replace(/-/g,'_'),afterDatasetsDraw:function(chart){
+        var cx=chart.ctx, meta=chart.getDatasetMeta(0);
+        meta.data.forEach(function(bar,i){
+          var v=data[i]; if(!v||v<=0) return;
+          var pos=bar.tooltipPosition?bar.tooltipPosition():{x:bar.x,y:bar.y};
+          cx.save(); cx.fillStyle='#e8eef8'; cx.font='bold 9px sans-serif';
+          cx.textAlign='center'; cx.textBaseline='bottom';
+          cx.shadowColor='rgba(0,0,0,.9)'; cx.shadowBlur=3;
+          cx.fillText(v+'건', pos.x, pos.y-2); cx.restore();
+        });
+      }};
+      return new Chart(cvs,{type:'bar',plugins:[barLblPlugin],
         data:{labels:labels,datasets:[{data:data,backgroundColor:color2+'55',borderColor:color2,borderWidth:1.5,borderRadius:3}]},
         options:{responsive:true,plugins:{legend:{display:false},tooltip:{callbacks:{label:function(c){return c.raw+'건';}}}},
           scales:{x:{ticks:{color:'#8899bb',font:{size:9}},grid:{color:gc},border:{color:'transparent'}},
@@ -7037,7 +7048,18 @@ function openT12DistModal(distNum){
     function mkLineChart(id, labels, data, color2, suffix, divBy){
       var cvs=document.getElementById(id); if(!cvs) return null;
       var fmtFn=function(v){return v!==null?(divBy?Math.round(v/divBy*10)/10:Math.round(v).toLocaleString())+suffix:'없음';};
-      return new Chart(cvs,{type:'line',
+      var lineLblPlugin={id:'ll_'+id.replace(/-/g,'_'),afterDatasetsDraw:function(chart){
+        var cx=chart.ctx, meta=chart.getDatasetMeta(0);
+        meta.data.forEach(function(pt,i){
+          var v=data[i]; if(v===null||v===undefined) return;
+          var pos=pt.tooltipPosition?pt.tooltipPosition():{x:pt.x,y:pt.y};
+          cx.save(); cx.fillStyle=color2; cx.font='bold 9px sans-serif';
+          cx.textAlign='center'; cx.textBaseline='bottom';
+          cx.shadowColor='rgba(0,0,0,.9)'; cx.shadowBlur=3;
+          cx.fillText(fmtFn(v), pos.x, pos.y-4); cx.restore();
+        });
+      }};
+      return new Chart(cvs,{type:'line',plugins:[lineLblPlugin],
         data:{labels:labels,datasets:[{data:data,borderColor:color2,backgroundColor:color2+'15',borderWidth:2,pointRadius:3,pointBackgroundColor:color2,tension:0.3,spanGaps:true}]},
         options:{responsive:true,plugins:{legend:{display:false},tooltip:{callbacks:{label:function(c){return c.raw!==null?fmtFn(c.raw):'없음';}}}},
           scales:{x:{ticks:{color:'#8899bb',font:{size:9}},grid:{color:gc},border:{color:'transparent'}},
