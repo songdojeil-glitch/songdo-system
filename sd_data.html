@@ -2114,6 +2114,10 @@ tr.naver-fav>td:first-child{border-left:3px solid #ffd700;}
     <button class="filter-btn on" onclick="setPeriod('annual',this)">연간</button>
     <button class="filter-btn" onclick="setPeriod('quarter',this)">분기별</button>
     <button class="filter-btn" onclick="setPeriod('monthly',this)">월별</button>
+    <span class="filter-label" style="margin-left:12px">거래구분</span>
+    <button class="filter-btn on" onclick="setT12Trade('all',this)">전체</button>
+    <button class="filter-btn" onclick="setT12Trade('전세',this)">전세</button>
+    <button class="filter-btn" onclick="setT12Trade('월세',this)">월세</button>
   </div>
   <div class="filter-row" style="margin-top:-4px">
     <span class="filter-label">면적</span>
@@ -2140,13 +2144,6 @@ tr.naver-fav>td:first-child{border-left:3px solid #ffd700;}
   <div id="t12-sub-period" class="sub-period-row" style="margin-top:-4px">
     <span class="filter-label" id="t12-sub-label">분기</span>
     <div class="filter-group" id="t12-sub-btns"></div>
-  </div>
-  <!-- 거래구분 필터 -->
-  <div class="filter-row" style="margin-top:-4px">
-    <span class="filter-label">거래구분</span>
-    <button class="filter-btn on" onclick="setT12Trade('all',this)">전체</button>
-    <button class="filter-btn" onclick="setT12Trade('전세',this)">전세</button>
-    <button class="filter-btn" onclick="setT12Trade('월세',this)">월세</button>
   </div>
   <!-- KPI 카드 -->
   <div class="kpi-row kpi-row-5 zoomable" id="t12-kpi-top" onclick="openZoom(this)" style="cursor:zoom-in;margin-top:10px"></div>
@@ -6882,36 +6879,53 @@ function renderTab12(){
     el.innerHTML+='<br>📦 wL['+wL.length+']: ['+wL.join(',')+']  wCntV: ['+wCntV.join(',')+']  wAvgV: ['+wAvgV.join(',')+']';
   })();
 
-  // ── 월세 비교 차트 3개: drawBarChart 우회, 직접 렌더링
-  (function(){
-    var gc='rgba(42,58,82,.5)';
-    function renderWolseChart(canvasId, vals, labelFmt, yTickFmt, title){
-      var cvs=document.getElementById(canvasId); if(!cvs) return;
-      var ckey=canvasId.replace(/-/g,'_');
-      if(charts[ckey]){try{charts[ckey].destroy();}catch(e){} charts[ckey]=null;}
-      var lbl=makeAnnPlugin(labelFmt||function(v){return v;}, '#ffcc80', ckey);
-      charts[ckey]=new Chart(cvs.getContext('2d'),{
-        type:'bar', plugins:[lbl],
-        data:{labels:wL, datasets:[{
-          data:vals,
-          backgroundColor:wColors.map(function(c){return c+'55';}),
-          borderColor:wColors,borderWidth:2,borderRadius:4
-        }]},
-        options:{
-          responsive:true,maintainAspectRatio:false,
-          plugins:{legend:{display:false},
-            tooltip:{callbacks:{label:function(c){return labelFmt?labelFmt(c.raw):c.raw;}}}},
-          scales:{
-            x:{ticks:{color:'#aabbcc',font:{size:11}},grid:{display:false}},
-            y:{beginAtZero:true,ticks:{color:'#8899bb',font:{size:10},callback:yTickFmt||function(v){return v;}},grid:{color:gc}}
+  // ── 月세 비교 차트 3개: 30ms 지연 후 직접 렌더 (레이아웃 확정 후)
+  (function(capturedWL, capturedWAvgV, capturedWPyV, capturedWCntV, capturedWColors){
+    setTimeout(function(){
+      var gc='rgba(42,58,82,.5)';
+      function renderWC(canvasId, vals, labelFmt, yTickFmt){
+        var cvs=document.getElementById(canvasId); if(!cvs) return;
+        var ckey=canvasId.replace(/-/g,'_');
+        if(charts[ckey]){try{charts[ckey].destroy();}catch(e){} charts[ckey]=null;}
+        // 값 라벨 플러그인 (고유 ID)
+        var lbl={id:'wlbl_'+ckey, afterDatasetsDraw:function(chart){
+          var cx=chart.ctx, meta=chart.getDatasetMeta(0);
+          meta.data.forEach(function(bar,i){
+            var v=chart.data.datasets[0].data[i]; if(!v&&v!==0) return;
+            var pos=bar.tooltipPosition?bar.tooltipPosition():{x:bar.x,y:bar.y};
+            cx.save(); cx.fillStyle='#ffcc80'; cx.font='bold 10px sans-serif';
+            cx.textAlign='center'; cx.textBaseline='bottom';
+            cx.shadowColor='rgba(0,0,0,.9)'; cx.shadowBlur=4;
+            cx.fillText(labelFmt(v), pos.x, pos.y-2); cx.restore();
+          });
+        }};
+        charts[ckey]=new Chart(cvs.getContext('2d'),{
+          type:'bar', plugins:[lbl],
+          data:{labels:capturedWL, datasets:[{
+            data:vals,
+            backgroundColor:capturedWColors.map(function(c){return (c||'#8899bb')+'55';}),
+            borderColor:capturedWColors.map(function(c){return c||'#8899bb';}),
+            borderWidth:2, borderRadius:4
+          }]},
+          options:{
+            responsive:true, maintainAspectRatio:false,
+            plugins:{legend:{display:false},
+              tooltip:{callbacks:{label:function(c){return labelFmt(c.raw);}}}},
+            scales:{
+              x:{ticks:{color:'#aabbcc',font:{size:11}},grid:{display:false}},
+              y:{beginAtZero:true, ticks:{color:'#8899bb',font:{size:10},callback:yTickFmt||function(v){return v;}},
+                grid:{color:gc}}
+            }
           }
-        }
-      });
-    }
-    renderWolseChart('chart-dist-wolseavg',  wAvgV, fmtAok, yAok);
-    renderWolseChart('chart-dist-wolsepyeong',wPyV, fmtMn, yMn);
-    renderWolseChart('chart-dist-wolsecnt',   wCntV,fmtCnt, null);
-  })();
+        });
+        // 50ms 후 강제 리사이즈
+        setTimeout(function(){if(charts[ckey]) charts[ckey].resize();}, 50);
+      }
+      renderWC('chart-dist-wolseavg',   capturedWAvgV, function(v){return Math.round(v*10)/10+'억';},   function(v){return Math.round(v*10)/10+'억';});
+      renderWC('chart-dist-wolsepyeong',capturedWPyV,  function(v){return Math.round(v).toLocaleString()+'만';},function(v){return Math.round(v).toLocaleString()+'만';});
+      renderWC('chart-dist-wolsecnt',   capturedWCntV, function(v){return v+'건';},                     function(v){return v+'건';});
+    }, 30);
+  })(wL.slice(), wAvgV.slice(), wPyV.slice(), wCntV.slice(), wColors.slice());
 
   // ── 기존 전월세 공통 차트 렌더
   renderRentSplitChart();
