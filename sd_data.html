@@ -6545,7 +6545,7 @@ function renderTab12(){
     var jt=r['전월세구분']||'';
     var ct=r['계약구분']||'';
     var p=parseFloat(r['보증금']||r['보증금액']||0);
-    var m=parseFloat(r['월세금']||r['월세금액']||0);
+    var m=parseFloat(r['월세(만원)']||r['월세금']||r['월세금액']||0); // 필드명 통합
     var py=parseFloat(r['평당가']||0);
     var sqm=parseFloat(r['전용(㎡)']||0);
 
@@ -7076,27 +7076,56 @@ function openT12DistModal(distNum){
 function renderT12DistCharts(){
   if(!G.rentData||!G.rentData.length) return;
   var period=G.period, yr=G.yr, subPeriod=G.subPeriod;
+  var prevYr=yr==='recent'?'recent_prev':(parseInt(yr)-1);
   var CONV_RATE=window._convRate||0.058;
   var maxPeriods=period==='quarter'?4:12;
   var labels=period==='quarter'?['1Q','2Q','3Q','4Q']:
     [1,2,3,4,5,6,7,8,9,10,11,12].map(function(m){return m+'월';});
-
-  var jVol=new Array(maxPeriods).fill(0), wVol=new Array(maxPeriods).fill(0);
-  var jPriceSums=new Array(maxPeriods).fill(0), jPriceCnts=new Array(maxPeriods).fill(0);
-  var jPyeongSums=new Array(maxPeriods).fill(0), jPyeongCnts=new Array(maxPeriods).fill(0);
-  var wPriceSums=new Array(maxPeriods).fill(0), wPriceCnts=new Array(maxPeriods).fill(0);
-  var wPyeongSums=new Array(maxPeriods).fill(0), wPyeongCnts=new Array(maxPeriods).fill(0);
   var totalUnits=DISTS.reduce(function(s,g){var d=(DATA&&DATA.district&&DATA.district[String(g)]);return s+(d?(d.units||0)+(d.units_pre||0):0);},0)||1;
+  var gc='rgba(255,255,255,.04)';
 
-  G.rentData.forEach(function(r){
-    if(!areaFilter(r)) return;
-    if(!t0DistFilter(r)) return;
-    var ym=parseInt(r['계약년월']||0); if(!ym) return;
-    var rowYr=Math.floor(ym/100);
-    if(rowYr!==parseInt(yr)) return;
-    var mo=ym%100;
-    var idx=period==='quarter'?Math.ceil(mo/3)-1:mo-1;
-    if(idx<0||idx>=maxPeriods) return;
+  // ── 특정 연도의 월별/분기별 통계 수집
+  function collectRentByPeriod(targetYr){
+    var jVol=new Array(maxPeriods).fill(0), wVol=new Array(maxPeriods).fill(0);
+    var jPS=new Array(maxPeriods).fill(0), jPC=new Array(maxPeriods).fill(0);
+    var jPyS=new Array(maxPeriods).fill(0), jPyC=new Array(maxPeriods).fill(0);
+    var wPS=new Array(maxPeriods).fill(0), wPC=new Array(maxPeriods).fill(0);
+    var wPyS=new Array(maxPeriods).fill(0), wPyC=new Array(maxPeriods).fill(0);
+    if(!G.rentData) return {jVol:jVol,wVol:wVol,jPrice:jPS.map(function(){return null;}),
+      jPyeong:jPyS.map(function(){return null;}),wPrice:wPS.map(function(){return null;}),
+      wPyeong:wPyS.map(function(){return null;}),leaseRate:jVol.map(function(){return 0;})};
+
+    G.rentData.forEach(function(r){
+      if(!areaFilter(r)) return;
+      if(!t0DistFilter(r)) return;
+      var ym=parseInt(r['계약년월']||0); if(!ym) return;
+      var rowYr=Math.floor(ym/100);
+      // 'recent'/'recent_prev' 처리
+      if(targetYr==='recent'||targetYr==='recent_prev'){
+        if(!yrFilter(r,targetYr)) return;
+        var now=new Date(); var iy=Math.floor(ym/100), im=ym%100;
+        var diff=(now.getFullYear()-iy)*12+(now.getMonth()+1-im);
+        var idx2=(targetYr==='recent')?(11-diff):(11-diff); // rolling index
+        if(idx2<0||idx2>=maxPeriods) return;
+        collectRow(r, idx2, jVol,wVol,jPS,jPC,jPyS,jPyC,wPS,wPC,wPyS,wPyC);
+      } else {
+        if(rowYr!==parseInt(targetYr)) return;
+        var mo=ym%100;
+        var idx=period==='quarter'?Math.ceil(mo/3)-1:mo-1;
+        if(idx<0||idx>=maxPeriods) return;
+        collectRow(r, idx, jVol,wVol,jPS,jPC,jPyS,jPyC,wPS,wPC,wPyS,wPyC);
+      }
+    });
+
+    var jPD=jPS.map(function(s,i){return jPC[i]>0?Math.round(s/jPC[i]/1000)/10:null;});
+    var jPyD=jPyS.map(function(s,i){return jPyC[i]>0?Math.round(s/jPyC[i]):null;});
+    var wPD=wPS.map(function(s,i){return wPC[i]>0?Math.round(s/wPC[i]/1000)/10:null;});
+    var wPyD=wPyS.map(function(s,i){return wPC[i]>0?Math.round(s/wPC[i]):null;});
+    var lr=jVol.map(function(v,i){return Math.round((v+wVol[i])/totalUnits*1000)/10;});
+    return {jVol:jVol,wVol:wVol,jPrice:jPD,jPyeong:jPyD,wPrice:wPD,wPyeong:wPyD,leaseRate:lr};
+  }
+
+  function collectRow(r, idx, jVol,wVol,jPS,jPC,jPyS,jPyC,wPS,wPC,wPyS,wPyC){
     var jt=r['전월세구분']||'';
     var p=parseFloat(r['보증금']||r['보증금액']||0);
     var m=parseFloat(r['월세(만원)']||r['월세금']||r['월세금액']||0);
@@ -7104,45 +7133,87 @@ function renderT12DistCharts(){
     var sqm=parseFloat(r['전용(㎡)']||0);
     if(jt==='전세'){
       jVol[idx]++;
-      if(p>0){jPriceSums[idx]+=p; jPriceCnts[idx]++;}
+      if(p>0){jPS[idx]+=p; jPC[idx]++;}
       if(!py&&sqm>0&&p>0) py=Math.round(p/(sqm/3.3058));
-      if(py>0){jPyeongSums[idx]+=py; jPyeongCnts[idx]++;}
+      if(py>0){jPyS[idx]+=py; jPyC[idx]++;}
     } else if(jt==='월세'){
       wVol[idx]++;
       var conv=Math.round(p+m*12/CONV_RATE);
-      if(conv>0){wPriceSums[idx]+=conv; wPriceCnts[idx]++;}
+      if(conv>0){wPS[idx]+=conv; wPC[idx]++;}
       if(!py&&sqm>0&&conv>0) py=Math.round(conv/(sqm/3.3058));
-      if(py>0){wPyeongSums[idx]+=py; wPyeongCnts[idx]++;}
+      if(py>0){wPyS[idx]+=py; wPyC[idx]++;}
     }
-  });
+  }
 
-  var jPriceData=jPriceSums.map(function(s,i){return jPriceCnts[i]>0?Math.round(s/jPriceCnts[i]/1000)/10:null;});
-  var jPyeongData=jPyeongSums.map(function(s,i){return jPyeongCnts[i]>0?Math.round(s/jPyeongCnts[i]):null;});
-  var wPriceData=wPriceSums.map(function(s,i){return wPriceCnts[i]>0?Math.round(s/wPriceCnts[i]/1000)/10:null;});
-  var wPyeongData=wPyeongSums.map(function(s,i){return wPyeongCnts[i]>0?Math.round(s/wPyeongCnts[i]):null;});
-  var leaseRate=jVol.map(function(v,i){return Math.round((v+wVol[i])/totalUnits*1000)/10;});
-  var gc='rgba(255,255,255,.04)';
+  var cur=collectRentByPeriod(yr), prv=collectRentByPeriod(prevYr);
+
+  // ── 값 라벨 플러그인 (현재: 색상, 전년: 흰색)
+  function makeLblPlugin(chartId, fmtCur, fmtPrv){
+    return {id:'t12lbl_'+chartId, afterDatasetsDraw:function(chart){
+      var ctx2=chart.ctx;
+      chart.data.datasets.forEach(function(ds, di){
+        var isPrev=(di===1), meta=chart.getDatasetMeta(di);
+        if(meta.hidden) return;
+        meta.data.forEach(function(pt, i){
+          var v=ds.data[i]; if(v===null||v===undefined||v===0) return;
+          var pos=pt.tooltipPosition?pt.tooltipPosition():{x:pt.x,y:pt.y};
+          ctx2.save();
+          ctx2.fillStyle=isPrev?'#ffffff':ds.borderColor||'#e8eef8';
+          ctx2.font='bold '+(isPrev?'9':'10')+'px sans-serif';
+          ctx2.textAlign='center'; ctx2.textBaseline='bottom';
+          ctx2.shadowColor='rgba(0,0,0,.9)'; ctx2.shadowBlur=4;
+          var label=isPrev?(fmtPrv?fmtPrv(v):''):(fmtCur?fmtCur(v):'');
+          if(label) ctx2.fillText(label, pos.x, pos.y-(isPrev?12:3));
+          ctx2.restore();
+        });
+      });
+    }};
+  }
+
   var chartDefs=[
-    {id:'t12-dc-jeonse-vol',data:jVol,type:'bar',color:'#00b8a9',suffix:'건',fmt:function(v){return v+'건';}},
-    {id:'t12-dc-jeonse-price',data:jPriceData,type:'line',color:'#ffd700',suffix:'억',fmt:function(v){return v!==null?Math.round(v*10)/10+'억':'없음';}},
-    {id:'t12-dc-jeonse-pyeong',data:jPyeongData,type:'line',color:'#ff6b35',suffix:'만',fmt:function(v){return v!==null?Math.round(v).toLocaleString()+'만/평':'없음';}},
-    {id:'t12-dc-wolse-vol',data:wVol,type:'bar',color:'#ff8c42',suffix:'건',fmt:function(v){return v+'건';}},
-    {id:'t12-dc-wolse-price',data:wPriceData,type:'line',color:'#b57bee',suffix:'억',fmt:function(v){return v!==null?Math.round(v*10)/10+'억':'없음';}},
-    {id:'t12-dc-wolse-pyeong',data:wPyeongData,type:'line',color:'#ff9f7f',suffix:'만',fmt:function(v){return v!==null?Math.round(v).toLocaleString()+'만/평':'없음';}},
-    {id:'t12-dc-lease-rate',data:leaseRate,type:'bar',color:'#00e5a0',suffix:'%',fmt:function(v){return v+'%';}},
+    {id:'t12-dc-jeonse-vol', curData:cur.jVol, prvData:prv.jVol, type:'bar', color:'#00b8a9',
+     fmt:function(v){return v>0?v+'건':''}, y:function(v){return v+'건';}},
+    {id:'t12-dc-jeonse-price', curData:cur.jPrice, prvData:prv.jPrice, type:'line', color:'#ffd700',
+     fmt:function(v){return v!==null?Math.round(v*10)/10+'억':''}, y:function(v){return Math.round(v*10)/10+'억';}},
+    {id:'t12-dc-jeonse-pyeong', curData:cur.jPyeong, prvData:prv.jPyeong, type:'line', color:'#ff6b35',
+     fmt:function(v){return v!==null?Math.round(v).toLocaleString()+'만':''}, y:function(v){return Math.round(v).toLocaleString()+'만';}},
+    {id:'t12-dc-wolse-vol', curData:cur.wVol, prvData:prv.wVol, type:'bar', color:'#ff8c42',
+     fmt:function(v){return v>0?v+'건':''}, y:function(v){return v+'건';}},
+    {id:'t12-dc-wolse-price', curData:cur.wPrice, prvData:prv.wPrice, type:'line', color:'#b57bee',
+     fmt:function(v){return v!==null?Math.round(v*10)/10+'억':''}, y:function(v){return Math.round(v*10)/10+'억';}},
+    {id:'t12-dc-wolse-pyeong', curData:cur.wPyeong, prvData:prv.wPyeong, type:'line', color:'#ff9f7f',
+     fmt:function(v){return v!==null?Math.round(v).toLocaleString()+'만':''}, y:function(v){return Math.round(v).toLocaleString()+'만';}},
+    {id:'t12-dc-lease-rate', curData:cur.leaseRate, prvData:prv.leaseRate, type:'bar', color:'#00e5a0',
+     fmt:function(v){return v>0?v+'%':''}, y:function(v){return v+'%';}},
   ];
+
   chartDefs.forEach(function(def){
     var cvs=document.getElementById(def.id); if(!cvs) return;
     var key=def.id.replace(/-/g,'_');
     if(charts[key]){charts[key].destroy();charts[key]=null;}
-    var ds={data:def.data,borderRadius:4};
-    if(def.type==='bar'){ds.backgroundColor=def.color+'55';ds.borderColor=def.color;ds.borderWidth=1.5;}
-    else{ds.borderColor=def.color;ds.backgroundColor=def.color+'15';ds.borderWidth=2;ds.pointRadius=3;ds.pointBackgroundColor=def.color;ds.tension=0.3;ds.spanGaps=true;}
-    charts[key]=new Chart(cvs,{type:def.type,
-      data:{labels:labels,datasets:[ds]},
-      options:{responsive:true,plugins:{legend:{display:false},tooltip:{callbacks:{label:function(c){return c.raw!==null?def.fmt(c.raw):'없음';}}}},
-        scales:{x:{ticks:{color:'#aabbcc',font:{size:10}},grid:{color:gc},border:{color:'transparent'}},
-          y:{ticks:{color:'#8899bb',font:{size:10},callback:function(v){return def.fmt(v);}},grid:{color:gc},border:{color:'transparent'},beginAtZero:def.type==='bar'}}}});
+
+    var plugin=makeLblPlugin(key, def.fmt, def.fmt);
+    var dsMain={data:def.curData, label:'현재', borderRadius:4};
+    var dsPrev={data:def.prvData, label:'전년', borderDash:undefined}; // 실선
+    if(def.type==='bar'){
+      dsMain.backgroundColor=def.color+'55'; dsMain.borderColor=def.color; dsMain.borderWidth=1.5;
+      dsPrev.backgroundColor='rgba(180,180,180,.25)'; dsPrev.borderColor='rgba(220,220,220,.7)'; dsPrev.borderWidth=1; dsPrev.borderRadius=4; dsPrev.type='bar';
+    } else {
+      dsMain.borderColor=def.color; dsMain.backgroundColor=def.color+'15'; dsMain.borderWidth=2;
+      dsMain.pointRadius=3; dsMain.pointBackgroundColor=def.color; dsMain.tension=0.3; dsMain.spanGaps=true;
+      dsPrev.borderColor='rgba(200,200,200,.7)'; dsPrev.backgroundColor='rgba(200,200,200,.05)'; dsPrev.borderWidth=1.5;
+      dsPrev.pointRadius=2; dsPrev.pointBackgroundColor='rgba(200,200,200,.7)'; dsPrev.tension=0.3; dsPrev.spanGaps=true;
+    }
+
+    charts[key]=new Chart(cvs,{type:def.type, plugins:[plugin],
+      data:{labels:labels, datasets:[dsMain, dsPrev]},
+      options:{responsive:true,
+        plugins:{legend:{display:false},
+          tooltip:{callbacks:{label:function(c){return (c.datasetIndex===0?'현재':'전년')+': '+(def.fmt(c.raw)||c.raw);}}}},
+        scales:{
+          x:{ticks:{color:'#aabbcc',font:{size:10}},grid:{color:gc},border:{color:'transparent'}},
+          y:{ticks:{color:'#8899bb',font:{size:10},callback:def.y},grid:{color:gc},border:{color:'transparent'},beginAtZero:def.type==='bar'}
+        }}});
   });
 }
 
