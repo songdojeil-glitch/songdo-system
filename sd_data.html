@@ -2141,8 +2141,17 @@ tr.naver-fav>td:first-child{border-left:3px solid #ffd700;}
     <span class="filter-label" id="t12-sub-label">분기</span>
     <div class="filter-group" id="t12-sub-btns"></div>
   </div>
+  <!-- 거래구분 필터 -->
+  <div class="filter-row" style="margin-top:-4px">
+    <span class="filter-label">거래구분</span>
+    <button class="filter-btn on" onclick="setT12Trade('all',this)">전체</button>
+    <button class="filter-btn" onclick="setT12Trade('전세',this)">전세</button>
+    <button class="filter-btn" onclick="setT12Trade('월세',this)">월세</button>
+  </div>
   <!-- KPI 카드 -->
   <div class="kpi-row kpi-row-5 zoomable" id="t12-kpi-top" onclick="openZoom(this)" style="cursor:zoom-in;margin-top:10px"></div>
+  <!-- 진단 패널 (KPI 바로 아래, 항상 표시) -->
+  <div id="t12-wolse-diag" style="font-size:11px;color:#8899bb;background:rgba(0,0,0,.3);padding:6px 12px;border-radius:6px;margin-top:6px;font-family:monospace;white-space:pre-wrap;line-height:1.6">🔍 데이터 로딩 전...</div>
   <!-- 분기/월별 기간 차트 (연간이 아닐 때만 표시) -->
   <div id="t12-dist-charts-wrap" style="display:none;margin-top:14px">
     <div class="sec-hdr" style="margin-bottom:8px">
@@ -6514,54 +6523,8 @@ function renderTab12(){
   var DATA_district=DATA&&DATA.district?DATA.district:{};
   var jeonseStats={}, wolseStats={}, jeonseAll={cnt:0,prices:[],pyeongs:[],newCnt:0,renewCnt:0};
   var wolseAll={cnt:0,convs:[],pyeongs:[]};
-
-  // ── 월세 비교 차트용: 완전 독립 집계 (areaFilter 무관, 연도+공구 필터만)
-  // 진단 카운터 포함
+  // 월세 비교 차트용: areaFilter 미적용 (84㎡ 월세는 드물어 차트 공백 발생)
   var wolseStatsAll={};
-  var _wd={total:G.rentData?G.rentData.length:0, yrPass:0, distPass:0, isWolse:0, hasG:0, hasDep:0};
-  if(G.rentData) G.rentData.forEach(function(r){
-    var ym=parseInt(r['계약년월']||0); if(!ym) return;
-    // 연도 필터 (recent 포함)
-    if(yr==='recent'){if(!yrFilter(r,'recent')) return;}
-    else {if(Math.floor(ym/100)!==parseInt(yr)) return;}
-    _wd.yrPass++;
-    // 공구 필터
-    if(!t0DistFilter(r)) return;
-    _wd.distPass++;
-    // 월세 여부
-    var jt2=(r['전월세구분']||'').toString().trim();
-    if(jt2!=='월세') return;
-    _wd.isWolse++;
-    var g2=parseInt(r['공구'])||0; if(!g2) return;
-    _wd.hasG++;
-    var dep=parseFloat(r['보증금']||r['보증금액']||r['보증금(만원)']||0);
-    var mon=parseFloat(r['월세금']||r['월세금액']||r['월세(만원)']||0);
-    if(dep>0) _wd.hasDep++;
-    var conv=Math.round(dep+mon*12/CONV_RATE);
-    if(!conv&&dep>0) conv=dep;
-    if(!conv&&mon>0) conv=Math.round(mon*12/CONV_RATE);
-    var sqm2=parseFloat(r['전용(㎡)']||r['전용㎡']||r['전용면적(㎡)']||r['전용']||0);
-    var py2=parseFloat(r['평당가']||0);
-    if(!py2&&sqm2>0&&conv>0) py2=Math.round(conv/(sqm2/3.3058));
-    if(!wolseStatsAll[g2]) wolseStatsAll[g2]={convs:[],pyeongs:[],cnt:0};
-    wolseStatsAll[g2].cnt++;
-    if(conv>0) wolseStatsAll[g2].convs.push(conv);
-    if(py2>0) wolseStatsAll[g2].pyeongs.push(py2);
-  });
-  // 진단 패널 표시
-  (function(){
-    var el=document.getElementById('t12-wolse-diag');
-    if(!el){el=document.createElement('div');el.id='t12-wolse-diag';
-      el.style='font-size:10px;color:#8899bb;background:rgba(0,0,0,.3);padding:6px 10px;border-radius:6px;margin-bottom:8px;font-family:monospace';
-      var anchor=document.getElementById('t12-district-cards');
-      if(anchor&&anchor.parentNode) anchor.parentNode.insertBefore(el,anchor);
-    }
-    var wKeys=Object.keys(wolseStatsAll);
-    el.innerHTML='🔍 월세 집계 진단: 전체 '+_wd.total+'건 → 연도통과 '+_wd.yrPass+
-      '건 → 공구통과 '+_wd.distPass+'건 → 월세구분 '+_wd.isWolse+
-      '건 → 공구>0 '+_wd.hasG+'건 → 보증금>0 '+_wd.hasDep+
-      '건 | wolseStatsAll 공구 수: '+wKeys.length+'개 ['+wKeys.join(',')+']';
-  })();
 
   G.rentData.forEach(function(r){
     if(!areaFilter(r)) {
@@ -6911,9 +6874,44 @@ function renderTab12(){
   drawBarChart('chart-dist-rentavg',jL,jAvgV,jColors,fmtAok,'#81d4fa',yAok,function(v){return Math.round(v*10)/10+'억';});
   drawBarChart('chart-dist-rentpyeong',jL,jPyV,jColors,fmtMn,'#80cbc4',yMn,function(v){return Math.round(v).toLocaleString()+'만/평';});
   drawBarChart('chart-dist-rentcnt',jL,jCntV,jColors,fmtCnt,'#e8eef8',null,function(v){return v+'건';});
-  drawBarChart('chart-dist-wolseavg',wL,wAvgV,wColors,fmtAok,'#ffcc80',yAok,function(v){return Math.round(v*10)/10+'억';});
-  drawBarChart('chart-dist-wolsepyeong',wL,wPyV,wColors,fmtMn,'#ff9f7f',yMn,function(v){return Math.round(v).toLocaleString()+'만/평';});
-  drawBarChart('chart-dist-wolsecnt',wL,wCntV,wColors,fmtCnt,'#e8eef8',null,function(v){return v+'건';});
+
+  // ── 진단: wL/wCntV 실제 값 표시
+  (function(){
+    var el=document.getElementById('t12-wolse-diag');
+    if(!el) return;
+    el.innerHTML+='<br>📦 wL['+wL.length+']: ['+wL.join(',')+']  wCntV: ['+wCntV.join(',')+']  wAvgV: ['+wAvgV.join(',')+']';
+  })();
+
+  // ── 월세 비교 차트 3개: drawBarChart 우회, 직접 렌더링
+  (function(){
+    var gc='rgba(42,58,82,.5)';
+    function renderWolseChart(canvasId, vals, labelFmt, yTickFmt, title){
+      var cvs=document.getElementById(canvasId); if(!cvs) return;
+      var ckey=canvasId.replace(/-/g,'_');
+      if(charts[ckey]){try{charts[ckey].destroy();}catch(e){} charts[ckey]=null;}
+      var lbl=makeAnnPlugin(labelFmt||function(v){return v;}, '#ffcc80', ckey);
+      charts[ckey]=new Chart(cvs.getContext('2d'),{
+        type:'bar', plugins:[lbl],
+        data:{labels:wL, datasets:[{
+          data:vals,
+          backgroundColor:wColors.map(function(c){return c+'55';}),
+          borderColor:wColors,borderWidth:2,borderRadius:4
+        }]},
+        options:{
+          responsive:true,maintainAspectRatio:false,
+          plugins:{legend:{display:false},
+            tooltip:{callbacks:{label:function(c){return labelFmt?labelFmt(c.raw):c.raw;}}}},
+          scales:{
+            x:{ticks:{color:'#aabbcc',font:{size:11}},grid:{display:false}},
+            y:{beginAtZero:true,ticks:{color:'#8899bb',font:{size:10},callback:yTickFmt||function(v){return v;}},grid:{color:gc}}
+          }
+        }
+      });
+    }
+    renderWolseChart('chart-dist-wolseavg',  wAvgV, fmtAok, yAok);
+    renderWolseChart('chart-dist-wolsepyeong',wPyV, fmtMn, yMn);
+    renderWolseChart('chart-dist-wolsecnt',   wCntV,fmtCnt, null);
+  })();
 
   // ── 기존 전월세 공통 차트 렌더
   renderRentSplitChart();
@@ -7270,6 +7268,12 @@ function renderT12DistCharts(){
   }, 50);
 }
 
+function setT12Trade(v,btn){
+  G.t12trade=v;
+  setFilterBtn(btn.parentElement.querySelectorAll('.filter-btn'),btn);
+  var _tc12=document.getElementById('tc12');
+  if(_tc12&&_tc12.classList.contains('on')) renderTab12();
+}
 function renderTab0(){
   if(!DATA) return;
   var yr = G.yr;
