@@ -645,8 +645,36 @@ tr.naver-fav>td:first-child{border-left:3px solid #ffd700;}
   <!-- KPI 상단 -->
   <div class="kpi-row kpi-row-7 zoomable" id="kpi-top" onclick="openZoom(this)" style="cursor:zoom-in"></div>
 
-  <!-- 기간별 차트 (분기/월별 선택 시 표시) -->
-  <!-- period-charts 제거: dist-charts-wrap으로 통합 -->
+  <!-- 기간별 차트 (분기/월별 선택 시 표시) — 최근 실거래 위 배치 -->
+  <div id="dist-charts-wrap" style="margin-top:14px;display:none">
+    <div class="sec-hdr" style="margin-top:4px">
+      <div class="sec-hdr-bar" style="background:var(--accent)"></div>
+      <div class="sec-hdr-title" id="dist-chart-title">📊 기간별 매매 현황</div>
+      <div class="sec-hdr-sub" id="dist-chart-sub"></div>
+    </div>
+    <!-- 1행: 매매 거래량 + 평균 매매가 -->
+    <div class="grid-2" style="margin-bottom:10px">
+      <div class="chart-card zoomable" onclick="openZoom(this)">
+        <div class="chart-card-title">📈 매매 거래량</div>
+        <div class="chart-wrap"><canvas id="dc-sale-vol"></canvas></div>
+      </div>
+      <div class="chart-card zoomable" onclick="openZoom(this)">
+        <div class="chart-card-title">💰 평균 매매가 (만원)</div>
+        <div class="chart-wrap"><canvas id="dc-sale-price"></canvas></div>
+      </div>
+    </div>
+    <!-- 2행: 매매 평당가 + 매매거래율 -->
+    <div class="grid-2" style="margin-bottom:10px">
+      <div class="chart-card zoomable" onclick="openZoom(this)">
+        <div class="chart-card-title">📐 매매 평당가 (만원/평)</div>
+        <div class="chart-wrap"><canvas id="dc-sale-pyeong"></canvas></div>
+      </div>
+      <div class="chart-card zoomable" onclick="openZoom(this)">
+        <div class="chart-card-title">🔄 매매 거래율 Sale Turnover Rate (기간별)</div>
+        <div class="chart-wrap"><canvas id="dc-turnover"></canvas></div>
+      </div>
+    </div>
+  </div>
 
   <!-- 최근 매매 실거래 7건 -->
   <div class="sec-hdr" style="margin-top:4px">
@@ -724,38 +752,6 @@ tr.naver-fav>td:first-child{border-left:3px solid #ffd700;}
     <div class="sec-hdr-sub" id="dist-year-label">2026년 기준</div>
   </div>
   <div class="district-grid" id="district-cards"></div>
-
-  <!-- 공구별 현황 6개 차트 -->
-  <div id="dist-charts-wrap" style="margin-top:14px;display:none">
-    <div class="sec-hdr" style="margin-top:4px">
-      <div class="sec-hdr-bar" style="background:var(--accent)"></div>
-      <div class="sec-hdr-title" id="dist-chart-title">📊 기간별 매매 현황</div>
-      <div class="sec-hdr-sub" id="dist-chart-sub"></div>
-    </div>
-    <!-- 1행: 매매 거래량 + 평균 매매가 -->
-    <div class="grid-2" style="margin-bottom:10px">
-      <div class="chart-card zoomable" onclick="openZoom(this)">
-        <div class="chart-card-title">📈 매매 거래량</div>
-        <div class="chart-wrap"><canvas id="dc-sale-vol"></canvas></div>
-      </div>
-      <div class="chart-card zoomable" onclick="openZoom(this)">
-        <div class="chart-card-title">💰 평균 매매가 (만원)</div>
-        <div class="chart-wrap"><canvas id="dc-sale-price"></canvas></div>
-      </div>
-    </div>
-    <!-- 2행: 매매 평당가 + 매매전환율(4번째) -->
-    <div class="grid-2" style="margin-bottom:10px">
-      <div class="chart-card zoomable" onclick="openZoom(this)">
-        <div class="chart-card-title">📐 매매 평당가 (만원/평)</div>
-        <div class="chart-wrap"><canvas id="dc-sale-pyeong"></canvas></div>
-      </div>
-      <div class="chart-card zoomable" onclick="openZoom(this)">
-        <div class="chart-card-title">🔄 매매 거래율 Sale Turnover Rate (기간별)</div>
-        <div class="chart-wrap"><canvas id="dc-turnover"></canvas></div>
-      </div>
-    </div>
-
-  </div>
 
   <!-- 연간 차트 (연간 선택 시 표시) -->
   <div id="annual-charts">
@@ -5613,20 +5609,26 @@ function updateSubPeriodUI(tabId, yr, period, curSub) {
     var now = new Date();
     var defaultQ = Math.ceil((now.getMonth()+1)/3);
     var sel = curSub || defaultQ;
-    btns.innerHTML = qLabels.map(function(lbl, i) {
-      var q = i + 1;
-      return '<button class="filter-btn' + (sel === q ? ' on' : '') + '" ' +
-        'onclick="setSubPeriodBtn(\'' + tabId + '\',' + q + ',this)">' + lbl + '</button>';
-    }).join('');
+    btns.innerHTML =
+      '<button class="filter-btn' + (sel === 0 ? ' on' : '') + '" ' +
+        'onclick="setSubPeriodBtn(\'' + tabId + '\',0,this)">전체</button>' +
+      qLabels.map(function(lbl, i) {
+        var q = i + 1;
+        return '<button class="filter-btn' + (sel === q ? ' on' : '') + '" ' +
+          'onclick="setSubPeriodBtn(\'' + tabId + '\',' + q + ',this)">' + lbl + '</button>';
+      }).join('');
   } else { // monthly
     label.textContent = '월';
     var now2 = new Date();
     var defaultM = now2.getMonth() + 1;
     var sel2 = curSub || defaultM;
-    btns.innerHTML = [1,2,3,4,5,6,7,8,9,10,11,12].map(function(m) {
-      return '<button class="filter-btn' + (sel2 === m ? ' on' : '') + '" ' +
-        'onclick="setSubPeriodBtn(\'' + tabId + '\',' + m + ',this)">' + m + '월</button>';
-    }).join('');
+    btns.innerHTML =
+      '<button class="filter-btn' + (sel2 === 0 ? ' on' : '') + '" ' +
+        'onclick="setSubPeriodBtn(\'' + tabId + '\',0,this)">전체</button>' +
+      [1,2,3,4,5,6,7,8,9,10,11,12].map(function(m) {
+        return '<button class="filter-btn' + (sel2 === m ? ' on' : '') + '" ' +
+          'onclick="setSubPeriodBtn(\'' + tabId + '\',' + m + ',this)">' + m + '월</button>';
+      }).join('');
   }
 }
 
@@ -5651,28 +5653,25 @@ function subPeriodFilter(ym, yr, period, subPeriod) {
   var now = new Date();
 
   if (yr === 'recent') {
-    // 최근 1년: 오늘 기준 최근 12개월
     var iy = Math.floor(ym/100), im = ym % 100;
     var diff = (now.getFullYear() - iy) * 12 + (now.getMonth()+1 - im);
     return diff >= 0 && diff < 12;
   }
 
-  // 특정 연도
   var rowYr = Math.floor(ym / 100);
   if (rowYr !== parseInt(yr)) return false;
 
   if (period === 'annual') return true;
 
+  // subPeriod===0 → 전체 (모든 분기/월 포함)
+  if (!subPeriod) return true;
+
   var mo = ym % 100;
   if (period === 'quarter') {
-    var q = Math.ceil(mo / 3);
-    // subPeriod=0이면 기본값(현재분기)
-    var sel = subPeriod || Math.ceil((now.getMonth()+1) / 3);
-    return q === sel;
+    return Math.ceil(mo / 3) === subPeriod;
   }
   if (period === 'monthly') {
-    var sel2 = subPeriod || (now.getMonth()+1);
-    return mo === sel2;
+    return mo === subPeriod;
   }
   return true;
 }
@@ -5704,7 +5703,7 @@ function setSaleType(t,btn){ G.saleType=t; setFilterBtn(btn.parentElement.queryS
 function setPeriod(v,btn){
   G.period=v;
   var now=new Date();
-  G.subPeriod = v==='quarter' ? Math.ceil((now.getMonth()+1)/3) : (v==='monthly' ? now.getMonth()+1 : 0);
+  G.subPeriod = 0; // 기간 변경 시 전체로 초기화
   setFilterBtn(btn.parentElement.querySelectorAll('.filter-btn'),btn);
   updateSubPeriodUI('t0', G.yr, v, G.subPeriod);
   updateSubPeriodUI('t12', G.yr, v, G.subPeriod);
@@ -6403,12 +6402,12 @@ function periodLabel(){
   var sub=G.subPeriod||0;
   if(G.period==='quarter'){
     if(G.yr==='recent') return '최근4분기';
-    var q=sub||Math.ceil((now.getMonth()+1)/3);
-    return q+'분기';
+    if(!sub) return '전체분기';
+    return sub+'분기';
   }
   if(G.yr==='recent') return '최근12개월';
-  var m=sub||(now.getMonth()+1);
-  return m+'월';
+  if(!sub) return '전체월';
+  return sub+'월';
 }
 
 // 공통 필터 뱃지 업데이트
