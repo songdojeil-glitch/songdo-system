@@ -7542,6 +7542,7 @@ function renderT2Dashboard(){
     var priceKey=trade==='sale'?'거래금액':(trade==='jeonse'?'보증금':'환산보증금');
 
     var sumRows='';
+    var priceHdrLabel=trade==='sale'?'거래가':(trade==='jeonse'?'전세가':'환산보증금');
     pyeongs.forEach(function(bp){
       var rows=unitAll.filter(function(r){
         var b=parseInt(r['분양평형']||0);
@@ -7568,77 +7569,129 @@ function renderT2Dashboard(){
         '<table class="data-table" style="font-size:11px">'+
           '<thead><tr>'+
             '<th class="num">평형</th><th class="num">건수</th>'+
-            '<th class="num" style="color:var(--yellow)">평균가</th>'+
-            '<th class="num" style="color:var(--yellow)">최고가</th>'+
-            '<th class="num" style="color:#64b5f6">최저가</th>'+
+            '<th class="num" style="color:var(--yellow)">평균'+priceHdrLabel+'</th>'+
+            '<th class="num" style="color:var(--yellow)">최고'+priceHdrLabel+'</th>'+
+            '<th class="num" style="color:#64b5f6">최저'+priceHdrLabel+'</th>'+
             '<th class="num" style="color:#ff6b35">평당가</th>'+
           '</tr></thead>'+
           '<tbody>'+sumRows+'</tbody>'+
         '</table>'+
       '</div>'+
       '<div class="grid-2">'+
-        '<div class="chart-card zoomable" onclick="openZoom(this)">'+
-          '<div class="chart-card-title">📊 최근 12개월 월별 거래량 (평형별)</div>'+
-          '<div class="chart-wrap"><canvas id="t2-inline-vol"></canvas></div>'+
+        '<div class="chart-card zoomable" onclick="openZoom(this)" style="height:460px">'+
+          '<div class="chart-card-title" id="t2-inline-vol-title">📊 거래량 (평형별)</div>'+
+          '<div class="chart-wrap" style="height:400px"><canvas id="t2-inline-vol"></canvas></div>'+
         '</div>'+
-        '<div class="chart-card zoomable" onclick="openZoom(this)">'+
-          '<div class="chart-card-title">📈 최근 12개월 평균가 추이 (평형별)</div>'+
-          '<div class="chart-wrap"><canvas id="t2-inline-price"></canvas></div>'+
+        '<div class="chart-card zoomable" onclick="openZoom(this)" style="height:460px">'+
+          '<div class="chart-card-title" id="t2-inline-price-title">📈 평균가 추이 (평형별)</div>'+
+          '<div class="chart-wrap" style="height:400px"><canvas id="t2-inline-price"></canvas></div>'+
         '</div>'+
       '</div>';
 
-    // 12개월 월별 데이터 빌드
+    // 기간 범위 계산 (yr 필터 연동)
     setTimeout(function(){
       var now3=new Date();
-      var startD3=new Date(now3.getFullYear(),now3.getMonth()-11,1);
+      var startD3, endYm3, labs3=[], numPeriods=12;
+      var yr3=yr||'recent';
+
+      if(yr3==='recent'){
+        // 최근 12개월 (기본)
+        startD3=new Date(now3.getFullYear(),now3.getMonth()-11,1);
+        endYm3=now3.getFullYear()*100+(now3.getMonth()+1);
+        for(var i=0;i<12;i++){var d3b=new Date(startD3);d3b.setMonth(d3b.getMonth()+i);labs3.push(d3b.getMonth()+1+'월');}
+      } else {
+        // 특정 연도: 1월~12월 (또는 현재 연도면 지금 월까지)
+        var y3=parseInt(yr3);
+        startD3=new Date(y3,0,1);
+        var maxMo=(y3===now3.getFullYear())?now3.getMonth()+1:12;
+        endYm3=y3*100+maxMo; numPeriods=maxMo;
+        for(var j=0;j<numPeriods;j++) labs3.push((j+1)+'월');
+      }
       var startYm3=startD3.getFullYear()*100+(startD3.getMonth()+1);
-      var endYm3=now3.getFullYear()*100+(now3.getMonth()+1);
-      var labs3=[];
-      for(var i=0;i<12;i++){var d3=new Date(startD3); d3.setMonth(d3.getMonth()+i); labs3.push(d3.getMonth()+1+'월');}
+
+      // 가격 계산 헬퍼
+      function getPrice3(r){
+        if(trade==='sale') return parseFloat(r['거래금액']||0);
+        if(trade==='jeonse') return parseFloat(r['보증금']||r['보증금액']||0);
+        return parseFloat(r['환산보증금']||0)||Math.round(parseFloat(r['보증금']||r['보증금액']||0)+parseFloat(r['월세금']||r['월세금액']||0)*12/CONV2);
+      }
+
       var volDS=[],priceDS=[];
       pyeongs.forEach(function(bp,ci){
         var col=COLORS[ci%COLORS.length];
-        var vArr3=new Array(12).fill(0);
-        var pArr3=[]; for(var j=0;j<12;j++) pArr3.push([]);
+        var vArr3=new Array(numPeriods).fill(0);
+        var pArr3=[]; for(var k3=0;k3<numPeriods;k3++) pArr3.push([]);
         unitAll.forEach(function(r){
           var ym=parseInt(r['계약년월']||0);
           if(ym<startYm3||ym>endYm3) return;
           var b=parseInt(r['분양평형']||0);
           if(!b){var sq=parseFloat(r['전용(㎡)']||0);b=pyIdx[Math.round(sq*10)]||0;}
           if(b!==bp) return;
-          var d3=new Date(startD3);
-          for(var k=0;k<12;k++){
-            if(ym===d3.getFullYear()*100+(d3.getMonth()+1)){
-              vArr3[k]++;
-              var p3=trade==='sale'?parseFloat(r['거래금액']||0):
-                trade==='jeonse'?parseFloat(r['보증금']||r['보증금액']||0):
-                (parseFloat(r['환산보증금']||0)||Math.round(parseFloat(r['보증금']||r['보증금액']||0)+parseFloat(r['월세금']||r['월세금액']||0)*12/CONV2));
-              if(p3>0) pArr3[k].push(p3);
-            }
-            d3.setMonth(d3.getMonth()+1);
-          }
+          var mo=(ym%100)-1; // 0-based
+          var baseY=startD3.getFullYear(); var baseM=startD3.getMonth();
+          var relMo=(Math.floor(ym/100)-baseY)*12+(ym%100)-1-baseM;
+          if(relMo<0||relMo>=numPeriods) return;
+          vArr3[relMo]++;
+          var p3=getPrice3(r);
+          if(p3>0) pArr3[relMo].push(p3);
         });
         var pData3=pArr3.map(function(a){return a.length?Math.round(avg2(a)/1000)/10:null;});
         volDS.push({label:bp+'평',data:vArr3,backgroundColor:col+'55',borderColor:col,borderWidth:1.5,borderRadius:3,type:'bar'});
         priceDS.push({label:bp+'평',data:pData3,borderColor:col,backgroundColor:col+'15',borderWidth:2,pointRadius:3,pointBackgroundColor:col,tension:0.3,spanGaps:true});
       });
 
+      // 차트 제목 업데이트
+      var yrLabel3=yr3==='recent'?'최근1년':yr3+'년';
+      var priceUnit=trade==='monthly'?'환산보증금':'가격';
+      $set('t2-inline-vol-title','📊 '+yrLabel3+' 거래량 (평형별)');
+      $set('t2-inline-price-title','📈 '+yrLabel3+' 평균'+priceUnit+' 추이 (평형별)');
+
       var gc2='rgba(42,58,82,.5)';
       var legendOpts={display:true,position:'top',labels:{color:'#aabbcc',font:{size:10},boxWidth:10}};
+
+      // 값 라벨 플러그인 (막대 위 숫자)
+      var volLblPlugin={id:'t2inlineVol',afterDatasetsDraw:function(chart){
+        var cx=chart.ctx;
+        chart.data.datasets.forEach(function(ds,di){
+          var meta=chart.getDatasetMeta(di);
+          meta.data.forEach(function(bar,i){
+            var v=ds.data[i]; if(!v||v<=0) return;
+            var pos=bar.tooltipPosition?bar.tooltipPosition():{x:bar.x,y:bar.y};
+            cx.save(); cx.fillStyle=ds.borderColor||'#e8eef8';
+            cx.font='bold 9px sans-serif'; cx.textAlign='center'; cx.textBaseline='bottom';
+            cx.shadowColor='rgba(0,0,0,.9)'; cx.shadowBlur=3;
+            cx.fillText(v+'건', pos.x, pos.y-2); cx.restore();
+          });
+        });
+      }};
+      var priceLblPlugin={id:'t2inlinePrice',afterDatasetsDraw:function(chart){
+        var cx=chart.ctx;
+        chart.data.datasets.forEach(function(ds,di){
+          var meta=chart.getDatasetMeta(di);
+          meta.data.forEach(function(pt,i){
+            var v=ds.data[i]; if(v===null||v===undefined) return;
+            var pos=pt.tooltipPosition?pt.tooltipPosition():{x:pt.x,y:pt.y};
+            cx.save(); cx.fillStyle=ds.borderColor||'#e8eef8';
+            cx.font='bold 9px sans-serif'; cx.textAlign='center'; cx.textBaseline='bottom';
+            cx.shadowColor='rgba(0,0,0,.9)'; cx.shadowBlur=3;
+            cx.fillText(Math.round(v*10)/10+'억', pos.x, pos.y-3); cx.restore();
+          });
+        });
+      }};
 
       ['t2-inline-vol','t2-inline-price'].forEach(function(cid){
         var cvs3=document.getElementById(cid); if(!cvs3) return;
         var ex3=typeof Chart!=='undefined'&&Chart.getChart?Chart.getChart(cvs3):null;
         if(ex3) try{ex3.destroy();}catch(e){}
         if(cid==='t2-inline-vol'){
-          new Chart(cvs3.getContext('2d'),{type:'bar',
+          new Chart(cvs3.getContext('2d'),{type:'bar',plugins:[volLblPlugin],
             data:{labels:labs3,datasets:volDS},
             options:{responsive:true,maintainAspectRatio:false,
               plugins:{legend:legendOpts},
               scales:{x:{stacked:false,ticks:{color:'#aabbcc',font:{size:9}},grid:{color:gc2},border:{color:'transparent'}},
                 y:{ticks:{color:'#8899bb',font:{size:9},stepSize:1},grid:{color:gc2},border:{color:'transparent'},beginAtZero:true}}}});
         } else {
-          new Chart(cvs3.getContext('2d'),{type:'line',
+          new Chart(cvs3.getContext('2d'),{type:'line',plugins:[priceLblPlugin],
             data:{labels:labs3,datasets:priceDS},
             options:{responsive:true,maintainAspectRatio:false,
               plugins:{legend:legendOpts,tooltip:{callbacks:{label:function(c){return c.dataset.label+': '+(c.raw!==null?Math.round(c.raw*10)/10+'억':'-');}}}},
@@ -7764,9 +7817,11 @@ function renderT2Dashboard(){
   var rateDataPrv=prv.vol.map(function(v){return units>0?Math.round(v/units*1000)/10:0;});
 
   var periodLbl=(period==='quarter'?'분기별':'월별');
-  $set('t2-chart-title','📈 '+nm+' '+periodLbl+' 현황 · '+trdLbl+(prevYr?' ('+yr+'년 + '+prevYr+'년 비교)':''));
-  $set('t2c-vol-title','📊 거래량 (신규+갱신)');
-  $set('t2c-price-title','💰 평균 거래가 (신규)');
+  // 매매는 신규/갱신 구분 없음, 전세/월세만 신규+갱신 표기
+  var volNote=trade==='sale'?'':'<span style="font-size:9px;color:var(--text3)"> (신규+갱신)</span>';
+  $set('t2-chart-title','📈 '+nm+' '+periodLbl+' 현황 · '+trdLbl+(prevYr?' | '+yr+'년 vs '+prevYr+'년':''));
+  document.getElementById('t2c-vol-title').innerHTML='📊 거래량'+volNote;
+  $set('t2c-price-title','💰 평균 '+(trade==='sale'?'거래가':'전세가/환산보증금')+' (신규)');
   $set('t2c-pyeong-title','📐 평당가 (신규)');
   $set('t2c-rate-title','🔄 거래율 (%)');
 
