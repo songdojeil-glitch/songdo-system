@@ -998,6 +998,14 @@ tr.naver-fav>td:first-child{border-left:3px solid #ffd700;}
     </div>
   </div>
 
+    <div class="filter-row" style="margin-top:-4px;align-items:center;gap:8px">
+    <span class="filter-label">단지검색</span>
+    <input type="text" id="t2-search-input" placeholder="단지명 입력..."
+      style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:4px 10px;color:var(--text1);font-size:12px;width:160px;outline:none"
+      oninput="t2SearchInput(this.value)" />
+    <div id="t2-unit-chips" style="display:flex;flex-wrap:wrap;gap:4px;flex:1"></div>
+    <button onclick="t2ClearSearch()" style="background:transparent;border:1px solid var(--border);border-radius:6px;padding:3px 10px;color:var(--text3);font-size:11px;cursor:pointer">초기화</button>
+  </div>
   <div class="empty-state" id="t2-empty">
     <div class="empty-icon">📊</div>
     <div class="empty-title">매매 데이터를 먼저 업로드해 주세요</div>
@@ -1012,7 +1020,7 @@ tr.naver-fav>td:first-child{border-left:3px solid #ffd700;}
     <div class="table-wrap" style="cursor:pointer">
       <div class="table-scroll-hint">← 좌우로 스크롤하여 전체 내용 확인 →</div>
     <div class="table-scroll" style="max-height:none">
-        <table class="data-table mobile-scroll" id="t2-table" >
+        <table class="data-table mobile-scroll" id="t2-table" data-cr-id="t2-table-sale">
           <colgroup id="t2-colgroup"></colgroup>
           <thead><tr id="t2-thead-tr"></tr></thead>
           <tbody id="t2-tbody"></tbody>
@@ -2315,7 +2323,7 @@ function $html(id, val){ var el=document.getElementById(id); if(el) el.innerHTML
 var G = {
   yr: 2026, area: '84', saleType: 'all', period: 'annual', subPeriod: 0, t0Dist: 'all', tradeType: 'sale',
   t1yr: 2026, t1period: 'annual', t1subPeriod: 0, t1saleType: 'all', t1area: 'all', t1trade: 'sale',
-  t2yr: 2026, t2period: 'annual', t2subPeriod: 0, t2trade: 'sale', t2saleType: 'all', t2area: 'all', t2dist: 'all',
+  t2yr: 2026, t2period: 'annual', t2subPeriod: 0, t2trade: 'sale', t2saleType: 'all', t2area: 'all', t2dist: 'all', t2unit: 'all', t2search: '',
   yr1: 2026, saleType1: 'all', maxArea: 'all', histArea: 'all',
   distFilter: 'all',
   saleF: 'all', saleAreaF: 'all', abnF: 'inc',
@@ -3670,15 +3678,35 @@ function t2Set(key, val, btn){
       var el=document.getElementById(id);
       if(el) el.style.display = show?'':'none';
     });
+    G.t2unit='all'; G.t2search='';  // 거래유형 변경 시 단지 초기화
+    var si=document.getElementById('t2-search-input'); if(si) si.value='';
   }
+  if(key==='dist'){ G.t2unit='all'; }  // 공구 변경 시 단지 초기화
   if(key==='period'){
     var now=new Date();
-    G.t2subPeriod = val==='quarter' ? Math.ceil((now.getMonth()+1)/3) : (val==='monthly' ? now.getMonth()+1 : 0);
+    G.t2subPeriod = 0;
     updateSubPeriodUI('t2', G.t2yr, val, G.t2subPeriod);
   } else if(key==='yr'){
     if(val==='recent') G.t2subPeriod=0;
     updateSubPeriodUI('t2', val, G.t2period, G.t2subPeriod);
   }
+  renderTab2();
+}
+function t2SearchInput(val){
+  G.t2search=val;
+  renderTab2();
+}
+function t2ClearSearch(){
+  G.t2search=''; G.t2unit='all';
+  var el=document.getElementById('t2-search-input');
+  if(el) el.value='';
+  renderTab2();
+}
+function t2SetUnit(nm){
+  G.t2unit=nm;
+  var si=document.getElementById('t2-search-input');
+  if(si&&nm!=='all') si.value='';
+  G.t2search='';
   renderTab2();
 }
 
@@ -9507,6 +9535,13 @@ function renderTab2(){
   var saleType= G.t2saleType||'all';
   var area    = G.t2area||'all';
   var dist    = G.t2dist||'all';
+  var unitSel = G.t2unit||'all';
+  var search  = (G.t2search||'').trim();
+
+  // 컬럼 폭 거래유형별 키 (폭 저장/복원에 사용)
+  var crKey = 't2-table-'+trade;
+  var tbl2 = document.getElementById('t2-table');
+  if(tbl2) tbl2.setAttribute('data-cr-id', crKey);
 
   var now = new Date();
   var subPeriod = G.t2subPeriod||0;
@@ -9541,8 +9576,48 @@ function renderTab2(){
     if(dist!=='all'&&parseInt(r['공구'])!==parseInt(dist)) return false;
     if(!areaOk(r)) return false;
     var ym=parseInt(r['계약년월']||0);
-    return ymInRange(ym);
+    if(!ymInRange(ym)) return false;
+    if(search&&r['단지명']&&r['단지명'].indexOf(search)===-1) return false;
+    if(unitSel!=='all'&&r['단지명']!==unitSel) return false;
+    return true;
   });
+
+  // ── 단지 칩 구성 (search 적용, unit 선택)
+  (function(){
+    var allForChips = data.filter(function(r){
+      if(trade==='sale'){
+        if(r['해제사유']&&r['해제사유']==='Y') return false;
+        if(saleType!=='all'&&r['구분']!==({all:'',apt:'아파트',pre:'분양권'}[saleType]||saleType)) return false;
+      } else {
+        var jt=r['전월세구분']||'';
+        if(trade==='jeonse'&&jt!=='전세') return false;
+        if(trade==='monthly'&&jt!=='월세') return false;
+      }
+      if(dist!=='all'&&parseInt(r['공구'])!==parseInt(dist)) return false;
+      if(!areaOk(r)) return false;
+      var ym=parseInt(r['계약년월']||0);
+      if(!ymInRange(ym)) return false;
+      if(search&&r['단지명']&&r['단지명'].indexOf(search)===-1) return false;
+      return true;
+    });
+    var unitSet={};
+    allForChips.forEach(function(r){ if(r['단지명']) unitSet[r['단지명']]=(unitSet[r['단지명']]||0)+1; });
+    if(unitSel!=='all'&&!unitSet[unitSel]){ G.t2unit='all'; unitSel='all'; }
+    var unitList=Object.keys(unitSet).sort(function(a,b){return a.localeCompare(b,'ko');});
+    var chipsEl=document.getElementById('t2-unit-chips');
+    if(chipsEl){
+      var chipHtml='';
+      if(!search){
+        chipHtml='<span onclick="t2SetUnit(\'all\')" style="cursor:pointer;padding:3px 8px;border-radius:12px;font-size:11px;white-space:nowrap;'+(unitSel==='all'?'background:var(--accent);color:#fff':'background:var(--bg3);color:var(--text2);border:1px solid var(--border)')+'">전체('+allForChips.length+')</span>';
+      }
+      unitList.forEach(function(nm){
+        var sel=unitSel===nm;
+        var safeNm=nm.replace(/"/g,'&quot;');
+        chipHtml+='<span onclick="t2SetUnit(\''+safeNm+'\')" style="cursor:pointer;padding:3px 8px;border-radius:12px;font-size:11px;white-space:nowrap;'+(sel?'background:var(--accent);color:#fff':'background:var(--bg3);color:var(--text2);border:1px solid var(--border)')+'">'+nm+'('+unitSet[nm]+')</span>';
+      });
+      chipsEl.innerHTML=chipHtml;
+    }
+  })();
 
   // 단지별 집계
   var byUnit={};
@@ -9607,6 +9682,15 @@ function renderTab2(){
     if(cg) cg.innerHTML='<col style="width:68px"><col style="width:auto"><col style="width:56px"><col style="width:90px"><col style="width:80px"><col style="width:100px"><col style="width:90px"><col style="width:90px">';
     if(thead) thead.innerHTML='<th style="text-align:center">공구</th><th>단지명</th><th class="num">건수</th><th class="num" style="color:var(--accent)">평균보증금</th><th class="num" style="color:var(--yellow)">평균월세</th><th class="num" style="color:var(--accent2,#00e5a0)">평균환산보증금</th><th class="num" style="color:#ff6b35">평당가</th><th class="num">최근거래일</th>';
   }
+
+  // ── 컬럼 폭 저장값 복원 (거래유형별 독립 저장)
+  var savedW = _crLoadWidths(crKey);
+  if(savedW){
+    var ths2 = document.querySelectorAll('#t2-thead-tr th');
+    ths2.forEach(function(th,i){ if(savedW[i]) th.style.width=savedW[i]+'px'; });
+  }
+  // 드래그 핸들 초기화 (저장 및 복원 연결)
+  setTimeout(function(){ var t=document.getElementById('t2-table'); if(t) initColResize(t); }, 30);
 
   // 전세가 집계 (매매 탭일 때)
   var rentByUnit={};
