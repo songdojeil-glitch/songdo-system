@@ -928,6 +928,23 @@ tr.naver-fav>td:first-child{border-left:3px solid #ffd700;}
       </table>
     </div>
   </div>
+
+  <!-- 공구별 최고 평당가 거래 -->
+  <div class="sec-hdr" style="margin-top:14px">
+    <div class="sec-hdr-bar" style="background:#ff6b35"></div>
+    <div class="sec-hdr-title" id="t1-toppyeong-title">📐 공구별 최고 평당가 거래</div>
+    <div class="sec-hdr-sub" id="t1-toppyeong-sub">조건에 따른 공구별 평당가 최고 1건</div>
+  </div>
+  <div class="table-wrap">
+    <div class="table-scroll-hint">← 좌우로 스크롤하여 전체 내용 확인 →</div>
+    <div class="table-scroll" style="max-height:none">
+      <table class="data-table mobile-scroll" id="t1-toppyeong-table">
+        <colgroup id="t1-toppyeong-colgroup"></colgroup>
+        <thead><tr id="t1-toppyeong-thead-tr"></tr></thead>
+        <tbody id="t1-toppyeong-tbody"></tbody>
+      </table>
+    </div>
+  </div>
 </div>
 
 <!-- ══ TAB2 단지별 시세 ══ -->
@@ -5862,6 +5879,22 @@ function renderTab5(){
 }
 
 function fmt만(v){ if(!v||v===0) return '-'; return Math.round(v/10000*10)/10+'억'; }
+// ── 평당가 계산 헬퍼: 분양평형 기준 (전용㎡ 미사용)
+// 분양평형 = r['분양평형'] 또는 r['타입'] 앞 숫자(분양면적㎡) ÷ 3.3058
+function getBP(r){
+  var bp=parseInt(r['분양평형']||0);
+  if(bp>0) return bp;
+  // 타입 필드에서 분양면적㎡ 추출 → ÷ 3.3058 = 분양평형
+  var tn=parseFloat((r['타입']||r['타입명']||'').replace(/[^0-9.].*/,'')||0);
+  if(tn>0) return Math.round(tn/3.3058);
+  return 0;
+}
+// 가격(만원) ÷ 분양평형 = 평당가(만원/평) — 분양평형이 없으면 0
+function calcPyeong(price, r){
+  var bp=getBP(r);
+  return bp>0&&price>0?Math.round(price/bp):0;
+}
+
 function fmt평(v){ if(!v||v===0) return '-'; return Math.round(v).toLocaleString()+'만/평'; }
 function fmt천(v){ if(!v||v===0) return '-'; return Math.round(v).toLocaleString()+'만'; }
 function fmtPct(v){ return v>0?'+'+v+'%':v+'%'; }
@@ -6679,7 +6712,7 @@ function renderTab12(){
         if(!conv2&&p2>0) conv2=p2; // 월세금 없는 경우 보증금만으로 환산
         var py2=parseFloat(r['평당가']||0);
         var sqm2=parseFloat(r['전용면적(㎡)']||r['전용(㎡)']||r['전용㎡']||0);
-        if(!py2&&sqm2>0&&conv2>0) py2=Math.round(conv2/(sqm2/3.3058));
+        if(!py2) py2=calcPyeong(conv2,r);
         if(!wolseStatsAll[g2]) wolseStatsAll[g2]={convs:[],pyeongs:[],cnt:0};
         wolseStatsAll[g2].cnt++;
         if(conv2>0) wolseStatsAll[g2].convs.push(conv2);
@@ -6704,7 +6737,7 @@ function renderTab12(){
       if(ct==='신규'||ct.indexOf('신규')>=0){
         jeonseAll.newCnt++;
         if(p>0){jeonseStats[g].prices.push(p); jeonseAll.prices.push(p);}  // 가격: 신규만
-        if(!py&&sqm>0&&p>0) py=Math.round(p/(sqm/3.3058));
+        if(!py) py=calcPyeong(p,r);
         if(py>0){jeonseStats[g].pyeongs.push(py); jeonseAll.pyeongs.push(py);}  // 평당가: 신규만
       } else if(ct==='갱신'||ct.indexOf('갱신')>=0){ jeonseAll.renewCnt++; }
       jeonseAll.cnt++;
@@ -6715,7 +6748,7 @@ function renderTab12(){
       wolseStats[g].cnt++;                             // 거래건수: 신규+갱신
       if(ct==='신규'||ct.indexOf('신규')>=0){
         if(conv>0){wolseStats[g].convs.push(conv); wolseAll.convs.push(conv);}  // 환산보증금: 신규만
-        if(!py&&sqm>0&&conv>0) py=Math.round(conv/(sqm/3.3058));
+        if(!py) py=calcPyeong(conv,r);
         if(py>0){wolseStats[g].pyeongs.push(py); wolseAll.pyeongs.push(py);}   // 평당가: 신규만
       }
       wolseAll.cnt++;
@@ -6829,7 +6862,7 @@ function renderTab12(){
       var p=parseFloat(r['보증금']||r['보증금액']||0);
       var py=parseFloat(r['평당가']||0);
       var sqm=parseFloat(r['전용(㎡)']||0);
-      if(!py&&sqm>0&&p>0) py=Math.round(p/(sqm/3.3058));
+      if(!py) py=calcPyeong(p,r);
       var bp=parseInt(r['분양평형']||0);
       var ym=String(r['계약년월']||''), dd2=parseInt(r['계약일']||0);
       var ymStr=ym.length>=6?ym.slice(0,4)+'.'+ym.slice(4,6)+(dd2?'.'+String(dd2).padStart(2,'0'):''):'';
@@ -6865,7 +6898,7 @@ function renderTab12(){
       var conv=Math.round(p+m*12/CONV_RATE);
       var py=parseFloat(r['평당가']||0);
       var sqm=parseFloat(r['전용(㎡)']||0);
-      if(!py&&sqm>0&&conv>0) py=Math.round(conv/(sqm/3.3058));
+      if(!py) py=calcPyeong(conv,r);
       var bp=parseInt(r['분양평형']||0);
       var ym=String(r['계약년월']||''), dd2=parseInt(r['계약일']||0);
       var ymStr=ym.length>=6?ym.slice(0,4)+'.'+ym.slice(4,6)+(dd2?'.'+String(dd2).padStart(2,'0'):''):'';
@@ -6896,7 +6929,7 @@ function renderTab12(){
       var p=parseFloat(r['보증금']||r['보증금액']||0);
       var py=parseFloat(r['평당가']||0);
       var sqm=parseFloat(r['전용(㎡)']||0);
-      if(!py&&sqm>0&&p>0) r._py12=Math.round(p/(sqm/3.3058));
+      if(!py) r._py12=calcPyeong(p,r);
       else r._py12=py;
     });
     rows=rows.sort(function(a,b){return (b._py12||0)-(a._py12||0);}).slice(0,10);
@@ -6935,7 +6968,7 @@ function renderTab12(){
       r._conv12=Math.round(p+m*12/CONV_RATE);
       var py=parseFloat(r['평당가']||0);
       var sqm=parseFloat(r['전용(㎡)']||0);
-      if(!py&&sqm>0&&r._conv12>0) r._py12w=Math.round(r._conv12/(sqm/3.3058));
+      if(!py) r._py12w=calcPyeong(r._conv12,r);
       else r._py12w=py;
     });
     rows=rows.sort(function(a,b){return (b._conv12||0)-(a._conv12||0);}).slice(0,10);
@@ -7120,7 +7153,7 @@ function openT12DistModal(distNum){
         var ymk=String(ym);
         jMonthly[ymk]=(jMonthly[ymk]||0)+1;
         if(p>0){jMonthlySums[ymk]=(jMonthlySums[ymk]||0)+p; jMonthlyCnts[ymk]=(jMonthlyCnts[ymk]||0)+1;}
-        if(!py&&sqm>0&&p>0) py=Math.round(p/(sqm/3.3058));
+        if(!py) py=calcPyeong(p,r);
         if(py>0){jPyeongSums[ymk]=(jPyeongSums[ymk]||0)+py; jPyeongCnts[ymk]=(jPyeongCnts[ymk]||0)+1;}
       }
     } else if(jt==='월세'){
@@ -7148,7 +7181,7 @@ function openT12DistModal(distNum){
     var p=parseFloat(r['보증금']||r['보증금액']||0);
     var sqm=parseFloat(r['전용(㎡)']||0);
     var py=parseFloat(r['평당가']||0);
-    if(!py&&sqm>0&&p>0) py=Math.round(p/(sqm/3.3058));
+    if(!py) py=calcPyeong(p,r);
     var ym=String(r['계약년월']||''), dd2=parseInt(r['계약일']||0);
     var ymStr=ym.length>=6?ym.slice(0,4)+'.'+ym.slice(4,6)+(dd2?'.'+String(dd2).padStart(2,'0'):''):'';
     if(type==='jeonse'){
@@ -7343,13 +7376,13 @@ function renderT12DistCharts(){
     if(jt==='전세'){
       jVol[idx]++;                                     // 거래건수: 신규+갱신
       if(isNew&&p>0){jPS[idx]+=p; jPC[idx]++;}        // 가격: 신규만
-      if(!py&&sqm>0&&p>0) py=Math.round(p/(sqm/3.3058));
+      if(!py) py=calcPyeong(p,r);
       if(isNew&&py>0){jPyS[idx]+=py; jPyC[idx]++;}   // 평당가: 신규만
     } else if(jt==='월세'){
       wVol[idx]++;                                     // 거래건수: 신규+갱신
       var conv=Math.round(p+m*12/CONV_RATE);
       if(isNew&&conv>0){wPS[idx]+=conv; wPC[idx]++;}  // 환산보증금: 신규만
-      if(!py&&sqm>0&&conv>0) py=Math.round(conv/(sqm/3.3058));
+      if(!py) py=calcPyeong(conv,r);
       if(isNew&&py>0){wPyS[idx]+=py; wPyC[idx]++;}   // 평당가: 신규만
     }
   }
@@ -7714,7 +7747,7 @@ function renderT2Dashboard(){
     var bp=parseInt(r['분양평형']||0);
     if(trade==='sale'){
       var p=parseFloat(r['거래금액']||0), py=parseFloat(r['평당가']||0);
-      if(!py&&sqm>0&&p>0) py=Math.round(p/(sqm/3.3058));
+      if(!py) py=calcPyeong(p,r);
       return '<tr><td class="num" style="font-size:11px;color:var(--text3)">'+ymStr+'</td>'+
         '<td class="num">'+(sqm?sqm.toFixed(1)+'㎡':'-')+'</td><td class="num">'+(bp||'-')+'</td>'+
         '<td class="num" style="color:var(--yellow);font-weight:700">'+fmt만(p)+'</td>'+
@@ -7724,7 +7757,7 @@ function renderT2Dashboard(){
       var dep=parseFloat(r['보증금']||r['보증금액']||0);
       var mon=parseFloat(r['월세(만원)']||r['월세금']||0);
       var conv=Math.round(dep+mon*12/CONV);
-      var py2=sqm>0?Math.round((trade==='jeonse'?dep:conv)/(sqm/3.3058)):0;
+      var py2=calcPyeong(trade==='jeonse'?dep:conv, r);
       return '<tr><td class="num" style="font-size:11px;color:var(--text3)">'+ymStr+'</td>'+
         '<td class="num">'+(sqm?sqm.toFixed(1)+'㎡':'-')+'</td><td class="num">'+(bp||'-')+'</td>'+
         '<td class="num" style="color:var(--accent3);font-weight:700">'+fmt만(dep)+'</td>'+
@@ -7969,7 +8002,7 @@ function renderTab0(){
         var py = parseFloat(r['평당가']||0);
         if(!py){
           var sqm = parseFloat(r['전용(㎡)']||r['전용']||0);
-          if(sqm>0 && price>0) py = Math.round(price/(sqm/3.3058));
+          if(!py) py = calcPyeong(price, r);
         }
         if(py>0) result.new_pyeongs.push(py);
       } else if(ct==='갱신'){
@@ -8103,7 +8136,7 @@ function renderTab0(){
       if(!g) return;
       var p = parseFloat(r['보증금']||r['보증금액']||0);
       var py = parseFloat(r['평당가']||0);
-      if(!py){var sqm=parseFloat(r['전용(㎡)']||0); if(sqm>0&&p>0) py=Math.round(p/(sqm/3.3058));}
+      if(!py){var sqm=parseFloat(r['전용(㎡)']||0); if(!py) py=calcPyeong(p,r);}
       // 현재: subPeriod 연동
       var ym2=parseInt(r['계약년월']||0);
       if(subPeriodFilter(ym2, yr, period, G.subPeriod||0)){
@@ -8371,7 +8404,7 @@ function renderTab0(){
       var p=parseFloat(r['거래금액']||0);
       var py=parseFloat(r['평당가']||0);
       var sqm=parseFloat(r['전용(㎡)']||r['전용']||0);
-      if(!py&&sqm>0&&p>0) py=Math.round(p/(sqm/3.3058)); // sqm 폴백
+      if(!py) py=calcPyeong(p,r); // sqm 폴백
       if(p>0){distStatsAll[g].prices.push(p); distStatsAll[g].cnt++;}
       if(py>0) distStatsAll[g].pyeongs.push(py);
     });
@@ -9051,7 +9084,7 @@ function renderTop5Price(){
     if(tt==='sale'){
       var price=parseFloat(r['거래금액']||0);
       var py=parseFloat(r['평당가']||0);
-      if(!py&&sqm>0&&price>0) py=Math.round(price/(sqm/3.3058));
+      if(!py) py=calcPyeong(price,r);
       var tType=r['거래유형']||'';
       var tLabel=tType.indexOf('직거래')>=0?'직거래':tType.indexOf('중개')>=0?'중개':tType;
       var tColor=tType.indexOf('직거래')>=0?'var(--yellow)':'var(--text3)';
@@ -9067,7 +9100,7 @@ function renderTop5Price(){
       '</tr>';
     } else if(tt==='jeonse'){
       var dep=parseFloat(r['보증금']||r['보증금액']||0);
-      var py2=pyeong>0?Math.round(dep/pyeong):(sqm>0?Math.round(dep/(sqm/3.3058)):0);
+      var py2=calcPyeong(dep,r);
       var ct=r['계약구분']||'';
       html+='<tr class="detail-row" onclick="openTradeDetail(\'t0top5\','+idx+')">'+distBadge+nameTd+
         '<td class="num">'+sqm.toFixed(1)+'</td>'+
@@ -9084,7 +9117,7 @@ function renderTop5Price(){
       var conv=parseFloat(r['환산보증금']||0);
       if(!conv&&mon>0) conv=Math.round(dep2+mon*12/0.058);
       if(!conv) conv=dep2;
-      var py3=pyeong>0?Math.round(conv/pyeong):(sqm>0?Math.round(conv/(sqm/3.3058)):0);
+      var py3=calcPyeong(conv,r);
       var ct2=r['계약구분']||'';
       html+='<tr class="detail-row" onclick="openTradeDetail(\'t0top5\','+idx+')">'+distBadge+nameTd+
         '<td class="num">'+sqm.toFixed(1)+'</td>'+
@@ -9220,7 +9253,7 @@ function renderRecent5(){
       var pyeong=parseInt(r['분양평형']||0);
       var price=parseFloat(r['거래금액']||0);
       var py=parseFloat(r['평당가']||0);
-      if(!py&&sqm>0&&price>0) py=Math.round(price/(sqm/3.3058));
+      if(!py) py=calcPyeong(price,r);
       var tType=r['거래유형']||'';
       var tLabel=tType.indexOf('직거래')>=0?'직거래':tType.indexOf('중개')>=0?'중개':tType;
       var tColor=tType.indexOf('직거래')>=0?'var(--yellow)':'var(--text3)';
@@ -9246,7 +9279,7 @@ function renderRecent5(){
       var ct      = r['계약구분']||'';
 
       if(tt==='jeonse'){
-        var py = pyeong>0 ? Math.round(deposit/pyeong) : (sqm>0 ? Math.round(deposit/(sqm/3.3058)) : 0);
+        var py = calcPyeong(deposit, r);
         html+='<tr class="detail-row" onclick="openTradeDetail(\'t0recent\','+idx+')">'+
           '<td><span class="badge" style="background:'+color+'33;color:'+color+'">'+(DIST_NAMES[g]||'-')+'</span></td>'+
           '<td style="font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(r['단지명']||'-')+'</td>'+
@@ -9262,7 +9295,7 @@ function renderRecent5(){
         var conv = parseFloat(r['환산보증금']||0);
         if(!conv && monthly>0) conv = Math.round(deposit + monthly*12/0.058);
         if(!conv) conv = deposit;
-        var py = pyeong>0 ? Math.round(conv/pyeong) : (sqm>0 ? Math.round(conv/(sqm/3.3058)) : 0);
+        var py = calcPyeong(conv, r);
         html+='<tr class="detail-row" onclick="openTradeDetail(\'t0recent\','+idx+')">'+
           '<td><span class="badge" style="background:'+color+'33;color:'+color+'">'+(DIST_NAMES[g]||'-')+'</span></td>'+
           '<td style="font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(r['단지명']||'-')+'</td>'+
@@ -9332,7 +9365,7 @@ function renderDistCharts(){
       vol[idx-1]++;
       var p=parseFloat(r['거래금액']||r['보증금']||r['보증금액']||0);
       var py=parseFloat(r['평당가']||0);
-      if(!py&&p>0){var sqm=parseFloat(r['전용(㎡)']||0); if(sqm>0) py=Math.round(p/(sqm/3.3058));}
+      if(!py&&p>0){var sqm=parseFloat(r['전용(㎡)']||0); if(!py) py=calcPyeong(p,r);}
       if(p>0) price[idx-1].push(p);
       if(py>0) pyeong[idx-1].push(py);
     });
@@ -9348,7 +9381,7 @@ function renderDistCharts(){
       vol[idx-1]++;
       var p=parseFloat(r['거래금액']||r['보증금']||r['보증금액']||0);
       var py=parseFloat(r['평당가']||0);
-      if(!py&&p>0){var sqm=parseFloat(r['전용(㎡)']||0); if(sqm>0) py=Math.round(p/(sqm/3.3058));}
+      if(!py&&p>0){var sqm=parseFloat(r['전용(㎡)']||0); if(!py) py=calcPyeong(p,r);}
       if(p>0) price[idx-1].push(p);
       if(py>0) pyeong[idx-1].push(py);
     });
@@ -9556,6 +9589,7 @@ function renderTab1(){
   renderDistTable();
   renderT1TrendChart();
   renderT1TopTable();
+  renderT1TopPyeongTable();
 }
 function renderDistTable(){
   var yr = G.t1yr;
@@ -9609,7 +9643,7 @@ function renderDistTable(){
       if(trd==='sale'){
         p=parseFloat(r['거래금액']||0);
         py=parseFloat(r['평당가']||0);
-        if(!py&&sqm>0&&p>0) py=Math.round(p/(sqm/3.3058));
+        if(!py) py=calcPyeong(p,r);
         var tp=r['구분'];
         if(tp==='아파트') stats[g].apt++;
         if(tp==='분양권') stats[g].pre++;
@@ -9619,7 +9653,7 @@ function renderDistTable(){
         var mon=parseFloat(r['월세금']||r['월세금액']||0);
         p = trd==='monthly'?(parseFloat(r['환산보증금']||0)||Math.round(dep+mon*12/0.058)):dep;
         var pyeong=parseInt(r['분양평형']||0);
-        py=pyeong>0?Math.round(p/pyeong):(sqm>0?Math.round(p/(sqm/3.3058)):0);
+        py=calcPyeong(p,r);
         // 보증금/월세 별도 저장
         if(dep>0){ if(!stats[g].deposits) stats[g].deposits=[]; stats[g].deposits.push(dep); }
         if(mon>0){ if(!stats[g].monthlies) stats[g].monthlies=[]; stats[g].monthlies.push(mon); }
@@ -9996,7 +10030,7 @@ function renderT1TopTable(){
 
     if(trd==='sale'){
       var price=parseFloat(top['거래금액']||0);
-      var py=parseFloat(top['평당가']||0); if(!py&&sqm>0&&price>0) py=Math.round(price/(sqm/3.3058));
+      var py=parseFloat(top['평당가']||0); if(!py) py=calcPyeong(price,r);
       var tType=top['거래유형']||''; var tLabel=tType.indexOf('직거래')>=0?'직거래':tType.indexOf('중개')>=0?'중개':tType;
       var tColor=tType.indexOf('직거래')>=0?'var(--yellow)':'var(--text3)';
       html+='<tr class="detail-row" onclick="openTradeDetail(\'t1top\','+_myIdx+')">'+distBadge+nameTd+
@@ -10009,7 +10043,7 @@ function renderT1TopTable(){
         '<td style="text-align:center;font-size:10px;color:'+tColor+'">'+tLabel+'</td></tr>';
     } else if(trd==='jeonse'){
       var dep=parseFloat(top['보증금']||top['보증금액']||0);
-      var py2=pyeong>0?Math.round(dep/pyeong):(sqm>0?Math.round(dep/(sqm/3.3058)):0);
+      var py2=calcPyeong(dep,r);
       html+='<tr class="detail-row" onclick="openTradeDetail(\'t1top\','+_myIdx+')">'+distBadge+nameTd+
         '<td class="num">'+sqm.toFixed(1)+'</td>'+'<td class="num">'+(pyeong||'-')+'</td>'+
         '<td class="num" style="color:var(--accent);font-weight:700">'+fmt천(dep)+'</td>'+
@@ -10021,12 +10055,145 @@ function renderT1TopTable(){
       var dep2=parseFloat(top['보증금']||top['보증금액']||0);
       var mon=parseFloat(top['월세금']||top['월세금액']||0);
       var conv=parseFloat(top['환산보증금']||0); if(!conv&&mon>0) conv=Math.round(dep2+mon*12/0.058); if(!conv) conv=dep2;
-      var py3=pyeong>0?Math.round(conv/pyeong):(sqm>0?Math.round(conv/(sqm/3.3058)):0);
+      var py3=calcPyeong(conv,r);
       html+='<tr class="detail-row" onclick="openTradeDetail(\'t1top\','+_myIdx+')">'+distBadge+nameTd+
         '<td class="num">'+sqm.toFixed(1)+'</td>'+'<td class="num">'+(pyeong||'-')+'</td>'+
         '<td class="num" style="color:var(--accent)">'+fmt천(dep2)+'</td>'+
         '<td class="num" style="color:var(--yellow)">'+fmt천(mon)+'만</td>'+
         '<td class="num" style="color:var(--accent2,#00e5a0);font-weight:700">'+fmt천(conv)+'</td>'+
+        '<td class="num" style="color:#ff6b35;font-weight:700">'+fmt평(py3)+'</td>'+
+        '<td class="num">'+(top['층']||'-')+'층</td>'+
+        '<td class="num" style="color:var(--text3);font-size:11px">'+ymStr+'</td>'+
+        '<td style="text-align:center;font-size:10px;color:var(--text3)">'+(top['계약구분']||'')+'</td></tr>';
+    }
+  });
+  tbody.innerHTML = html || '<tr><td colspan="11" style="text-align:center;padding:12px;color:var(--text3)">해당 조건의 거래 없음</td></tr>';
+}
+
+// ── 공구별 최고 평당가 거래 테이블
+function renderT1TopPyeongTable(){
+  var tbody = document.getElementById('t1-toppyeong-tbody');
+  var cg    = document.getElementById('t1-toppyeong-colgroup');
+  var thead = document.getElementById('t1-toppyeong-thead-tr');
+  var subEl = document.getElementById('t1-toppyeong-sub');
+  if(!tbody) return;
+
+  var yr   = G.t1yr;
+  var trd  = G.t1trade||'sale';
+  var trdLabel = trd==='sale'?'매매':trd==='jeonse'?'전세':'월세';
+
+  var topPeriodLabel = (function(){
+    var p=G.t1period||'annual', s=G.t1subPeriod||0, now3=new Date();
+    if(p==='annual') return yr==='recent'?'최근1년':yr+'년';
+    if(yr==='recent') return p==='quarter'?'최근4분기':'최근12개월';
+    if(p==='quarter') return yr+'년 '+(s||Math.ceil((now3.getMonth()+1)/3))+'Q';
+    return yr+'년 '+(s||(now3.getMonth()+1))+'월';
+  })();
+  if(subEl) subEl.textContent = topPeriodLabel+' · '+trdLabel+' · 공구별 최고 평당가 1건';
+
+  // 헤더/colgroup — 최고가와 동일한 포맷
+  if(trd==='sale'){
+    if(cg) cg.innerHTML='<col style="width:60px"><col style="width:180px"><col style="width:50px"><col style="width:56px"><col style="width:52px"><col style="width:80px"><col style="width:80px"><col style="width:38px"><col style="width:84px"><col style="width:54px">';
+    if(thead) thead.innerHTML='<th style="text-align:center">공구</th><th>단지명</th><th style="text-align:center">구분</th><th class="num">전용㎡</th><th class="num">분양평형</th><th class="num" style="color:var(--yellow)">거래금액</th><th class="num" style="color:#ff6b35">평당가</th><th class="num">층</th><th class="num">계약년월일</th><th style="text-align:center">거래유형</th>';
+  } else if(trd==='jeonse'){
+    if(cg) cg.innerHTML='<col style="width:60px"><col style="width:200px"><col style="width:58px"><col style="width:56px"><col style="width:88px"><col style="width:88px"><col style="width:40px"><col style="width:84px"><col style="width:58px">';
+    if(thead) thead.innerHTML='<th style="text-align:center">공구</th><th>단지명</th><th class="num">전용㎡</th><th class="num">분양평형</th><th class="num" style="color:var(--accent)">보증금</th><th class="num" style="color:#ff6b35">평당가</th><th class="num">층</th><th class="num">계약년월일</th><th style="text-align:center">계약구분</th>';
+  } else {
+    if(cg) cg.innerHTML='<col style="width:60px"><col style="width:150px"><col style="width:50px"><col style="width:50px"><col style="width:72px"><col style="width:60px"><col style="width:78px"><col style="width:74px"><col style="width:34px"><col style="width:76px"><col style="width:50px">';
+    if(thead) thead.innerHTML='<th style="text-align:center">공구</th><th>단지명</th><th class="num">전용㎡</th><th class="num">분양평형</th><th class="num" style="color:var(--accent)">보증금</th><th class="num" style="color:var(--yellow)">월세</th><th class="num" style="color:var(--accent2,#00e5a0)">환산보증금</th><th class="num" style="color:#ff6b35">평당가</th><th class="num">층</th><th class="num">계약년월일</th><th style="text-align:center">계약구분</th>';
+  }
+
+  var data = trd==='sale' ? G.saleData : G.rentData;
+  if(!data){ tbody.innerHTML='<tr><td colspan="11" style="text-align:center;padding:12px;color:var(--text3)">데이터 없음</td></tr>'; return; }
+
+  // 평당가 계산 헬퍼
+  function getPyeong(r){
+    var sqm2=parseFloat(r['전용(㎡)']||r['전용']||0);
+    var bp2=parseInt(r['분양평형']||0);
+    var py=parseFloat(r['평당가']||0);
+    if(!py){
+      var p2=0;
+      if(trd==='sale') p2=parseFloat(r['거래금액']||0);
+      else if(trd==='jeonse') p2=parseFloat(r['보증금']||r['보증금액']||0);
+      else{
+        var dep2=parseFloat(r['보증금']||r['보증금액']||0);
+        var mon2=parseFloat(r['월세금']||r['월세금액']||0);
+        p2=parseFloat(r['환산보증금']||0)||(mon2>0?Math.round(dep2+mon2*12/0.058):dep2);
+      }
+      if(p2>0) py=bp2>0?Math.round(p2/bp2):(sqm2>0?Math.round(p2/(sqm2/3.3058)):0);
+    }
+    return py;
+  }
+
+  var html = '';
+  var _pyIdx = 0;
+  window._t1TopPyeongRows = [];
+  DISTS.forEach(function(g){
+    var rows = data.filter(function(r){
+      if(trd==='sale'){
+        if(r['해제사유']&&r['해제사유']==='Y') return false;
+        if(r['해제사유발생일']&&r['해제사유발생일']!=='-') return false;
+        if(G.t1saleType!=='all' && r['구분']!==(G.t1saleType==='apt'?'아파트':'분양권')) return false;
+      } else {
+        var jt=r['전월세구분']||'';
+        if(trd==='jeonse'&&jt!=='전세') return false;
+        if(trd==='monthly'&&jt!=='월세') return false;
+      }
+      if(parseInt(r['공구'])!==g) return false;
+      if(!t1AreaFilter(r)) return false;
+      var ym5=parseInt(r['계약년월']||0);
+      return subPeriodFilter(ym5, yr, G.t1period||'annual', G.t1subPeriod||0);
+    });
+
+    if(!rows.length) return;
+
+    // 평당가 최고 1건 선택
+    var top = rows.reduce(function(a,b){ return getPyeong(b)>getPyeong(a)?b:a; });
+
+    var color  = DIST_COLORS[g]||'#8899bb';
+    var sqm    = parseFloat(top['전용(㎡)']||top['전용']||0);
+    var pyeong = parseInt(top['분양평형']||0);
+    var ym     = String(top['계약년월']||'');
+    var dd     = parseInt(top['계약일']||0);
+    var ymStr  = ym.length>=6?ym.slice(0,4)+'.'+ym.slice(4,6)+(dd?'.'+String(dd).padStart(2,'0'):''):ym;
+    var distBadge = '<td><span class="badge" style="background:'+color+'33;color:'+color+'">'+(DIST_NAMES[g]||'-')+'</span></td>';
+    var nameTd    = '<td style="font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(top['단지명']||'-')+'</td>';
+    var _myIdx = _pyIdx++;
+    window._t1TopPyeongRows.push(top);
+
+    if(trd==='sale'){
+      var price=parseFloat(top['거래금액']||0);
+      var py=getPyeong(top);
+      var tType=top['거래유형']||''; var tLabel=tType.indexOf('직거래')>=0?'직거래':tType.indexOf('중개')>=0?'중개':tType;
+      var tColor=tType.indexOf('직거래')>=0?'var(--yellow)':'var(--text3)';
+      html+='<tr class="detail-row" onclick="openTradeDetail(\'t1toppyeong\','+_myIdx+')">'+distBadge+nameTd+
+        '<td style="text-align:center"><span class="badge '+(top['구분']==='아파트'?'badge-apt':'badge-pre')+'">'+(top['구분']||'-')+'</span></td>'+
+        '<td class="num">'+sqm.toFixed(1)+'</td>'+'<td class="num">'+(pyeong||'-')+'</td>'+
+        '<td class="num" style="color:var(--yellow);font-weight:700">'+fmt천(price)+'</td>'+
+        '<td class="num" style="color:#ff6b35;font-weight:700">'+fmt평(py)+'</td>'+
+        '<td class="num">'+(top['층']||'-')+'층</td>'+
+        '<td class="num" style="color:var(--text3);font-size:11px">'+ymStr+'</td>'+
+        '<td style="text-align:center;font-size:10px;color:'+tColor+'">'+tLabel+'</td></tr>';
+    } else if(trd==='jeonse'){
+      var dep=parseFloat(top['보증금']||top['보증금액']||0);
+      var py2=getPyeong(top);
+      html+='<tr class="detail-row" onclick="openTradeDetail(\'t1toppyeong\','+_myIdx+')">'+distBadge+nameTd+
+        '<td class="num">'+sqm.toFixed(1)+'</td>'+'<td class="num">'+(pyeong||'-')+'</td>'+
+        '<td class="num" style="color:var(--accent);font-weight:700">'+fmt천(dep)+'</td>'+
+        '<td class="num" style="color:#ff6b35;font-weight:700">'+fmt평(py2)+'</td>'+
+        '<td class="num">'+(top['층']||'-')+'층</td>'+
+        '<td class="num" style="color:var(--text3);font-size:11px">'+ymStr+'</td>'+
+        '<td style="text-align:center;font-size:10px;color:var(--text3)">'+(top['계약구분']||'')+'</td></tr>';
+    } else {
+      var dep3=parseFloat(top['보증금']||top['보증금액']||0);
+      var mon3=parseFloat(top['월세금']||top['월세금액']||0);
+      var conv3=parseFloat(top['환산보증금']||0); if(!conv3&&mon3>0) conv3=Math.round(dep3+mon3*12/0.058); if(!conv3) conv3=dep3;
+      var py3=getPyeong(top);
+      html+='<tr class="detail-row" onclick="openTradeDetail(\'t1toppyeong\','+_myIdx+')">'+distBadge+nameTd+
+        '<td class="num">'+sqm.toFixed(1)+'</td>'+'<td class="num">'+(pyeong||'-')+'</td>'+
+        '<td class="num" style="color:var(--accent)">'+fmt천(dep3)+'</td>'+
+        '<td class="num" style="color:var(--yellow)">'+fmt천(mon3)+'만</td>'+
+        '<td class="num" style="color:var(--accent2,#00e5a0);font-weight:700">'+fmt천(conv3)+'</td>'+
         '<td class="num" style="color:#ff6b35;font-weight:700">'+fmt평(py3)+'</td>'+
         '<td class="num">'+(top['층']||'-')+'층</td>'+
         '<td class="num" style="color:var(--text3);font-size:11px">'+ymStr+'</td>'+
@@ -10164,7 +10331,7 @@ function renderTab2(){
       if(conv>0) u.convs.push(conv);
       var pyeong2=parseInt(r['분양평형']||0);
       var sqm2=parseFloat(r['전용(㎡)']||r['전용']||0);
-      var py2=pyeong2>0?Math.round(conv/pyeong2):(sqm2>0?Math.round(conv/(sqm2/3.3058)):0);
+      var py2=calcPyeong(conv,r);
       if(py2>0) u.pyeongs.push(py2);
     }
   });
@@ -11018,7 +11185,7 @@ function renderT5TopTable(){
     var color=DIST_COLORS[g]||'#8899bb';
     var sqm=parseFloat(r['전용(㎡)']||r['전용㎡']||0);
     var pyeong=parseInt(r['분양평형']||0);
-    var py=pyeong>0?Math.round(price/pyeong):(sqm>0?Math.round(price/(sqm/3.3058)):0);
+    var py=calcPyeong(price, r);
     var ym=String(r['계약년월']||'');
     var ymStr=ym.length>=6?ym.slice(0,4)+'.'+ym.slice(4,6):'';
     var tType=trade==='sale'?(r['거래유형']||''):(r['계약구분']||'');
@@ -11154,7 +11321,7 @@ function renderNewHighTable(){
     var color=DIST_COLORS[g]||'#8899bb';
     var sqm=parseFloat(r['전용(㎡)']||0);
     var pyeong=parseInt(r['분양평형']||0);
-    var py=pyeong>0?Math.round(h.price/pyeong):(sqm>0?Math.round(h.price/(sqm/3.3058)):0);
+    var py=calcPyeong(h.price,h);
     var ym=String(r['계약년월']||'');
     var dd=parseInt(r['계약일']||0);
     var ymStr=ym.length>=6?ym.slice(0,4)+'.'+ym.slice(4,6)+(dd?'.'+String(dd).padStart(2,'0'):''):'';
@@ -11260,7 +11427,7 @@ function renderAbnTable(){
     var ymStr=ym.length>=6?ym.slice(0,4)+'.'+ym.slice(4,6)+(dd?'.'+String(dd).padStart(2,'0'):''):'';
     var tType=r['거래유형']||'';
     var tLabel=tType.indexOf('직거래')>=0?'직거래':tType.indexOf('중개')>=0?'중개':tType;
-    var py3=pyeong>0?Math.round(row.price/pyeong):(sqm>0?Math.round(row.price/(sqm/3.3058)):0);
+    var py3=calcPyeong(row.price,row);
     html+='<tr class="detail-row" onclick="openAbnDetail('+idx+')">'+
       '<td><span class="badge" style="background:'+color+'33;color:'+color+'">'+(DIST_NAMES[g]||'-')+'</span></td>'+
       '<td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(r['단지명']||'-')+'</td>'+
@@ -12604,7 +12771,7 @@ function slimRentRow(r){
   // 평당가: 환산보증금 ÷ 분양평형 (없으면 전용면적 기준)
   var py = Math.round(parseFloat(r['평당가']||0));
   if(!py && pyeong>0 && conv>0) py = Math.round(conv/pyeong);
-  if(!py && sqm>0 && conv>0) py = Math.round(conv/(sqm/3.3058));
+  if(!py) py = calcPyeong(conv, r);
   return {
     연도:     parseInt(r['연도']),
     공구:     parseInt(r['공구']||0),
@@ -12897,6 +13064,10 @@ function openTradeDetail(source, idx) {
     rows=window._t1TopRows||[];
     mode=window._t1TopMode||'sale';
     avgMap=mode==='sale'?window._t3AvgMap||{}:window._t4AvgMap||{};
+  } else if(source==='t1toppyeong'){
+    rows=window._t1TopPyeongRows||[];
+    mode=window._t1TopMode||'sale';
+    avgMap=mode==='sale'?window._t3AvgMap||{}:window._t4AvgMap||{};
   } else if(source==='t5top'){
     rows=window._t5TopRows||[];
     mode=window._t5TopTrade||'sale';
@@ -12984,7 +13155,7 @@ function openNewHighDetail(idx){
   var pyeong=parseInt(r['분양평형']||0);
   var ym=r['계약년월']; var day=r['계약일']||'';
   var ymStr=ym?String(ym).slice(0,4)+'.'+String(ym).slice(4,6)+(day?'.'+String(day).padStart(2,'0'):''):'-';
-  var py=pyeong>0?Math.round(h.price/pyeong):(sqm>0?Math.round(h.price/(sqm/3.3058)):0);
+  var py=calcPyeong(h.price,h);
   var pct=parseFloat(h.pct)||0;
   var tType=r['거래유형']||''; var tLabel=tType.indexOf('직거래')>=0?'직거래':tType.indexOf('중개')>=0?'중개':tType;
   var topBadgeHtml='<span class="badge badge-alltime" style="font-size:11px">🏆 신고가 갱신</span>';
@@ -13012,7 +13183,7 @@ function openAbnDetail(idx){
   var pyeong=parseInt(r['분양평형']||0);
   var ym=r['계약년월']; var day=r['계약일']||'';
   var ymStr=ym?String(ym).slice(0,4)+'.'+String(ym).slice(4,6)+(day?'.'+String(day).padStart(2,'0'):''):'-';
-  var py=pyeong>0?Math.round(row.price/pyeong):(sqm>0?Math.round(row.price/(sqm/3.3058)):0);
+  var py=calcPyeong(row.price,row);
   var tType=r['거래유형']||''; var tLabel=tType.indexOf('직거래')>=0?'직거래':tType.indexOf('중개')>=0?'중개':tType;
   var ratioColor=row.diffPct<60?'var(--red)':row.diffPct<70?'var(--accent2)':'var(--yellow)';
   var topBadgeHtml='<span class="badge badge-warn" style="font-size:11px">⚠️ 이상거래 의심</span>';
