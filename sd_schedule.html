@@ -45,6 +45,7 @@ body{font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif;background:#f7
 .cal-cell.other-month{background:#f9f9f9;opacity:.5}
 .cal-cell.has-item{background:#f0f7ff;border-color:#90caf9}
 .cal-cell.today.has-item{background:#fff0f0;border-color:#c62828}
+.cal-cell.cal-selected{border-color:#1565c0;border-width:2px;background:#e8f0fe;box-shadow:0 0 0 1px #90caf9}
 .cal-date{font-size:12px;font-weight:500;margin-bottom:4px}
 .cal-dot{font-size:9px;line-height:1.4;overflow:hidden;max-height:40px}
 /* 우선순위 뱃지 - 일정(3) + 할일(3) */
@@ -213,7 +214,7 @@ body.zoom-mode .zoomable:hover{box-shadow:none !important;}
       <button onclick="changeMonth(1)" class="btn-s" style="padding:6px 10px">▶</button>
       <button onclick="goToday()" class="btn-s" style="font-size:11px">오늘</button>
     </div>
-    <button onclick="sw(4)" class="btn-s" style="font-size:11px">+ 일정 추가</button>
+    <button onclick="goNewRegFromCal()" class="btn-s" style="font-size:11px">+ 일정 추가</button>
   </div>
   <div class="card" style="padding:10px">
     <div class="cal-grid" style="margin-bottom:4px">
@@ -225,7 +226,10 @@ body.zoom-mode .zoomable:hover{box-shadow:none !important;}
   </div>
   <!-- 선택된 날 상세 -->
   <div id="day-detail" style="display:none" class="card">
-    <p id="day-detail-title" class="sec"></p>
+    <div style="display:flex;align-items:center;justify-content:space-between">
+      <p id="day-detail-title" class="sec" style="margin:0"></p>
+      <button onclick="goNewRegFromCal()" class="btn-s" style="font-size:11px;flex-shrink:0">+ 이 날 추가</button>
+    </div>
     <div id="day-detail-list"></div>
   </div>
 </div>
@@ -963,13 +967,17 @@ function renderCal(){
   var first=now.getDay();
   var days=new Date(calYear,calMonth+1,0).getDate();
   var todStr=todayStr();
-  // 할일 날짜 인덱스
+  // 할일 날짜 인덱스 — 시간순 정렬
   var tdIdx={};
   todos.forEach(function(t){
     if(!t.date)return;
     var ds=t.date.slice(0,10);
     if(!tdIdx[ds])tdIdx[ds]=[];
     tdIdx[ds].push(t);
+  });
+  // 각 날짜의 항목을 시간순으로 정렬
+  Object.keys(tdIdx).forEach(function(k){
+    tdIdx[k].sort(function(a,b){ return a.date.localeCompare(b.date); });
   });
   var html='';
   var day=1;
@@ -1009,7 +1017,24 @@ function renderCal(){
   document.getElementById('cal-body').innerHTML=html;
 }
 
+var calSelectedDate = '';  // 선택된 날짜 추적
+
 function showDay(ds){
+  calSelectedDate = ds;
+  // 선택 셀 강조 업데이트
+  document.querySelectorAll('.cal-cell').forEach(function(el){
+    el.classList.remove('cal-selected');
+  });
+  var selCells = document.querySelectorAll('.cal-cell');
+  selCells.forEach(function(el){
+    var dateEl = el.querySelector('.cal-date');
+    if(dateEl){
+      // 날짜 텍스트에서 숫자만 추출 후 ds와 비교
+      var dayNum = parseInt((dateEl.textContent||dateEl.innerText||'').trim());
+      var dsDay = parseInt(ds.slice(8,10));
+      if(dayNum === dsDay && !el.classList.contains('other-month')) el.classList.add('cal-selected');
+    }
+  });
   var items=todos.filter(function(t){return t.date&&t.date.startsWith(ds);}).sort(function(a,b){return a.date.localeCompare(b.date);});
   var dd=document.getElementById('day-detail');
   document.getElementById('day-detail-title').textContent=ds+' 일정 ('+items.length+'건)';
@@ -1035,8 +1060,8 @@ function showDay(ds){
   dd.style.display='block';
 }
 
-function changeMonth(dir){calMonth+=dir;if(calMonth<0){calMonth=11;calYear--;}if(calMonth>11){calMonth=0;calYear++;}renderCal();}
-function goToday(){calYear=new Date().getFullYear();calMonth=new Date().getMonth();renderCal();}
+function changeMonth(dir){calMonth+=dir;if(calMonth<0){calMonth=11;calYear--;}if(calMonth>11){calMonth=0;calYear++;}calSelectedDate='';renderCal();}
+function goToday(){calYear=new Date().getFullYear();calMonth=new Date().getMonth();calSelectedDate='';renderCal();}
 
 // 월간 캘린더 날짜 + 버튼 → 신규등록 TAB4로 이동 + 날짜 자동 세팅
 function goNewReg(ds){
@@ -1045,6 +1070,11 @@ function goNewReg(ds){
     var dateEl=document.getElementById('sch-date');
     if(dateEl){ dateEl.value=ds; if(typeof onDateChange==='function') onDateChange(); }
   }, 80);
+}
+// 상단/day-detail "+ 일정 추가" 버튼 → 선택된 날짜 우선 사용
+function goNewRegFromCal(){
+  var ds = calSelectedDate || todayStr();
+  goNewReg(ds);
 }
 
 // ─────────────────────────────────────────
