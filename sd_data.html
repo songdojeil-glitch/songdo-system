@@ -6564,14 +6564,14 @@ function areaFilter(r){
     var sqm = parseFloat(r['전용(㎡)']||r['전용㎡']||r['전용']||r.전용||0);
     var bp=parseInt(r['분양평형']||0);
     var tn=parseInt((r['타입']||r.타입||'').replace(/[^0-9].*/,''))||0;
-    var ac = bp>0 ? Math.floor(bp/10)*10 : (tn>0 ? Math.floor(tn/3.3058/10)*10 : (parseInt(r['면적구분']||r.면적구분||0)||Math.floor(sqm/3.3058/10)*10));
+    var py = bp>0 ? bp : (tn>0 ? Math.round(tn/3.3058) : (sqm>0 ? Math.round(sqm/3.3058) : 0));
     if(area==='84' && !(sqm>=83.5&&sqm<85.5)) return false;
-    if(area==='u20' && !(bp>0?bp<20:sqm<49)) return false;  // 20평 미만
-    if(area==='20' && !(bp>0?(bp>=20&&bp<30):(sqm>=49&&sqm<72))) return false;  // 20평대
-    if(area==='30' && !(ac>=30&&ac<40)) return false;
-    if(area==='40' && !(ac>=40&&ac<50)) return false;
-    if(area==='50' && !(ac>=50&&ac<60)) return false;
-    if(area==='60' && ac<60) return false;
+    if(area==='u20' && !(py<20)) return false;              // 20평 미만
+    if(area==='20' && !(py>=20&&py<30)) return false;       // 20평대
+    if(area==='30' && !(py>=30&&py<40)) return false;
+    if(area==='40' && !(py>=40&&py<50)) return false;
+    if(area==='50' && !(py>=50&&py<60)) return false;
+    if(area==='60' && !(py>=60)) return false;
   }
   return true;
 }
@@ -7518,15 +7518,16 @@ function renderT2Dashboard(){
     }
     var sqm=parseFloat(r['전용(㎡)']||r['전용']||0);
     if(area!=='all'){
-      if(area==='84'&&!(sqm>=83&&sqm<86)) return false;
       var rbp2=parseInt(r['분양평형']||0);
-      if(area==='u20'&&!(rbp2>0?rbp2<20:sqm<49)) return false;
-      if(area==='20'&&!(rbp2>0?(rbp2>=20&&rbp2<30):(sqm>=49&&sqm<72))) return false;
-      var rbp3=parseInt(r['분양평형']||0);
-      if(area==='30'&&!(rbp3>0?(rbp3>=30&&rbp3<40):(sqm>=72&&sqm<100))) return false;
-      if(area==='40'&&!(rbp3>0?(rbp3>=40&&rbp3<50):(sqm>=100&&sqm<132))) return false;
-      if(area==='50'&&!(rbp3>0?(rbp3>=50&&rbp3<60):(sqm>=132&&sqm<165))) return false;
-      if(area==='60'&&!(rbp3>0?rbp3>=60:sqm>=165)) return false;
+      var rtn2=parseInt((r['타입']||r.타입||'').replace(/[^0-9].*/,''))||0;
+      var py=rbp2>0?rbp2:(rtn2>0?Math.round(rtn2/3.3058):(sqm>0?Math.round(sqm/3.3058):0));
+      if(area==='84'&&!(sqm>=83.5&&sqm<85.5)) return false;
+      if(area==='u20'&&!(py<20)) return false;
+      if(area==='20'&&!(py>=20&&py<30)) return false;
+      if(area==='30'&&!(py>=30&&py<40)) return false;
+      if(area==='40'&&!(py>=40&&py<50)) return false;
+      if(area==='50'&&!(py>=50&&py<60)) return false;
+      if(area==='60'&&!(py>=60)) return false;
     }
     return true;
   }
@@ -10235,13 +10236,15 @@ function renderTab2(){
     if(area==='all') return true;
     var sqm=parseFloat(r['전용(㎡)']||r['전용']||0);
     var rbp=parseInt(r['분양평형']||0);
-    if(area==='84') return sqm>=83&&sqm<86;
-    if(area==='u20') return rbp>0?rbp<20:sqm<49;      // 20평 미만
-    if(area==='20') return rbp>0?(rbp>=20&&rbp<30):(sqm>=49&&sqm<72);  // 20평대
-    if(area==='30') return rbp>0?(rbp>=30&&rbp<40):(sqm>=72&&sqm<100); // 30평대 (전용72-100㎡)
-    if(area==='40') return rbp>0?(rbp>=40&&rbp<50):(sqm>=100&&sqm<132);
-    if(area==='50') return rbp>0?(rbp>=50&&rbp<60):(sqm>=132&&sqm<165);
-    if(area==='60') return rbp>0?rbp>=60:sqm>=165;
+    var rtn=parseInt((r['타입']||r.타입||'').replace(/[^0-9].*/,''))||0;
+    var py=rbp>0?rbp:(rtn>0?Math.round(rtn/3.3058):(sqm>0?Math.round(sqm/3.3058):0));
+    if(area==='84') return sqm>=83.5&&sqm<85.5;
+    if(area==='u20') return py<20;              // 20평 미만
+    if(area==='20') return py>=20&&py<30;       // 20평대
+    if(area==='30') return py>=30&&py<40;       // 30평대
+    if(area==='40') return py>=40&&py<50;
+    if(area==='50') return py>=50&&py<60;
+    if(area==='60') return py>=60;
     return true;
   }
 
@@ -10488,15 +10491,19 @@ function renderTab3(){
   var now=new Date();
 
   function ymOk(ym){ return subPeriodFilter(ym, yr, period, subPeriod); }
-  function areaOk(sqm){
+  function areaOk(r){
     if(area==='all') return true;
-    if(area==='84') return sqm>=83&&sqm<86;
-    if(area==='u20') return sqm<49;         // 20평 미만 (전용 ~49㎡ 미만)
-    if(area==='20') return sqm>=49&&sqm<72;  // 20평대 (전용 49-72㎡)
-    if(area==='30') return sqm>=72&&sqm<100;  // 30평대 (전용 72-100㎡)
-    if(area==='40') return sqm>=100&&sqm<132;  // 40평대
-    if(area==='50') return sqm>=132&&sqm<165;
-    if(area==='60') return sqm>=165;
+    var sqm=parseFloat(r['전용(㎡)']||r['전용㎡']||r['전용']||0);
+    var bp=parseInt(r['분양평형']||0);
+    var tn=parseInt((r['타입']||r.타입||'').replace(/[^0-9].*/,''))||0;
+    var py=bp>0?bp:(tn>0?Math.round(tn/3.3058):(sqm>0?Math.round(sqm/3.3058):0));
+    if(area==='84') return sqm>=83.5&&sqm<85.5;
+    if(area==='u20') return py<20;              // 20평 미만
+    if(area==='20') return py>=20&&py<30;       // 20평대
+    if(area==='30') return py>=30&&py<40;       // 30평대
+    if(area==='40') return py>=40&&py<50;
+    if(area==='50') return py>=50&&py<60;
+    if(area==='60') return py>=60;
     return true;
   }
 
@@ -10521,8 +10528,7 @@ function renderTab3(){
     if(price<=0) return false;
     if(!ymOk(r['계약년월'])) return false;
     if(dist!=='all'&&parseInt(r['공구'])!==parseInt(dist)) return false;
-    var sqm=parseFloat(r['전용(㎡)']||r['전용㎡'])||0;
-    if(!areaOk(sqm)) return false;
+    if(!areaOk(r)) return false;
     if(saleType!=='all'&&r['구분']!==saleType) return false;
     if(abn==='exc'&&r['해제사유발생일']&&r['해제사유발생일']!=='-') return false;
     if(unitSel!=='all'&&r['단지명']!==unitSel) return false;
@@ -10536,8 +10542,7 @@ function renderTab3(){
     if(price<=0) return false;
     if(!ymOk(r['계약년월'])) return false;
     if(dist!=='all'&&parseInt(r['공구'])!==parseInt(dist)) return false;
-    var sqm=parseFloat(r['전용(㎡)']||r['전용㎡'])||0;
-    if(!areaOk(sqm)) return false;
+    if(!areaOk(r)) return false;
     if(saleType!=='all'&&r['구분']!==saleType) return false;
     if(abn==='exc'&&r['해제사유발생일']&&r['해제사유발생일']!=='-') return false;
     // search 필터 포함 → 칩 실시간 축소
@@ -10797,15 +10802,19 @@ function renderTab4(){
   if(thConvert) thConvert.style.display = isJeonseOnly ? 'none' : '';
 
   function ymOk(ym){ return subPeriodFilter(ym, yr, period, subPeriod); }
-  function areaOk(sqm){
+  function areaOk(r){
     if(area==='all') return true;
-    if(area==='84') return sqm>=83&&sqm<86;
-    if(area==='u20') return sqm<49;         // 20평 미만 (전용 ~49㎡ 미만)
-    if(area==='20') return sqm>=49&&sqm<72;  // 20평대 (전용 49-72㎡)
-    if(area==='30') return sqm>=72&&sqm<100;  // 30평대 (전용 72-100㎡)
-    if(area==='40') return sqm>=100&&sqm<132;  // 40평대
-    if(area==='50') return sqm>=132&&sqm<165;
-    if(area==='60') return sqm>=165;
+    var sqm=parseFloat(r['전용(㎡)']||r['전용㎡']||r['전용']||0);
+    var bp=parseInt(r['분양평형']||0);
+    var tn=parseInt((r['타입']||r.타입||'').replace(/[^0-9].*/,''))||0;
+    var py=bp>0?bp:(tn>0?Math.round(tn/3.3058):(sqm>0?Math.round(sqm/3.3058):0));
+    if(area==='84') return sqm>=83.5&&sqm<85.5;
+    if(area==='u20') return py<20;              // 20평 미만
+    if(area==='20') return py>=20&&py<30;       // 20평대
+    if(area==='30') return py>=30&&py<40;       // 30평대
+    if(area==='40') return py>=40&&py<50;
+    if(area==='50') return py>=50&&py<60;
+    if(area==='60') return py>=60;
     return true;
   }
 
@@ -10836,10 +10845,9 @@ function renderTab4(){
 
   // ── 필터링 (단지칩용 allFiltered)
   function baseFilter(r){
-    var sqm=parseFloat(r['전용(㎡)']||0);
     if(!ymOk(r['계약년월'])) return false;
     if(dist!=='all'&&parseInt(r['공구'])!==parseInt(dist)) return false;
-    if(!areaOk(sqm)) return false;
+    if(!areaOk(r)) return false;
     if(tradeType!=='all'&&r['전월세구분']!==tradeType) return false;
     if(contract!=='all'&&r['계약구분']!==contract) return false;
     if(renewal==='사용'&&r['갱신요구권']!=='사용') return false;
