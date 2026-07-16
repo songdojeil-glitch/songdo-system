@@ -8,7 +8,7 @@
 @keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
 @keyframes spin{to{transform:rotate(360deg)}}
 *{box-sizing:border-box}
-body{margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f8f8f6;color:#1a1a1a}
+body{margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f8f8f6;color:#1a1a1a;zoom:var(--ui-scale,1.15)}
 .tnb{padding:10px 14px;border:none;border-bottom:2px solid transparent;background:transparent;color:#666;font-size:13px;cursor:pointer;white-space:nowrap}
 .tnb.on{color:#1a1a1a;border-bottom-color:#1a1a1a;font-weight:500}
 .tc{display:none}.tc.on{display:block;animation:fadeIn .2s ease}
@@ -38,6 +38,7 @@ input[type=range]{width:100%;accent-color:#1a1a1a}
 .ho-chip.sel-임대{background:#1565c0;color:#fff;border-color:#1565c0}
 .print-area{display:none}
 @media print{
+  body,html{zoom:1 !important;}
   .extra-img-change-btn{display:none!important;}
 
   body *{visibility:hidden}
@@ -1659,7 +1660,8 @@ function doPrintImage(el, fname){
         w.document.write('<html><head><title>'+fname+'</title>'
           +'<style>*{margin:0;padding:0;box-sizing:border-box}'
           +'body{background:#fff}'
-          +'@media print{@page{margin:0;size:A4 portrait}body{margin:0}div{page-break-inside:avoid}img{max-width:210mm!important;height:auto!important}}'
+          +'@media print{
+  body,html{zoom:1 !important;}@page{margin:0;size:A4 portrait}body{margin:0}div{page-break-inside:avoid}img{max-width:210mm!important;height:auto!important}}'
           +'@media screen{body{background:#555;padding:8px}div{margin-bottom:8px;box-shadow:0 2px 8px rgba(0,0,0,.3)}}'
           +'</style></head><body>'+pageHtmls+'</body></html>');
         setTimeout(function(){w.print();},800);
@@ -5206,5 +5208,34 @@ function sdApplyPerms(){['del_bulk','dl_bulk','up_bulk','del_single'].forEach(fu
 document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 (function(){try{var _ls=JSON.parse(localStorage.getItem('sd_auth_session')||'{}');if(!_ls.uid||!_ls.role||_ls.role==='master')return;firebase.database().ref('users/'+_ls.uid).once('value').then(function(snap){var p=snap.val();if(!p)return;_ls.role=p.role||_ls.role;_ls.permissions=p.permissions||_ls.permissions||{};_ls.ts=Date.now();localStorage.setItem('sd_auth_session',JSON.stringify(_ls));var sc=(_ls.permissions&&_ls.permissions.screens)||{};if(sc['sd_sangga']===false){alert('접근 권한이 없습니다.');window.location.href='sd_hub.html';return;}sdApplyPerms();}).catch(function(){});}catch(e){}})();
 </script>
+<script>
+/* ── UI 배율 시스템 (5K/4K 고해상도 대응) ── */
+(function(){
+  var KEY='sd_ui_scale';
+  var STEPS=[1,1.15,1.3];
+  var LBL={1:'100%',1.15:'115%',1.3:'130%'};
+  function get(){ var v=parseFloat(localStorage.getItem(KEY)); return STEPS.indexOf(v)>=0?v:1.15; }
+  function apply(v){ document.documentElement.style.setProperty('--ui-scale',v); }
+  function save(v){ try{localStorage.setItem(KEY,v);}catch(e){} }
+  var cur=get(); apply(cur);
+  document.addEventListener('DOMContentLoaded',function(){
+    if(document.getElementById('_ui_scale_btn'))return;
+    var b=document.createElement('button');
+    b.id='_ui_scale_btn';
+    b.title='화면 배율 조절 (5K/4K 대응) — 클릭으로 100/115/130% 전환';
+    b.style.cssText='position:fixed;right:14px;bottom:14px;z-index:9999;padding:6px 12px;background:#0e7490;color:#fff;border:none;border-radius:20px;font-size:12px;font-weight:700;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.2);opacity:.55;transition:opacity .2s';
+    b.onmouseenter=function(){b.style.opacity='1';};
+    b.onmouseleave=function(){b.style.opacity='.55';};
+    function label(){ b.textContent='🔍 '+LBL[get()]; }
+    label();
+    b.onclick=function(){
+      var i=STEPS.indexOf(get()); i=(i+1)%STEPS.length;
+      var v=STEPS[i]; save(v); apply(v); label();
+    };
+    document.body.appendChild(b);
+  });
+})();
+</script>
+
 </body>
 </html>

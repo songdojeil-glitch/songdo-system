@@ -8,7 +8,7 @@
 @keyframes spin{to{transform:rotate(360deg)}}
 @keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
 *{box-sizing:border-box}
-body{margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f8f8f6;color:#1a1a1a}
+body{margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f8f8f6;color:#1a1a1a;zoom:var(--ui-scale,1.15)}
 .tnb{padding:10px 14px;border:none;border-bottom:2px solid transparent;background:transparent;color:#666;font-size:13px;cursor:pointer;margin-bottom:-1px;white-space:nowrap}
 .tnb.on{color:#1a1a1a;border-bottom-color:#1a1a1a;font-weight:500}
 .tc{display:none}.tc.on{display:block;animation:fadeIn .2s ease}
@@ -2337,7 +2337,8 @@ function printProposal(){
   w.document.write('<html><head><meta charset="UTF-8"><title>맞춤 제안서</title>'
     +'<style>body{font-family:"Malgun Gothic",AppleGothic,sans-serif;font-size:13px;line-height:2;padding:2cm;max-width:21cm;margin:0 auto;color:#1a1a1a}'
     +'pre{white-space:pre-wrap;word-break:break-all;font-family:inherit}'
-    +'@media print{@page{margin:1.5cm 2cm}body{padding:0}}</style>'
+    +'@media print{
+  body,html{zoom:1 !important;}@page{margin:1.5cm 2cm}body{padding:0}}</style>'
     +'</head><body><pre>'+txt.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')+'</pre>'
     +'<script>window.onload=function(){window.print();}<\/script>'
     +'</body></html>');
@@ -3112,5 +3113,34 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
     }catch(e){}
   })();
 </script>
+<script>
+/* ── UI 배율 시스템 (5K/4K 고해상도 대응) ── */
+(function(){
+  var KEY='sd_ui_scale';
+  var STEPS=[1,1.15,1.3];
+  var LBL={1:'100%',1.15:'115%',1.3:'130%'};
+  function get(){ var v=parseFloat(localStorage.getItem(KEY)); return STEPS.indexOf(v)>=0?v:1.15; }
+  function apply(v){ document.documentElement.style.setProperty('--ui-scale',v); }
+  function save(v){ try{localStorage.setItem(KEY,v);}catch(e){} }
+  var cur=get(); apply(cur);
+  document.addEventListener('DOMContentLoaded',function(){
+    if(document.getElementById('_ui_scale_btn'))return;
+    var b=document.createElement('button');
+    b.id='_ui_scale_btn';
+    b.title='화면 배율 조절 (5K/4K 대응) — 클릭으로 100/115/130% 전환';
+    b.style.cssText='position:fixed;right:14px;bottom:14px;z-index:9999;padding:6px 12px;background:#0e7490;color:#fff;border:none;border-radius:20px;font-size:12px;font-weight:700;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.2);opacity:.55;transition:opacity .2s';
+    b.onmouseenter=function(){b.style.opacity='1';};
+    b.onmouseleave=function(){b.style.opacity='.55';};
+    function label(){ b.textContent='🔍 '+LBL[get()]; }
+    label();
+    b.onclick=function(){
+      var i=STEPS.indexOf(get()); i=(i+1)%STEPS.length;
+      var v=STEPS[i]; save(v); apply(v); label();
+    };
+    document.body.appendChild(b);
+  });
+})();
+</script>
+
 </body>
 </html>

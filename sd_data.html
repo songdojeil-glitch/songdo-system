@@ -29,7 +29,7 @@
   --font2: 'Oswald', sans-serif;
 }
 * { margin:0; padding:0; box-sizing:border-box; }
-body { background:var(--bg); color:var(--text); font-family:var(--font); font-size:13px; min-height:100vh; }
+body { background:var(--bg); color:var(--text); font-family:var(--font); font-size:13px; min-height:100vh; zoom:var(--ui-scale,1.15); }
 
 /* ── 상단 헤더 */
 .header {
@@ -458,6 +458,7 @@ tr.naver-fav>td:first-child{border-left:3px solid #b8860b;}
 
 /* ══════════ 인쇄 (라이트 배경·잉크 절약) ══════════ */
 @media print {
+  body,html{zoom:1 !important;}
   @page { size: A4 landscape; margin: 12mm 10mm; }
   html, body { background:#fff !important; color:#111 !important; font-size:10pt !important; }
   .header, .tab-nav, #sys-nav-wrap, .upload-bar,
@@ -12629,7 +12630,8 @@ function printReport(){
   w.document.write('<!DOCTYPE html><html><head>'
     +'<meta charset="UTF-8">'
     +'<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700;900&family=Oswald:wght@400;700;900&display=swap" rel="stylesheet">'
-    +'<style>*{margin:0;padding:0;box-sizing:border-box;}body{background:#f7f8fa;display:flex;justify-content:center;padding:20px;}@media print{body{padding:0;}@page{size:A4;margin:0;}}</style>'
+    +'<style>*{margin:0;padding:0;box-sizing:border-box;}body{background:#f7f8fa;display:flex;justify-content:center;padding:20px;}@media print{
+  body,html{zoom:1 !important;}body{padding:0;}@page{size:A4;margin:0;}}</style>'
     +'</head><body>'+printContent+'</body></html>');
   w.document.close();
   setTimeout(function(){ w.print(); }, 800);
@@ -13760,5 +13762,34 @@ function sdApplyPerms(){['del_bulk','dl_bulk','up_bulk','del_single'].forEach(fu
 document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 (function(){try{var _ls=JSON.parse(localStorage.getItem('sd_auth_session')||'{}');if(!_ls.uid||!_ls.role||_ls.role==='master')return;var _w=0,_t=setInterval(function(){if(!window._fbGet||!window._fbRef||!window._fbDb){if(++_w>=30)clearInterval(_t);return;}clearInterval(_t);window._fbGet(window._fbRef(window._fbDb,'users/'+_ls.uid)).then(function(snap){var p=snap.val();if(!p)return;_ls.role=p.role||_ls.role;_ls.permissions=p.permissions||_ls.permissions||{};_ls.ts=Date.now();localStorage.setItem('sd_auth_session',JSON.stringify(_ls));var sc=(_ls.permissions&&_ls.permissions.screens)||{};if(sc['sd_data']===false){alert('접근 권한이 없습니다.');window.location.href='sd_hub.html';return;}sdApplyPerms();}).catch(function(){});},200);}catch(e){}})();
 </script>
+<script>
+/* ── UI 배율 시스템 (5K/4K 고해상도 대응) ── */
+(function(){
+  var KEY='sd_ui_scale';
+  var STEPS=[1,1.15,1.3];
+  var LBL={1:'100%',1.15:'115%',1.3:'130%'};
+  function get(){ var v=parseFloat(localStorage.getItem(KEY)); return STEPS.indexOf(v)>=0?v:1.15; }
+  function apply(v){ document.documentElement.style.setProperty('--ui-scale',v); }
+  function save(v){ try{localStorage.setItem(KEY,v);}catch(e){} }
+  var cur=get(); apply(cur);
+  document.addEventListener('DOMContentLoaded',function(){
+    if(document.getElementById('_ui_scale_btn'))return;
+    var b=document.createElement('button');
+    b.id='_ui_scale_btn';
+    b.title='화면 배율 조절 (5K/4K 대응) — 클릭으로 100/115/130% 전환';
+    b.style.cssText='position:fixed;right:14px;bottom:14px;z-index:9999;padding:6px 12px;background:#0e7490;color:#fff;border:none;border-radius:20px;font-size:12px;font-weight:700;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.2);opacity:.55;transition:opacity .2s';
+    b.onmouseenter=function(){b.style.opacity='1';};
+    b.onmouseleave=function(){b.style.opacity='.55';};
+    function label(){ b.textContent='🔍 '+LBL[get()]; }
+    label();
+    b.onclick=function(){
+      var i=STEPS.indexOf(get()); i=(i+1)%STEPS.length;
+      var v=STEPS[i]; save(v); apply(v); label();
+    };
+    document.body.appendChild(b);
+  });
+})();
+</script>
+
 </body>
 </html>
