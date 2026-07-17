@@ -29,7 +29,9 @@
   --font2: 'Oswald', sans-serif;
 }
 * { margin:0; padding:0; box-sizing:border-box; }
-body { background:var(--bg); color:var(--text); font-family:var(--font); font-size:13px; min-height:100vh; zoom:var(--ui-scale,1.15); }
+body { background:var(--bg); color:var(--text); font-family:var(--font); font-size:13px; min-height:100vh; zoom:var(--ui-scale,1.15); overflow-x:hidden; }
+/* zoom으로 인한 가로 넘침 방지: 콘텐츠 래퍼가 뷰포트 폭에 맞도록 */
+.main, .tc, .grid-2, .district-grid { max-width:100%; box-sizing:border-box; }
 
 /* ── 상단 헤더 */
 .header {
@@ -249,7 +251,10 @@ body.zoom-mode .chart-wrap canvas {
 .chart-card {
   background:var(--card); border:1px solid var(--border); border-radius:10px;
   padding:14px 16px;
+  max-width:100%; box-sizing:border-box; overflow:hidden;
 }
+/* 차트 캔버스가 컨테이너를 넘지 않도록 상시 보정 (zoom 대응) */
+.chart-wrap canvas, .chart-card canvas { max-width:100% !important; box-sizing:border-box; }
 .chart-card-title { font-size:11px; color:var(--text2); font-weight:700; margin-bottom:12px; }
 .chart-wrap {
   position:relative;
@@ -458,7 +463,8 @@ tr.naver-fav>td:first-child{border-left:3px solid #b8860b;}
 
 /* ══════════ 인쇄 (라이트 배경·잉크 절약) ══════════ */
 @media print {
-  body,html{zoom:1 !important;}
+  :root { --ui-scale:1 !important; }
+  html, body, body.zoom-mode { zoom:1 !important; }
   @page { size: A4 landscape; margin: 12mm 10mm; }
   html, body { background:#fff !important; color:#111 !important; font-size:10pt !important; }
   .header, .tab-nav, #sys-nav-wrap, .upload-bar,
@@ -472,11 +478,18 @@ tr.naver-fav>td:first-child{border-left:3px solid #b8860b;}
   }
   * { color:#1a1a1a !important; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
   .kpi-val, .sec-hdr-title, th { color:#000 !important; }
-  table { border-collapse:collapse !important; width:100% !important; page-break-inside:auto; }
+  table { border-collapse:collapse !important; width:100% !important; min-width:0 !important; table-layout:auto !important; page-break-inside:auto; font-size:8pt !important; }
   th { background:#eee !important; color:#000 !important; border:0.5pt solid #999 !important; }
   td { border:0.5pt solid #ccc !important; }
   tr { page-break-inside:avoid; }
-  canvas { background:#fff !important; max-width:100% !important; }
+  /* 인쇄 시 넓은 표/스크롤 영역이 페이지 폭을 넘지 않도록 강제 축소 */
+  .table-scroll, [style*="min-width:1600px"], [style*="min-width:1460px"],
+  [style*="min-width:1200px"], [style*="min-width:900px"], [style*="min-width:700px"] {
+    min-width:0 !important; width:100% !important; overflow:visible !important;
+  }
+  .table-scroll table, [style*="min-width:16"] table { min-width:0 !important; width:100% !important; }
+  .tc.on { width:100% !important; max-width:100% !important; overflow:visible !important; }
+  canvas { background:#fff !important; max-width:100% !important; height:auto !important; }
   a { text-decoration:none !important; color:#1a1a1a !important; }
   .chart-card, .kpi-card { page-break-inside:avoid; }
   #print-title { display:block !important; font-size:14pt; font-weight:700; margin-bottom:8pt; color:#000 !important; }
@@ -3934,16 +3947,20 @@ function printCurrentTab(){
   var now=new Date();
   var ds=now.getFullYear()+'.'+String(now.getMonth()+1).padStart(2,'0')+'.'+String(now.getDate()).padStart(2,'0');
   var activeTc=document.querySelector('.tc.on');
-  if(activeTc){
-    var pt=document.getElementById('print-title');
-    if(!pt){pt=document.createElement('div');pt.id='print-title';}
-    pt.innerHTML='송도제일 데이터관리 시스템 &nbsp;|&nbsp; '+tabName+' &nbsp;<span style="font-weight:400;font-size:10pt">('+ds+' 출력)</span>';
-    activeTc.insertBefore(pt,activeTc.firstChild);
-  }
+  if(!activeTc){ alert('인쇄할 화면이 없습니다. 탭을 먼저 선택해 주세요.'); return; }
+  // 기존 print-title 제거 후 재삽입 (중복 방지)
+  var old=document.getElementById('print-title'); if(old&&old.parentNode) old.parentNode.removeChild(old);
+  var pt=document.createElement('div');
+  pt.id='print-title';
+  pt.innerHTML='송도제일 데이터관리 시스템 &nbsp;|&nbsp; '+tabName+' &nbsp;<span style="font-weight:400;font-size:10pt">('+ds+' 출력)</span>';
+  activeTc.insertBefore(pt,activeTc.firstChild);
   var wasZoom=document.body.classList.contains('zoom-mode');
   if(wasZoom) document.body.classList.remove('zoom-mode');
-  window.print();
-  if(wasZoom) document.body.classList.add('zoom-mode');
+  // 렌더 반영 후 인쇄 (일부 브라우저에서 즉시 print 시 레이아웃 미반영 방지)
+  setTimeout(function(){
+    window.print();
+    if(wasZoom) document.body.classList.add('zoom-mode');
+  }, 200);
 }
 
 function sw(n){
@@ -4268,20 +4285,29 @@ function exportFavExcel(){
 
 function printFavList(){
   var favRows=G.naverData.filter(function(r){return G.naverFav[_naverKey(r)];});
-  if(!favRows.length){showToast('관심매물이 없습니다.');return;}
+  var isAll=false;
+  if(!favRows.length){
+    if(!G.naverData || !G.naverData.length){ showToast('인쇄할 매물이 없습니다.'); return; }
+    if(!confirm('관심매물이 없습니다.\n현재 목록의 전체 매물을 인쇄할까요?')) return;
+    favRows=G.naverData.slice();
+    isAll=true;
+  }
   var rows=favRows.map(function(r){
-    return '<tr><td>'+r.단지명+'</td><td>'+r.거래유형+'</td><td>'+r.전용+'</td>'
-      +'<td>'+fmt천(r.호가)+'</td><td>'+r.층+'층</td><td>'+r.방향+'</td>'
-      +'<td>'+r.입력일+'</td><td>'+r.중개사+'</td><td>'+r.특이사항+'</td></tr>';
+    return '<tr><td>'+(r.단지명||'')+'</td><td>'+(r.거래유형||'')+'</td><td>'+(r.전용||'')+'</td>'
+      +'<td>'+fmt천(r.호가)+'</td><td>'+(r.층||'')+'층</td><td>'+(r.방향||'')+'</td>'
+      +'<td>'+(r.입력일||'')+'</td><td>'+(r.중개사||'')+'</td><td>'+(r.특이사항||'')+'</td></tr>';
   }).join('');
   var tbl='<table border=1 cellpadding=4 style="border-collapse:collapse;width:100%;font-size:11px">'
     +'<tr style="background:#eee"><th>단지명</th><th>거래</th><th>전용</th><th>의뢰가</th>'
     +'<th>층</th><th>방향</th><th>입력일</th><th>중개사</th><th>특이사항</th></tr>'
     +rows+'</table>';
   var w=window.open('','_blank');
-  w.document.write('<meta charset=utf-8><title>관심매물</title>'
-    +'<h3 style="font-family:sans-serif;margin:10px 0">송도제일공인 관심매물 ('+favRows.length+'건)</h3>'+tbl);
-  w.document.close(); w.print();
+  if(!w){ alert('팝업이 차단되었습니다. 브라우저 주소창의 팝업 차단을 해제해 주세요.'); return; }
+  w.document.write('<meta charset=utf-8><title>매물목록</title>'
+    +'<style>@media print{@page{size:A4 landscape;margin:10mm}}body{font-family:sans-serif;margin:12px}table{width:100%!important}th,td{word-break:break-all}</style>'
+    +'<h3 style="margin:10px 0">송도제일공인 '+(isAll?'전체매물':'관심매물')+' ('+favRows.length+'건)</h3>'+tbl);
+  w.document.close();
+  setTimeout(function(){ w.print(); }, 300);
 }
 
 
