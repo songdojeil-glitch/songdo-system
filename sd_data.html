@@ -471,6 +471,14 @@ tr.naver-fav>td:first-child{border-left:3px solid #b8860b;}
   .header, .tab-nav, #sys-nav-wrap, .upload-bar,
   #zoom-btn, #print-btn, #nav-show-btn, #fb-status, #_sda_b, #_sda_cover,
   button, .no-print { display:none !important; }
+  /* 인쇄 시 필터/칩/입력 UI 숨김 (겹침 방지) */
+  .filter-row, .filter-group, .filter-label, .filter-btn,
+  #naver-filter-row, #t6-unit-chips, #t6-dist-group,
+  input, select, label,
+  .upload-status, [id$="-search-input"], [id$="-chips"],
+  .empty-state { display:none !important; }
+  /* 필터 컨테이너 여백 제거 */
+  .filter-row { margin:0 !important; padding:0 !important; }
   .tc { display:none !important; }
   .tc.on { display:block !important; }
   .card, .chart-card, .kpi-card, .table-scroll,
@@ -493,6 +501,13 @@ tr.naver-fav>td:first-child{border-left:3px solid #b8860b;}
   canvas { background:#fff !important; max-width:100% !important; height:auto !important; }
   a { text-decoration:none !important; color:#1a1a1a !important; }
   .chart-card, .kpi-card { page-break-inside:avoid; }
+  /* KPI 행: 인쇄 시에도 가로 배치 유지 + 페이지 경계 잘림 방지 */
+  .kpi-row { display:grid !important; gap:6px !important; page-break-inside:avoid; margin-bottom:8pt !important; }
+  .kpi-card { padding:6pt 8pt !important; page-break-inside:avoid; }
+  /* 섹션 헤더가 표와 분리되지 않도록 */
+  .sec-hdr { page-break-after:avoid; }
+  /* 차트 그리드가 세로로 무너지지 않게 (2단 유지) */
+  .grid-2 { display:grid !important; grid-template-columns:1fr 1fr !important; gap:8px !important; }
   #print-title { display:block !important; font-size:14pt; font-weight:700; margin-bottom:8pt; color:#000 !important; }
 }
 #print-title { display:none; }
@@ -3956,18 +3971,42 @@ function printCurrentTab(){
   var ds=now.getFullYear()+'.'+String(now.getMonth()+1).padStart(2,'0')+'.'+String(now.getDate()).padStart(2,'0');
   var activeTc=document.querySelector('.tc.on');
   if(!activeTc){ alert('인쇄할 화면이 없습니다. 탭을 먼저 선택해 주세요.'); return; }
+  // 현재 활성 필터 조건 요약 (숨겨진 필터 정보를 제목에 보존)
+  var filterSummary='';
+  (function(){
+    var parts=[];
+    activeTc.querySelectorAll('.filter-group').forEach(function(g){
+      var on=g.querySelector('.filter-btn.on');
+      if(on){ var t=on.textContent.trim(); if(t && t!=='전체') parts.push(t); }
+    });
+    // 선택된 단지 칩 (파랑 활성)
+    var selChip=activeTc.querySelector('.chip.on, [class*="chip"].on');
+    if(selChip){ var c=selChip.textContent.replace(/×/g,'').trim(); if(c) parts.push(c); }
+    if(parts.length) filterSummary=' · '+parts.join(' · ');
+  })();
   // 기존 print-title 제거 후 재삽입 (중복 방지)
   var old=document.getElementById('print-title'); if(old&&old.parentNode) old.parentNode.removeChild(old);
   var pt=document.createElement('div');
   pt.id='print-title';
-  pt.innerHTML='송도제일 데이터관리 시스템 &nbsp;|&nbsp; '+tabName+' &nbsp;<span style="font-weight:400;font-size:10pt">('+ds+' 출력)</span>';
+  pt.innerHTML='송도제일 데이터관리 시스템 &nbsp;|&nbsp; '+tabName+
+    '<span style="font-weight:400;font-size:10pt"> ('+ds+' 출력)</span>'+
+    (filterSummary?'<div style="font-size:10pt;font-weight:400;color:#555;margin-top:2pt">필터'+filterSummary+'</div>':'');
   activeTc.insertBefore(pt,activeTc.firstChild);
   var wasZoom=document.body.classList.contains('zoom-mode');
   if(wasZoom) document.body.classList.remove('zoom-mode');
+  // 인쇄 후 print-title 제거 (화면에 잔류 방지)
+  var _cleanup=function(){
+    var p=document.getElementById('print-title');
+    if(p&&p.parentNode) p.parentNode.removeChild(p);
+    if(wasZoom) document.body.classList.add('zoom-mode');
+    window.removeEventListener('afterprint',_cleanup);
+  };
+  window.addEventListener('afterprint',_cleanup);
   // 렌더 반영 후 인쇄 (일부 브라우저에서 즉시 print 시 레이아웃 미반영 방지)
   setTimeout(function(){
     window.print();
-    if(wasZoom) document.body.classList.add('zoom-mode');
+    // afterprint 미지원 브라우저 대비 폴백
+    setTimeout(_cleanup, 1000);
   }, 200);
 }
 
