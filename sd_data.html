@@ -4363,24 +4363,44 @@ function parseNaverRows(allRows){
   }).map(function(r){
     var nm=r['단지명']||r['아파트명']||r['건물명']||r['상가명']||'-';
     var rawType=r['거래구분']||r['거래유형']||r['유형']||'매매';
-    var rawSqm=r['전용m²']||r['타입(전용)']||r['전용(㎡)']||r['전용㎡']||r['면적']||r['면적(㎡)']||'0';
+    // 새 형식: '분양m²'(타입), '전용m²'(전용), '분양평수' 분리
+    var col분양=r['분양m²']||r['분양㎡']||'';
+    var col전용=r['전용m²']||r['전용㎡']||r['전용(㎡)']||'';
+    var col분양평수=r['분양평수']||r['분양평형']||'';
+    var isSplitFormat=!!col분양;
+    var rawSqm = isSplitFormat ? col전용 : (col전용||r['타입(전용)']||r['면적']||r['면적(㎡)']||'0');
     var rawPrice=r['가격']||r['의뢰가']||r['호가']||r['매매가']||'0';
     var rawFloor=r['층']||r['층/총층']||'-';
     var rawDate=r['확인날짜']||r['확인 날짜']||r['입력일']||r['등록일']||'-';
     var rawAgent=r['중개업소명']||r['중개사']||'-';
-    var rawType2=r['타입(전용)']||r['전용m²']||'';
+    var rawType2 = isSplitFormat ? col분양 : (r['타입(전용)']||col전용||'');
     var typeNm=(function(){
+      if(isSplitFormat) return String(col분양).trim()||'-';
       if(!rawType2) return '-';
       var s=String(rawType2);
       var slash=s.indexOf('/');
       var part=slash>-1?s.slice(0,slash).trim():s.replace(/\s*m.*/,'').replace(/㎡.*/,'').trim();
       return part||'-';
     })();
-    // 분양평수: 타입 앞 숫자 ÷ 3.3058 (예: '110A/84m²' → 110÷3.3058 = 33평)
+    // 분양평수: 새 형식은 컬럼값(소수점 버림), 아니면 타입 앞 숫자÷3.3058
     var bunyangPy=(function(){
+      if(isSplitFormat && col분양평수){
+        var pv=parseFloat(String(col분양평수).replace(/[^0-9.]/g,''));
+        if(pv>0) return Math.floor(pv);
+      }
       var m=String(rawType2||'').match(/^(\d+(?:\.\d+)?)/);
       if(!m) return 0;
       return Math.floor(parseFloat(m[1])/3.3058)||0;
+    })();
+    // 분양평수 정밀값 (평당가 계산용, 버림 안 함)
+    var bunyangPyExact=(function(){
+      if(isSplitFormat && col분양평수){
+        var pv=parseFloat(String(col분양평수).replace(/[^0-9.]/g,''));
+        if(pv>0) return pv;
+      }
+      var m=String(rawType2||'').match(/^(\d+(?:\.\d+)?)/);
+      if(!m) return 0;
+      return parseFloat(m[1])/3.3058||0;
     })();
     // 중복업소명 (컬럼명 동적 탐색)
     var dupNm='';
@@ -4396,6 +4416,7 @@ function parseNaverRows(allRows){
       타입: typeNm,
       전용: parseNaverSqm(rawSqm),
       분양평형: bunyangPy,
+      분양평수정밀: bunyangPyExact,
       호가: parseNaverPrice(rawPrice),
       층: parseNaverFloor(rawFloor),
       동: r['동']||r['동호']||'-',
@@ -5976,11 +5997,14 @@ function fmt만(v){ if(!v||v===0) return '-'; return Math.round(v/10000*10)/10+'
 // ── 평당가 계산 헬퍼: 분양평형 기준 (전용㎡ 미사용)
 // 분양평형 = r['분양평형'] 또는 r['타입'] 앞 숫자(분양면적㎡) ÷ 3.3058
 function getBP(r){
+  // 평당가 계산용: 정밀 분양평수(소수점) 우선 → 표시용 버림값 → 타입에서 환산
+  var exact=parseFloat(r['분양평수정밀']||0);
+  if(exact>0) return exact;
   var bp=parseInt(r['분양평형']||0);
   if(bp>0) return bp;
   // 타입 필드에서 분양면적㎡ 추출 → ÷ 3.3058 = 분양평형
   var tn=parseFloat((r['타입']||r['타입명']||'').replace(/[^0-9.].*/,'')||0);
-  if(tn>0) return Math.round(tn/3.3058);
+  if(tn>0) return tn/3.3058;
   return 0;
 }
 // 가격(만원) ÷ 분양평형 = 평당가(만원/평) — 분양평형이 없으면 0
@@ -11914,10 +11938,18 @@ function processNaverRows(rows, fileCnt){
       var newParsed = validRows.map(function(r){
         var nm=r['단지명']||r['아파트명']||'-';
         var rawType=r['거래구분']||r['거래유형']||r['유형']||'매매';
-        var rawTypeVal=r['타입(전용)']||r['전용m²']||'';
-        var rawSqm=rawTypeVal||r['전용(㎡)']||r['전용㎡']||r['면적']||'0';
-        // 타입명 추출: '111T/84m²' → '111T', '132/101m²' → '132', '110A' → '110A' (/ 앞 부분, 영문 포함)
+        // 새 형식: '분양m²'(=타입), '전용m²'(=전용), '분양평수' 컬럼이 분리됨
+        // 예: 분양m²='91B', 전용m²='59B', 분양평수='27.5'
+        var col분양=r['분양m²']||r['분양㎡']||'';
+        var col전용=r['전용m²']||r['전용㎡']||r['전용(㎡)']||'';
+        var col분양평수=r['분양평수']||r['분양평형']||'';
+        var isSplitFormat = !!col분양;  // 분양m² 컬럼이 있으면 새 형식
+        // 구 형식: '타입(전용)'에 '113B/84m²' 형태로 합쳐진 경우
+        var rawTypeVal = isSplitFormat ? col분양 : (r['타입(전용)']||col전용||'');
+        var rawSqm = isSplitFormat ? col전용 : (rawTypeVal||r['면적']||'0');
+        // 타입명 추출: 새형식은 col분양 그대로('91B','101'), 구형식은 '/' 앞('113B/84m²'→'113B')
         var typeNm=(function(){
+          if(isSplitFormat) return String(col분양).trim()||'-';
           if(!rawTypeVal) return '-';
           var s=String(rawTypeVal);
           var slash=s.indexOf('/');
@@ -11961,13 +11993,26 @@ function processNaverRows(rows, fileCnt){
               return '';
             })(),
           분양평형: (function(){
-            // 타입(전용) 앞 숫자 = 분양면적(㎡) → ÷3.3058 소수 버림 = 분양평형
-            // 예: '115B/84m²' → 115 ÷ 3.3058 = 34평
-            var rawT = String(rawTypeVal||'');
-            var m = rawT.match(/^(\d+)/);
+            // 표시용: 소수점 이하 버림 (예: '27.5' → 27)
+            if(isSplitFormat && col분양평수){
+              var pv=parseFloat(String(col분양평수).replace(/[^0-9.]/g,''));
+              if(pv>0) return Math.floor(pv);
+            }
+            var rawT = String(isSplitFormat?col분양:rawTypeVal||'');
+            var m = rawT.match(/^(\d+(?:\.\d+)?)/);
             if(!m) return 0;
-            var bunyangSqm = parseFloat(m[1]);
-            return Math.floor(bunyangSqm / 3.3058) || 0;
+            return Math.floor(parseFloat(m[1]) / 3.3058) || 0;
+          })(),
+          분양평수정밀: (function(){
+            // 평당가 계산용: 소수점까지 정확한 분양평수 (버림 안 함)
+            if(isSplitFormat && col분양평수){
+              var pv=parseFloat(String(col분양평수).replace(/[^0-9.]/g,''));
+              if(pv>0) return pv;
+            }
+            var rawT = String(isSplitFormat?col분양:rawTypeVal||'');
+            var m = rawT.match(/^(\d+(?:\.\d+)?)/);
+            if(!m) return 0;
+            return parseFloat(m[1]) / 3.3058 || 0;
           })(),
           // 월세 추가 필드
           월세: (rawType==='월세'&&String(r['가격']||'').indexOf('/')>-1) ?
