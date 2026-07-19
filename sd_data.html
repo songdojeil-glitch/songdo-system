@@ -6057,6 +6057,27 @@ function renderTab5(){
 }
 
 function fmt만(v){ if(!v||v===0) return '-'; return Math.round(v/10000*10)/10+'억'; }
+// ── 실거래 행 분양평수 정규화 (매물 APT와 동일 규칙)
+// 표시용 r['분양평형'] = 소수점 버림(27.5→27), 계산용 r['분양평수정밀'] = 원본 소수점 유지
+function normalizeBP(r){
+  if(!r) return r;
+  var raw = r['분양평수정밀'];
+  if(!(parseFloat(raw)>0)){
+    // 우선순위 1) 분양평수 컬럼(소수점 포함)
+    var pv = parseFloat(String(r['분양평수']||'').replace(/[^0-9.]/g,''))||0;
+    // 2) 분양㎡ / 타입 앞 숫자 ÷ 3.3058  (분양평형이 정수로 절삭 저장된 경우 대비)
+    if(!(pv>0)){
+      var m = String(r['분양m²']||r['분양㎡']||r['타입']||'').match(/^(\d+(?:\.\d+)?)/);
+      if(m){ var mm=parseFloat(m[1]); if(mm>=40) pv = mm/3.3058; }
+    }
+    // 3) 분양평형 원본값 (소수점이 살아있으면 그대로 사용)
+    if(!(pv>0)) pv = parseFloat(String(r['분양평형']||'').replace(/[^0-9.]/g,''))||0;
+    if(pv>0) r['분양평수정밀'] = pv;
+  }
+  var ex = parseFloat(r['분양평수정밀']||0);
+  if(ex>0) r['분양평형'] = Math.floor(ex);
+  return r;
+}
 // ── 평당가 계산 헬퍼: 분양평형 기준 (전용㎡ 미사용)
 // 분양평형 = r['분양평형'] 또는 r['타입'] 앞 숫자(분양면적㎡) ÷ 3.3058
 function getBP(r){
@@ -6154,7 +6175,7 @@ function parseSaleXlsx(wb){
         dist = distMap[String(r['단지명']).trim()] || 0;
       }
       r['공구'] = dist;
-      allRows.push(r);
+      allRows.push(normalizeBP(r));
     });
   });
   if(allRows.length===0){ showToast('❌ 매매 시트를 찾을 수 없습니다'); return; }
@@ -6184,7 +6205,7 @@ function parseRentXlsx(wb){
           dist = window._distMap[String(r['단지명']).trim()]||0;
         }
         r['공구'] = dist;
-        allRows.push(r);
+        allRows.push(normalizeBP(r));
       });
     });
   });
@@ -12841,11 +12862,13 @@ window.fbAutoLoad = function(){
               '평당가': parseFloat(String(r.평당가||r['평당가']||0).replace(/,/g,'')),
               '층': r.층||r['층']||'',
               '계약일': parseInt(r.계약일||r['계약일']||0),
-              '분양평형': parseInt(String(r.분양평형||r['분양평형']||0).replace(/,/g,'')),
+              '분양평형': Math.floor(parseFloat(String(r.분양평수정밀||r['분양평수정밀']||r.분양평형||r['분양평형']||0).replace(/,/g,''))||0),
+              '분양평수정밀': parseFloat(String(r.분양평수정밀||r['분양평수정밀']||r.분양평형||r['분양평형']||0).replace(/,/g,''))||0,
               '거래유형': r.거래유형||r['거래유형']||'',
               '해제사유발생일': r.해제사유||r['해제사유발생일']||'-',
             };
           }) : d.sale_data;
+          if(G.saleData) G.saleData.forEach(normalizeBP);
           buildSaleStats();
           $set('sale-status','✅ FB '+G.saleData.length+'건');
         }
@@ -12877,13 +12900,15 @@ window.fbAutoLoad = function(){
               '평당가': parseFloat(r.평당가||r['평당가']||0),
               '층': r.층||r['층']||'',
               '계약일': parseInt(r.계약일||r['계약일']||0),
-              '분양평형': parseInt(String(r.분양평형||r['분양평형']||0).replace(/,/g,'')),
+              '분양평형': Math.floor(parseFloat(String(r.분양평수정밀||r['분양평수정밀']||r.분양평형||r['분양평형']||0).replace(/,/g,''))||0),
+              '분양평수정밀': parseFloat(String(r.분양평수정밀||r['분양평수정밀']||r.분양평형||r['분양평형']||0).replace(/,/g,''))||0,
               '전용(㎡)': parseFloat(r.전용||r['전용(㎡)']||0),
               '전월세구분': r.전월세구분||r['전월세구분']||'',
               '계약구분': r.계약구분||r['계약구분']||'',
               '갱신요구권사용여부': r.갱신요구권||r['갱신요구권사용여부']||'',
             };
           }) : d.rent_data;
+          if(G.rentData) G.rentData.forEach(normalizeBP);
           buildRentStats();
           $set('rent-status','✅ FB '+G.rentData.length+'건');
         }
