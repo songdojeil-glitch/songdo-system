@@ -5720,10 +5720,23 @@ async function generateProposal(mode){
     var resp=await fetch('https://api.anthropic.com/v1/messages',{
       method:'POST',
       headers:{'Content-Type':'application/json','x-api-key':getClaudeKey(),'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
-      body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:1000,messages:[{role:'user',content:prompt}]})
+      body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:4000,messages:[{role:'user',content:prompt}]})
     });
     var data=await resp.json();
+    // API 오류(401/크레딧 등) 명확히 표시
+    if(data.error){
+      var em=data.error.message||JSON.stringify(data.error);
+      document.getElementById('prop-content').textContent='❌ 제안서 생성 실패: '+em
+        +'\n\n(API 키·크레딧 상태를 확인하세요)';
+      document.getElementById('prop-output').style.display='block';
+      document.getElementById('prop-loading').style.display='none';
+      return;
+    }
     var result=data.content&&data.content[0]?data.content[0].text:'제안서 생성에 실패했습니다.';
+    // 토큰 한계로 잘렸으면 안내 추가
+    if(data.stop_reason==='max_tokens'){
+      result+='\n\n──────────\n⚠️ 분량이 많아 제안서가 여기서 잘렸습니다. 추천 매물 수를 줄이거나 다시 시도하세요.';
+    }
 
     document.getElementById('prop-content').textContent=result;
     document.getElementById('prop-output').style.display='block';
