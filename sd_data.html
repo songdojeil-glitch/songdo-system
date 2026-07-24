@@ -617,12 +617,13 @@ tr.naver-fav>td:first-child{border-left:3px solid #b8860b;}
 
 <!-- ══ TAB0 시황판 ══ -->
 <!-- ══ TAB13 주택공급현황 ══ -->
+<!-- ══ TAB13 주택공급현황 ══ -->
 <div id="tc13" class="tc">
-  <div class="card" style="padding:16px;margin-bottom:14px">
+  <div class="card" style="padding:14px;margin-bottom:12px">
     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
       <div>
         <div style="font-size:14px;font-weight:700;color:var(--text)">🏗️ 송도 주택공급현황 <span id="hs-ver" style="font-size:11px;color:var(--text3);font-weight:400"></span></div>
-        <div style="font-size:11px;color:var(--text3);margin-top:2px">마스터 엑셀(전체 시트) 기준 · 공구/단지/면적형 공급 데이터</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:2px">마스터 엑셀 기준 · 공구/단지/면적형 공급 데이터</div>
       </div>
       <div style="display:flex;gap:6px;flex-wrap:wrap">
         <label style="padding:7px 14px;background:var(--accent);color:#fff;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">
@@ -635,28 +636,56 @@ tr.naver-fav>td:first-child{border-left:3px solid #b8860b;}
     </div>
   </div>
 
-  <!-- KPI 카드 -->
-  <div id="hs-kpi" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px"></div>
+  <!-- 공구 / 단지 선택 (단지 시황판 방식) -->
+  <div class="filter-row">
+    <span class="filter-label">공구</span>
+    <div class="filter-group" id="hs-dist-group">
+      <button class="filter-btn on" onclick="hsSetDist('all',this)">전체</button>
+      <button class="filter-btn" onclick="hsSetDist(1,this)">1공구</button>
+      <button class="filter-btn" onclick="hsSetDist(2,this)">2공구</button>
+      <button class="filter-btn" onclick="hsSetDist(3,this)">3공구</button>
+      <button class="filter-btn" onclick="hsSetDist(4,this)">4공구</button>
+      <button class="filter-btn" onclick="hsSetDist(5,this)">5공구</button>
+      <button class="filter-btn" onclick="hsSetDist(6,this)">6공구</button>
+      <button class="filter-btn" onclick="hsSetDist(7,this)">7공구</button>
+      <button class="filter-btn" onclick="hsSetDist(8,this)">8공구</button>
+      <button class="filter-btn" onclick="hsSetDist(11,this)">11공구</button>
+    </div>
+  </div>
+  <div class="filter-row" style="margin-top:-4px;align-items:center;gap:8px">
+    <span class="filter-label">단지검색</span>
+    <input type="text" id="hs-search-input" placeholder="단지명 입력..."
+      style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:4px 10px;color:var(--text1);font-size:12px;width:160px;outline:none"
+      oninput="hsRenderChips()" />
+    <div id="hs-unit-chips" style="display:flex;flex-wrap:wrap;gap:4px;flex:1"></div>
+    <button onclick="hsClearSearch()" style="background:transparent;border:1px solid var(--border);border-radius:6px;padding:3px 10px;color:var(--text3);font-size:11px;cursor:pointer">초기화</button>
+  </div>
 
-  <!-- 차트 3종 -->
+  <!-- KPI -->
+  <div id="hs-kpi" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:12px 0"></div>
+
+  <!-- 공구별 카드 -->
+  <div id="hs-dist-cards" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;margin-bottom:14px"></div>
+
+  <!-- 차트 -->
   <div class="grid-2" style="margin-bottom:14px">
     <div class="card chart-card" style="padding:14px">
-      <div style="font-size:12px;font-weight:700;margin-bottom:8px">📅 연도별 분양 vs 입주 (세대)</div>
+      <div class="chart-card-title" id="hs-year-title">📅 연도별 분양 vs 입주 세대수</div>
       <div class="chart-wrap"><canvas id="hs-chart-year"></canvas></div>
     </div>
     <div class="card chart-card" style="padding:14px">
-      <div style="font-size:12px;font-weight:700;margin-bottom:8px">🏘️ 공구별 공급 세대수</div>
-      <div class="chart-wrap"><canvas id="hs-chart-dist"></canvas></div>
+      <div class="chart-card-title" id="hs-area-title">📐 면적별 공급세대 분포</div>
+      <div class="chart-wrap"><canvas id="hs-chart-area"></canvas></div>
     </div>
   </div>
   <div class="grid-2" style="margin-bottom:14px">
     <div class="card chart-card" style="padding:14px">
-      <div style="font-size:12px;font-weight:700;margin-bottom:8px">📐 평형대별 세대수 분포</div>
-      <div class="chart-wrap"><canvas id="hs-chart-pyeong"></canvas></div>
+      <div class="chart-card-title">🏘️ 공구별 면적형 분포 (누적)</div>
+      <div class="chart-wrap"><canvas id="hs-chart-distarea"></canvas></div>
     </div>
     <div class="card" style="padding:14px">
-      <div style="font-size:12px;font-weight:700;margin-bottom:8px">🔜 입주예정 단지 (미입주)</div>
-      <div id="hs-upcoming" style="max-height:220px;overflow-y:auto;font-size:12px"></div>
+      <div class="chart-card-title">🔜 입주예정 단지</div>
+      <div id="hs-upcoming" style="max-height:230px;overflow-y:auto;font-size:12px;margin-top:6px"></div>
     </div>
   </div>
 
@@ -664,20 +693,22 @@ tr.naver-fav>td:first-child{border-left:3px solid #b8860b;}
   <div class="card" style="padding:14px">
     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px">
       <div style="font-size:12px;font-weight:700">🏢 단지 마스터 <span id="hs-cnt" style="font-size:11px;color:var(--text3);font-weight:400"></span></div>
-      <div style="display:flex;gap:6px;flex-wrap:wrap">
-        <select id="hs-f-dist" onchange="hsRenderTable()" style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;padding:4px 8px">
-          <option value="">전체 공구</option>
-        </select>
-        <input id="hs-f-kw" oninput="hsRenderTable()" placeholder="단지명 검색"
-          style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;padding:4px 10px;width:140px">
-      </div>
+      <div style="font-size:11px;color:var(--accent)">단지명 클릭 → 상세 모달</div>
     </div>
-    <div class="table-scroll" style="max-height:420px;overflow:auto">
+    <div class="table-scroll" style="max-height:440px;overflow:auto">
       <table class="data-table" id="hs-table"></table>
     </div>
-    <div style="font-size:11px;color:var(--text3);margin-top:6px">💡 단지명을 클릭하면 면적형별 상세가 열립니다</div>
+  </div>
+
+  <!-- 단지 상세 모달 -->
+  <div id="hs-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:9200;overflow-y:auto;padding:16px" onclick="hsCloseModal(event)">
+    <div style="max-width:1100px;margin:0 auto;background:var(--bg2);border:2px solid var(--accent);border-radius:16px;padding:28px;position:relative" onclick="event.stopPropagation()">
+      <button onclick="hsCloseModal()" style="position:absolute;top:12px;right:16px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:50%;width:30px;height:30px;cursor:pointer;font-size:14px">✕</button>
+      <div id="hs-modal-content"></div>
+    </div>
   </div>
 </div>
+
 
 <div id="tc0" class="tc on">
   <!-- 업로드 바 -->
@@ -5342,32 +5373,92 @@ function hsTradeRate(name, cnt){
 window.hsGetDanji=hsGetDanji; window.hsGetSedae=hsGetSedae; window.hsTradeRate=hsTradeRate;
 
 // ── 렌더링
+// ── 상태: 선택된 공구/단지
+G_HS.selDist='all'; G_HS.selDanji='';
+
 function hsRenderVer(){
   var el=document.getElementById('hs-ver');
   if(el) el.textContent = G_HS.danji.length ? ('· '+G_HS.danji.length+'개 단지'+(G_HS.updated?' · 업데이트 '+G_HS.updated:'')) : '· 데이터 없음';
 }
 
-function hsRenderAll(){
-  hsRenderVer(); hsRenderKPI(); hsRenderCharts(); hsRenderUpcoming();
-  hsFillDistFilter(); hsRenderTable();
-  // 공구별 세대수(거래율 모수)를 마스터 기준으로 최신화
-  try{ hsSyncDistrictUnits(); }catch(e){}
+// 현재 필터가 적용된 단지 목록
+function hsFiltered(){
+  return G_HS.danji.filter(function(d){
+    if(G_HS.selDist!=='all' && parseInt(d.공구)!==parseInt(G_HS.selDist)) return false;
+    if(G_HS.selDanji && d.단지명!==G_HS.selDanji) return false;
+    return true;
+  });
+}
+
+function hsSetDist(v, btn){
+  G_HS.selDist=v; G_HS.selDanji='';
+  var g=document.getElementById('hs-dist-group');
+  if(g&&btn){ g.querySelectorAll('.filter-btn').forEach(function(b){b.classList.remove('on');}); btn.classList.add('on'); }
+  var si=document.getElementById('hs-search-input'); if(si) si.value='';
+  hsRenderBody();
+}
+
+function hsClearSearch(){
+  G_HS.selDanji='';
+  var si=document.getElementById('hs-search-input'); if(si) si.value='';
+  hsRenderBody();
+}
+
+function hsSelectDanji(nm){
+  G_HS.selDanji = (G_HS.selDanji===nm) ? '' : nm;
+  hsRenderBody();
+}
+
+// 단지 칩 (공구 선택 + 검색어 반영)
+function hsRenderChips(){
+  var el=document.getElementById('hs-unit-chips'); if(!el) return;
+  var kw=((document.getElementById('hs-search-input')||{}).value||'').trim();
+  var list=G_HS.danji.filter(function(d){
+    if(G_HS.selDist!=='all' && parseInt(d.공구)!==parseInt(G_HS.selDist)) return false;
+    if(kw && String(d.단지명).indexOf(kw)<0) return false;
+    return true;
+  });
+  if(G_HS.selDist==='all' && !kw){ el.innerHTML='<span style="font-size:11px;color:var(--text3)">공구를 선택하거나 단지명을 입력하세요</span>'; return; }
+  if(!list.length){ el.innerHTML='<span style="font-size:11px;color:var(--text3)">해당 단지 없음</span>'; return; }
+  el.innerHTML=list.slice(0,60).map(function(d){
+    var on=(G_HS.selDanji===d.단지명);
+    return '<button class="filter-btn'+(on?' on':'')+'" style="font-size:11px;padding:2px 8px" onclick="hsSelectDanji(\''+String(d.단지명).replace(/'/g,"\\'")+'\')">'+d.단지명+'</button>';
+  }).join('');
+}
+
+function hsRenderAll(){ hsRenderVer(); hsRenderBody(); try{ hsSyncDistrictUnits(); }catch(e){} }
+
+// 필터 변경 시 재렌더되는 본문 전체
+function hsRenderBody(){
+  hsRenderChips(); hsRenderKPI(); hsRenderDistCards();
+  hsRenderCharts(); hsRenderUpcoming(); hsRenderTable();
 }
 
 function hsRenderKPI(){
   var el=document.getElementById('hs-kpi'); if(!el) return;
-  var d=G_HS.danji;
-  if(!d.length){ el.innerHTML='<div class="card" style="padding:16px;font-size:12px;color:var(--text3)">마스터 엑셀을 업로드하거나 ☁️ 불러오기를 눌러주세요</div>'; return; }
-  var supply=G_HS.summary.supply||d.reduce(function(a,x){return a+x.세대수;},0);
-  var done=G_HS.summary.done||0, remain=G_HS.summary.remain||(supply-done);
+  var all=G_HS.danji;
+  if(!all.length){ el.innerHTML='<div class="card" style="padding:16px;font-size:12px;color:var(--text3)">마스터 엑셀을 업로드하거나 ☁️ 불러오기를 눌러주세요</div>'; return; }
+  var d=hsFiltered();
+  var isAll=(G_HS.selDist==='all'&&!G_HS.selDanji);
+  var supply=d.reduce(function(a,x){return a+x.세대수;},0);
+  // 입주완료/미입주: 입주일 기준 계산 (필터 반영)
+  var now=new Date(); var ny=now.getFullYear(), nm=now.getMonth()+1;
+  var done=0,remain=0;
+  d.forEach(function(x){
+    var s=String(x.입주일||''); var m=s.match(/(\d{4})(?:\.(\d{1,2}))?/);
+    if(!m){ done+=x.세대수; return; }
+    var y=parseInt(m[1]), mo=m[2]?parseInt(m[2]):12;
+    if(y<ny || (y===ny&&mo<=nm)) done+=x.세대수; else remain+=x.세대수;
+  });
+  if(isAll && G_HS.summary.supply){ supply=G_HS.summary.supply; done=G_HS.summary.done||done; remain=G_HS.summary.remain||remain; }
   var rate= supply? Math.round(done/supply*1000)/10 : 0;
   var pk=[]; d.forEach(function(x){ if(x.세대당주차) pk.push(x.세대당주차); });
   var avgPk= pk.length? (pk.reduce(function(a,b){return a+b;},0)/pk.length).toFixed(2) : '-';
-  // 최다 평형
-  var pm={}; d.forEach(function(x){ x.types.forEach(function(t){ if(t.평형) pm[Math.round(t.평형)]=(pm[Math.round(t.평형)]||0)+(t.세대수||0); }); });
+  var pm={}; d.forEach(function(x){ (x.types||[]).forEach(function(tt){ if(tt.평형) pm[Math.round(tt.평형)]=(pm[Math.round(tt.평형)]||0)+(tt.세대수||0); }); });
   var top=Object.keys(pm).sort(function(a,b){return pm[b]-pm[a];})[0];
+  var scope = G_HS.selDanji ? G_HS.selDanji : (G_HS.selDist==='all'?'송도 전체':G_HS.selDist+'공구');
   var items=[
-    {l:'총 공급세대',v:fmtN(supply),s:'세대',c:'var(--accent)'},
+    {l:scope+' 공급',v:fmtN(supply),s:'세대',c:'var(--accent)'},
     {l:'입주완료',v:fmtN(done),s:rate+'%',c:'var(--accent3)'},
     {l:'미입주',v:fmtN(remain),s:'세대',c:'var(--accent2)'},
     {l:'단지 수',v:fmtN(d.length),s:'개',c:'var(--accent)'},
@@ -5382,113 +5473,271 @@ function hsRenderKPI(){
   }).join('');
 }
 
+// 공구별 카드 (클릭 시 해당 공구 선택)
+function hsRenderDistCards(){
+  var el=document.getElementById('hs-dist-cards'); if(!el) return;
+  if(!G_HS.danji.length){ el.innerHTML=''; return; }
+  var g={};
+  G_HS.danji.forEach(function(d){ var k=parseInt(d.공구);
+    if(!g[k]) g[k]={단지:0,세대:0,미입주:0};
+    g[k].단지++; g[k].세대+=d.세대수;
+    var s=String(d.입주일||''); var m=s.match(/(\d{4})/);
+    var now=new Date();
+    if(m && parseInt(m[1])>now.getFullYear()) g[k].미입주+=d.세대수;
+  });
+  var keys=Object.keys(g).map(Number).sort(function(a,b){return a-b;});
+  var totAll=G_HS.danji.reduce(function(a,d){return a+d.세대수;},0);
+  el.innerHTML=keys.map(function(k){
+    var on=(String(G_HS.selDist)===String(k));
+    var pct=totAll?Math.round(g[k].세대/totAll*1000)/10:0;
+    return '<div onclick="hsCardClick('+k+')" style="cursor:pointer;padding:12px 14px;border-radius:10px;border:1.5px solid '
+      +(on?'var(--accent)':'var(--border)')+';background:'+(on?'rgba(14,116,144,.08)':'var(--card)')+'">'
+      +'<div style="font-size:12px;font-weight:700;color:'+(on?'var(--accent)':'var(--text)')+';margin-bottom:6px">'+k+'공구</div>'
+      +'<div style="font-size:18px;font-weight:800;color:var(--accent)">'+fmtN(g[k].세대)+'<span style="font-size:11px;font-weight:400;color:var(--text3)"> 세대</span></div>'
+      +'<div style="font-size:11px;color:var(--text3);margin-top:3px">'+g[k].단지+'개 단지 · '+pct+'%</div>'
+      +(g[k].미입주?'<div style="font-size:11px;color:var(--accent2);margin-top:2px">미입주 '+fmtN(g[k].미입주)+'</div>':'')
+      +'</div>';
+  }).join('');
+}
+
+function hsCardClick(k){
+  var g=document.getElementById('hs-dist-group');
+  var same=(String(G_HS.selDist)===String(k));
+  G_HS.selDist= same?'all':k; G_HS.selDanji='';
+  if(g){
+    g.querySelectorAll('.filter-btn').forEach(function(b){
+      b.classList.remove('on');
+      var lbl=b.textContent.trim();
+      if(same&&lbl==='전체') b.classList.add('on');
+      if(!same&&lbl===k+'공구') b.classList.add('on');
+    });
+  }
+  var si=document.getElementById('hs-search-input'); if(si) si.value='';
+  hsRenderBody();
+}
+
 function hsDestroy(k){ if(G_HS._charts[k]){ try{G_HS._charts[k].destroy();}catch(e){} G_HS._charts[k]=null; } }
+
+// ── 차트 수치 라벨 플러그인 (파일 공통 스타일: 진한 남색 + 흰색 후광)
+function hsNumFmt(v){ return (v||0).toLocaleString(); }
+
+// 막대 위 수치 (그룹 막대용) — 막대가 촘촘하면 세로로 회전해 겹침 방지
+function hsBarLabel(id){
+  return { id:'hsbl_'+id, afterDatasetsDraw:function(chart){
+    var cx=chart.ctx;
+    var n=(chart.data.labels||[]).length;
+    var dsN=(chart.data.datasets||[]).length||1;
+    var slot=chart.chartArea?(chart.chartArea.right-chart.chartArea.left)/Math.max(n*dsN,1):20;
+    var vertical = slot < 22;   // 한 막대당 폭이 좁으면 세로쓰기
+    chart.data.datasets.forEach(function(ds,di){
+      var meta=chart.getDatasetMeta(di); if(meta.hidden) return;
+      meta.data.forEach(function(bar,i){
+        var v=ds.data[i]; if(!v||v<=0) return;
+        var pos=bar.tooltipPosition?bar.tooltipPosition():{x:bar.x,y:bar.y};
+        cx.save(); cx.fillStyle='#1a2332';
+        cx.font='bold '+(vertical?8:9)+'px sans-serif';
+        cx.shadowColor='rgba(255,255,255,.95)'; cx.shadowBlur=3;
+        if(vertical){
+          cx.translate(pos.x, pos.y-3); cx.rotate(-Math.PI/2);
+          cx.textAlign='left'; cx.textBaseline='middle';
+          cx.fillText(hsNumFmt(v), 0, 0);
+        } else {
+          cx.textAlign='center'; cx.textBaseline='bottom';
+          cx.fillText(hsNumFmt(v), pos.x, pos.y-2);
+        }
+        cx.restore();
+      });
+    });
+  }};
+}
+
+// 누적 막대: 각 구간 중앙에 수치 + 막대 상단에 합계
+function hsStackLabel(id){
+  return { id:'hssl_'+id, afterDatasetsDraw:function(chart){
+    var cx=chart.ctx, totals={};
+    chart.data.datasets.forEach(function(ds,di){
+      var meta=chart.getDatasetMeta(di); if(meta.hidden) return;
+      meta.data.forEach(function(bar,i){
+        var v=ds.data[i]; if(!v||v<=0) return;
+        totals[i]=(totals[i]||0)+v;
+        var h=Math.abs((bar.base||0)-bar.y);
+        if(h>=14){ // 구간이 충분히 클 때만 내부 표기
+          cx.save(); cx.fillStyle='#ffffff'; cx.font='bold 9px sans-serif';
+          cx.textAlign='center'; cx.textBaseline='middle';
+          cx.shadowColor='rgba(0,0,0,.55)'; cx.shadowBlur=3;
+          cx.fillText(hsNumFmt(v), bar.x, (bar.y+(bar.base||0))/2); cx.restore();
+        }
+      });
+    });
+    // 막대 최상단 합계
+    var m0=chart.getDatasetMeta(0);
+    Object.keys(totals).forEach(function(i){
+      var topY=null;
+      chart.data.datasets.forEach(function(ds,di){
+        var meta=chart.getDatasetMeta(di); if(meta.hidden) return;
+        var b=meta.data[i]; if(!b) return;
+        if(topY===null||b.y<topY) topY=b.y;
+      });
+      var bar=m0.data[i]; if(!bar||topY===null) return;
+      cx.save(); cx.fillStyle='#1a2332'; cx.font='bold 10px sans-serif';
+      cx.textAlign='center'; cx.textBaseline='bottom';
+      cx.shadowColor='rgba(255,255,255,.95)'; cx.shadowBlur=3;
+      cx.fillText(hsNumFmt(totals[i]), bar.x, topY-3); cx.restore();
+    });
+  }};
+}
+
+// 도넛: 조각 위에 세대수 + 비율
+function hsDoughLabel(id){
+  return { id:'hsdl_'+id, afterDatasetsDraw:function(chart){
+    var cx=chart.ctx, meta=chart.getDatasetMeta(0);
+    var ds=chart.data.datasets[0];
+    var tot=ds.data.reduce(function(a,b){return a+(b||0);},0);
+    meta.data.forEach(function(arc,i){
+      var v=ds.data[i]; if(!v||!tot) return;
+      var pctv=v/tot*100;
+      if(pctv<2.5) return; // 너무 작은 조각은 생략 (겹침 방지)
+      var pos=arc.tooltipPosition?arc.tooltipPosition():{x:arc.x,y:arc.y};
+      cx.save(); cx.fillStyle='#ffffff'; cx.font='bold 11px sans-serif';
+      cx.textAlign='center'; cx.textBaseline='middle';
+      cx.shadowColor='rgba(0,0,0,.6)'; cx.shadowBlur=4;
+      cx.fillText(hsNumFmt(v), pos.x, pos.y-6);
+      cx.font='bold 10px sans-serif';
+      cx.fillText(Math.round(pctv*10)/10+'%', pos.x, pos.y+7);
+      cx.restore();
+    });
+  }};
+}
+
+// 면적 구간 (엑셀 리포트와 동일 기준)
+var HS_BANDS=[
+  {k:'10PY대',min:0,max:19.999},{k:'20PY대',min:20,max:29.999},{k:'30PY대',min:30,max:39.999},
+  {k:'40PY대',min:40,max:49.999},{k:'50PY대',min:50,max:59.999},{k:'60PY대',min:60,max:69.999},
+  {k:'70PY이상',min:70,max:999}
+];
+function hsBandOf(p){
+  for(var i=0;i<HS_BANDS.length;i++){ if(p>=HS_BANDS[i].min&&p<=HS_BANDS[i].max) return HS_BANDS[i].k; }
+  return '70PY이상';
+}
 
 function hsRenderCharts(){
   if(typeof Chart==='undefined') return;
-  var d=G_HS.danji; if(!d.length) return;
-  var lblColor=getComputedStyle(document.documentElement).getPropertyValue('--text2')||'#4a5568';
+  if(!G_HS.danji.length) return;
+  var d=hsFiltered();
+  var lblColor=(getComputedStyle(document.documentElement).getPropertyValue('--text2')||'#4a5568').trim();
+  var scope = G_HS.selDanji ? G_HS.selDanji : (G_HS.selDist==='all'?'송도 전체':G_HS.selDist+'공구');
 
-  // 1) 연도별 분양 vs 입주
+  // 1) 연도별 분양 vs 입주 (필터 시 단지 입주일 기준 집계)
   hsDestroy('year');
   var yc=document.getElementById('hs-chart-year');
-  if(yc && G_HS.year.length){
-    G_HS._charts.year=new Chart(yc,{type:'bar',data:{
-      labels:G_HS.year.map(function(y){return String(y.y).slice(2)+'년';}),
-      datasets:[
-        {label:'분양',data:G_HS.year.map(function(y){return y.sale;}),backgroundColor:'#0e7490'},
-        {label:'입주',data:G_HS.year.map(function(y){return y.move;}),backgroundColor:'#d9480f'}
-      ]},
+  var yt=document.getElementById('hs-year-title');
+  if(yt) yt.textContent='📅 '+scope+' 연도별 분양 vs 입주 세대수';
+  if(yc){
+    var labels=[],sale=[],move=[];
+    if(G_HS.selDist==='all' && !G_HS.selDanji && G_HS.year.length){
+      G_HS.year.forEach(function(y){ labels.push(String(y.y)); sale.push(y.sale); move.push(y.move); });
+    } else {
+      var ys={};
+      d.forEach(function(x){
+        var ms=String(x.분양일||'').match(/(\d{4})/); var mi=String(x.입주일||'').match(/(\d{4})/);
+        if(ms){ var a=ms[1]; ys[a]=ys[a]||{s:0,m:0}; ys[a].s+=x.세대수; }
+        if(mi){ var b=mi[1]; ys[b]=ys[b]||{s:0,m:0}; ys[b].m+=x.세대수; }
+      });
+      Object.keys(ys).map(Number).sort(function(a,b){return a-b;}).forEach(function(y){
+        labels.push(String(y)); sale.push(ys[y].s); move.push(ys[y].m);
+      });
+    }
+    G_HS._charts.year=new Chart(yc,{type:'bar',plugins:[hsBarLabel('year')],
+      data:{labels:labels,datasets:[
+      {label:'분양',data:sale,backgroundColor:'#0e7490'},
+      {label:'입주',data:move,backgroundColor:'#d9480f'}]},
       options:{responsive:true,maintainAspectRatio:false,
+        layout:{padding:{top:34}},
         plugins:{legend:{labels:{color:lblColor,font:{size:10}}}},
         scales:{x:{ticks:{color:lblColor,font:{size:9},maxRotation:60,minRotation:60}},
                 y:{ticks:{color:lblColor,font:{size:9}}}}}});
   }
 
-  // 2) 공구별 세대수
-  hsDestroy('dist');
-  var dc=document.getElementById('hs-chart-dist');
-  if(dc){
-    var g={}; d.forEach(function(x){ var k=x.공구; g[k]=(g[k]||0)+x.세대수; });
-    var keys=Object.keys(g).map(Number).sort(function(a,b){return a-b;});
-    G_HS._charts.dist=new Chart(dc,{type:'bar',data:{
-      labels:keys.map(function(k){return k+'공구';}),
-      datasets:[{label:'세대수',data:keys.map(function(k){return g[k];}),backgroundColor:'#087f5b'}]},
+  // 2) 면적별 공급세대 (도넛)
+  hsDestroy('area');
+  var ac=document.getElementById('hs-chart-area');
+  var at=document.getElementById('hs-area-title');
+  if(at) at.textContent='📐 '+scope+' 면적별 공급세대';
+  if(ac){
+    var band={}; HS_BANDS.forEach(function(b){band[b.k]=0;});
+    d.forEach(function(x){ (x.types||[]).forEach(function(tt){
+      if(!tt.평형) return; band[hsBandOf(tt.평형)]+=(tt.세대수||0); }); });
+    var bk=Object.keys(band).filter(function(k){return band[k]>0;});
+    var tot=bk.reduce(function(a,k){return a+band[k];},0);
+    G_HS._charts.area=new Chart(ac,{type:'doughnut',plugins:[hsDoughLabel('area')],
+      data:{labels:bk.map(function(k){
+        return k+' '+fmtN(band[k])+' ('+(tot?Math.round(band[k]/tot*1000)/10:0)+'%)'; }),
+      datasets:[{data:bk.map(function(k){return band[k];}),
+        backgroundColor:['#4c6ef5','#e03131','#82c91e','#7950f2','#22b8cf','#fd7e14','#1864ab','#c92a2a']}]},
       options:{responsive:true,maintainAspectRatio:false,
-        plugins:{legend:{display:false}},
-        scales:{x:{ticks:{color:lblColor,font:{size:10}}},y:{ticks:{color:lblColor,font:{size:9}}}}}});
+        plugins:{legend:{position:'right',labels:{color:lblColor,font:{size:10},boxWidth:12}}}}});
   }
 
-  // 3) 평형대별 분포
-  hsDestroy('pyeong');
-  var pc=document.getElementById('hs-chart-pyeong');
-  if(pc){
-    var band={'20평 이하':0,'21~29평':0,'30평대':0,'40평대':0,'50평 이상':0};
-    d.forEach(function(x){ x.types.forEach(function(t){
-      var p=t.평형, c=t.세대수||0; if(!p) return;
-      if(p<=20) band['20평 이하']+=c; else if(p<30) band['21~29평']+=c;
-      else if(p<40) band['30평대']+=c; else if(p<50) band['40평대']+=c; else band['50평 이상']+=c;
-    });});
-    var bk=Object.keys(band);
-    G_HS._charts.pyeong=new Chart(pc,{type:'bar',data:{
-      labels:bk, datasets:[{label:'세대수',data:bk.map(function(k){return band[k];}),
-        backgroundColor:['#74c0fc','#4dabf7','#0e7490','#b8860b','#d9480f']}]},
+  // 3) 공구별 면적형 분포 (누적 막대)
+  hsDestroy('distarea');
+  var dc=document.getElementById('hs-chart-distarea');
+  if(dc){
+    var gk={};
+    G_HS.danji.forEach(function(x){ var k=parseInt(x.공구);
+      gk[k]=gk[k]||{}; (x.types||[]).forEach(function(tt){
+        if(!tt.평형) return; var b=hsBandOf(tt.평형);
+        gk[k][b]=(gk[k][b]||0)+(tt.세대수||0); }); });
+    var keys=Object.keys(gk).map(Number).sort(function(a,b){return a-b;});
+    var colors=['#4c6ef5','#e03131','#82c91e','#7950f2','#22b8cf','#fd7e14','#1864ab'];
+    var ds=HS_BANDS.map(function(b,i){
+      return {label:b.k,data:keys.map(function(k){return gk[k][b.k]||0;}),backgroundColor:colors[i%colors.length]};
+    }).filter(function(x){ return x.data.some(function(v){return v>0;}); });
+    G_HS._charts.distarea=new Chart(dc,{type:'bar',plugins:[hsStackLabel('distarea')],
+      data:{labels:keys.map(function(k){return k+'공구';}),datasets:ds},
       options:{responsive:true,maintainAspectRatio:false,
-        plugins:{legend:{display:false}},
-        scales:{x:{ticks:{color:lblColor,font:{size:10}}},y:{ticks:{color:lblColor,font:{size:9}}}}}});
+        layout:{padding:{top:18}},
+        plugins:{legend:{labels:{color:lblColor,font:{size:9},boxWidth:10}}},
+        scales:{x:{stacked:true,ticks:{color:lblColor,font:{size:10}}},
+                y:{stacked:true,ticks:{color:lblColor,font:{size:9}}}}}});
   }
 }
 
 function hsRenderUpcoming(){
   var el=document.getElementById('hs-upcoming'); if(!el) return;
-  var thisY=new Date().getFullYear();
-  var up=G_HS.danji.filter(function(d){
-    var y=parseInt(String(d.입주일).slice(0,4));
-    return y && y>=thisY;
+  var now=new Date(); var ny=now.getFullYear(), nmo=now.getMonth()+1;
+  var up=hsFiltered().filter(function(d){
+    var m=String(d.입주일||'').match(/(\d{4})(?:\.(\d{1,2}))?/); if(!m) return false;
+    var y=parseInt(m[1]), mo=m[2]?parseInt(m[2]):12;
+    return y>ny || (y===ny&&mo>nmo);
   }).sort(function(a,b){ return String(a.입주일).localeCompare(String(b.입주일)); });
   if(!up.length){ el.innerHTML='<div style="color:var(--text3);padding:8px">입주예정 단지 없음</div>'; return; }
   var tot=up.reduce(function(a,d){return a+d.세대수;},0);
   el.innerHTML='<div style="font-size:11px;color:var(--text3);margin-bottom:6px">'+up.length+'개 단지 · 총 '+fmtN(tot)+'세대</div>'
     +up.map(function(d){
-      return '<div style="display:flex;align-items:center;gap:8px;padding:5px 8px;background:var(--bg3);border-radius:6px;margin-bottom:4px">'
+      return '<div onclick="hsOpenModal(\''+String(d.단지명).replace(/'/g,"\\'")+'\')" style="cursor:pointer;display:flex;align-items:center;gap:8px;padding:5px 8px;background:var(--bg3);border-radius:6px;margin-bottom:4px">'
         +'<span style="color:var(--accent2);font-weight:700;width:60px">'+d.입주일+'</span>'
         +'<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+d.단지명+'</span>'
         +'<span style="color:var(--text3)">'+d.공구+'공구</span>'
-        +'<span style="font-weight:700;color:var(--accent)">'+fmtN(d.세대수)+'세대</span></div>';
+        +'<span style="font-weight:700;color:var(--accent)">'+fmtN(d.세대수)+'</span></div>';
     }).join('');
-}
-
-function hsFillDistFilter(){
-  var sel=document.getElementById('hs-f-dist'); if(!sel) return;
-  var cur=sel.value;
-  var ks={}; G_HS.danji.forEach(function(d){ ks[d.공구]=1; });
-  var keys=Object.keys(ks).map(Number).sort(function(a,b){return a-b;});
-  sel.innerHTML='<option value="">전체 공구</option>'+keys.map(function(k){
-    return '<option value="'+k+'"'+(String(k)===cur?' selected':'')+'>'+k+'공구</option>';
-  }).join('');
 }
 
 function hsRenderTable(){
   var tb=document.getElementById('hs-table'); if(!tb) return;
-  var fd=(document.getElementById('hs-f-dist')||{}).value||'';
-  var kw=((document.getElementById('hs-f-kw')||{}).value||'').trim();
-  var rows=G_HS.danji.filter(function(d){
-    if(fd && String(d.공구)!==fd) return false;
-    if(kw && String(d.단지명).indexOf(kw)<0) return false;
-    return true;
-  });
+  var rows=hsFiltered();
   var cnt=document.getElementById('hs-cnt');
   if(cnt) cnt.textContent='('+rows.length+'개 단지 · '+fmtN(rows.reduce(function(a,d){return a+d.세대수;},0))+'세대)';
   if(!rows.length){ tb.innerHTML='<tr><td style="padding:14px;color:var(--text3);font-size:12px">데이터 없음</td></tr>'; return; }
   var pct=function(v){ return v==null?'-':(Math.round(v*1000)/10)+'%'; };
   tb.innerHTML='<thead><tr>'
-    +['공구','단지명','세대수','분양','입주','토지(㎡)','건폐율','용적률','주차','세대당'].map(function(h){
+    +['공구','단지명','세대수','분양','입주','토지(㎡)','건폐율','용적률','주차','세대당','면적형'].map(function(h){
       return '<th style="font-size:11px">'+h+'</th>'; }).join('')
     +'</tr></thead><tbody>'
-    + rows.map(function(d,i){
-      return '<tr class="detail-row" onclick="hsToggleDetail('+i+')">'
+    + rows.map(function(d){
+      var esc=String(d.단지명).replace(/'/g,"\\'");
+      return '<tr class="detail-row" onclick="hsOpenModal(\''+esc+'\')">'
         +'<td style="text-align:center">'+d.공구+'</td>'
-        +'<td style="font-weight:600">'+d.단지명+'</td>'
+        +'<td style="font-weight:600;color:var(--accent);cursor:pointer">'+d.단지명+'</td>'
         +'<td class="num">'+fmtN(d.세대수)+'</td>'
         +'<td style="text-align:center;color:var(--text3)">'+(d.분양일||'-')+'</td>'
         +'<td style="text-align:center;color:var(--accent2)">'+(d.입주일||'-')+'</td>'
@@ -5497,47 +5746,80 @@ function hsRenderTable(){
         +'<td class="num">'+pct(d.용적률)+'</td>'
         +'<td class="num">'+(d.주차?fmtN(Math.round(d.주차)):'-')+'</td>'
         +'<td class="num">'+(d.세대당주차?(Math.round(d.세대당주차*100)/100):'-')+'</td>'
-        +'</tr>'
-        +'<tr id="hs-det-'+i+'" style="display:none"><td colspan="10" style="background:var(--bg3);padding:10px">'
-        + hsDetailHtml(d) +'</td></tr>';
+        +'<td class="num">'+((d.types||[]).length)+'개</td>'
+        +'</tr>';
     }).join('')
     +'</tbody>';
-  G_HS._filtered=rows;
 }
 
-function hsDetailHtml(d){
-  if(!d.types||!d.types.length) return '<span style="font-size:12px;color:var(--text3)">면적형 정보 없음</span>';
-  return '<div style="font-size:11px;font-weight:700;margin-bottom:6px">'+d.단지명+' 면적형 ('+d.types.length+'개)</div>'
-    +'<table class="data-table" style="font-size:11px"><thead><tr>'
-    +['평형','타입','공급㎡','전용㎡','전용률','세대수','대지지분㎡','분양가(최저~최고)'].map(function(h){return '<th>'+h+'</th>';}).join('')
-    +'</tr></thead><tbody>'
-    +d.types.map(function(t){
-      var pg=(t.분양가최저||t.분양가최고)
-        ? (fmtN(t.분양가최저||0)+' ~ '+fmtN(t.분양가최고||0)+'만') : '-';
-      return '<tr><td style="text-align:center">'+(t.평형||'-')+'평</td>'
-        +'<td style="text-align:center">'+(t.타입||'-')+'</td>'
-        +'<td class="num">'+(t['공급㎡']?Math.round(t['공급㎡']*10)/10:'-')+'</td>'
-        +'<td class="num">'+(t['전용㎡']?Math.round(t['전용㎡']*10)/10:'-')+'</td>'
-        +'<td class="num">'+(t.전용률?Math.round(t.전용률*1000)/10+'%':'-')+'</td>'
-        +'<td class="num">'+fmtN(t.세대수)+'</td>'
-        +'<td class="num">'+(t['대지지분㎡']?Math.round(t['대지지분㎡']*10)/10:'-')+'</td>'
-        +'<td class="num">'+pg+'</td></tr>';
-    }).join('')+'</tbody></table>';
-}
+// ── 단지 상세 모달
+function hsOpenModal(nm){
+  var d=G_HS.danji.filter(function(x){ return x.단지명===nm; })[0];
+  if(!d) return;
+  var pct=function(v){ return v==null?'-':(Math.round(v*1000)/10)+'%'; };
+  var tot=(d.types||[]).reduce(function(a,t){return a+(t.세대수||0);},0);
+  // 면적 구간 요약
+  var band={}; (d.types||[]).forEach(function(t){ if(!t.평형) return;
+    var b=hsBandOf(t.평형); band[b]=(band[b]||0)+(t.세대수||0); });
+  var bandHtml=Object.keys(band).map(function(k){
+    return '<span style="display:inline-block;padding:3px 10px;background:var(--bg3);border-radius:8px;margin:2px;font-size:11px">'
+      +k+' <b style="color:var(--accent)">'+fmtN(band[k])+'</b></span>'; }).join('');
+  var spec=[
+    ['공구',d.공구+'공구'],['총 세대수',fmtN(d.세대수)+'세대'],
+    ['분양시기',d.분양일||'-'],['입주시기',d.입주일||'-'],
+    ['대지면적',d.토지?fmtN(Math.round(d.토지))+'㎡ ('+fmtN(Math.round(d.토지평||0))+'평)':'-'],
+    ['건폐율',pct(d.건폐율)],['용적률',pct(d.용적률)],
+    ['총 주차대수',d.주차?fmtN(Math.round(d.주차))+'대':'-'],
+    ['세대당 주차',d.세대당주차?(Math.round(d.세대당주차*100)/100)+'대':'-'],
+    ['면적형 수',(d.types||[]).length+'개']
+  ];
+  var html='<div style="font-size:18px;font-weight:800;color:var(--accent);margin-bottom:4px">'+d.단지명+'</div>'
+    +'<div style="font-size:12px;color:var(--text3);margin-bottom:16px">'+d.공구+'공구 · '+(d.입주일||'-')+' 입주 · 총 '+fmtN(d.세대수)+'세대</div>'
+    +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:16px">'
+    + spec.map(function(s){
+        return '<div style="padding:9px 12px;background:var(--bg3);border-radius:8px">'
+          +'<div style="font-size:10px;color:var(--text3)">'+s[0]+'</div>'
+          +'<div style="font-size:14px;font-weight:700;color:var(--text)">'+s[1]+'</div></div>'; }).join('')
+    +'</div>'
+    +(bandHtml?'<div style="margin-bottom:14px"><div style="font-size:12px;font-weight:700;margin-bottom:6px">📐 면적 구간별 세대수</div>'+bandHtml+'</div>':'');
 
-function hsToggleDetail(i){
-  var el=document.getElementById('hs-det-'+i); if(!el) return;
-  el.style.display = el.style.display==='none' ? '' : 'none';
+  if((d.types||[]).length){
+    html+='<div style="font-size:12px;font-weight:700;margin-bottom:6px">🏠 면적형별 상세 ('+d.types.length+'개 · 합계 '+fmtN(tot)+'세대)</div>'
+      +'<div style="max-height:340px;overflow:auto"><table class="data-table" style="font-size:11px"><thead><tr>'
+      +['평형','타입','공급㎡','전용㎡','전용률','세대수','비중','대지지분㎡','분양가(최저~최고)','평당분양가'].map(function(h){return '<th>'+h+'</th>';}).join('')
+      +'</tr></thead><tbody>'
+      +d.types.map(function(t){
+        var pg=(t.분양가최저||t.분양가최고)?(fmtN(t.분양가최저||0)+'~'+fmtN(t.분양가최고||0)+'만'):'-';
+        var pp=(t.평당최저||t.평당최고)?(fmtN(Math.round(t.평당최저||0))+'~'+fmtN(Math.round(t.평당최고||0))+'만'):'-';
+        var sh=tot?Math.round((t.세대수||0)/tot*1000)/10:0;
+        return '<tr><td style="text-align:center">'+(t.평형||'-')+'평</td>'
+          +'<td style="text-align:center">'+(t.타입||'-')+'</td>'
+          +'<td class="num">'+(t['공급㎡']?Math.round(t['공급㎡']*10)/10:'-')+'</td>'
+          +'<td class="num">'+(t['전용㎡']?Math.round(t['전용㎡']*10)/10:'-')+'</td>'
+          +'<td class="num">'+(t.전용률?Math.round(t.전용률*1000)/10+'%':'-')+'</td>'
+          +'<td class="num"><b>'+fmtN(t.세대수)+'</b></td>'
+          +'<td class="num" style="color:var(--text3)">'+sh+'%</td>'
+          +'<td class="num">'+(t['대지지분㎡']?Math.round(t['대지지분㎡']*10)/10:'-')+'</td>'
+          +'<td class="num">'+pg+'</td>'
+          +'<td class="num" style="color:var(--accent2)">'+pp+'</td></tr>';
+      }).join('')+'</tbody></table></div>';
+  }
+  document.getElementById('hs-modal-content').innerHTML=html;
+  document.getElementById('hs-modal').style.display='block';
+}
+function hsCloseModal(ev){
+  if(ev&&ev.target&&ev.target.id!=='hs-modal'&&ev.type==='click'&&ev.target.tagName!=='BUTTON') return;
+  document.getElementById('hs-modal').style.display='none';
 }
 
 function initHousingTab(){
   hsRenderVer();
   if(!G_HS.danji.length){
     hsRenderKPI();
-    // Firebase에 저장본이 있으면 자동 로드 시도
     if(window._fbGet&&window._fbDb&&window._fbRef&&window._fbChild){ hsFbLoad(); }
   } else { hsRenderAll(); }
 }
+
 
 // ── Firebase 저장/로드 (OP/생숙, 상가)
 async function fbSaveNaverOp(){
