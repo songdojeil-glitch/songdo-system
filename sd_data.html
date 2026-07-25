@@ -614,6 +614,7 @@ tr.naver-fav>td:first-child{border-left:3px solid #b8860b;}
 <div class="tab-nav">
   <div class="tab-nav-inner">
     <button class="tab-btn" onclick="sw(13)">🏗️ 주택공급현황</button>
+    <button class="tab-btn" onclick="sw(14)">🖼️ 단지 이미지</button>
     <button class="tab-btn on" onclick="sw(0)">📡 매매 시황판</button>
     <button class="tab-btn" onclick="sw(12)">🏠 전월세 시황판</button>
     <button class="tab-btn" onclick="sw(1)">🏘️ 공구별 현황</button>
@@ -726,6 +727,49 @@ tr.naver-fav>td:first-child{border-left:3px solid #b8860b;}
   </div>
 </div>
 
+<!-- ══ TAB14 단지 이미지 ══ -->
+<div id="tc14" class="tc">
+  <div class="card" style="padding:14px;margin-bottom:12px">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+      <div>
+        <div style="font-size:14px;font-weight:700;color:var(--text)">🖼️ 단지 이미지 관리 <span id="di-ver" style="font-size:11px;color:var(--text3);font-weight:400"></span></div>
+        <div style="font-size:11px;color:var(--text3);margin-top:2px">단지별 위치지도·배치도·전경·평면도 등록 (Firebase Storage · 자동 리사이즈)</div>
+      </div>
+      <button onclick="diReloadIndex()" style="padding:7px 14px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:8px;font-size:12px;cursor:pointer">🔄 목록 새로고침</button>
+    </div>
+  </div>
+
+  <!-- 공구 / 단지 선택 -->
+  <div class="filter-row">
+    <span class="filter-label">공구</span>
+    <div class="filter-group" id="di-dist-group">
+      <button class="filter-btn on" onclick="diSetDist('all',this)">전체</button>
+      <button class="filter-btn" onclick="diSetDist(1,this)">1공구</button>
+      <button class="filter-btn" onclick="diSetDist(2,this)">2공구</button>
+      <button class="filter-btn" onclick="diSetDist(3,this)">3공구</button>
+      <button class="filter-btn" onclick="diSetDist(4,this)">4공구</button>
+      <button class="filter-btn" onclick="diSetDist(5,this)">5공구</button>
+      <button class="filter-btn" onclick="diSetDist(6,this)">6공구</button>
+      <button class="filter-btn" onclick="diSetDist(7,this)">7공구</button>
+      <button class="filter-btn" onclick="diSetDist(8,this)">8공구</button>
+      <button class="filter-btn" onclick="diSetDist(11,this)">11공구</button>
+    </div>
+  </div>
+  <div class="filter-row" style="margin-top:-4px;align-items:center;gap:8px">
+    <span class="filter-label">단지선택</span>
+    <input type="text" id="di-search-input" placeholder="단지명 입력..."
+      style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:4px 10px;color:var(--text1);font-size:12px;width:180px;outline:none"
+      oninput="diRenderChips()" />
+    <div id="di-unit-chips" style="display:flex;flex-wrap:wrap;gap:4px;flex:1"></div>
+  </div>
+
+  <!-- 선택된 단지 이미지 등록 패널 -->
+  <div id="di-panel" style="margin-top:14px">
+    <div class="card" style="padding:30px;text-align:center;color:var(--text3);font-size:13px">
+      공구를 선택하거나 단지명을 입력한 뒤 단지를 선택하세요
+    </div>
+  </div>
+</div>
 
 <div id="tc0" class="tc on">
   <!-- 업로드 바 -->
@@ -4139,6 +4183,7 @@ function sw(n){
   if(n===10) initProposalTab();
   if(n===12) renderTab12();
   if(n===13) initHousingTab();
+  if(n===14) initDanjiImageTab();
 }
 
 // ── 필터 버튼 그룹 헬퍼
@@ -5849,8 +5894,27 @@ function hsOpenModal(nm){
           +'<td class="num" style="color:var(--accent2)">'+pp+'</td></tr>';
       }).join('')+'</tbody></table></div>';
   }
-  document.getElementById('hs-modal-content').innerHTML=html;
+  document.getElementById('hs-modal-content').innerHTML=html
+    +'<div id="hs-modal-images" style="margin-top:18px"></div>';
   document.getElementById('hs-modal').style.display='block';
+  // 등록 이미지 비동기 로드 (있을 때만 표시)
+  if(typeof diGetImages==='function'){
+    diGetImages(nm).then(function(g){
+      var box=document.getElementById('hs-modal-images'); if(!box) return;
+      var cells=[];
+      if(g.map) cells.push({u:g.map,c:'위치지도'});
+      if(g.layout) cells.push({u:g.layout,c:'단지배치도'});
+      g.photos.forEach(function(u,i){ cells.push({u:u,c:'전경'+(i+1)}); });
+      g.plans.forEach(function(p){ cells.push({u:p.url,c:'평면도 '+p.타입+(p.전용?' (전용'+p.전용+'㎡)':'')}); });
+      if(!cells.length){ box.innerHTML=''; return; }
+      box.innerHTML='<div style="font-size:13px;font-weight:700;margin-bottom:8px;border-top:1px solid var(--border);padding-top:14px">🖼️ 등록 이미지 ('+cells.length+')</div>'
+        +'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px">'
+        +cells.map(function(c){
+          return '<div><div style="font-size:11px;color:var(--text3);margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+c.c+'</div>'
+            +'<img src="'+c.u+'" onclick="diZoomImage(\''+c.u+'\',\''+c.c.replace(/'/g,"")+'\')" style="width:100%;height:140px;object-fit:cover;border-radius:8px;border:1px solid var(--border);cursor:zoom-in;display:block"></div>';
+        }).join('')+'</div>';
+    });
+  }
 }
 function hsCloseModal(ev){
   if(ev&&ev.target&&ev.target.id!=='hs-modal'&&ev.type==='click'&&ev.target.tagName!=='BUTTON') return;
@@ -5864,6 +5928,253 @@ function initHousingTab(){
     if(window._fbGet&&window._fbDb&&window._fbRef&&window._fbChild){ hsFbLoad(); }
   } else { hsRenderAll(); }
 }
+
+// ══════════════════════════════════════════
+// TAB14 단지 이미지 (Firebase Storage)
+// ══════════════════════════════════════════
+// 저장 경로: sd_danji_images/{단지명}/{slot}.jpg
+var G_DI = { selDist:'all', selDanji:'', index:{}, curImgs:{} };
+var DI_FIXED=[
+  {key:'map',label:'📍 위치지도',multi:false},
+  {key:'layout',label:'🏗️ 단지배치도',multi:false},
+  {key:'photo',label:'📷 단지전경',multi:true,max:4}
+];
+function diStorageReady(){ return !!(window._fbStorageReady&&window._fbStorage&&window._fbSRef); }
+
+function diResizeImage(file, maxLong, cb){
+  var reader=new FileReader();
+  reader.onload=function(e){
+    var img=new Image();
+    img.onload=function(){
+      var w=img.width,h=img.height,scale=Math.min(1,maxLong/Math.max(w,h));
+      var nw=Math.round(w*scale),nh=Math.round(h*scale);
+      var cv=document.createElement('canvas'); cv.width=nw; cv.height=nh;
+      var cx=cv.getContext('2d'); cx.fillStyle='#fff'; cx.fillRect(0,0,nw,nh);
+      cx.drawImage(img,0,0,nw,nh);
+      cb(cv.toDataURL('image/jpeg',0.85));
+    };
+    img.onerror=function(){ cb(null); };
+    img.src=e.target.result;
+  };
+  reader.onerror=function(){ cb(null); };
+  reader.readAsDataURL(file);
+}
+
+function diSetDist(v, btn){
+  G_DI.selDist=v; G_DI.selDanji='';
+  var g=document.getElementById('di-dist-group');
+  if(g&&btn){ g.querySelectorAll('.filter-btn').forEach(function(b){b.classList.remove('on');}); btn.classList.add('on'); }
+  var si=document.getElementById('di-search-input'); if(si) si.value='';
+  diRenderChips(); diRenderPanel();
+}
+function diRenderChips(){
+  var el=document.getElementById('di-unit-chips'); if(!el) return;
+  var kw=((document.getElementById('di-search-input')||{}).value||'').trim();
+  var src=(G_HS.danji||[]);
+  if(!src.length){ el.innerHTML='<span style="font-size:11px;color:var(--yellow)">주택공급현황 탭에서 마스터를 먼저 불러오세요</span>'; return; }
+  var list=src.filter(function(d){
+    if(G_DI.selDist!=='all' && parseInt(d.공구)!==parseInt(G_DI.selDist)) return false;
+    if(kw && String(d.단지명).indexOf(kw)<0) return false;
+    return true;
+  });
+  if(G_DI.selDist==='all' && !kw){ el.innerHTML='<span style="font-size:11px;color:var(--text3)">공구를 선택하거나 단지명을 입력하세요</span>'; return; }
+  if(!list.length){ el.innerHTML='<span style="font-size:11px;color:var(--text3)">해당 단지 없음</span>'; return; }
+  el.innerHTML=list.slice(0,60).map(function(d){
+    var on=(G_DI.selDanji===d.단지명);
+    var has=G_DI.index[d.단지명]?' ●':'';
+    return '<button class="filter-btn'+(on?' on':'')+'" style="font-size:11px;padding:2px 8px" onclick="diSelectDanji(\''+String(d.단지명).replace(/'/g,"\\'")+'\')">'+d.단지명+'<span style="color:var(--accent3)">'+has+'</span></button>';
+  }).join('');
+}
+function diSelectDanji(nm){ G_DI.selDanji=nm; diRenderChips(); diLoadDanjiImages(nm); }
+
+async function diLoadDanjiImages(nm){
+  var panel=document.getElementById('di-panel');
+  if(!diStorageReady()){
+    panel.innerHTML='<div class="card" style="padding:20px;color:var(--yellow);font-size:13px">⚠️ Firebase Storage가 아직 연결되지 않았습니다. 잠시 후 다시 시도하세요.</div>';
+    return;
+  }
+  panel.innerHTML='<div class="card" style="padding:20px;color:var(--text3);font-size:13px">⏳ 이미지 불러오는 중...</div>';
+  var imgs={};
+  try{
+    var dirRef=window._fbSRef(window._fbStorage,'sd_danji_images/'+nm);
+    var res=await window._fbListAll(dirRef);
+    for(var i=0;i<res.items.length;i++){
+      var item=res.items[i]; var url=await window._fbGetURL(item);
+      imgs[item.name]=url;
+    }
+  }catch(e){}
+  G_DI.curImgs=imgs;
+  G_DI.index[nm]=Object.keys(imgs).length>0;
+  diRenderPanel(); diRenderChips();
+}
+
+function diRenderPanel(){
+  var panel=document.getElementById('di-panel'); if(!panel) return;
+  var nm=G_DI.selDanji;
+  if(!nm){ panel.innerHTML='<div class="card" style="padding:30px;text-align:center;color:var(--text3);font-size:13px">단지를 선택하세요</div>'; return; }
+  var d=(G_HS.danji||[]).filter(function(x){return x.단지명===nm;})[0];
+  var imgs=G_DI.curImgs||{};
+  var fixedHtml=DI_FIXED.map(function(s){
+    if(s.multi){
+      var cells='';
+      for(var i=1;i<=s.max;i++){ var fn=s.key+i+'.jpg'; cells+=diSlotCell(nm,fn,s.label+' '+i,imgs[fn]); }
+      return '<div style="margin-bottom:14px"><div style="font-size:12px;font-weight:700;margin-bottom:8px">'+s.label+' <span style="font-size:11px;color:var(--text3)">(최대 '+s.max+'장)</span></div><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px">'+cells+'</div></div>';
+    } else {
+      var fn=s.key+'.jpg';
+      return '<div style="margin-bottom:14px"><div style="font-size:12px;font-weight:700;margin-bottom:8px">'+s.label+'</div><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px">'+diSlotCell(nm,fn,s.label,imgs[fn])+'</div></div>';
+    }
+  }).join('');
+  var planFiles=Object.keys(imgs).filter(function(f){ return f.indexOf('plan__')===0; });
+  var planCells=planFiles.map(function(fn){
+    var m=fn.replace('plan__','').replace('.jpg','').split('_');
+    var typ=m[0]||'', exa=m[1]||'';
+    var cap=typ+(exa?' (전용 '+exa+'㎡)':'');
+    return diSlotCell(nm,fn,cap,imgs[fn]);
+  }).join('');
+  var typeOpts=(d&&d.types?d.types:[]).map(function(t){
+    var ex=t['전용㎡']?Math.round(t['전용㎡']):'';
+    var val=(t.타입||'')+'_'+ex;
+    var lbl=(t.평형||'')+'평 '+(t.타입||'')+(ex?' (전용 '+ex+'㎡)':'');
+    return '<option value="'+val+'">'+lbl+'</option>';
+  }).join('');
+  var planHtml='<div style="margin-bottom:4px"><div style="font-size:12px;font-weight:700;margin-bottom:8px">📐 분양면적타입별 평면도 <span style="font-size:11px;color:var(--text3)">(대표 면적형만)</span></div>'
+    +'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px;margin-bottom:10px">'+(planCells||'')+'</div>'
+    +'<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:var(--bg3);padding:10px;border-radius:8px">'
+    +'<span style="font-size:11px;color:var(--text3)">타입 선택</span>'
+    +'<select id="di-plan-type" style="background:var(--card);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;padding:4px 8px">'
+    +(typeOpts||'<option value="">마스터 면적형 없음</option>')+'</select>'
+    +'<label style="padding:5px 12px;background:var(--accent);color:#fff;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer">＋ 평면도 업로드<input type="file" accept="image/*" onchange="diUploadPlan(this)" style="display:none"></label>'
+    +'<span style="font-size:11px;color:var(--text3)">저장명: '+nm+'_타입_전용_평면도</span></div></div>';
+  panel.innerHTML='<div class="card" style="padding:18px">'
+    +'<div style="font-size:15px;font-weight:800;color:var(--accent);margin-bottom:2px">'+nm+'</div>'
+    +'<div style="font-size:11px;color:var(--text3);margin-bottom:16px">'+(d?d.공구+'공구 · '+fmtN(d.세대수)+'세대':'')+' · 업로드 시 자동 리사이즈</div>'
+    +fixedHtml+planHtml+'</div>';
+}
+
+function diSlotCell(nm, filename, caption, url){
+  var box='';
+  if(url){
+    box='<div style="position:relative;border-radius:8px;overflow:hidden;border:1px solid var(--border)">'
+      +'<img src="'+url+'" onclick="diZoomImage(\''+url+'\',\''+String(caption).replace(/'/g,"")+'\')" style="width:100%;height:130px;object-fit:cover;cursor:zoom-in;display:block">'
+      +'<button onclick="diDeleteImage(\''+nm+'\',\''+filename+'\')" style="position:absolute;top:4px;right:4px;background:rgba(224,49,49,.9);border:none;color:#fff;border-radius:50%;width:22px;height:22px;cursor:pointer;font-size:11px">✕</button></div>';
+  } else {
+    box='<label style="display:flex;align-items:center;justify-content:center;height:130px;border:1.5px dashed var(--border);border-radius:8px;cursor:pointer;color:var(--text3);font-size:11px;background:var(--bg3)">＋ 업로드<input type="file" accept="image/*" onchange="diUploadFixed(this,\''+nm+'\',\''+filename+'\')" style="display:none"></label>';
+  }
+  return '<div><div style="font-size:11px;color:var(--text3);margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+caption+'</div>'+box+'</div>';
+}
+
+function diUploadFixed(input, nm, filename){
+  var file=input.files[0]; if(!file) return;
+  diResizeImage(file, 1200, function(dataUrl){
+    if(!dataUrl){ showToast('❌ 이미지 처리 실패'); return; }
+    diPutImage(nm, filename, dataUrl);
+  });
+  input.value='';
+}
+function diUploadPlan(input){
+  var file=input.files[0]; if(!file) return;
+  var nm=G_DI.selDanji;
+  var sel=document.getElementById('di-plan-type');
+  var val=sel?sel.value:'';
+  if(!val){ showToast('⚠️ 평면도 타입을 선택하세요'); input.value=''; return; }
+  var filename='plan__'+val+'.jpg';
+  diResizeImage(file, 1000, function(dataUrl){
+    if(!dataUrl){ showToast('❌ 이미지 처리 실패'); return; }
+    diPutImage(nm, filename, dataUrl);
+  });
+  input.value='';
+}
+async function diPutImage(nm, filename, dataUrl){
+  if(!diStorageReady()){ showToast('⚠️ Storage 연결 대기 중'); return; }
+  showToast('⏳ 업로드 중...');
+  try{
+    var r=window._fbSRef(window._fbStorage,'sd_danji_images/'+nm+'/'+filename);
+    await window._fbUploadStr(r, dataUrl, 'data_url');
+    var url=await window._fbGetURL(r);
+    G_DI.curImgs[filename]=url; G_DI.index[nm]=true;
+    diRenderPanel(); diRenderChips();
+    showToast('✅ 등록 완료');
+  }catch(e){ showToast('❌ 업로드 오류: '+e.message); }
+}
+async function diDeleteImage(nm, filename){
+  if(!diStorageReady()){ showToast('⚠️ Storage 연결 대기 중'); return; }
+  if(!confirm(filename+' 이미지를 삭제할까요?')) return;
+  try{
+    var r=window._fbSRef(window._fbStorage,'sd_danji_images/'+nm+'/'+filename);
+    await window._fbDelObj(r);
+    delete G_DI.curImgs[filename];
+    if(!Object.keys(G_DI.curImgs).length) G_DI.index[nm]=false;
+    diRenderPanel(); diRenderChips();
+    showToast('🗑️ 삭제 완료');
+  }catch(e){ showToast('❌ 삭제 오류: '+e.message); }
+}
+function diZoomImage(url, caption){
+  var overlay=document.getElementById('zoom-overlay');
+  var inner=document.getElementById('zoom-overlay-inner');
+  var content=document.getElementById('zoom-overlay-content');
+  if(!overlay||!content) return;
+  content.innerHTML='';
+  inner.style.cssText='background:var(--bg2);border:2px solid var(--accent);border-radius:16px;padding:20px;max-width:92vw;max-height:92vh;overflow:auto;cursor:default;position:relative';
+  var wrap=document.createElement('div');
+  if(caption){ var tt=document.createElement('div'); tt.style.cssText='font-size:15px;font-weight:700;color:var(--text);margin-bottom:12px'; tt.textContent=caption; wrap.appendChild(tt); }
+  var img=document.createElement('img'); img.src=url;
+  img.style.cssText='max-width:100%;max-height:80vh;display:block;border-radius:8px;margin:0 auto';
+  wrap.appendChild(img); content.appendChild(wrap);
+  overlay.classList.add('on');
+  if(typeof _zoomOn!=='undefined') _zoomOn=true;
+}
+async function diGetImages(nm){
+  var out={map:null,layout:null,photos:[],plans:[]};
+  if(!diStorageReady()||!nm) return out;
+  try{
+    var dirRef=window._fbSRef(window._fbStorage,'sd_danji_images/'+nm);
+    var res=await window._fbListAll(dirRef);
+    for(var i=0;i<res.items.length;i++){
+      var item=res.items[i], url=await window._fbGetURL(item), f=item.name;
+      if(f==='map.jpg') out.map=url;
+      else if(f==='layout.jpg') out.layout=url;
+      else if(f.indexOf('photo')===0) out.photos.push(url);
+      else if(f.indexOf('plan__')===0){
+        var m=f.replace('plan__','').replace('.jpg','').split('_');
+        out.plans.push({타입:m[0]||'',전용:m[1]||'',url:url});
+      }
+    }
+  }catch(e){}
+  return out;
+}
+window.diGetImages=diGetImages;
+
+// ── 등록 이미지를 base64로 변환해 반환 (리포트/제안서 API 첨부용)
+async function diGetImagesB64(nm){
+  var out=[];
+  var g=await diGetImages(nm);
+  async function urlToB64(url){
+    var resp=await fetch(url); var blob=await resp.blob();
+    return await new Promise(function(res){
+      var r=new FileReader();
+      r.onloadend=function(){ var s=r.result.split(','); res({type:blob.type||'image/jpeg',data:s[1]}); };
+      r.readAsDataURL(blob);
+    });
+  }
+  try{
+    if(g.map){ var b=await urlToB64(g.map); out.push({label:'['+nm+' 위치지도]',type:b.type,data:b.data}); }
+    if(g.layout){ var b2=await urlToB64(g.layout); out.push({label:'['+nm+' 단지배치도]',type:b2.type,data:b2.data}); }
+    for(var i=0;i<g.photos.length;i++){ var bp=await urlToB64(g.photos[i]); out.push({label:'['+nm+' 전경'+(i+1)+']',type:bp.type,data:bp.data}); }
+    for(var j=0;j<g.plans.length;j++){ var pl=g.plans[j]; var bpl=await urlToB64(pl.url);
+      out.push({label:'['+nm+' 평면도 '+pl.타입+(pl.전용?' 전용'+pl.전용+'㎡':'')+']',type:bpl.type,data:bpl.data}); }
+  }catch(e){}
+  return out;
+}
+window.diGetImagesB64=diGetImagesB64;
+
+function diReloadIndex(){ G_DI.selDanji=''; G_DI.curImgs={}; diRenderChips(); diRenderPanel(); showToast('🔄 새로고침'); }
+function initDanjiImageTab(){
+  var el=document.getElementById('di-ver');
+  if(el) el.textContent = diStorageReady()?'· Storage 연결됨':'· Storage 연결 대기';
+  if(!(G_HS.danji||[]).length && window._fbGet){ hsFbLoad(); }
+  diRenderChips(); diRenderPanel();
+}
+
 
 
 // ── Firebase 저장/로드 (OP/생숙, 상가)
@@ -6298,6 +6609,19 @@ async function genDanjiReport(){
         imgBlocks.push({type:'image',source:{type:'base64',media_type:img.type,data:img.data}});
       }
     });
+
+    // ── 단지 이미지 탭에 등록된 이미지 자동 첨부 (Storage → base64)
+    if(typeof diGetImagesB64==='function'){
+      for(var di=0; di<G_rpt.danji.length; di++){
+        try{
+          var reg=await diGetImagesB64(G_rpt.danji[di]);
+          reg.forEach(function(b){
+            imgBlocks.push({type:'text',text:b.label});
+            imgBlocks.push({type:'image',source:{type:'base64',media_type:b.type,data:b.data}});
+          });
+        }catch(e){}
+      }
+    }
 
     // ── 주택공급현황 마스터 연계: 단지 실제 제원을 프롬프트에 주입 (AI 추정 대신 실측값)
     var hsFacts='';
@@ -13925,6 +14249,7 @@ document.addEventListener('DOMContentLoaded', function(){
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getDatabase, ref, set, get, child } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+import { getStorage, ref as sRef, uploadBytes, uploadString, getDownloadURL, deleteObject, listAll } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyCMYoUBhRv_NkKeHmPqgXoqqXUjVsjEJPs",
@@ -13938,12 +14263,23 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
+const storage = getStorage(app);
 
 window._fbDb = db;
 window._fbRef = ref;
 window._fbSet = set;
 window._fbGet = get;
 window._fbChild = child;
+
+// ── Firebase Storage (단지 이미지용)
+window._fbStorage    = storage;
+window._fbSRef       = sRef;
+window._fbUploadStr  = uploadString;
+window._fbUploadBytes= uploadBytes;
+window._fbGetURL     = getDownloadURL;
+window._fbDelObj     = deleteObject;
+window._fbListAll    = listAll;
+window._fbStorageReady = true;
 
 // module 스크립트는 DOMContentLoaded 이후 실행되므로 직접 호출
 if(typeof $set === 'function'){
