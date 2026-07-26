@@ -613,9 +613,8 @@ tr.naver-fav>td:first-child{border-left:3px solid #b8860b;}
 <!-- 탭 네비 -->
 <div class="tab-nav">
   <div class="tab-nav-inner">
-    <button class="tab-btn" onclick="sw(13)">🏗️ 송도주택공급현황</button>
-    <button class="tab-btn" onclick="sw(14)">🖼️ 단지 이미지</button>
     <button class="tab-btn" onclick="sw(15)">📈 국내주택동향</button>
+    <button class="tab-btn" onclick="sw(13)">🏗️ 송도주택공급현황</button>
     <button class="tab-btn on" onclick="sw(0)">📡 매매 시황판</button>
     <button class="tab-btn" onclick="sw(12)">🏠 전월세 시황판</button>
     <button class="tab-btn" onclick="sw(1)">🏘️ 공구별 현황</button>
@@ -629,6 +628,7 @@ tr.naver-fav>td:first-child{border-left:3px solid #b8860b;}
     <button class="tab-btn" onclick="sw(9)">📊 단지모델 리포트</button>
     <button class="tab-btn" onclick="sw(10)">🎯 매물 제안서</button>
     <button class="tab-btn" onclick="sw(11)">🎬 유튜브 리포트</button>
+    <button class="tab-btn" onclick="sw(14)">🖼️ 단지 이미지</button>
   </div>
 </div>
 
@@ -6282,6 +6282,23 @@ function dhYmd(v){ // 날짜 → 라벨
   return null;
 }
 
+// ── 인천 시군구(구별) 행 수집 — 시도='14.인천' & 시군구 컬럼(idx3)이 채워진 행
+function dhCollectIncheonGu(A,dcols,matchFn){
+  var out=[], seen={};
+  for(var i=1;i<A.length;i++){
+    var r=A[i]; if(!r) continue;
+    if(!matchFn(r)) continue;
+    if(r[1]!=='14.인천') continue;
+    var raw=r[3]; if(raw==null||raw==='') continue;
+    var name=String(raw).replace(/^\d+[.\s]*/,'').trim();
+    if(!name||seen[name]) continue;
+    if(!/[구군시]$/.test(name)) name=name+'구';
+    seen[name]=1;
+    out.push({ name:name, data:dcols.map(function(x){ return dhNum(r[x.c]); }) });
+  }
+  return out;
+}
+
 // ── KHPI 월간 파서 (지역별지수·가격·매매_거래량 시트)
 function dhParseKhpiMonthly(wb){
   var out={ _label:'월간 주택가격동향', cycle:'M', regions:{}, dates:[] };
@@ -6312,6 +6329,8 @@ function dhParseKhpiMonthly(wb){
     });
     out.regions[rg]=o;
   });
+  // 인천 구별 매매지수
+  out.incheonGu=dhCollectIncheonGu(A,dcols,function(r){ return r[6]==='01.아파트' && r[8]==='매매지수'; });
   // 중위가격 (가격 시트)
   var wp=wb.Sheets['가격'];
   if(wp){ var P=XLSX.utils.sheet_to_json(wp,{header:1,raw:true,defval:null});
@@ -6372,6 +6391,8 @@ function dhParseKhpiWeekly(wb){
     o.jeonse=dcols.map(function(x){ return rj?dhNum(rj[x.c]):null; });
     out.regions[rg]=o;
   });
+  // 인천 구별 매매지수 (주간: 통계량 col idx6)
+  out.incheonGu=dhCollectIncheonGu(A,dcols,function(r){ return r[6]==='매매지수'; });
   return out;
 }
 
@@ -6418,6 +6439,194 @@ function dhFmtDate(d,cyc){ if(!(d instanceof Date)) return '';
   if(cyc==='W'){ var dd=('0'+d.getDate()).slice(-2); return y+'.'+m+'.'+dd; }
   return y+'.'+m; }
 
+// ══ KPI 개황 (한국부동산원 보고서 개황 페이지 스타일) ══
+function dhLastIdx(arr){ if(!arr) return -1; for(var i=arr.length-1;i>=0;i--) if(arr[i]!=null) return i; return -1; }
+function dhPct(a,b){ if(a==null||b==null||!b) return null; return Math.round((a/b-1)*10000)/100; }
+// 전년동월(월간) / 전년말(직전 12월) 인덱스 탐색
+function dhFindYoY(dates,li){ if(!dates||!dates[li]) return -1;
+  var y=dates[li].getFullYear()-1, m=dates[li].getMonth();
+  for(var i=li-1;i>=0;i--){ var d=dates[i]; if(d&&d.getFullYear()===y&&d.getMonth()===m) return i; } return -1; }
+function dhFindYE(dates,li){ if(!dates||!dates[li]) return -1;
+  var y=dates[li].getFullYear()-1;
+  for(var i=li-1;i>=0;i--){ var d=dates[i]; if(d&&d.getFullYear()===y&&d.getMonth()===11) return i; } return -1; }
+// 부동산원 변동률 색상 구간
+function dhBand(v){
+  if(v==null) return {bg:'#e9edf2',fg:'#718096'};
+  if(v>0.50)    return {bg:'#c0392b',fg:'#ffffff'};
+  if(v>0.25)    return {bg:'#e28a83',fg:'#3b1512'};
+  if(v>=0)      return {bg:'#f5e6a3',fg:'#5c4a10'};
+  if(v>=-0.25)  return {bg:'#cfe0f0',fg:'#14395c'};
+  if(v>=-0.50)  return {bg:'#94b8dd',fg:'#0e2a45'};
+  return {bg:'#2f6296',fg:'#ffffff'};
+}
+function dhArrow(v){ if(v==null) return '–'; if(v>0) return '▲'; if(v<0) return '▼'; return '＝'; }
+function dhSign(v,dp){ if(v==null) return '-'; return (v>0?'+':'')+v.toFixed(dp==null?2:dp); }
+
+// 지역별 요약 통계 산출
+function dhStats(ds,rg,key){
+  var arr=(ds.regions[rg]||{})[key]||[]; var dates=ds.dates||[];
+  var li=dhLastIdx(arr);
+  if(li<0) return {idx:null,mom:null,ytd:null,yoy:null,label:''};
+  var yo=dhFindYoY(dates,li), ye=dhFindYE(dates,li);
+  return { idx:arr[li], mom:dhPct(arr[li],arr[li-1]),
+    ytd: ye>=0?dhPct(arr[li],arr[ye]):null,
+    yoy: yo>=0?dhPct(arr[li],arr[yo]):null,
+    label: dates[li]?dhFmtDate(dates[li],ds.cycle):'' };
+}
+
+// 수도권 모식도 (SVG) — 블록 배치: 인천(서) / 서울강북·강남(중앙) / 연수구(남서) / 경기(배경)
+function dhMapSvg(ds,regions){
+  var S={}; regions.forEach(function(rg){ S[rg]=dhStats(ds,rg,'sale'); });
+  function block(rg,x,y,w,h,rx){
+    if(!S[rg]) return '';
+    var b=dhBand(S[rg].mom), cx=x+w/2, cy=y+h/2;
+    return '<rect x="'+x+'" y="'+y+'" width="'+w+'" height="'+h+'" rx="'+(rx||10)+'" fill="'+b.bg+'" stroke="#ffffff" stroke-width="2.5"/>'
+      +'<text x="'+cx+'" y="'+(cy-6)+'" text-anchor="middle" font-size="12.5" font-weight="700" fill="'+b.fg+'">'+rg+'</text>'
+      +'<text x="'+cx+'" y="'+(cy+15)+'" text-anchor="middle" font-size="16" font-weight="700" fill="'+b.fg+'">'
+      +dhArrow(S[rg].mom)+' '+(S[rg].mom==null?'-':Math.abs(S[rg].mom).toFixed(2)+'%')+'</text>';
+  }
+  var gyeonggi=S['경기']?dhBand(S['경기'].mom):dhBand(null);
+  var svg='<svg viewBox="0 0 520 300" style="width:100%;height:auto;max-height:300px">'
+    +'<rect x="6" y="6" width="508" height="288" rx="18" fill="'+gyeonggi.bg+'" stroke="#ffffff" stroke-width="2.5"/>'
+    +'<text x="440" y="46" text-anchor="middle" font-size="12.5" font-weight="700" fill="'+gyeonggi.fg+'">경기</text>'
+    +'<text x="440" y="67" text-anchor="middle" font-size="16" font-weight="700" fill="'+gyeonggi.fg+'">'
+      +dhArrow(S['경기']?S['경기'].mom:null)+' '+((S['경기']&&S['경기'].mom!=null)?Math.abs(S['경기'].mom).toFixed(2)+'%':'-')+'</text>'
+    +block('서울강북',225,42,175,92)
+    +block('서울강남',225,140,175,88)
+    +block('인천',48,104,155,96)
+    +block('연수구',86,206,117,60)
+    +'</svg>';
+  // 범례
+  var bands=[['0.50% 초과',0.7],['0.25~0.50%',0.4],['0.00~0.25%',0.1],['-0.25~0.00%',-0.1],['-0.50~-0.25%',-0.4],['-0.50% 이하',-0.7]];
+  var legend=bands.map(function(b){ var c=dhBand(b[1]);
+    return '<span style="display:inline-flex;align-items:center;gap:4px;font-size:9.5px;color:var(--text3)">'
+      +'<span style="width:14px;height:10px;border-radius:2px;background:'+c.bg+';border:1px solid rgba(0,0,0,.12)"></span>'+b[0]+'</span>'; }).join('');
+  return svg+'<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;justify-content:center">'+legend+'</div>';
+}
+
+// KPI 개황 블록
+function dhKpiTop(ds,cyc,regions,isRt){
+  var isW=(cyc==='W');
+  var chgL=isW?'전주비':'전월비';
+  var ref='';
+  for(var i=0;i<regions.length&&!ref;i++){ var s=dhStats(ds,regions[i],'sale'); if(s.label) ref=s.label; }
+
+  // ① 지역 KPI 배지 (지수값 + 변동률 동시 표기)
+  var badges=regions.map(function(rg){
+    var s=dhStats(ds,rg,'sale'), j=dhStats(ds,rg,'jeonse');
+    var b=dhBand(s.mom);
+    return '<div style="flex:1 1 150px;min-width:145px;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:10px 12px">'
+      +'<div style="font-size:11px;font-weight:700;color:var(--text2);margin-bottom:6px">'+rg+'</div>'
+      +'<div style="display:flex;align-items:baseline;gap:6px">'
+        +'<span style="font-size:22px;font-weight:700;font-family:var(--font2);color:var(--text)">'+(s.idx==null?'-':s.idx.toFixed(1))+'</span>'
+        +'<span style="font-size:9.5px;color:var(--text3)">매매지수</span></div>'
+      +'<div style="display:inline-block;margin-top:6px;padding:2px 8px;border-radius:12px;background:'+b.bg+';color:'+b.fg+';font-size:11.5px;font-weight:700">'
+        +dhArrow(s.mom)+' '+(s.mom==null?'-':Math.abs(s.mom).toFixed(2)+'%')+' <span style="font-weight:400;font-size:9.5px">'+chgL+'</span></div>'
+      +'<div style="margin-top:6px;font-size:10px;color:var(--text3);border-top:1px dashed var(--border);padding-top:5px">전세 '
+        +(j.idx==null?'-':j.idx.toFixed(1))+' <span style="color:'+(j.mom>0?'#c92a4a':(j.mom<0?'#1971c2':'var(--text3)'))+';font-weight:700">'
+        +dhSign(j.mom)+'%</span></div>'
+      +'</div>';
+  }).join('');
+
+  // ② 요약표 (매매·전세 × 전월비/전년말비/전년동월비)
+  var cols = isW ? [['mom',chgL]] : [['mom',chgL],['ytd','전년말비'],['yoy','전년동월비']];
+  function cell(v){ var c=(v==null)?'var(--text3)':(v>0?'#c92a4a':(v<0?'#1971c2':'var(--text3)'));
+    return '<td class="num" style="color:'+c+';font-weight:600">'+dhSign(v)+'</td>'; }
+  var trs=regions.map(function(rg){
+    var s=dhStats(ds,rg,'sale'), j=dhStats(ds,rg,'jeonse');
+    return '<tr><td style="font-weight:600">'+rg+'</td>'
+      +'<td class="num">'+(s.idx==null?'-':s.idx.toFixed(1))+'</td>'+cols.map(function(c){return cell(s[c[0]]);}).join('')
+      +'<td class="num">'+(j.idx==null?'-':j.idx.toFixed(1))+'</td>'+cols.map(function(c){return cell(j[c[0]]);}).join('')
+      +'</tr>';
+  }).join('');
+  var head='<tr><th rowspan="2" style="vertical-align:middle">지역</th>'
+    +'<th colspan="'+(cols.length+1)+'">매매가격지수</th><th colspan="'+(cols.length+1)+'">전세가격지수</th></tr>'
+    +'<tr><th style="font-size:10px">지수</th>'+cols.map(function(c){return '<th style="font-size:10px">'+c[1]+'(%)</th>';}).join('')
+    +'<th style="font-size:10px">지수</th>'+cols.map(function(c){return '<th style="font-size:10px">'+c[1]+'(%)</th>';}).join('')+'</tr>';
+
+  return '<div class="card" style="padding:14px;margin-bottom:12px">'
+    +'<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px">'
+      +'<div style="font-size:13px;font-weight:700">📌 개황 (Overview) <span style="font-size:11px;color:var(--text3);font-weight:400">'
+      +(isRt?'실거래가격지수':'주택가격동향조사')+' · 아파트 · '+chgL+' 기준</span></div>'
+      +'<div style="font-size:11px;color:var(--text3)">기준 '+(ref||'-')+'</div></div>'
+    +'<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">'+badges+'</div>'
+    +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px;align-items:start">'
+      +'<div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:10px">'
+        +'<div style="font-size:11px;font-weight:700;color:var(--text2);margin-bottom:6px">매매가격지수 '+chgL+' 지도</div>'
+        +dhMapSvg(ds,regions)+'</div>'
+      +'<div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:10px">'
+        +'<div style="font-size:11px;font-weight:700;color:var(--text2);margin-bottom:6px">지역별 지수 및 변동률</div>'
+        +'<div class="table-scroll" style="overflow-x:auto"><table class="data-table" style="font-size:11px"><thead>'+head+'</thead><tbody>'+trs+'</tbody></table></div>'
+        +(isW?'<div style="font-size:10px;color:var(--text3);margin-top:6px">※ 주간은 전년말비·전년동월비 미산출</div>':'')
+      +'</div>'
+    +'</div></div>';
+}
+
+// ══ 인천시 구별 매매 가격지수 (주택가격동향조사 전용) ══
+var DH_GU_COLORS=['#c92a4a','#e8590c','#f59f00','#2f9e44','#0e7490','#1971c2','#7048e8','#c2255c','#495057','#0ca678'];
+function dhIncheonSection(ds,cyc){
+  var gu=ds.incheonGu||[]; if(!gu.length) return '';
+  var n=(cyc==='W')?12:13;
+  var dates=(ds.dates||[]).slice(-n);
+  var chgL=(cyc==='W')?'전주비':'전월비';
+  var rows=gu.map(function(g){
+    var arr=g.data||[]; var base=arr.length-dates.length; var slice=arr.slice(-dates.length);
+    var vcells=slice.map(function(v){ return '<td class="num">'+(v==null?'-':v.toFixed(1))+'</td>'; }).join('');
+    var ccells=slice.map(function(v,i){ var ch=dhChg(arr,base+i);
+      var col=ch==null?'var(--text3)':(ch>0?'#e03131':(ch<0?'#1971c2':'var(--text3)'));
+      return '<td class="num" style="color:'+col+';font-size:10px">'+(ch==null?'-':dhSign(ch))+'</td>'; }).join('');
+    return '<tr><td rowspan="2" style="font-weight:600;vertical-align:middle">'+g.name+'</td>'
+      +'<td style="font-size:10px;color:var(--text3)">지수</td>'+vcells+'</tr>'
+      +'<tr><td style="font-size:10px;color:var(--text3)">'+chgL+'%</td>'+ccells+'</tr>';
+  }).join('');
+  var dhead=dates.map(function(d){ return '<th style="font-size:10px">'+dhFmtDate(d,cyc)+'</th>'; }).join('');
+  return '<div class="card" style="padding:14px;margin-bottom:12px">'
+    +'<div style="font-size:13px;font-weight:700;margin-bottom:4px">🏙️ 인천시 구별 아파트 매매 가격지수 '
+      +'<span style="font-size:11px;color:var(--text3);font-weight:400">(지수값 + '+chgL+' 변동률)</span></div>'
+    +'<div style="font-size:11px;color:var(--text3);margin-bottom:10px">※ 주택가격동향조사(KHPI) 공표 시군구 기준 · 아파트</div>'
+    +'<div class="table-scroll" style="overflow-x:auto;margin-bottom:12px"><table class="data-table" style="font-size:11px"><thead><tr>'
+      +'<th>지역</th><th></th>'+dhead+'</tr></thead><tbody>'+rows+'</tbody></table></div>'
+    +'<div style="font-size:11px;color:var(--text3);margin-bottom:4px">구별 지수 추이</div>'
+    +'<div class="chart-wrap" style="height:440px"><canvas id="dh-ch-icg"></canvas></div>'
+    +'<div style="font-size:11px;color:var(--text3);margin:12px 0 4px">최근 '+chgL+' 변동률(%) — 구별 비교</div>'
+    +'<div class="chart-wrap" style="height:300px"><canvas id="dh-ch-icg-chg"></canvas></div>'
+    +'</div>';
+}
+function dhDrawIncheon(ds,cyc){
+  if(typeof Chart==='undefined') return;
+  var gu=ds.incheonGu||[]; if(!gu.length) return;
+  var lbl=(getComputedStyle(document.documentElement).getPropertyValue('--text2')||'#4a5568').trim();
+  var n=(cyc==='W')?12:13;
+  var dates=(ds.dates||[]).slice(-n);
+  var labels=dates.map(function(d){ return dhFmtDate(d,cyc); });
+  var cv=document.getElementById('dh-ch-icg');
+  if(cv){
+    var dsets=gu.map(function(g,i){
+      return {label:g.name, data:(g.data||[]).slice(-dates.length), borderColor:DH_GU_COLORS[i%DH_GU_COLORS.length],
+        backgroundColor:DH_GU_COLORS[i%DH_GU_COLORS.length], tension:0.2, pointRadius:2, borderWidth:2, fill:false};
+    });
+    _dhCharts.icg=new Chart(cv,{type:'line',data:{labels:labels,datasets:dsets},plugins:[dhLineLabel(function(v){return v.toFixed(1);})],
+      options:{responsive:true,maintainAspectRatio:false,layout:{padding:{top:18}},
+        plugins:{legend:{labels:{color:lbl,font:{size:11},boxWidth:12}}},
+        scales:{x:{ticks:{color:lbl,font:{size:10},maxRotation:60,minRotation:60}},
+                y:{ticks:{color:lbl,font:{size:10}}}}}});
+  }
+  var cvc=document.getElementById('dh-ch-icg-chg');
+  if(cvc){
+    var vals=gu.map(function(g){ var a=g.data||[]; var li=dhLastIdx(a); return li>0?dhPct(a[li],a[li-1]):null; });
+    _dhCharts.icgc=new Chart(cvc,{type:'bar',
+      data:{labels:gu.map(function(g){return g.name;}),
+        datasets:[{label:(cyc==='W'?'전주비':'전월비')+'(%)',data:vals,
+          backgroundColor:vals.map(function(v){ return v==null?'#adb5bd':(v>0?'#c92a4a':(v<0?'#1971c2':'#adb5bd')); })}]},
+      plugins:[dhBarLabel(function(v){ return (v>0?'+':'')+v.toFixed(2); })],
+      options:{responsive:true,maintainAspectRatio:false,layout:{padding:{top:20}},
+        plugins:{legend:{display:false}},
+        scales:{x:{ticks:{color:lbl,font:{size:11}}},
+                y:{ticks:{color:lbl,font:{size:10},callback:function(v){return v+'%';}},
+                   grid:{color:function(c){ return c.tick.value===0?'rgba(0,0,0,.25)':'rgba(0,0,0,.06)'; }}}}}});
+  }
+}
+
 function dhRender(){
   var body=document.getElementById('dh-body'); if(!body) return;
   dhVer();
@@ -6430,17 +6639,19 @@ function dhRender(){
   var chgLabel = cyc==='W'?'전주비':'전월비';
   var isRt=(G_DH.stat==='rt');
 
-  // 서울 강북/강남 라벨 (실거래는 근사 표기)
-  function rgLabel(rg){ if(!isRt) return rg;
-    if(rg==='서울강북') return '서울(동북권≈강북)'; if(rg==='서울강남') return '서울(동남권≈강남)'; return rg; }
+  // 지역 라벨: 두 통계 모두 '서울강북 / 서울강남'으로 통일 표기
+  function rgLabel(rg){ return rg; }
   // 실거래는 연수구(시군구) 미제공 → 지역 목록에서 제외
   var regions = isRt ? DH_REGIONS.filter(function(r){ return r!=='연수구'; }) : DH_REGIONS.slice();
   G_DH._activeRegions = regions;
 
   var html='';
   // 안내
-  if(isRt) html+='<div style="font-size:11px;color:var(--yellow);margin-bottom:8px">※ 실거래가격지수는 시군구(연수구)·주간·거래량 미제공. 서울 강북/강남은 생활권역(동북/동남)으로 근사</div>';
+  if(isRt) html+='<div style="font-size:11px;color:var(--yellow);margin-bottom:8px">※ 실거래가격지수는 시군구(연수구)·주간·거래량 미제공 <span style="color:var(--text3)">(서울강북·서울강남은 한국부동산원 생활권역 지수 기준)</span></div>';
   else if(cyc==='W') html+='<div style="font-size:11px;color:var(--text3);margin-bottom:8px">※ 주간은 지수만 제공 (중위가격·거래량은 월간)</div>';
+
+  // 섹션0: KPI 개황 (지도 + 배지 + 요약표)
+  html+=dhKpiTop(ds,cyc,regions,isRt);
 
   // 섹션1: 매매·전세 지수 (지수 차트 + 변동률 차트)
   html+=dhSection('🏢 아파트 매매 가격지수', ds,dates,cyc,'sale',chgLabel,isRt,rgLabel,false,regions);
@@ -6455,8 +6666,13 @@ function dhRender(){
   if(!isRt && cyc==='M'){
     html+=dhVolSection(ds);
   }
+  // 섹션4(맨 아래): 인천시 구별 매매 가격지수 — 주택가격동향조사 전용
+  if(!isRt){
+    html+=dhIncheonSection(ds,cyc);
+  }
   body.innerHTML=html;
   dhDrawCharts(ds,dates,cyc,regions);
+  if(!isRt) dhDrawIncheon(ds,cyc);
 }
 
 // 지수/중위가 섹션 (표 + 지수차트 + [지수일 때만] 변동률차트)
@@ -6561,7 +6777,8 @@ function dhDrawCharts(ds,dates,cyc,regions){
   var colors={'서울강북':'#e03131','서울강남':'#f76707','경기':'#2f9e44','인천':'#1971c2','연수구':'#7048e8'};
   var labels=dates.map(function(d){ return dhFmtDate(d,cyc); });
   var isRt=(G_DH.stat==='rt');
-  function rgName(rg){ return (isRt&&rg==='서울강북')?'서울동북':(isRt&&rg==='서울강남')?'서울동남':rg; }
+  // 범례도 표에 맞춰 '서울강북 / 서울강남'으로 통일
+  function rgName(rg){ return rg; }
 
   ['sale','jeonse'].concat(cyc==='M'?['midSale','midJeonse']:[]).forEach(function(key){
     var cv=document.getElementById('dh-ch-'+key); if(!cv) return;
