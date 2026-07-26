@@ -613,7 +613,7 @@ tr.naver-fav>td:first-child{border-left:3px solid #b8860b;}
 <!-- 탭 네비 -->
 <div class="tab-nav">
   <div class="tab-nav-inner">
-    <button class="tab-btn" onclick="sw(13)">🏗️ 주택공급현황</button>
+    <button class="tab-btn" onclick="sw(13)">🏗️ 송도주택공급현황</button>
     <button class="tab-btn" onclick="sw(14)">🖼️ 단지 이미지</button>
     <button class="tab-btn" onclick="sw(15)">📈 국내주택동향</button>
     <button class="tab-btn on" onclick="sw(0)">📡 매매 시황판</button>
@@ -6321,10 +6321,12 @@ function dhParseKhpiMonthly(wb){
       if(sido.indexOf('C1:')===0){ if(r[0]===sido.slice(3) && r[2]==null && r[3]==null) return r; }
       else if(r[1]===sido && r[2]===hb && r[3]===sgg) return r; } return null; }
     DH_REGIONS.forEach(function(rg){ var m=map[rg];
-      ['중위매매가','중위전세가'].forEach(function(stat){
-        var row=findP(m[0],m[1],m[2],stat);
-        var arr=pcols.map(function(c){ return row?dhNum(row[c]):null; });
-        if(stat==='중위매매가') out.regions[rg].midSale=arr; else out.regions[rg].midJeonse=arr;
+      // 중위단위(㎡당, 천원) 사용 → 평당가 계산 가능
+      [['중위단위매매가','midSale'],['중위단위전세가','midJeonse']].forEach(function(pair){
+        var row=findP(m[0],m[1],m[2],pair[0]);
+        // 천원/㎡ → 만원/㎡(÷10) → 평당 만원(×3.3058)
+        var arr=pcols.map(function(c){ var v=row?dhNum(row[c]):null; return v==null?null:(v/10*3.3058); });
+        out.regions[rg][pair[1]]=arr;
       });
     });
   }
@@ -6390,11 +6392,13 @@ function dhParseRealtx(wb){
   var dates=(saleS||[]).map(function(x){return x.d;});
   out.dates=dates;
   function col(rows,ci){ return rows? rows.map(function(x){ return ci==null?null:dhNum(x.r[ci]); }) : []; }
+  // 중위는 만원/㎡(전용면적) → 평당(만원): ×3.3058
+  function colPy(rows,ci){ return rows? rows.map(function(x){ var v=(ci==null?null:dhNum(x.r[ci])); return v==null?null:(v*3.3058); }) : []; }
   DH_REGIONS.forEach(function(rg){
     var ci=colmap[rg];
     out.regions[rg]={
       sale: col(saleS,ci), jeonse: col(jeonseS,ci),
-      midSale: col(midSaleS,ci), midJeonse: col(midJeonseS,ci), vol:[]
+      midSale: colPy(midSaleS,ci), midJeonse: colPy(midJeonseS,ci), vol:[]
     };
   });
   return out;
@@ -6429,54 +6433,67 @@ function dhRender(){
   // 서울 강북/강남 라벨 (실거래는 근사 표기)
   function rgLabel(rg){ if(!isRt) return rg;
     if(rg==='서울강북') return '서울(동북권≈강북)'; if(rg==='서울강남') return '서울(동남권≈강남)'; return rg; }
+  // 실거래는 연수구(시군구) 미제공 → 지역 목록에서 제외
+  var regions = isRt ? DH_REGIONS.filter(function(r){ return r!=='연수구'; }) : DH_REGIONS.slice();
+  G_DH._activeRegions = regions;
 
   var html='';
   // 안내
   if(isRt) html+='<div style="font-size:11px;color:var(--yellow);margin-bottom:8px">※ 실거래가격지수는 시군구(연수구)·주간·거래량 미제공. 서울 강북/강남은 생활권역(동북/동남)으로 근사</div>';
   else if(cyc==='W') html+='<div style="font-size:11px;color:var(--text3);margin-bottom:8px">※ 주간은 지수만 제공 (중위가격·거래량은 월간)</div>';
 
-  // 섹션1: 매매·전세 지수
-  html+=dhSection('🏢 아파트 매매 가격지수', ds,dates,cyc,'sale',chgLabel,isRt,rgLabel);
-  html+=dhSection('🏠 아파트 전세 가격지수', ds,dates,cyc,'jeonse',chgLabel,isRt,rgLabel);
+  // 섹션1: 매매·전세 지수 (지수 차트 + 변동률 차트)
+  html+=dhSection('🏢 아파트 매매 가격지수', ds,dates,cyc,'sale',chgLabel,isRt,rgLabel,false,regions);
+  html+=dhSection('🏠 아파트 전세 가격지수', ds,dates,cyc,'jeonse',chgLabel,isRt,rgLabel,false,regions);
 
-  // 섹션2: 중위가격 (월간만)
+  // 섹션2: 중위가격 (월간만) — 평당가, 변동률 차트 없음
   if(cyc==='M'){
-    html+=dhSection('💰 아파트 중위 매매가격', ds,dates,cyc,'midSale',chgLabel,isRt,rgLabel,true);
-    html+=dhSection('💰 아파트 중위 전세가격', ds,dates,cyc,'midJeonse',chgLabel,isRt,rgLabel,true);
+    html+=dhSection('💰 아파트 중위 매매가격 (평당)', ds,dates,cyc,'midSale',chgLabel,isRt,rgLabel,true,regions);
+    html+=dhSection('💰 아파트 중위 전세가격 (평당)', ds,dates,cyc,'midJeonse',chgLabel,isRt,rgLabel,true,regions);
   }
   // 섹션3: 거래량 (KHPI 월간만)
   if(!isRt && cyc==='M'){
     html+=dhVolSection(ds);
   }
   body.innerHTML=html;
-  dhDrawCharts(ds,dates,cyc);
+  dhDrawCharts(ds,dates,cyc,regions);
 }
 
-// 지수/중위가 섹션 (표 + 차트)
-function dhSection(title,ds,dates,cyc,key,chgLabel,isRt,rgLabel,isMoney){
+// 지수/중위가 섹션 (표 + 지수차트 + [지수일 때만] 변동률차트)
+function dhSection(title,ds,dates,cyc,key,chgLabel,isRt,rgLabel,isMoney,regions){
   var chartId='dh-ch-'+key;
-  var rows=DH_REGIONS.map(function(rg){
+  var rows=regions.map(function(rg){
     var arr=(ds.regions[rg]||{})[key]||[];
     var slice=arr.slice(-dates.length);
-    // 지수값 행 + 변동률 행
-    var vcells=slice.map(function(v){ return '<td class="num">'+(v==null?'-':(isMoney?dhMoney(v):v.toFixed(1)))+'</td>'; }).join('');
+    // 지수값(또는 평당 금액) 행 + 변동률 행
+    var vcells=slice.map(function(v){ return '<td class="num">'+(v==null?'-':(isMoney?dhPyeong(v):v.toFixed(1)))+'</td>'; }).join('');
     var full=arr.slice(); var base=full.length-dates.length;
     var ccells=slice.map(function(v,i){ var gi=base+i; var ch=dhChg(full,gi);
       var col=ch==null?'var(--text3)':(ch>0?'#e03131':(ch<0?'#1971c2':'var(--text3)'));
       return '<td class="num" style="color:'+col+';font-size:10px">'+(ch==null?'-':(ch>0?'+':'')+ch.toFixed(2))+'</td>'; }).join('');
     return '<tr><td rowspan="2" style="font-weight:600;vertical-align:middle">'+rgLabel(rg)+'</td>'
-      +'<td style="font-size:10px;color:var(--text3)">지수</td>'+vcells+'</tr>'
+      +'<td style="font-size:10px;color:var(--text3)">'+(isMoney?'평당':'지수')+'</td>'+vcells+'</tr>'
       +'<tr><td style="font-size:10px;color:var(--text3)">'+chgLabel+'%</td>'+ccells+'</tr>';
   }).join('');
   var dhead=dates.map(function(d){ return '<th style="font-size:10px">'+dhFmtDate(d,cyc)+'</th>'; }).join('');
-  return '<div class="card" style="padding:14px;margin-bottom:12px">'
-    +'<div style="font-size:13px;font-weight:700;margin-bottom:10px">'+title+' <span style="font-size:11px;color:var(--text3);font-weight:400">(지수값 + '+chgLabel+' 변동률)</span></div>'
+  var unitNote = isMoney ? '(평당 금액 + '+chgLabel+' 변동률)' : '(지수값 + '+chgLabel+' 변동률)';
+  var out='<div class="card" style="padding:14px;margin-bottom:12px">'
+    +'<div style="font-size:13px;font-weight:700;margin-bottom:10px">'+title+' <span style="font-size:11px;color:var(--text3);font-weight:400">'+unitNote+'</span></div>'
     +'<div class="table-scroll" style="overflow-x:auto;margin-bottom:12px"><table class="data-table" style="font-size:11px"><thead><tr>'
     +'<th>지역</th><th></th>'+dhead+'</tr></thead><tbody>'+rows+'</tbody></table></div>'
-    +'<div class="chart-wrap" style="height:220px"><canvas id="'+chartId+'"></canvas></div>'
-    +'</div>';
+    +'<div style="font-size:11px;color:var(--text3);margin-bottom:4px">'+(isMoney?'평당 금액 추이':'지수 추이')+'</div>'
+    +'<div class="chart-wrap" style="height:440px"><canvas id="'+chartId+'"></canvas></div>';
+  // 지수 섹션은 변동률 그래프 별도 추가 (중위가격은 제외)
+  if(!isMoney){
+    out+='<div style="font-size:11px;color:var(--text3);margin:12px 0 4px">'+chgLabel+' 변동률(%) 추이</div>'
+      +'<div class="chart-wrap" style="height:440px"><canvas id="'+chartId+'-chg"></canvas></div>';
+  }
+  out+='</div>';
+  return out;
 }
 function dhMoney(v){ if(v==null) return '-'; if(v>=10000) return (Math.round(v/1000)/10)+'억'; return Math.round(v).toLocaleString()+'만'; }
+// 중위가는 파싱 단계에서 이미 '평당 만원'으로 변환됨 → 표시만
+function dhPyeong(v){ if(v==null) return '-'; return Math.round(v).toLocaleString()+'만/평'; }
 
 // 거래량 섹션
 function dhVolSection(ds){
@@ -6496,39 +6513,100 @@ function dhVolSection(ds){
 }
 
 var _dhCharts={};
-function dhDrawCharts(ds,dates,cyc){
+// 라인 차트 점 위 수치 라벨 (마지막 점 + 촘촘하지 않으면 전체)
+function dhLineLabel(fmt){
+  return { id:'dhll', afterDatasetsDraw:function(chart){
+    var cx=chart.ctx; var n=(chart.data.labels||[]).length;
+    var dsN=chart.data.datasets.length||1;
+    var showEvery = n>13?2:1;   // 촘촘하면 격점만
+    chart.data.datasets.forEach(function(ds,di){
+      var meta=chart.getDatasetMeta(di); if(meta.hidden) return;
+      meta.data.forEach(function(pt,i){
+        var v=ds.data[i]; if(v==null) return;
+        var isLast=(i===meta.data.length-1);
+        if(!isLast && (i%showEvery!==0)) return;
+        cx.save(); cx.fillStyle='#1a2332'; cx.font='bold 9px sans-serif';
+        cx.textAlign='center'; cx.textBaseline='bottom';
+        cx.shadowColor='rgba(255,255,255,.95)'; cx.shadowBlur=3;
+        cx.fillText(fmt(v), pt.x, pt.y-3); cx.restore();
+      });
+    });
+  }};
+}
+function dhBarLabel(fmt){
+  return { id:'dhbl', afterDatasetsDraw:function(chart){
+    var cx=chart.ctx; var n=(chart.data.labels||[]).length; var dsN=chart.data.datasets.length||1;
+    var slot=chart.chartArea?(chart.chartArea.right-chart.chartArea.left)/Math.max(n*dsN,1):20;
+    var vert=slot<20;
+    chart.data.datasets.forEach(function(ds,di){
+      var meta=chart.getDatasetMeta(di); if(meta.hidden) return;
+      meta.data.forEach(function(bar,i){ var v=ds.data[i]; if(v==null||v===0) return;
+        var pos=bar.tooltipPosition?bar.tooltipPosition():{x:bar.x,y:bar.y};
+        cx.save(); cx.fillStyle='#1a2332'; cx.font='bold '+(vert?7:8)+'px sans-serif';
+        cx.shadowColor='rgba(255,255,255,.95)'; cx.shadowBlur=3;
+        if(vert){ cx.translate(pos.x,pos.y-3); cx.rotate(-Math.PI/2); cx.textAlign='left'; cx.textBaseline='middle'; cx.fillText(fmt(v),0,0); }
+        else { cx.textAlign='center'; cx.textBaseline='bottom'; cx.fillText(fmt(v),pos.x,pos.y-2); }
+        cx.restore();
+      });
+    });
+  }};
+}
+
+function dhDrawCharts(ds,dates,cyc,regions){
   if(typeof Chart==='undefined') return;
+  regions = regions || DH_REGIONS;
   Object.keys(_dhCharts).forEach(function(k){ try{_dhCharts[k].destroy();}catch(e){} });
   _dhCharts={};
   var lbl=(getComputedStyle(document.documentElement).getPropertyValue('--text2')||'#4a5568').trim();
   var colors={'서울강북':'#e03131','서울강남':'#f76707','경기':'#2f9e44','인천':'#1971c2','연수구':'#7048e8'};
   var labels=dates.map(function(d){ return dhFmtDate(d,cyc); });
   var isRt=(G_DH.stat==='rt');
+  function rgName(rg){ return (isRt&&rg==='서울강북')?'서울동북':(isRt&&rg==='서울강남')?'서울동남':rg; }
+
   ['sale','jeonse'].concat(cyc==='M'?['midSale','midJeonse']:[]).forEach(function(key){
     var cv=document.getElementById('dh-ch-'+key); if(!cv) return;
     var money=(key.indexOf('mid')===0);
-    var dsets=DH_REGIONS.map(function(rg){
+    var fmtV = money? function(v){ return Math.round(v).toLocaleString(); } : function(v){ return v.toFixed(1); };
+    var dsets=regions.map(function(rg){
       var arr=((ds.regions[rg]||{})[key]||[]).slice(-dates.length);
-      return {label:(isRt&&rg==='서울강북'?'서울동북':isRt&&rg==='서울강남'?'서울동남':rg),
-        data:arr, borderColor:colors[rg], backgroundColor:colors[rg], tension:0.2, pointRadius:2, borderWidth:2, fill:false};
+      return {label:rgName(rg), data:arr, borderColor:colors[rg], backgroundColor:colors[rg], tension:0.2, pointRadius:2, borderWidth:2, fill:false};
     }).filter(function(d){ return d.data.some(function(v){return v!=null;}); });
-    _dhCharts[key]=new Chart(cv,{type:'line',data:{labels:labels,datasets:dsets},
-      options:{responsive:true,maintainAspectRatio:false,
-        plugins:{legend:{labels:{color:lbl,font:{size:10},boxWidth:12}},
-          tooltip:{callbacks:{label:function(c){ return c.dataset.label+': '+(money?dhMoney(c.parsed.y):c.parsed.y); }}}},
-        scales:{x:{ticks:{color:lbl,font:{size:9},maxRotation:60,minRotation:60}},
-                y:{ticks:{color:lbl,font:{size:9},callback:function(v){return money?dhMoney(v):v;}}}}}});
+    _dhCharts[key]=new Chart(cv,{type:'line',data:{labels:labels,datasets:dsets},plugins:[dhLineLabel(fmtV)],
+      options:{responsive:true,maintainAspectRatio:false,layout:{padding:{top:18}},
+        plugins:{legend:{labels:{color:lbl,font:{size:11},boxWidth:12}},
+          tooltip:{callbacks:{label:function(c){ return c.dataset.label+': '+(money?dhPyeong(c.parsed.y):c.parsed.y); }}}},
+        scales:{x:{ticks:{color:lbl,font:{size:10},maxRotation:60,minRotation:60}},
+                y:{ticks:{color:lbl,font:{size:10},callback:function(v){return money?Math.round(v).toLocaleString():v;}}}}}});
+
+    // 지수 섹션: 변동률 차트 (중위가격 제외)
+    if(!money){
+      var cvc=document.getElementById('dh-ch-'+key+'-chg'); if(!cvc) return;
+      var chgSets=regions.map(function(rg){
+        var arr=((ds.regions[rg]||{})[key]||[]);
+        var base=arr.length-dates.length;
+        var cdata=dates.map(function(_,i){ return dhChg(arr, base+i); });
+        return {label:rgName(rg), data:cdata, borderColor:colors[rg], backgroundColor:colors[rg], tension:0.2, pointRadius:2, borderWidth:2, fill:false};
+      }).filter(function(d){ return d.data.some(function(v){return v!=null;}); });
+      _dhCharts[key+'-chg']=new Chart(cvc,{type:'line',data:{labels:labels,datasets:chgSets},plugins:[dhLineLabel(function(v){return (v>0?'+':'')+v.toFixed(2);})],
+        options:{responsive:true,maintainAspectRatio:false,layout:{padding:{top:18}},
+          plugins:{legend:{labels:{color:lbl,font:{size:11},boxWidth:12}},
+            tooltip:{callbacks:{label:function(c){ return c.dataset.label+': '+(c.parsed.y>0?'+':'')+c.parsed.y+'%'; }}}},
+          scales:{x:{ticks:{color:lbl,font:{size:10},maxRotation:60,minRotation:60}},
+                  y:{ticks:{color:lbl,font:{size:10},callback:function(v){return v+'%';}},
+                     grid:{color:function(c){ return c.tick.value===0?'rgba(0,0,0,.25)':'rgba(0,0,0,.06)'; }}}}}});
+    }
   });
-  // 거래량 차트
+  // 거래량 차트 (KHPI 월간)
   if(!isRt && cyc==='M'){
     var vc=document.getElementById('dh-ch-vol');
     if(vc){ var vdates=(ds.volDates||[]).slice(-13); var vlabels=vdates.map(function(d){return dhFmtDate(d,'M');});
       var regs=['서울강북','서울강남','경기','인천'];
       _dhCharts.vol=new Chart(vc,{type:'bar',data:{labels:vlabels,datasets:regs.map(function(rg){
         return {label:rg,data:((ds.regions[rg]||{}).vol||[]).slice(-vdates.length),backgroundColor:colors[rg]}; })},
-        options:{responsive:true,maintainAspectRatio:false,
-          plugins:{legend:{labels:{color:lbl,font:{size:10},boxWidth:12}}},
-          scales:{x:{ticks:{color:lbl,font:{size:9}}},y:{ticks:{color:lbl,font:{size:9}}}}}});
+        plugins:[dhBarLabel(function(v){return Math.round(v).toLocaleString();})],
+        options:{responsive:true,maintainAspectRatio:false,layout:{padding:{top:18}},
+          plugins:{legend:{labels:{color:lbl,font:{size:11},boxWidth:12}}},
+          scales:{x:{ticks:{color:lbl,font:{size:10}}},y:{ticks:{color:lbl,font:{size:10}}}}}});
     }
   }
 }
