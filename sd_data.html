@@ -517,6 +517,9 @@ tr.naver-fav>td:first-child{border-left:3px solid #b8860b;}
   .chart-wrap { height:260px !important; max-height:260px !important; overflow:hidden !important; }
   .chart-wrap canvas, .chart-card canvas { max-width:100% !important; max-height:260px !important; height:260px !important; width:100% !important; }
   canvas { background:#fff !important; max-width:100% !important; }
+  /* 국내주택동향: 축 눈금·수치 라벨 가독성 확보를 위해 인쇄 차트 높이 상향 */
+  #tc15 .chart-wrap { height:300px !important; max-height:300px !important; }
+  #tc15 .chart-wrap canvas { max-height:300px !important; height:300px !important; }
   a { text-decoration:none !important; color:#1a1a1a !important; }
   .chart-card, .kpi-card { page-break-inside:avoid; }
   /* KPI 행: 인쇄 시에도 가로 배치 유지 + 페이지 경계 잘림 방지 */
@@ -4193,11 +4196,19 @@ function printCurrentTab(){
   activeTc.insertBefore(pt,activeTc.firstChild);
   var wasZoom=document.body.classList.contains('zoom-mode');
   if(wasZoom) document.body.classList.remove('zoom-mode');
+  // 국내주택동향: 인쇄 시 캔버스 축소 보정 (축 눈금·수치 라벨 확대)
+  var _dhScaled=false;
+  try{
+    if(activeTc.id==='tc15' && typeof dhApplyChartScale==='function'){
+      dhApplyChartScale(dhPrintScale()); _dhScaled=true;
+    }
+  }catch(e){}
   // 인쇄 후 print-title 제거 (화면에 잔류 방지)
   var _cleanup=function(){
     var p=document.getElementById('print-title');
     if(p&&p.parentNode) p.parentNode.removeChild(p);
     if(wasZoom) document.body.classList.add('zoom-mode');
+    if(_dhScaled){ try{ dhApplyChartScale(1); }catch(e){} _dhScaled=false; }
     window.removeEventListener('afterprint',_cleanup);
   };
   window.addEventListener('afterprint',_cleanup);
@@ -4206,7 +4217,7 @@ function printCurrentTab(){
     window.print();
     // afterprint 미지원 브라우저 대비 폴백
     setTimeout(_cleanup, 1000);
-  }, 200);
+  }, 320);
 }
 
 function sw(n){
@@ -6572,8 +6583,13 @@ function dhKpiTop(ds,cyc,regions,isRt){
 
 // ══ 인천시 구별 매매 가격지수 (주택가격동향조사 전용) ══
 var DH_GU_COLORS=['#c92a4a','#e8590c','#f59f00','#2f9e44','#0e7490','#1971c2','#7048e8','#c2255c','#495057','#0ca678'];
+// 2026.7 인천시 행정구역 개편으로 폐지된 구 → 표·차트에서 제외
+var DH_GU_DEFUNCT=['중구','동구','서구'];
+function dhGuList(ds){
+  return (ds.incheonGu||[]).filter(function(g){ return DH_GU_DEFUNCT.indexOf(g.name)<0; });
+}
 function dhIncheonSection(ds,cyc){
-  var gu=ds.incheonGu||[]; if(!gu.length) return '';
+  var gu=dhGuList(ds); if(!gu.length) return '';
   var n=(cyc==='W')?12:13;
   var dates=(ds.dates||[]).slice(-n);
   var chgL=(cyc==='W')?'전주비':'전월비';
@@ -6591,7 +6607,8 @@ function dhIncheonSection(ds,cyc){
   return '<div class="card" style="padding:14px;margin-bottom:12px">'
     +'<div style="font-size:13px;font-weight:700;margin-bottom:4px">🏙️ 인천시 구별 아파트 매매 가격지수 '
       +'<span style="font-size:11px;color:var(--text3);font-weight:400">(지수값 + '+chgL+' 변동률)</span></div>'
-    +'<div style="font-size:11px;color:var(--text3);margin-bottom:10px">※ 주택가격동향조사(KHPI) 공표 시군구 기준 · 아파트</div>'
+    +'<div style="font-size:11px;color:var(--text3);margin-bottom:10px">※ 주택가격동향조사(KHPI) 공표 시군구 기준 · 아파트'
+      +'<span style="margin-left:6px">· 2026.7 행정구역 개편으로 폐지된 '+DH_GU_DEFUNCT.join('·')+'는 제외</span></div>'
     +'<div class="table-scroll" style="overflow-x:auto;margin-bottom:12px"><table class="data-table" style="font-size:11px"><thead><tr>'
       +'<th>지역</th><th></th>'+dhead+'</tr></thead><tbody>'+rows+'</tbody></table></div>'
     +'<div style="font-size:11px;color:var(--text3);margin-bottom:4px">구별 지수 추이</div>'
@@ -6602,7 +6619,7 @@ function dhIncheonSection(ds,cyc){
 }
 function dhDrawIncheon(ds,cyc){
   if(typeof Chart==='undefined') return;
-  var gu=ds.incheonGu||[]; if(!gu.length) return;
+  var gu=dhGuList(ds); if(!gu.length) return;
   var lbl=(getComputedStyle(document.documentElement).getPropertyValue('--text2')||'#4a5568').trim();
   var n=(cyc==='W')?12:13;
   var dates=(ds.dates||[]).slice(-n);
@@ -6615,9 +6632,9 @@ function dhDrawIncheon(ds,cyc){
     });
     _dhCharts.icg=new Chart(cv,{type:'line',data:{labels:labels,datasets:dsets},plugins:[dhLineLabel(function(v){return v.toFixed(1);})],
       options:{responsive:true,maintainAspectRatio:false,layout:{padding:{top:18}},
-        plugins:{legend:{labels:{color:lbl,font:{size:11},boxWidth:12}}},
-        scales:{x:{ticks:{color:lbl,font:{size:10},maxRotation:60,minRotation:60}},
-                y:{ticks:{color:lbl,font:{size:10}}}}}});
+        plugins:{legend:{labels:{color:lbl,font:{size:dhF(DH_FS.legend)},boxWidth:dhF(DH_FS.box)}}},
+        scales:{x:{ticks:{color:lbl,font:{size:dhF(DH_FS.tick)},maxRotation:60,minRotation:60}},
+                y:{ticks:{color:lbl,font:{size:dhF(DH_FS.tick)}}}}}});
   }
   var cvc=document.getElementById('dh-ch-icg-chg');
   if(cvc){
@@ -6629,8 +6646,8 @@ function dhDrawIncheon(ds,cyc){
       plugins:[dhBarLabel(function(v){ return (v>0?'+':'')+v.toFixed(2); })],
       options:{responsive:true,maintainAspectRatio:false,layout:{padding:{top:20}},
         plugins:{legend:{display:false}},
-        scales:{x:{ticks:{color:lbl,font:{size:11}}},
-                y:{ticks:{color:lbl,font:{size:10},callback:function(v){return v+'%';}},
+        scales:{x:{ticks:{color:lbl,font:{size:dhF(DH_FS.tick)}}},
+                y:{ticks:{color:lbl,font:{size:dhF(DH_FS.tick)},callback:function(v){return (Math.round(v*100)/100).toFixed(2)+'%';}},
                    grid:{color:function(c){ return c.tick.value===0?'rgba(0,0,0,.25)':'rgba(0,0,0,.06)'; }}}}}});
   }
 }
@@ -6737,6 +6754,53 @@ function dhVolSection(ds){
 }
 
 var _dhCharts={};
+
+// ══ 차트 가독성: 화면/인쇄 폰트 배율 ══
+// 인쇄 시 캔버스(비트맵)가 A4 폭으로 축소되면서 축 눈금·수치 라벨이 함께 작아짐.
+// → 축소비만큼 폰트를 미리 키워 인쇄물에서 화면과 같은 크기로 보이게 보정한다.
+var DH_FS={ tick:12, legend:12, line:11, bar:10, barVert:9, box:12 };
+var DH_SCALE=1;
+function dhF(n){ return Math.round(n*DH_SCALE); }
+function dhPrintScale(){
+  var el=document.querySelector('#tc15 .chart-wrap');
+  var w=el?el.clientWidth:0;
+  if(!w) return 1.6;
+  var PRINT_W=1040;   // A4 가로(297mm) − 좌우 여백(10mm) ≈ 유효 폭 px 환산
+  return Math.max(1.2, Math.min(2.4, w/PRINT_W));
+}
+function dhApplyChartScale(s){
+  DH_SCALE=s;
+  Object.keys(_dhCharts).forEach(function(k){
+    var c=_dhCharts[k]; if(!c||!c.options) return;
+    var o=c.options;
+    if(o.plugins&&o.plugins.legend&&o.plugins.legend.labels){
+      o.plugins.legend.labels.font={size:dhF(DH_FS.legend)};
+      o.plugins.legend.labels.boxWidth=dhF(DH_FS.box);
+    }
+    ['x','y'].forEach(function(ax){
+      if(o.scales&&o.scales[ax]&&o.scales[ax].ticks) o.scales[ax].ticks.font={size:dhF(DH_FS.tick)};
+    });
+    var isLine=false; try{ isLine=(c.config.type==='line'); }catch(e){}
+    if(isLine) (c.data.datasets||[]).forEach(function(d){
+      d.pointRadius=Math.max(2,Math.round(2*s)); d.borderWidth=Math.max(2,Math.round(2*s)); });
+    try{ c.update('none'); }catch(e){}
+  });
+}
+// 인쇄 전후 자동 보정 (브라우저 인쇄, 🖨️ 인쇄 버튼, PDF 저장 모두 대응)
+(function(){
+  if(window._dhPrintHooked) return; window._dhPrintHooked=true;
+  function on(){ try{ dhApplyChartScale(dhPrintScale()); }catch(e){} }
+  function off(){ try{ dhApplyChartScale(1); }catch(e){} }
+  window.addEventListener('beforeprint',on);
+  window.addEventListener('afterprint',off);
+  if(window.matchMedia){
+    var mq=window.matchMedia('print');
+    var h=function(e){ e.matches?on():off(); };
+    if(mq.addEventListener) mq.addEventListener('change',h);
+    else if(mq.addListener) mq.addListener(h);
+  }
+})();
+
 // 라인 차트 점 위 수치 라벨 (마지막 점 + 촘촘하지 않으면 전체)
 function dhLineLabel(fmt){
   return { id:'dhll', afterDatasetsDraw:function(chart){
@@ -6749,10 +6813,10 @@ function dhLineLabel(fmt){
         var v=ds.data[i]; if(v==null) return;
         var isLast=(i===meta.data.length-1);
         if(!isLast && (i%showEvery!==0)) return;
-        cx.save(); cx.fillStyle='#1a2332'; cx.font='bold 10px sans-serif';
+        cx.save(); cx.fillStyle='#1a2332'; cx.font='bold '+dhF(DH_FS.line)+'px sans-serif';
         cx.textAlign='center'; cx.textBaseline='bottom';
-        cx.shadowColor='rgba(255,255,255,.95)'; cx.shadowBlur=3;
-        cx.fillText(fmt(v), pt.x, pt.y-3); cx.restore();
+        cx.shadowColor='rgba(255,255,255,.95)'; cx.shadowBlur=Math.round(3*DH_SCALE);
+        cx.fillText(fmt(v), pt.x, pt.y-Math.round(3*DH_SCALE)); cx.restore();
       });
     });
   }};
@@ -6761,15 +6825,21 @@ function dhBarLabel(fmt){
   return { id:'dhbl', afterDatasetsDraw:function(chart){
     var cx=chart.ctx; var n=(chart.data.labels||[]).length; var dsN=chart.data.datasets.length||1;
     var slot=chart.chartArea?(chart.chartArea.right-chart.chartArea.left)/Math.max(n*dsN,1):20;
-    var vert=slot<20;
+    var vert=slot<20*DH_SCALE;
+    var pad=Math.round(3*DH_SCALE);
     chart.data.datasets.forEach(function(ds,di){
       var meta=chart.getDatasetMeta(di); if(meta.hidden) return;
       meta.data.forEach(function(bar,i){ var v=ds.data[i]; if(v==null||v===0) return;
         var pos=bar.tooltipPosition?bar.tooltipPosition():{x:bar.x,y:bar.y};
-        cx.save(); cx.fillStyle='#1a2332'; cx.font='bold '+(vert?8:9)+'px sans-serif';
-        cx.shadowColor='rgba(255,255,255,.95)'; cx.shadowBlur=3;
-        if(vert){ cx.translate(pos.x,pos.y-3); cx.rotate(-Math.PI/2); cx.textAlign='left'; cx.textBaseline='middle'; cx.fillText(fmt(v),0,0); }
-        else { cx.textAlign='center'; cx.textBaseline='bottom'; cx.fillText(fmt(v),pos.x,pos.y-2); }
+        cx.save(); cx.fillStyle='#1a2332'; cx.font='bold '+dhF(vert?DH_FS.barVert:DH_FS.bar)+'px sans-serif';
+        cx.shadowColor='rgba(255,255,255,.95)'; cx.shadowBlur=Math.round(3*DH_SCALE);
+        if(vert){ cx.translate(pos.x,pos.y-pad); cx.rotate(-Math.PI/2); cx.textAlign='left'; cx.textBaseline='middle'; cx.fillText(fmt(v),0,0); }
+        else {
+          cx.textAlign='center';
+          // 음수 막대는 라벨을 막대 아래쪽에 → 막대 안에 겹쳐 안 보이는 문제 방지
+          if(v<0){ cx.textBaseline='top'; cx.fillText(fmt(v),pos.x,pos.y+pad); }
+          else { cx.textBaseline='bottom'; cx.fillText(fmt(v),pos.x,pos.y-pad); }
+        }
         cx.restore();
       });
     });
@@ -6798,10 +6868,10 @@ function dhDrawCharts(ds,dates,cyc,regions){
     }).filter(function(d){ return d.data.some(function(v){return v!=null;}); });
     _dhCharts[key]=new Chart(cv,{type:'line',data:{labels:labels,datasets:dsets},plugins:[dhLineLabel(fmtV)],
       options:{responsive:true,maintainAspectRatio:false,layout:{padding:{top:18}},
-        plugins:{legend:{labels:{color:lbl,font:{size:11},boxWidth:12}},
+        plugins:{legend:{labels:{color:lbl,font:{size:dhF(DH_FS.legend)},boxWidth:dhF(DH_FS.box)}},
           tooltip:{callbacks:{label:function(c){ return c.dataset.label+': '+(money?dhPyeong(c.parsed.y):c.parsed.y); }}}},
-        scales:{x:{ticks:{color:lbl,font:{size:10},maxRotation:60,minRotation:60}},
-                y:{ticks:{color:lbl,font:{size:10},callback:function(v){return money?Math.round(v).toLocaleString():v;}}}}}});
+        scales:{x:{ticks:{color:lbl,font:{size:dhF(DH_FS.tick)},maxRotation:60,minRotation:60}},
+                y:{ticks:{color:lbl,font:{size:dhF(DH_FS.tick)},callback:function(v){return money?Math.round(v).toLocaleString():v;}}}}}});
 
     // 지수 섹션: 변동률 차트 (중위가격 제외)
     if(!money){
@@ -6814,10 +6884,10 @@ function dhDrawCharts(ds,dates,cyc,regions){
       }).filter(function(d){ return d.data.some(function(v){return v!=null;}); });
       _dhCharts[key+'-chg']=new Chart(cvc,{type:'line',data:{labels:labels,datasets:chgSets},plugins:[dhLineLabel(function(v){return (v>0?'+':'')+v.toFixed(2);})],
         options:{responsive:true,maintainAspectRatio:false,layout:{padding:{top:18}},
-          plugins:{legend:{labels:{color:lbl,font:{size:11},boxWidth:12}},
+          plugins:{legend:{labels:{color:lbl,font:{size:dhF(DH_FS.legend)},boxWidth:dhF(DH_FS.box)}},
             tooltip:{callbacks:{label:function(c){ return c.dataset.label+': '+(c.parsed.y>0?'+':'')+c.parsed.y+'%'; }}}},
-          scales:{x:{ticks:{color:lbl,font:{size:10},maxRotation:60,minRotation:60}},
-                  y:{ticks:{color:lbl,font:{size:10},callback:function(v){return v+'%';}},
+          scales:{x:{ticks:{color:lbl,font:{size:dhF(DH_FS.tick)},maxRotation:60,minRotation:60}},
+                  y:{ticks:{color:lbl,font:{size:dhF(DH_FS.tick)},callback:function(v){return (Math.round(v*100)/100).toFixed(2)+'%';}},
                      grid:{color:function(c){ return c.tick.value===0?'rgba(0,0,0,.25)':'rgba(0,0,0,.06)'; }}}}}});
     }
   });
@@ -6830,8 +6900,8 @@ function dhDrawCharts(ds,dates,cyc,regions){
         return {label:rg,data:((ds.regions[rg]||{}).vol||[]).slice(-vdates.length),backgroundColor:colors[rg]}; })},
         plugins:[dhBarLabel(function(v){return Math.round(v).toLocaleString();})],
         options:{responsive:true,maintainAspectRatio:false,layout:{padding:{top:18}},
-          plugins:{legend:{labels:{color:lbl,font:{size:11},boxWidth:12}}},
-          scales:{x:{ticks:{color:lbl,font:{size:10}}},y:{ticks:{color:lbl,font:{size:10}}}}}});
+          plugins:{legend:{labels:{color:lbl,font:{size:dhF(DH_FS.legend)},boxWidth:dhF(DH_FS.box)}}},
+          scales:{x:{ticks:{color:lbl,font:{size:dhF(DH_FS.tick)}}},y:{ticks:{color:lbl,font:{size:dhF(DH_FS.tick)}}}}}});
     }
   }
 }
