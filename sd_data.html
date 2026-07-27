@@ -513,13 +513,10 @@ tr.naver-fav>td:first-child{border-left:3px solid #b8860b;}
   /* 매물 목록 표 폰트 축소로 가로 수용 */
   #t6-naver-table, #t6-naver-table th, #t6-naver-table td { font-size:6.5pt !important; padding:1.5pt 2pt !important; line-height:1.2 !important; }
   .tc.on { width:100% !important; max-width:100% !important; overflow:visible !important; }
-  /* 인쇄 시 차트 높이 (가로 전체폭 사용에 맞춰 상향) */
-  .chart-wrap { height:260px !important; max-height:260px !important; overflow:hidden !important; }
-  .chart-wrap canvas, .chart-card canvas { max-width:100% !important; max-height:260px !important; height:260px !important; width:100% !important; }
+  /* 인쇄 시 차트 높이 — 축 눈금·수치 라벨 가독성 확보를 위해 상향 (전 탭 공통) */
+  .chart-wrap { height:300px !important; max-height:300px !important; overflow:hidden !important; }
+  .chart-wrap canvas, .chart-card canvas { max-width:100% !important; max-height:300px !important; height:300px !important; width:100% !important; }
   canvas { background:#fff !important; max-width:100% !important; }
-  /* 국내주택동향: 축 눈금·수치 라벨 가독성 확보를 위해 인쇄 차트 높이 상향 */
-  #tc15 .chart-wrap { height:300px !important; max-height:300px !important; }
-  #tc15 .chart-wrap canvas { max-height:300px !important; height:300px !important; }
   a { text-decoration:none !important; color:#1a1a1a !important; }
   .chart-card, .kpi-card { page-break-inside:avoid; }
   /* KPI 행: 인쇄 시에도 가로 배치 유지 + 페이지 경계 잘림 방지 */
@@ -4165,6 +4162,86 @@ function t1SetTradeType(t,btn){
   renderTab1();
 }
 
+// ══════════════════════════════════════════
+// 인쇄 차트 가독성 — 전역 폰트 배율 (모든 탭 공통)
+// ══════════════════════════════════════════
+// 차트는 캔버스 비트맵이라 인쇄 시 A4 폭으로 통째로 축소된다.
+// → CSS로는 캔버스 안 글자를 못 키우므로, 축소비만큼 폰트를 미리 확대해 보정한다.
+var PRINT_CHART_SCALE = 1;
+function pxF(n){ return Math.round(n * PRINT_CHART_SCALE); }              // 라벨 폰트 공통
+function pxS(n){ return Math.max(1, Math.round(n * PRINT_CHART_SCALE)); } // 여백/후광 공통
+
+// 현재 활성 탭 차트 폭 대비 A4 유효폭 비율
+function printChartScale(){
+  var root=document.querySelector('.tc.on');
+  var el=root?(root.querySelector('.chart-wrap')||root.querySelector('canvas')):null;
+  var w=el?el.clientWidth:0;
+  if(!w) return 1.6;
+  var PRINT_W=1040;   // A4 가로(297mm) − 좌우 여백 ≈ 유효 폭 px 환산
+  return Math.max(1.2, Math.min(2.4, w/PRINT_W));
+}
+// 활성 탭의 모든 Chart 인스턴스 수집 (탭별 변수에 흩어져 있어도 캔버스로 역참조)
+function _pcCharts(){
+  var out=[];
+  if(typeof Chart==='undefined'||typeof Chart.getChart!=='function') return out;
+  var root=document.querySelector('.tc.on')||document;
+  Array.prototype.forEach.call(root.querySelectorAll('canvas'),function(cv){
+    var c=null; try{ c=Chart.getChart(cv); }catch(e){}
+    if(c) out.push(c);
+  });
+  return out;
+}
+// 축·범례 폰트 일괄 확대/복원 (수치 라벨은 pxF()가 자동 반영)
+function applyPrintChartScale(s){
+  PRINT_CHART_SCALE = s;
+  _pcCharts().forEach(function(c){
+    try{
+      var o=c.options||{};
+      var lg=o.plugins&&o.plugins.legend&&o.plugins.legend.labels;
+      // 원본(배율 1) 크기를 최초 1회 기억 → 복원 시 사용
+      if(!c.$pcBase){
+        c.$pcBase={ legend:(lg&&lg.font&&lg.font.size)||12, box:(lg&&lg.boxWidth)||12, axes:{} };
+        Object.keys(o.scales||{}).forEach(function(ax){
+          var t=o.scales[ax]&&o.scales[ax].ticks;
+          c.$pcBase.axes[ax]=(t&&t.font&&t.font.size)||12;
+        });
+      }
+      var b=c.$pcBase;
+      if(lg){
+        lg.font=Object.assign({},lg.font||{},{size:Math.round(b.legend*s)});
+        lg.boxWidth=Math.round(b.box*s);
+      }
+      Object.keys(o.scales||{}).forEach(function(ax){
+        var sc=o.scales[ax]; if(!sc||!sc.ticks) return;
+        sc.ticks.font=Object.assign({},sc.ticks.font||{},{size:Math.round((b.axes[ax]||12)*s)});
+      });
+      // 라인 차트: 점·선도 함께 굵게 (축소 인쇄 시 선이 사라지는 것 방지)
+      (c.data&&c.data.datasets||[]).forEach(function(d,di){
+        if(d.type==='bar'||(!d.type&&c.config&&c.config.type==='bar')) return;
+        if(d.$pcR===undefined) d.$pcR=(typeof d.pointRadius==='number')?d.pointRadius:null;
+        if(d.$pcW===undefined) d.$pcW=(typeof d.borderWidth==='number')?d.borderWidth:null;
+        if(d.$pcR!==null) d.pointRadius=Math.max(1,Math.round(d.$pcR*s));
+        if(d.$pcW!==null) d.borderWidth=Math.max(1,Math.round(d.$pcW*s));
+      });
+      c.update('none');
+    }catch(e){}
+  });
+}
+// 인쇄 전후 자동 보정 (브라우저 Ctrl+P, 🖨️ 버튼, PDF 저장 모두 대응)
+(function(){
+  if(window._pcPrintHooked) return; window._pcPrintHooked=true;
+  function on(){ try{ applyPrintChartScale(printChartScale()); }catch(e){} }
+  function off(){ try{ applyPrintChartScale(1); }catch(e){} }
+  window.addEventListener('beforeprint',on);
+  window.addEventListener('afterprint',off);
+  if(window.matchMedia){
+    var mq=window.matchMedia('print');
+    var h=function(e){ e.matches?on():off(); };
+    if(mq.addEventListener) mq.addEventListener('change',h);
+    else if(mq.addListener) mq.addListener(h);
+  }
+})();
+
 // 🖨️ 현재 활성 탭 화면 인쇄 (라이트 배경·잉크 절약)
 function printCurrentTab(){
   var activeBtn=document.querySelector('.tab-btn.on');
@@ -4196,19 +4273,15 @@ function printCurrentTab(){
   activeTc.insertBefore(pt,activeTc.firstChild);
   var wasZoom=document.body.classList.contains('zoom-mode');
   if(wasZoom) document.body.classList.remove('zoom-mode');
-  // 국내주택동향: 인쇄 시 캔버스 축소 보정 (축 눈금·수치 라벨 확대)
-  var _dhScaled=false;
-  try{
-    if(activeTc.id==='tc15' && typeof dhApplyChartScale==='function'){
-      dhApplyChartScale(dhPrintScale()); _dhScaled=true;
-    }
-  }catch(e){}
+  // 모든 탭 공통: 인쇄 시 캔버스 축소 보정 (축 눈금·범례·수치 라벨 확대)
+  var _chartScaled=false;
+  try{ applyPrintChartScale(printChartScale()); _chartScaled=true; }catch(e){}
   // 인쇄 후 print-title 제거 (화면에 잔류 방지)
   var _cleanup=function(){
     var p=document.getElementById('print-title');
     if(p&&p.parentNode) p.parentNode.removeChild(p);
     if(wasZoom) document.body.classList.add('zoom-mode');
-    if(_dhScaled){ try{ dhApplyChartScale(1); }catch(e){} _dhScaled=false; }
+    if(_chartScaled){ try{ applyPrintChartScale(1); }catch(e){} _chartScaled=false; }
     window.removeEventListener('afterprint',_cleanup);
   };
   window.addEventListener('afterprint',_cleanup);
@@ -5651,7 +5724,7 @@ function hsBarLabel(id){
         var v=ds.data[i]; if(!v||v<=0) return;
         var pos=bar.tooltipPosition?bar.tooltipPosition():{x:bar.x,y:bar.y};
         cx.save(); cx.fillStyle='#1a2332';
-        cx.font='bold '+(vertical?8:9)+'px sans-serif';
+        cx.font='bold '+pxF(vertical?8:9)+'px sans-serif';
         cx.shadowColor='rgba(255,255,255,.95)'; cx.shadowBlur=3;
         if(vertical){
           cx.translate(pos.x, pos.y-3); cx.rotate(-Math.PI/2);
@@ -5693,12 +5766,12 @@ function hsStackLabel(id){
         cx.textAlign='center'; cx.textBaseline='middle';
         cx.shadowColor='rgba(0,0,0,.55)'; cx.shadowBlur=3;
         if(h>=30){                            // 넉넉하면 2줄로
-          cx.font='bold 9px sans-serif';
+          cx.font='bold '+pxF(9)+'px sans-serif';
           cx.fillText(hsNumFmt(v), bar.x, cy-5);
-          cx.font='bold 8px sans-serif';
+          cx.font='bold '+pxF(8)+'px sans-serif';
           cx.fillText('('+pctv+'%)', bar.x, cy+6);
         } else {
-          cx.font='bold 8px sans-serif';
+          cx.font='bold '+pxF(8)+'px sans-serif';
           cx.fillText(txt, bar.x, cy);
         }
         cx.restore();
@@ -5714,7 +5787,7 @@ function hsStackLabel(id){
         if(topY===null||b.y<topY) topY=b.y;
       });
       var bar=m0.data[i]; if(!bar||topY===null) return;
-      cx.save(); cx.fillStyle='#1a2332'; cx.font='bold 10px sans-serif';
+      cx.save(); cx.fillStyle='#1a2332'; cx.font='bold '+pxF(10)+'px sans-serif';
       cx.textAlign='center'; cx.textBaseline='bottom';
       cx.shadowColor='rgba(255,255,255,.95)'; cx.shadowBlur=3;
       cx.fillText(hsNumFmt(totals[i]), bar.x, topY-3); cx.restore();
@@ -5733,11 +5806,11 @@ function hsDoughLabel(id){
       var pctv=v/tot*100;
       if(pctv<2.5) return; // 너무 작은 조각은 생략 (겹침 방지)
       var pos=arc.tooltipPosition?arc.tooltipPosition():{x:arc.x,y:arc.y};
-      cx.save(); cx.fillStyle='#ffffff'; cx.font='bold 11px sans-serif';
+      cx.save(); cx.fillStyle='#ffffff'; cx.font='bold '+pxF(11)+'px sans-serif';
       cx.textAlign='center'; cx.textBaseline='middle';
       cx.shadowColor='rgba(0,0,0,.6)'; cx.shadowBlur=4;
       cx.fillText(hsNumFmt(v), pos.x, pos.y-6);
-      cx.font='bold 10px sans-serif';
+      cx.font='bold '+pxF(10)+'px sans-serif';
       cx.fillText(Math.round(pctv*10)/10+'%', pos.x, pos.y+7);
       cx.restore();
     });
@@ -6594,7 +6667,7 @@ function dhIncheonSection(ds,cyc){
   var dates=(ds.dates||[]).slice(-n);
   var chgL=(cyc==='W')?'전주비':'전월비';
   var rows=gu.map(function(g){
-    var arr=g.data||[]; var base=arr.length-dates.length; var slice=arr.slice(-dates.length);
+    var arr=dhToArr(g.data); var base=arr.length-dates.length; var slice=arr.slice(-dates.length);
     var vcells=slice.map(function(v){ return '<td class="num">'+(v==null?'-':v.toFixed(1))+'</td>'; }).join('');
     var ccells=slice.map(function(v,i){ var ch=dhChg(arr,base+i);
       var col=ch==null?'var(--text3)':(ch>0?'#e03131':(ch<0?'#1971c2':'var(--text3)'));
@@ -6627,7 +6700,7 @@ function dhDrawIncheon(ds,cyc){
   var cv=document.getElementById('dh-ch-icg');
   if(cv){
     var dsets=gu.map(function(g,i){
-      return {label:g.name, data:(g.data||[]).slice(-dates.length), borderColor:DH_GU_COLORS[i%DH_GU_COLORS.length],
+      return {label:g.name, data:dhToArr(g.data).slice(-dates.length), borderColor:DH_GU_COLORS[i%DH_GU_COLORS.length],
         backgroundColor:DH_GU_COLORS[i%DH_GU_COLORS.length], tension:0.2, pointRadius:2, borderWidth:2, fill:false};
     });
     _dhCharts.icg=new Chart(cv,{type:'line',data:{labels:labels,datasets:dsets},plugins:[dhLineLabel(function(v){return v.toFixed(1);})],
@@ -6638,7 +6711,7 @@ function dhDrawIncheon(ds,cyc){
   }
   var cvc=document.getElementById('dh-ch-icg-chg');
   if(cvc){
-    var vals=gu.map(function(g){ var a=g.data||[]; var li=dhLastIdx(a); return li>0?dhPct(a[li],a[li-1]):null; });
+    var vals=gu.map(function(g){ var a=dhToArr(g.data); var li=dhLastIdx(a); return li>0?dhPct(a[li],a[li-1]):null; });
     _dhCharts.icgc=new Chart(cvc,{type:'bar',
       data:{labels:gu.map(function(g){return g.name;}),
         datasets:[{label:(cyc==='W'?'전주비':'전월비')+'(%)',data:vals,
@@ -6652,7 +6725,20 @@ function dhDrawIncheon(ds,cyc){
   }
 }
 
+// 렌더 중 예외가 나면 body.innerHTML이 갱신되지 않아 '직전 탭 내용이 그대로 남는' 오해를 부른다.
+// → 래퍼에서 잡아 화면에 원인을 표시한다.
 function dhRender(){
+  try{ dhRenderCore(); }
+  catch(e){
+    console.error('[dhRender]',e);
+    var b=document.getElementById('dh-body');
+    if(b) b.innerHTML='<div class="card" style="padding:24px;text-align:center;font-size:13px;color:var(--red)">'
+      +'⚠️ 화면 생성 중 오류가 발생했습니다<div style="font-size:11px;color:var(--text3);margin-top:6px">'
+      +String(e&&e.message||e)+'</div>'
+      +'<div style="font-size:11px;color:var(--text3);margin-top:6px">통계표를 다시 업로드한 뒤 🔥 저장을 눌러주세요</div></div>';
+  }
+}
+function dhRenderCore(){
   var body=document.getElementById('dh-body'); if(!body) return;
   dhVer();
   var ds=dhCurrent();
@@ -6755,51 +6841,13 @@ function dhVolSection(ds){
 
 var _dhCharts={};
 
-// ══ 차트 가독성: 화면/인쇄 폰트 배율 ══
-// 인쇄 시 캔버스(비트맵)가 A4 폭으로 축소되면서 축 눈금·수치 라벨이 함께 작아짐.
-// → 축소비만큼 폰트를 미리 키워 인쇄물에서 화면과 같은 크기로 보이게 보정한다.
+// ══ 차트 가독성: 국내주택동향 전용 기본 폰트 ══
+// 배율(PRINT_CHART_SCALE)·인쇄 후킹은 전역 applyPrintChartScale()이 담당한다.
 var DH_FS={ tick:12, legend:12, line:11, bar:10, barVert:9, box:12 };
-var DH_SCALE=1;
-function dhF(n){ return Math.round(n*DH_SCALE); }
-function dhPrintScale(){
-  var el=document.querySelector('#tc15 .chart-wrap');
-  var w=el?el.clientWidth:0;
-  if(!w) return 1.6;
-  var PRINT_W=1040;   // A4 가로(297mm) − 좌우 여백(10mm) ≈ 유효 폭 px 환산
-  return Math.max(1.2, Math.min(2.4, w/PRINT_W));
-}
-function dhApplyChartScale(s){
-  DH_SCALE=s;
-  Object.keys(_dhCharts).forEach(function(k){
-    var c=_dhCharts[k]; if(!c||!c.options) return;
-    var o=c.options;
-    if(o.plugins&&o.plugins.legend&&o.plugins.legend.labels){
-      o.plugins.legend.labels.font={size:dhF(DH_FS.legend)};
-      o.plugins.legend.labels.boxWidth=dhF(DH_FS.box);
-    }
-    ['x','y'].forEach(function(ax){
-      if(o.scales&&o.scales[ax]&&o.scales[ax].ticks) o.scales[ax].ticks.font={size:dhF(DH_FS.tick)};
-    });
-    var isLine=false; try{ isLine=(c.config.type==='line'); }catch(e){}
-    if(isLine) (c.data.datasets||[]).forEach(function(d){
-      d.pointRadius=Math.max(2,Math.round(2*s)); d.borderWidth=Math.max(2,Math.round(2*s)); });
-    try{ c.update('none'); }catch(e){}
-  });
-}
-// 인쇄 전후 자동 보정 (브라우저 인쇄, 🖨️ 인쇄 버튼, PDF 저장 모두 대응)
-(function(){
-  if(window._dhPrintHooked) return; window._dhPrintHooked=true;
-  function on(){ try{ dhApplyChartScale(dhPrintScale()); }catch(e){} }
-  function off(){ try{ dhApplyChartScale(1); }catch(e){} }
-  window.addEventListener('beforeprint',on);
-  window.addEventListener('afterprint',off);
-  if(window.matchMedia){
-    var mq=window.matchMedia('print');
-    var h=function(e){ e.matches?on():off(); };
-    if(mq.addEventListener) mq.addEventListener('change',h);
-    else if(mq.addListener) mq.addListener(h);
-  }
-})();
+function dhF(n){ return pxF(n); }
+// 하위호환: 기존 호출부가 남아 있어도 전역 구현으로 위임
+function dhPrintScale(){ return printChartScale(); }
+function dhApplyChartScale(s){ applyPrintChartScale(s); }
 
 // 라인 차트 점 위 수치 라벨 (마지막 점 + 촘촘하지 않으면 전체)
 function dhLineLabel(fmt){
@@ -6815,8 +6863,8 @@ function dhLineLabel(fmt){
         if(!isLast && (i%showEvery!==0)) return;
         cx.save(); cx.fillStyle='#1a2332'; cx.font='bold '+dhF(DH_FS.line)+'px sans-serif';
         cx.textAlign='center'; cx.textBaseline='bottom';
-        cx.shadowColor='rgba(255,255,255,.95)'; cx.shadowBlur=Math.round(3*DH_SCALE);
-        cx.fillText(fmt(v), pt.x, pt.y-Math.round(3*DH_SCALE)); cx.restore();
+        cx.shadowColor='rgba(255,255,255,.95)'; cx.shadowBlur=pxS(3);
+        cx.fillText(fmt(v), pt.x, pt.y-pxS(3)); cx.restore();
       });
     });
   }};
@@ -6825,14 +6873,14 @@ function dhBarLabel(fmt){
   return { id:'dhbl', afterDatasetsDraw:function(chart){
     var cx=chart.ctx; var n=(chart.data.labels||[]).length; var dsN=chart.data.datasets.length||1;
     var slot=chart.chartArea?(chart.chartArea.right-chart.chartArea.left)/Math.max(n*dsN,1):20;
-    var vert=slot<20*DH_SCALE;
-    var pad=Math.round(3*DH_SCALE);
+    var vert=slot<20*PRINT_CHART_SCALE;
+    var pad=pxS(3);
     chart.data.datasets.forEach(function(ds,di){
       var meta=chart.getDatasetMeta(di); if(meta.hidden) return;
       meta.data.forEach(function(bar,i){ var v=ds.data[i]; if(v==null||v===0) return;
         var pos=bar.tooltipPosition?bar.tooltipPosition():{x:bar.x,y:bar.y};
         cx.save(); cx.fillStyle='#1a2332'; cx.font='bold '+dhF(vert?DH_FS.barVert:DH_FS.bar)+'px sans-serif';
-        cx.shadowColor='rgba(255,255,255,.95)'; cx.shadowBlur=Math.round(3*DH_SCALE);
+        cx.shadowColor='rgba(255,255,255,.95)'; cx.shadowBlur=pxS(3);
         if(vert){ cx.translate(pos.x,pos.y-pad); cx.rotate(-Math.PI/2); cx.textAlign='left'; cx.textBaseline='middle'; cx.fillText(fmt(v),0,0); }
         else {
           cx.textAlign='center';
@@ -6936,9 +6984,41 @@ async function dhFbLoad(){
     showToast('✅ 불러오기 완료');
   }catch(e){ showToast('❌ 로드 오류: '+e.message); }
 }
+// Firebase RTDB는 null이 섞인 배열을 숫자키 객체로 되돌려주고(희소 배열), 전부 null이면 키 자체를 지운다.
+// → 배열로 정규화하지 않으면 .slice() 단계에서 렌더가 통째로 중단된다.
+function dhToArr(v,len){
+  var out=[];
+  if(Array.isArray(v)) out=v.slice();
+  else if(v&&typeof v==='object'){
+    var max=-1;
+    Object.keys(v).forEach(function(k){ var n=parseInt(k,10); if(!isNaN(n)&&n>max) max=n; });
+    for(var i=0;i<=max;i++) out.push(v[i]);
+  }
+  var n2=Math.max(out.length, len||0);
+  var res=[];
+  for(var j=0;j<n2;j++){ var x=out[j]; res.push(x===undefined?null:x); }
+  return res;
+}
 function dhReviveDates(ds){
-  if(ds.dates) ds.dates=ds.dates.map(function(x){ return new Date(x); });
-  if(ds.volDates) ds.volDates=ds.volDates.map(function(x){ return new Date(x); });
+  if(!ds) return;
+  ds.dates=dhToArr(ds.dates).map(function(x){ return new Date(x); });
+  if(ds.volDates) ds.volDates=dhToArr(ds.volDates).map(function(x){ return new Date(x); });
+  var L=ds.dates.length;
+  // 지역별 시계열 정규화
+  var R=ds.regions||{};
+  Object.keys(R).forEach(function(rg){
+    var o=R[rg]||{};
+    ['sale','jeonse','midSale','midJeonse'].forEach(function(k){ o[k]=dhToArr(o[k],L); });
+    o.vol=dhToArr(o.vol,(ds.volDates||[]).length);
+    R[rg]=o;
+  });
+  ds.regions=R;
+  // 인천 구별 목록 (목록 자체도 객체로 돌아올 수 있음)
+  if(ds.incheonGu){
+    var g=ds.incheonGu;
+    var list=Array.isArray(g)?g:Object.keys(g).map(function(k){ return g[k]; });
+    ds.incheonGu=list.filter(Boolean).map(function(x){ return { name:x.name, data:dhToArr(x.data,L) }; });
+  }
 }
 
 function initDomesticTab(){
@@ -8419,7 +8499,7 @@ function openT2Detail(unitName){
   var tc='#4a5568',gc='rgba(0,0,0,.08)';
   setTimeout(function(){
     var volDs=pyeongs.map(function(bp,i){return {label:bp+'평',data:volByPy[bp],backgroundColor:COLORS[i%COLORS.length]+'99',borderColor:COLORS[i%COLORS.length],borderWidth:1};});
-    var volLabelPlugin={id:'volLabel',afterDatasetsDraw:function(chart){var cx=chart.ctx;chart.data.datasets.forEach(function(ds,di){var meta=chart.getDatasetMeta(di);if(meta.hidden) return;meta.data.forEach(function(bar,i){var v=ds.data[i];if(!v||v<=0) return;cx.save();cx.fillStyle='#1a2332';cx.font='bold 9px sans-serif';cx.textAlign='center';cx.textBaseline='bottom';cx.fillText(v,bar.x,bar.y-2);cx.restore();});});}};
+    var volLabelPlugin={id:'volLabel',afterDatasetsDraw:function(chart){var cx=chart.ctx;chart.data.datasets.forEach(function(ds,di){var meta=chart.getDatasetMeta(di);if(meta.hidden) return;meta.data.forEach(function(bar,i){var v=ds.data[i];if(!v||v<=0) return;cx.save();cx.fillStyle='#1a2332';cx.font='bold '+pxF(9)+'px sans-serif';cx.textAlign='center';cx.textBaseline='bottom';cx.fillText(v,bar.x,bar.y-2);cx.restore();});});}};
 new Chart(document.getElementById('t2-chart-vol').getContext('2d'),{type:'bar',data:{labels:labels,datasets:volDs},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:tc,font:{size:10},boxWidth:12}}},scales:{x:{ticks:{color:tc,font:{size:9}},grid:{display:false}},y:{ticks:{color:tc,font:{size:10},stepSize:1},grid:{color:gc},beginAtZero:true}}},plugins:[volLabelPlugin]});
     var priceDs=[];
     pyeongs.forEach(function(bp,i){
@@ -8442,7 +8522,7 @@ new Chart(document.getElementById('t2-chart-vol').getContext('2d'),{type:'bar',d
         meta.data.forEach(function(pt,i){
           var v=ds.data[i];if(v==null) return;
           var align=di%4<2?-1:1;
-          cx.save();cx.fillStyle=col;cx.font='bold 9px sans-serif';
+          cx.save();cx.fillStyle=col;cx.font='bold '+pxF(9)+'px sans-serif';
           cx.textAlign='center';cx.textBaseline=align<0?'bottom':'top';
           cx.fillText(fmt만(v),pt.x,pt.y+align*12);cx.restore();
         });
@@ -9124,7 +9204,7 @@ function renderTab12(){
     meta.data.forEach(function(bar,i){
       var v=chart.data.datasets[0].data[i]; if(!v) return;
       var pos=bar.tooltipPosition?bar.tooltipPosition():{x:bar.x,y:bar.y};
-      ctx2.save(); ctx2.fillStyle=color2||'#1a2332'; ctx2.font='bold 10px sans-serif';
+      ctx2.save(); ctx2.fillStyle=color2||'#1a2332'; ctx2.font='bold '+pxF(10)+'px sans-serif';
       ctx2.textAlign='center'; ctx2.textBaseline='bottom';
       ctx2.shadowColor='rgba(255,255,255,.95)'; ctx2.shadowBlur=3;
       ctx2.fillText(fmt2(v), pos.x, pos.y-2); ctx2.restore();
@@ -9198,7 +9278,7 @@ function renderTab12(){
           meta.data.forEach(function(bar,i){
             var v=chart.data.datasets[0].data[i]; if(!v&&v!==0) return;
             var pos=bar.tooltipPosition?bar.tooltipPosition():{x:bar.x,y:bar.y};
-            cx.save(); cx.fillStyle='#d9480f'; cx.font='bold 10px sans-serif';
+            cx.save(); cx.fillStyle='#d9480f'; cx.font='bold '+pxF(10)+'px sans-serif';
             cx.textAlign='center'; cx.textBaseline='bottom';
             cx.shadowColor='rgba(255,255,255,.95)'; cx.shadowBlur=3;
             cx.fillText(labelFmt(v), pos.x, pos.y-2); cx.restore();
@@ -9396,7 +9476,7 @@ function openT12DistModal(distNum){
         meta.data.forEach(function(bar,i){
           var v=data[i]; if(!v||v<=0) return;
           var pos=bar.tooltipPosition?bar.tooltipPosition():{x:bar.x,y:bar.y};
-          cx.save(); cx.fillStyle='#1a2332'; cx.font='bold 9px sans-serif';
+          cx.save(); cx.fillStyle='#1a2332'; cx.font='bold '+pxF(9)+'px sans-serif';
           cx.textAlign='center'; cx.textBaseline='bottom';
           cx.shadowColor='rgba(255,255,255,.95)'; cx.shadowBlur=2;
           cx.fillText(v+'건', pos.x, pos.y-2); cx.restore();
@@ -9416,7 +9496,7 @@ function openT12DistModal(distNum){
         meta.data.forEach(function(pt,i){
           var v=data[i]; if(v===null||v===undefined) return;
           var pos=pt.tooltipPosition?pt.tooltipPosition():{x:pt.x,y:pt.y};
-          cx.save(); cx.fillStyle=color2; cx.font='bold 9px sans-serif';
+          cx.save(); cx.fillStyle=color2; cx.font='bold '+pxF(9)+'px sans-serif';
           cx.textAlign='center'; cx.textBaseline='bottom';
           cx.shadowColor='rgba(255,255,255,.95)'; cx.shadowBlur=2;
           cx.fillText(fmtFn(v), pos.x, pos.y-4); cx.restore();
@@ -9524,7 +9604,7 @@ function renderT12DistCharts(){
           var pos=pt.tooltipPosition?pt.tooltipPosition():{x:pt.x,y:pt.y};
           ctx2.save();
           ctx2.fillStyle=isPrev?'#64748b':ds.borderColor||'#1a2332';
-          ctx2.font='bold '+(isPrev?'9':'10')+'px sans-serif';
+          ctx2.font='bold '+pxF(isPrev?9:10)+'px sans-serif';
           ctx2.textAlign='center'; ctx2.textBaseline='bottom';
           ctx2.shadowColor='rgba(255,255,255,.95)'; ctx2.shadowBlur=3;
           var label=isPrev?(fmtPrv?fmtPrv(v):''):(fmtCur?fmtCur(v):'');
@@ -9816,7 +9896,7 @@ function renderT2Dashboard(){
             var v=ds.data[i]; if(!v||v<=0) return;
             var pos=bar.tooltipPosition?bar.tooltipPosition():{x:bar.x,y:bar.y};
             cx.save(); cx.fillStyle=ds.borderColor||'#1a2332';
-            cx.font='bold 9px sans-serif'; cx.textAlign='center'; cx.textBaseline='bottom';
+            cx.font='bold '+pxF(9)+'px sans-serif'; cx.textAlign='center'; cx.textBaseline='bottom';
             cx.shadowColor='rgba(255,255,255,.95)'; cx.shadowBlur=2;
             cx.fillText(v+'건', pos.x, pos.y-2); cx.restore();
           });
@@ -9830,7 +9910,7 @@ function renderT2Dashboard(){
             var v=ds.data[i]; if(v===null||v===undefined) return;
             var pos=pt.tooltipPosition?pt.tooltipPosition():{x:pt.x,y:pt.y};
             cx.save(); cx.fillStyle=ds.borderColor||'#1a2332';
-            cx.font='bold 9px sans-serif'; cx.textAlign='center'; cx.textBaseline='bottom';
+            cx.font='bold '+pxF(9)+'px sans-serif'; cx.textAlign='center'; cx.textBaseline='bottom';
             cx.shadowColor='rgba(255,255,255,.95)'; cx.shadowBlur=2;
             cx.fillText(Math.round(v*10)/10+'억', pos.x, pos.y-3); cx.restore();
           });
@@ -9996,7 +10076,7 @@ function renderT2Dashboard(){
           var pos=pt.tooltipPosition?pt.tooltipPosition():{x:pt.x,y:pt.y};
           cx.save();
           cx.fillStyle=isPrev?'#64748b':accentC;
-          cx.font='bold '+(isPrev?9:10)+'px sans-serif';
+          cx.font='bold '+pxF(isPrev?9:10)+'px sans-serif';
           cx.textAlign='center'; cx.textBaseline='bottom';
           cx.shadowColor='rgba(255,255,255,.95)'; cx.shadowBlur=3;
           cx.fillText(fv, pos.x, pos.y-(isPrev?12:3));
@@ -10656,7 +10736,7 @@ function makeAnnualLabelPlugin(fmt, color){
           var pos=bar.tooltipPosition?bar.tooltipPosition():{x:bar.x,y:bar.y};
           ctx2.save();
           ctx2.fillStyle=color||ds.borderColor||'#1a2332';
-          ctx2.font='bold 10px Noto Sans KR,sans-serif';
+          ctx2.font='bold '+pxF(10)+'px Noto Sans KR,sans-serif';
           ctx2.textAlign='center';
           ctx2.textBaseline='bottom';
           ctx2.shadowColor='rgba(255,255,255,.95)';
@@ -10828,7 +10908,7 @@ function renderYrTrendChart(){
         var pos=topBar.tooltipPosition?topBar.tooltipPosition():{x:topBar.x,y:topBar.y};
         ctx2.save();
         ctx2.fillStyle='#1a2332';
-        ctx2.font='bold 10px Noto Sans KR,sans-serif';
+        ctx2.font='bold '+pxF(10)+'px Noto Sans KR,sans-serif';
         ctx2.textAlign='center';
         ctx2.textBaseline='bottom';
         ctx2.shadowColor='rgba(255,255,255,.95)';
@@ -10885,7 +10965,7 @@ function renderTurnoverChart(){
       var val=vals[i]; if(!val) return;
       var pos=bar.tooltipPosition?bar.tooltipPosition():{x:bar.x,y:bar.y};
       ctx2.save(); ctx2.fillStyle=colors[i]||'#1a2332';
-      ctx2.font='bold 10px Noto Sans KR,sans-serif';
+      ctx2.font='bold '+pxF(10)+'px Noto Sans KR,sans-serif';
       ctx2.textAlign='left'; ctx2.textBaseline='middle';
       ctx2.shadowColor='rgba(255,255,255,.95)'; ctx2.shadowBlur=3;
       ctx2.fillText(val+'%',pos.x+4,pos.y); ctx2.restore();
@@ -11057,10 +11137,10 @@ function renderJeonseRateChart(){
         var v=ds.data[i]; if(!v) return;
         var pos=pt.tooltipPosition?pt.tooltipPosition():{x:pt.x,y:pt.y};
         cx.save();
-        cx.font='bold 9px sans-serif'; cx.textAlign='center'; cx.textBaseline='bottom';
+        cx.font='bold '+pxF(9)+'px sans-serif'; cx.textAlign='center'; cx.textBaseline='bottom';
         cx.shadowColor='rgba(255,255,255,.95)'; cx.shadowBlur=2;
         if(di===2){ // 전세가율 라인
-          cx.fillStyle='#b8860b'; cx.font='bold 10px sans-serif';
+          cx.fillStyle='#b8860b'; cx.font='bold '+pxF(10)+'px sans-serif';
           cx.fillText(v+'%', pos.x, pos.y-4);
         } else { // 매매/전세 막대
           cx.fillStyle=di===0?'#d9480f':'#1971c2';
@@ -11576,7 +11656,7 @@ function renderDistCharts(){
             var pos=pt.tooltipPosition?pt.tooltipPosition():{x:pt.x,y:pt.y};
             ctx2.save();
             ctx2.fillStyle=isPrev?'#64748b':(ds._labelColor||color||'#1a2332');
-            ctx2.font='bold '+(isPrev?9:(size||11))+'px Noto Sans KR,sans-serif';
+            ctx2.font='bold '+pxF(isPrev?9:(size||11))+'px Noto Sans KR,sans-serif';
             ctx2.textAlign='center';
             ctx2.textBaseline='bottom';
             ctx2.shadowColor='rgba(255,255,255,.95)';
@@ -12023,7 +12103,7 @@ function renderT1TrendChart(){
           var pos = pt.tooltipPosition ? pt.tooltipPosition() : {x:pt.x, y:pt.y};
           ctx2.save();
           ctx2.fillStyle = ds.borderColor;
-          ctx2.font = 'bold 9px Noto Sans KR,sans-serif';
+          ctx2.font = 'bold '+pxF(9)+'px Noto Sans KR,sans-serif';
           ctx2.textAlign = 'center';
           ctx2.textBaseline = 'bottom';
           ctx2.shadowColor = 'rgba(255,255,255,.95)';
@@ -12816,7 +12896,7 @@ function renderMonthlyChart(rows){
         var v=ds.data[i]; if(!v) return;
         cx.save();
         cx.fillStyle='#0e7490';
-        cx.font='bold 9px sans-serif';
+        cx.font='bold '+pxF(9)+'px sans-serif';
         cx.textAlign='center';
         cx.textBaseline='bottom';
         cx.fillText(v, pt.x, pt.y-4);
@@ -12850,7 +12930,7 @@ function renderMonthlyChart(rows){
             var meta=chart.getDatasetMeta(di);
             meta.data.forEach(function(pt,i){
               var v=ds.data[i]; if(!v) return;
-              cx.save(); cx.fillStyle='#0e7490'; cx.font='bold 11px sans-serif';
+              cx.save(); cx.fillStyle='#0e7490'; cx.font='bold '+pxF(11)+'px sans-serif';
               cx.textAlign='center'; cx.textBaseline='bottom';
               cx.fillText(v,pt.x,pt.y-6); cx.restore();
             });
@@ -13136,7 +13216,7 @@ function renderRentMonthlyChart(rows){
       meta.data.forEach(function(pt,i){
         var v=ds.data[i]; if(!v) return;
         cx.save(); cx.fillStyle='#0e7490';
-        cx.font='bold 9px sans-serif';
+        cx.font='bold '+pxF(9)+'px sans-serif';
         cx.textAlign='center'; cx.textBaseline='bottom';
         cx.fillText(v,pt.x,pt.y-4); cx.restore();
       });
@@ -13165,7 +13245,7 @@ function renderRentMonthlyChart(rows){
             var meta=chart.getDatasetMeta(di);
             meta.data.forEach(function(pt,i){
               var v=ds.data[i]; if(!v) return;
-              cx.save(); cx.fillStyle='#0e7490'; cx.font='bold 11px sans-serif';
+              cx.save(); cx.fillStyle='#0e7490'; cx.font='bold '+pxF(11)+'px sans-serif';
               cx.textAlign='center'; cx.textBaseline='bottom';
               cx.fillText(v,pt.x,pt.y-6); cx.restore();
             });
@@ -15539,7 +15619,7 @@ function openDistModal(distNum){
         var val=chart.data.datasets[0].data[i]; if(!val||val<=0) return;
         var pos=bar.tooltipPosition?bar.tooltipPosition():{x:bar.x,y:bar.y};
         ctx2.save(); ctx2.fillStyle=color2||'#1a2332';
-        ctx2.font='bold 10px Noto Sans KR,sans-serif';
+        ctx2.font='bold '+pxF(10)+'px Noto Sans KR,sans-serif';
         ctx2.textAlign='center'; ctx2.textBaseline='bottom';
         ctx2.shadowColor='rgba(255,255,255,.95)'; ctx2.shadowBlur=3;
         ctx2.fillText(val+(suffix||''), pos.x, pos.y-2); ctx2.restore();
@@ -15553,7 +15633,7 @@ function openDistModal(distNum){
         var val=chart.data.datasets[0].data[i]; if(!val) return;
         var pos=pt.tooltipPosition?pt.tooltipPosition():{x:pt.x,y:pt.y};
         ctx2.save(); ctx2.fillStyle=color2||'#b8860b';
-        ctx2.font='bold 10px Noto Sans KR,sans-serif';
+        ctx2.font='bold '+pxF(10)+'px Noto Sans KR,sans-serif';
         ctx2.textAlign='center'; ctx2.textBaseline='bottom';
         ctx2.shadowColor='rgba(255,255,255,.95)'; ctx2.shadowBlur=3;
         ctx2.fillText(fmt?fmt(val):val, pos.x, pos.y-4); ctx2.restore();
