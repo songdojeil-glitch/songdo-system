@@ -785,7 +785,7 @@ tr.naver-fav>td:first-child{border-left:3px solid #b8860b;}
         <label style="padding:6px 12px;background:#7048e8;color:#fff;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer">📤 주간(주택가격동향)<input type="file" accept=".xlsx,.xls" onchange="dhUpload(this,'khpi_w')" style="display:none"></label>
         <label style="padding:6px 12px;background:#0c8599;color:#fff;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer">📤 실거래가격지수<input type="file" accept=".xlsx,.xlsm,.xls" onchange="dhUpload(this,'rt')" style="display:none"></label>
         <button onclick="dhFbSave()" style="padding:6px 12px;background:#f59f00;border:none;color:#fff;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer">🔥 저장</button>
-        <button onclick="dhFbLoad()" style="padding:6px 12px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:8px;font-size:11px;cursor:pointer">☁️ 불러오기</button>
+        <button onclick="dhFbLoad(true)" style="padding:6px 12px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:8px;font-size:11px;cursor:pointer">☁️ 불러오기</button>
       </div>
     </div>
   </div>
@@ -6339,6 +6339,8 @@ function dhUpload(input, kind){
       else parsed=dhParseRealtx(wb);
       G_DH[kind]=parsed;
       G_DH.updated[kind]=new Date().toISOString().slice(0,10);
+      G_DH._manual=G_DH._manual||{}; G_DH._manual[kind]=true;   // 자동 로드가 덮어쓰지 못하게 표시
+      G_DH._src=G_DH._src||{}; G_DH._src[kind]='📤 업로드';
       // 통계/주기 자동 전환
       if(kind==='rt'){ G_DH.stat='rt'; }
       else { G_DH.stat='khpi'; G_DH.cycle = kind==='khpi_w'?'W':'M'; }
@@ -6880,6 +6882,8 @@ function dhHeatSection(ds,cyc,meta){
       +'데이터 '+meta.range+'</span>':'')
     +'<span style="background:var(--bg3);color:var(--text2);font-size:10.5px;border-radius:4px;padding:3px 8px">'
       +(meta.src||'한국부동산원 주택가격동향조사(KHPI)')+' · 아파트</span>'
+    +(meta.origin?'<span style="background:var(--bg3);color:var(--text2);font-size:10.5px;border-radius:4px;padding:3px 8px">'
+      +'출처 '+meta.origin+'</span>':'')
     +(meta.updated?'<span style="color:var(--text3);font-size:10.5px">통계표 갱신 '+meta.updated+'</span>':'')
     +'</div>';
 
@@ -7009,6 +7013,7 @@ function dhRenderCore(){
         ? dhFmtDate(dates[0],cyc)+'~'+dhFmtDate(dates[dates.length-1],cyc)
           +' ('+dates.length+(cyc==='W'?'주':'개월')+')' : '',
       src: '한국부동산원 주택가격동향조사(KHPI)',
+      origin: (G_DH._src&&G_DH._src[dKey])||'☁️ Firebase',
       updated: (G_DH.updated&&G_DH.updated[dKey])||''
     });
     if(heat) html+=heat;
@@ -7233,18 +7238,28 @@ async function dhFbSave(){
     showToast('✅ 국내주택동향 저장 완료');
   }catch(e){ showToast('❌ 저장 오류: '+e.message); }
 }
-async function dhFbLoad(){
+// force=true → ☁️ 불러오기 버튼(사용자가 명시적으로 요청): 전부 덮어씀
+// force 없음 → 탭 진입 시 자동 로드: 이번 세션에 업로드한 자료는 건드리지 않는다.
+//   (자동 로드가 await 중일 때 사용자가 파일을 올리면, 뒤늦게 도착한 옛 데이터가
+//    방금 올린 자료를 덮어써 '옛 기준월이 계속 보이는' 문제가 생긴다.)
+async function dhFbLoad(force){
   if(!window._fbGet||!window._fbDb||!window._fbRef||!window._fbChild){ showToast('⚠️ Firebase 대기'); return; }
   showToast('⏳ 불러오는 중...');
   try{
     var snap=await window._fbGet(window._fbChild(window._fbRef(window._fbDb),'sd_price_index'));
     if(!snap.exists()){ showToast('☁️ 저장된 데이터 없음'); return; }
     var d=snap.val();
-    // 날짜 복원 (JSON은 문자열로 저장됨)
-    ['khpi_m','khpi_w','rt'].forEach(function(k){ if(d[k]){ dhReviveDates(d[k]); G_DH[k]=d[k]; } });
-    G_DH.updated=d.updated||{};
+    var manual=G_DH._manual||{};
+    var skipped=[];
+    ['khpi_m','khpi_w','rt'].forEach(function(k){
+      if(!d[k]) return;
+      if(!force && manual[k]){ skipped.push(k); return; }   // 방금 업로드한 자료 보호
+      dhReviveDates(d[k]); G_DH[k]=d[k];
+      G_DH._src=G_DH._src||{}; G_DH._src[k]='☁️ Firebase';
+      if(d.updated&&d.updated[k]) G_DH.updated[k]=d.updated[k];
+    });
     dhSyncToggles(); dhRender();
-    showToast('✅ 불러오기 완료');
+    showToast(skipped.length? '✅ 불러오기 완료 (방금 업로드한 자료는 유지)' : '✅ 불러오기 완료');
   }catch(e){ showToast('❌ 로드 오류: '+e.message); }
 }
 // Firebase RTDB는 null이 섞인 배열을 숫자키 객체로 되돌려주고(희소 배열), 전부 null이면 키 자체를 지운다.
