@@ -6343,7 +6343,7 @@ function dhUpload(input, kind){
       if(kind==='rt'){ G_DH.stat='rt'; }
       else { G_DH.stat='khpi'; G_DH.cycle = kind==='khpi_w'?'W':'M'; }
       dhSyncToggles(); dhRender();
-      showToast('✅ 로드 완료: '+parsed._label);
+      showToast('✅ 로드 완료: '+parsed._label+' · '+dhRangeText(parsed));
     }catch(err){ showToast('❌ 파싱 오류: '+err.message); console.error(err); }
   };
   reader.readAsArrayBuffer(file);
@@ -6838,20 +6838,32 @@ function dhHeatSection(ds,cyc,meta){
       +'</div>';
   }
 
-  var rows=blocks.map(function(b){
-    var head='<div style="display:flex;align-items:center;gap:8px;margin:10px 0 6px">'
+  function hasVal(o){ return !!o && (dhHeatChg(o.sale)!=null || dhHeatChg(o.jeonse)!=null); }
+  function blockHtml(b){
+    var head='<div style="display:flex;align-items:center;gap:8px;margin:2px 0 6px">'
       +'<span style="font-size:12px;font-weight:700;color:var(--text)">'+b.sido+'</span>'
-      +(b.total?tile(b.total,true):'')+'</div>';
+      +(hasVal(b.total)?tile(b.total,true):'')+'</div>';
     var body=b.gwons.map(function(g){
       return '<div style="display:flex;gap:6px;align-items:flex-start;margin-bottom:6px;flex-wrap:wrap">'
         +'<div style="width:74px;flex:0 0 74px;font-size:10.5px;font-weight:700;color:var(--text2);'
           +'padding-top:6px;text-align:right;padding-right:4px">'+g.name+'</div>'
-        +(g.total?tile(g.total,true):'')
+        +(hasVal(g.total)?tile(g.total,true):'')   // 권역 합산 행이 없는 시도(인천)는 빈 칸 생략
         +g.items.map(function(it){ return tile(it,false); }).join('')
         +'</div>';
     }).join('');
-    return '<div style="border-top:1px dashed var(--border);padding-top:4px">'+head+body+'</div>';
-  }).join('');
+    return '<div style="border-top:1px dashed var(--border);padding-top:6px;margin-bottom:6px">'+head+body+'</div>';
+  }
+  // 좌: 서울·인천 / 우: 경기 — 서울 칸이 좁아 우측이 크게 비는 문제 해소
+  var byName={}; blocks.forEach(function(b){ byName[b.sido]=b; });
+  var leftB=blocks.filter(function(b){ return b.sido!=='경기'; });
+  var rightB=blocks.filter(function(b){ return b.sido==='경기'; });
+  var col=function(list){ return list.map(blockHtml).join(''); };
+  var rows = rightB.length
+    ? '<div style="display:flex;flex-wrap:wrap;gap:18px;align-items:flex-start">'
+        +'<div style="flex:0 1 auto;min-width:320px">'+col(leftB)+'</div>'
+        +'<div style="flex:1 1 auto;min-width:320px">'+col(rightB)+'</div>'
+      +'</div>'
+    : col(leftB);
 
   var lg=[['상위10%',{bg:'#c0392b',fg:'#fff'}],['+',{bg:'#f5c9c6',fg:'#5c1d17'}],
           ['−',{bg:'#cfe0f2',fg:'#12354f'}],['하위10%',{bg:'#2f6296',fg:'#fff'}]]
@@ -7196,9 +7208,18 @@ function dhDrawCharts(ds,dates,cyc,regions){
   }
 }
 
+// 파싱 결과의 실제 수록 구간 (업로드한 통계표가 맞는지 즉시 확인용)
+function dhRangeText(ds){
+  if(!ds||!ds.dates||!ds.dates.length) return '날짜 없음';
+  var cyc=ds.cycle||'M', d=ds.dates;
+  return dhFmtDate(d[0],cyc)+'~'+dhFmtDate(d[d.length-1],cyc)+' ('+d.length+'열)';
+}
 function dhVer(){ var el=document.getElementById('dh-ver'); if(!el) return;
-  var parts=[]; if(G_DH.khpi_m) parts.push('월간'); if(G_DH.khpi_w) parts.push('주간'); if(G_DH.rt) parts.push('실거래');
-  el.textContent = parts.length?('· '+parts.join('/')+' 로드됨'):'· 데이터 없음';
+  var parts=[];
+  if(G_DH.khpi_m) parts.push('월간 ~'+dhFmtDate(G_DH.khpi_m.dates[G_DH.khpi_m.dates.length-1],'M'));
+  if(G_DH.khpi_w) parts.push('주간 ~'+dhFmtDate(G_DH.khpi_w.dates[G_DH.khpi_w.dates.length-1],'W'));
+  if(G_DH.rt) parts.push('실거래 ~'+dhFmtDate(G_DH.rt.dates[G_DH.rt.dates.length-1],'M'));
+  el.textContent = parts.length?('· '+parts.join(' / ')+' 로드됨'):'· 데이터 없음';
 }
 
 // ── Firebase 저장/로드 (sd_price_index)
