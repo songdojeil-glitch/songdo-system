@@ -6608,7 +6608,7 @@ function dhParseKhpiWeekly(wb){
 // ── 실거래 통계표: 헤더에서 17개 시도 컬럼을 이름으로 찾아낸다 (컬럼 위치가 바뀌어도 안전)
 var DH_SIDO17=['서울','부산','대구','인천','광주','대전','울산','세종','경기','강원','충북','충남','전북','전남','경북','경남','제주'];
 function dhSidoOf(v){
-  var s=String(v==null?'':v).replace(/\s|\(|\)|[0-9.]/g,'');
+  var s=String(v==null?'':v).replace(/[A-Za-z]/g,'').replace(/[()（）]/g,'').replace(/[0-9.,]/g,'').replace(/\s/g,'');
   if(!s) return null;
   s=s.replace(/(특별자치시|특별자치도|특별시|광역시|자치도)$/,'');
   var alias={'충청북도':'충북','충청남도':'충남','전라북도':'전북','전라남도':'전남',
@@ -6618,57 +6618,99 @@ function dhSidoOf(v){
   return DH_SIDO17.indexOf(s)>=0 ? s : null;
 }
 function dhFindSidoCols(A){
-  var best=null;
+  // 시도명이 1행(세종)과 2행(나머지)에 나뉘어 있는 통계표가 있어 여러 행을 합쳐 인식한다.
+  var map={}, n=0;
   for(var r=0;r<Math.min(5,A.length);r++){
-    var row=A[r]||{}, map={}, n=0;
+    var row=A[r]||[];
     for(var c=0;c<(row.length||0);c++){
       var nm=dhSidoOf(row[c]);
       if(nm && map[nm]===undefined){ map[nm]=c; n++; }
     }
-    if(n>=8 && (!best||n>best.n)) best={map:map,n:n,row:r};
   }
-  return best?best.map:null;
+  return n>=8 ? map : null;
 }
 
+function dhRtLabel(v){   // 헤더 셀 → 지역 라벨 ('서울\r\n(Seoul)' → '서울')
+  var t=String(v==null?'':v);
+  t=t.replace(/[A-Za-z]/g,'').replace(/[()（）]/g,'').replace(/[0-9.,]/g,'').replace(/\s/g,'').trim();
+  return t||null;
+}
+function dhRtCols(A){    // 헤더 행(0~4)을 훑어 지역명 → 컬럼 인덱스
+  var map={};
+  for(var r=0;r<Math.min(5,A.length);r++){
+    var row=A[r]||[];
+    for(var c=0;c<row.length;c++){
+      var nm=dhRtLabel(row[c]); if(!nm) continue;
+      if(map[nm]===undefined) map[nm]=c;
+    }
+  }
+  return map;
+}
 function dhParseRealtx(wb){
   var out={ _label:'실거래가격지수', cycle:'M', regions:{}, dates:[] };
-  // 지역 컬럼 인덱스 (0-based): 서울=4,도심=5,동북=6,동남=7,서북=8,서남=9,인천=12,경기=17
-  // KHPI 강북권역=도심+동북+서북, 강남권역=동남+서남 → 실거래는 5생활권만 → 근사: 강북=동북, 강남=동남 대신 "서울" 단일 노출이 정확. 
-  // 요청은 강북/강남 분리이나 실거래엔 없으므로 도심/동북/동남/서북/서남 중 대표로: 강북권=동북, 강남권=동남 사용하지 않고, 서울 전체+생활권 모두 제공
-  var colmap={ '서울강북':6, '서울강남':7, '경기':17, '인천':12, '연수구':null }; // 강북≈동북권, 강남≈동남권 (실거래 한계)
-  function readSheet(name){ var ws=wb.Sheets[name]; if(!ws) return null;
+  function sheet(name){
+    var ws=wb.Sheets[name]; if(!ws) return null;
     var A=XLSX.utils.sheet_to_json(ws,{header:1,raw:true,defval:null});
-    var rows=[]; for(var i=3;i<A.length;i++){ var d=dhYmd(A[i]&&A[i][0]); if(d) rows.push({d:d,r:A[i]}); }
-    return rows;
+    var rows=[];
+    for(var i=3;i<A.length;i++){ var d=dhYmd(A[i]&&A[i][0]); if(d) rows.push({d:d,r:A[i]}); }  // 0~2행은 제목·헤더
+    return { A:A, rows:rows, cols:dhRtCols(A) };
   }
-  var saleS=readSheet('매매_아파트'), jeonseS=readSheet('전세_아파트');
-  var midSaleS=readSheet('매매 중위_아파트'), midJeonseS=readSheet('전세 중위_아파트');
-  var dates=(saleS||[]).map(function(x){return x.d;});
-  out.dates=dates;
-  function col(rows,ci){ return rows? rows.map(function(x){ return ci==null?null:dhNum(x.r[ci]); }) : []; }
-  // 중위는 만원/㎡(전용면적) → 평당(만원): ×3.3058
-  function colPy(rows,ci){ return rows? rows.map(function(x){ var v=(ci==null?null:dhNum(x.r[ci])); return v==null?null:(v*3.3058); }) : []; }
+  var S={ sale:sheet('매매_아파트'), jeonse:sheet('전세_아파트'),
+          midSale:sheet('매매 중위_아파트'), midJeonse:sheet('전세 중위_아파트') };
+  if(!S.sale) throw new Error("'매매_아파트' 시트 없음");
+
+  // 시트마다 시작 연도가 다르다(매매 2006~, 전세 2014~).
+  // → 전체 시점을 합집합으로 만들고 값을 '날짜에 맞춰' 배치해야 시계열이 어긋나지 않는다.
+  var seen={}, all=[];
+  Object.keys(S).forEach(function(k){ if(!S[k]) return;
+    S[k].rows.forEach(function(x){
+      var key=x.d.getFullYear()*100+x.d.getMonth();
+      if(!seen[key]){ seen[key]=1; all.push(x.d); }
+    });
+  });
+  all.sort(function(a,b){ return a-b; });
+  out.dates=all;
+  var pos={}; all.forEach(function(d,i){ pos[d.getFullYear()*100+d.getMonth()]=i; });
+
+  function series(sh,ci,mul){
+    var arr=[]; for(var i=0;i<all.length;i++) arr.push(null);
+    if(!sh||ci==null) return arr;
+    sh.rows.forEach(function(x){
+      var k=pos[x.d.getFullYear()*100+x.d.getMonth()]; if(k==null) return;
+      var v=dhNum(x.r[ci]); if(v==null) return;
+      arr[k]= mul? v*mul : v;
+    });
+    return arr;
+  }
+  // 지역 컬럼도 이름으로 찾는다 (열 순서가 바뀌어도 안전). 못 찾으면 기존 위치로 폴백.
+  var LABEL={ '서울강북':'동북권', '서울강남':'동남권', '경기':'경기', '인천':'인천', '연수구':null };
+  var FALLBACK={ '서울강북':6, '서울강남':7, '경기':17, '인천':12, '연수구':null };
+  function colOf(sh,rg){
+    if(!sh) return null;
+    var lb=LABEL[rg]; if(!lb) return null;
+    var c=sh.cols[lb];
+    return (c===undefined)? FALLBACK[rg] : c;
+  }
   DH_REGIONS.forEach(function(rg){
-    var ci=colmap[rg];
     out.regions[rg]={
-      sale: col(saleS,ci), jeonse: col(jeonseS,ci),
-      midSale: colPy(midSaleS,ci), midJeonse: colPy(midJeonseS,ci), vol:[]
+      sale:      series(S.sale,      colOf(S.sale,rg)),
+      jeonse:    series(S.jeonse,    colOf(S.jeonse,rg)),
+      midSale:   series(S.midSale,   colOf(S.midSale,rg), 3.3058),   // 만원/㎡ → 평당 만원
+      midJeonse: series(S.midJeonse, colOf(S.midJeonse,rg), 3.3058),
+      vol: []
     };
   });
-  // 전국 17개 시도 (시군구가 없으므로 시도 단위 지도용)
-  function rawRows(name){ var ws=wb.Sheets[name]; if(!ws) return null;
-    return XLSX.utils.sheet_to_json(ws,{header:1,raw:true,defval:null}); }
-  var Asale=rawRows('매매_아파트'), Ajeonse=rawRows('전세_아파트');
-  var mS=Asale?dhFindSidoCols(Asale):null, mJ=Ajeonse?dhFindSidoCols(Ajeonse):null;
-  if(mS){
-    out.sido={};
-    DH_SIDO17.forEach(function(nm){
-      var cs=(mS[nm]!==undefined)?mS[nm]:null;
-      var cj=(mJ&&mJ[nm]!==undefined)?mJ[nm]:null;
-      var s=col(saleS,cs), j=col(jeonseS,cj);
-      if(dhLastIdx(s)>=0||dhLastIdx(j)>=0) out.sido[nm]={name:nm,sale:s,jeonse:j};
-    });
-  }
+  // 전국 17개 시도 (실거래는 시군구 미제공 → 시도 단위 지도용)
+  out.sido={};
+  DH_SIDO17.forEach(function(nm){
+    function find(sh){ if(!sh) return null;
+      var ks=Object.keys(sh.cols);
+      for(var i=0;i<ks.length;i++) if(dhSidoOf(ks[i])===nm) return sh.cols[ks[i]];
+      return null; }
+    var sa=series(S.sale,find(S.sale)), je=series(S.jeonse,find(S.jeonse));
+    if(dhLastIdx(sa)>=0||dhLastIdx(je)>=0) out.sido[nm]={name:nm,sale:sa,jeonse:je};
+  });
+  if(!Object.keys(out.sido).length) delete out.sido;
   return out;
 }
 
