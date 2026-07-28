@@ -6424,12 +6424,17 @@ var DH_GUN=['강화','옹진','양평','가평','연천'];
 function dhStripNo(s){ return String(s==null?'':s).replace(/^\d+[.\s]*/,'').trim(); }
 function dhGwonOfName(sido,base){
   var m=DH_GWON_MAP[sido]; if(!m) return null;
+  var b=String(base||'').replace(/[구시군]$/,'');   // '종로구'/'수원시'로 들어와도 매칭
   var ks=Object.keys(m);
-  for(var i=0;i<ks.length;i++) if(m[ks[i]].indexOf(base)>=0) return ks[i];
+  for(var i=0;i<ks.length;i++){
+    var list=m[ks[i]];
+    for(var j=0;j<list.length;j++) if(list[j]===base||list[j]===b) return ks[i];
+  }
   return null;
 }
 function dhSggName(sido,base,gu){
-  if(gu) return dhStripNo(gu)+'구';                       // 경기 자치구: 장안구, 분당구 …
+  if(gu){ var g=dhStripNo(gu); return /[구시군]$/.test(g)?g:g+'구'; }   // 경기 자치구: 장안구, 분당구 …
+  if(/[구시군]$/.test(base)) return base;                              // 이미 접미사가 붙어 온 경우
   if(DH_GUN.indexOf(base)>=0) return base+'군';
   return base + (sido==='경기'?'시':'구');
 }
@@ -6600,6 +6605,31 @@ function dhParseKhpiWeekly(wb){
 }
 
 // ── 실거래가격지수 파서 (지역=컬럼, 날짜=행)
+// ── 실거래 통계표: 헤더에서 17개 시도 컬럼을 이름으로 찾아낸다 (컬럼 위치가 바뀌어도 안전)
+var DH_SIDO17=['서울','부산','대구','인천','광주','대전','울산','세종','경기','강원','충북','충남','전북','전남','경북','경남','제주'];
+function dhSidoOf(v){
+  var s=String(v==null?'':v).replace(/\s|\(|\)|[0-9.]/g,'');
+  if(!s) return null;
+  s=s.replace(/(특별자치시|특별자치도|특별시|광역시|자치도)$/,'');
+  var alias={'충청북도':'충북','충청남도':'충남','전라북도':'전북','전라남도':'전남',
+    '경상북도':'경북','경상남도':'경남','강원도':'강원','경기도':'경기','제주도':'제주'};
+  if(alias[s]) s=alias[s];
+  if(DH_SIDO17.indexOf(s)<0) s=s.replace(/[도시]$/,'');   // '충북도','세종시' 같은 축약 표기
+  return DH_SIDO17.indexOf(s)>=0 ? s : null;
+}
+function dhFindSidoCols(A){
+  var best=null;
+  for(var r=0;r<Math.min(5,A.length);r++){
+    var row=A[r]||{}, map={}, n=0;
+    for(var c=0;c<(row.length||0);c++){
+      var nm=dhSidoOf(row[c]);
+      if(nm && map[nm]===undefined){ map[nm]=c; n++; }
+    }
+    if(n>=8 && (!best||n>best.n)) best={map:map,n:n,row:r};
+  }
+  return best?best.map:null;
+}
+
 function dhParseRealtx(wb){
   var out={ _label:'실거래가격지수', cycle:'M', regions:{}, dates:[] };
   // 지역 컬럼 인덱스 (0-based): 서울=4,도심=5,동북=6,동남=7,서북=8,서남=9,인천=12,경기=17
@@ -6625,6 +6655,20 @@ function dhParseRealtx(wb){
       midSale: colPy(midSaleS,ci), midJeonse: colPy(midJeonseS,ci), vol:[]
     };
   });
+  // 전국 17개 시도 (시군구가 없으므로 시도 단위 지도용)
+  function rawRows(name){ var ws=wb.Sheets[name]; if(!ws) return null;
+    return XLSX.utils.sheet_to_json(ws,{header:1,raw:true,defval:null}); }
+  var Asale=rawRows('매매_아파트'), Ajeonse=rawRows('전세_아파트');
+  var mS=Asale?dhFindSidoCols(Asale):null, mJ=Ajeonse?dhFindSidoCols(Ajeonse):null;
+  if(mS){
+    out.sido={};
+    DH_SIDO17.forEach(function(nm){
+      var cs=(mS[nm]!==undefined)?mS[nm]:null;
+      var cj=(mJ&&mJ[nm]!==undefined)?mJ[nm]:null;
+      var s=col(saleS,cs), j=col(jeonseS,cj);
+      if(dhLastIdx(s)>=0||dhLastIdx(j)>=0) out.sido[nm]={name:nm,sale:s,jeonse:j};
+    });
+  }
   return out;
 }
 
@@ -6910,6 +6954,91 @@ function dhHeatSection(ds,cyc,meta){
     +'</div>';
 }
 
+// ══ 전국 시도 지도 (실거래가격지수 전용 — 시군구 미제공) ══
+// 지리 배치 모식도: [시도, 열, 행]
+var DH_KR_GRID=[
+  ['경기',3,0],['강원',4,0],
+  ['인천',1,1],['서울',2,1],['충북',3,1],['경북',4,1],
+  ['충남',1,2],['세종',2,2],['대구',4,2],
+  ['전북',1,3],['대전',2,3],['울산',5,3],
+  ['광주',0,4],['전남',1,4],['경남',3,4],['부산',4,4],
+  ['제주',0,6]
+];
+function dhKoreaSection(ds,cyc,meta){
+  var S=ds.sido; if(!S||!Object.keys(S).length) return '';
+  meta=meta||{};
+  var chgL=(cyc==='W')?'전주비':'전월비';
+  var sv=[], jv=[];
+  DH_SIDO17.forEach(function(nm){ var o=S[nm]; if(!o) return;
+    sv.push(dhHeatChg(o.sale)); jv.push(dhHeatChg(o.jeonse)); });
+  var sHi=dhPctile(sv,0.9), sLo=dhPctile(sv,0.1);
+  var jHi=dhPctile(jv,0.9), jLo=dhPctile(jv,0.1);
+  var nCell=sv.filter(function(x){return x!=null;}).length;
+  if(!nCell) return '';
+
+  var W=88, H=64, GX=6, GY=6;
+  var maxC=0, maxR=0;
+  DH_KR_GRID.forEach(function(p){ if(p[1]>maxC) maxC=p[1]; if(p[2]>maxR) maxR=p[2]; });
+  function num(v){ return v==null?'-':(v>0?'+':(v<0?'−':''))+Math.abs(v).toFixed(2); }
+  var cells=DH_KR_GRID.map(function(p){
+    var o=S[p[0]]; if(!o) return '';
+    var s=dhHeatChg(o.sale), j=dhHeatChg(o.jeonse);
+    var cs=dhHeatColor(s,sHi,sLo), cj=dhHeatColor(j,jHi,jLo);
+    var x=p[1]*(W+GX), y=p[2]*(H+GY);
+    return '<div style="position:absolute;left:'+x+'px;top:'+y+'px;width:'+W+'px;'
+      +'border:1px solid var(--border);border-radius:5px;overflow:hidden;font-family:var(--font2)">'
+      +'<div style="background:#2b3648;color:#fff;font-size:10.5px;font-weight:700;text-align:center;padding:3px 2px">'+p[0]+'</div>'
+      +'<div style="background:'+cs.bg+';color:'+cs.fg+';font-size:12px;font-weight:700;text-align:center;padding:2px 0">'+num(s)+'</div>'
+      +'<div style="background:'+cj.bg+';color:'+cj.fg+';font-size:12px;font-weight:700;text-align:center;padding:2px 0;'
+        +'border-top:1px solid rgba(255,255,255,.65)">'+num(j)+'</div>'
+      +'</div>';
+  }).join('');
+
+  var lg=[['상위10%',{bg:'#c0392b',fg:'#fff'}],['+',{bg:'#f5c9c6',fg:'#5c1d17'}],
+          ['−',{bg:'#cfe0f2',fg:'#12354f'}],['하위10%',{bg:'#2f6296',fg:'#fff'}]]
+    .map(function(p){ return '<span style="display:inline-flex;align-items:center;gap:4px;font-size:9.5px;color:var(--text3)">'
+      +'<span style="width:16px;height:11px;border-radius:2px;background:'+p[1].bg+';border:1px solid rgba(0,0,0,.15)"></span>'+p[0]+'</span>'; }).join('');
+
+  // 지도 우측 여백에 순위표 배치
+  var rank=DH_SIDO17.filter(function(nm){ return S[nm]&&dhHeatChg(S[nm].sale)!=null; })
+    .sort(function(a,b){ return dhHeatChg(S[b].sale)-dhHeatChg(S[a].sale); });
+  var rows=rank.map(function(nm,i){
+    var s=dhHeatChg(S[nm].sale), j=dhHeatChg(S[nm].jeonse);
+    var cs=(s>0?'#c92a4a':(s<0?'#1971c2':'var(--text3)')), cj=(j>0?'#c92a4a':(j<0?'#1971c2':'var(--text3)'));
+    return '<tr><td class="num" style="color:var(--text3)">'+(i+1)+'</td>'
+      +'<td style="font-weight:600">'+nm+'</td>'
+      +'<td class="num" style="color:'+cs+';font-weight:700">'+num(s)+'</td>'
+      +'<td class="num" style="color:'+cj+';font-weight:700">'+num(j)+'</td></tr>';
+  }).join('');
+
+  var basis='<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:6px 0 10px">'
+    +'<span style="background:#2b3648;color:#fff;font-size:10.5px;font-weight:700;border-radius:4px;padding:3px 8px">기준 '+(meta.ref||'-')+'</span>'
+    +(meta.prev?'<span style="background:var(--bg3);color:var(--text2);font-size:10.5px;border-radius:4px;padding:3px 8px">비교 '+meta.prev+' ('+chgL+')</span>':'')
+    +(meta.range?'<span style="background:var(--bg3);color:var(--text2);font-size:10.5px;border-radius:4px;padding:3px 8px">데이터 '+meta.range+'</span>':'')
+    +'<span style="background:var(--bg3);color:var(--text2);font-size:10.5px;border-radius:4px;padding:3px 8px">한국부동산원 공동주택 실거래가격지수 · 아파트</span>'
+    +(meta.origin?'<span style="background:var(--bg3);color:var(--text2);font-size:10.5px;border-radius:4px;padding:3px 8px">출처 '+meta.origin+'</span>':'')
+    +(meta.updated?'<span style="color:var(--text3);font-size:10.5px">통계표 갱신 '+meta.updated+'</span>':'')
+    +'</div>';
+
+  return '<div class="card" style="padding:14px;margin-bottom:12px">'
+    +'<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">'
+      +'<div style="font-size:13px;font-weight:700">🇰🇷 전국 시도 매매·전세 증감률 '
+        +'<span style="font-size:11px;color:var(--text3);font-weight:400">'+chgL+'(%) · 실거래는 시군구 미제공</span></div>'
+      +'<div style="display:flex;gap:8px;flex-wrap:wrap">'+lg+'</div></div>'
+    +basis
+    +'<div style="font-size:10.5px;color:var(--text3);margin:0 0 8px">칸 안 위=매매, 아래=전세 · 색 기준은 표시된 '+nCell+'개 시도 분포</div>'
+    +'<div style="display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start">'
+      +'<div style="position:relative;width:'+((maxC+1)*(W+GX))+'px;height:'+((maxR+1)*(H+GY))+'px;flex:0 0 auto">'+cells+'</div>'
+      +'<div style="flex:1 1 220px;min-width:220px">'
+        +'<div style="font-size:11px;font-weight:700;color:var(--text2);margin-bottom:4px">매매 증감률 순위</div>'
+        +'<div class="table-scroll" style="overflow-x:auto"><table class="data-table" style="font-size:11px">'
+        +'<colgroup><col style="width:12%"><col style="width:34%"><col style="width:27%"><col style="width:27%"></colgroup>'
+        +'<thead><tr><th style="text-align:left">#</th><th style="text-align:left">시도</th>'
+        +'<th style="text-align:right">매매</th><th style="text-align:right">전세</th></tr></thead>'
+        +'<tbody>'+rows+'</tbody></table></div></div>'
+    +'</div></div>';
+}
+
 function dhIncheonSection(ds,cyc){
   var gu=dhGuList(ds); if(!gu.length) return '';
   var n=(cyc==='W')?12:13;
@@ -7013,27 +7142,30 @@ function dhRenderCore(){
   // 섹션0: KPI 개황 (지도 + 배지 + 요약표)
   html+=dhKpiTop(ds,cyc,regions,isRt);
 
-  // 섹션0-2: 수도권 시군구 히트맵 (주택가격동향조사 전용 — 실거래는 시군구 미제공)
-  if(!isRt){
-    var dKey=(cyc==='W')?'khpi_w':'khpi_m';
+  // 섹션0-2: 히트맵 — KHPI는 수도권 시군구, 실거래는 시군구가 없으므로 전국 시도 지도
+  (function(){
+    var dKey = isRt ? 'rt' : (cyc==='W'?'khpi_w':'khpi_m');
     var lastD=dates.length?dates[dates.length-1]:null;
     var prevD=dates.length>1?dates[dates.length-2]:null;
-    var heat=dhHeatSection(ds,cyc,{
+    var meta={
       ref: lastD?dhFmtDate(lastD,cyc):'',
       prev: prevD?dhFmtDate(prevD,cyc):'',
       range: dates.length
         ? dhFmtDate(dates[0],cyc)+'~'+dhFmtDate(dates[dates.length-1],cyc)
           +' ('+dates.length+(cyc==='W'?'주':'개월')+')' : '',
-      src: '한국부동산원 주택가격동향조사(KHPI)',
+      src: isRt?'한국부동산원 공동주택 실거래가격지수':'한국부동산원 주택가격동향조사(KHPI)',
       origin: (G_DH._src&&G_DH._src[dKey])||'☁️ Firebase',
       updated: (G_DH.updated&&G_DH.updated[dKey])||''
-    });
-    if(heat) html+=heat;
-    else html+='<div class="card" style="padding:12px;margin-bottom:12px;font-size:11.5px;color:var(--text3)">'
-      +'🗺️ 수도권 시군구 히트맵: 이 데이터에는 시군구 값이 없습니다. '
-      +'<b style="color:var(--text2)">'+(cyc==='W'?'주간':'월간')+' 통계표를 다시 업로드</b>한 뒤 🔥 저장하면 표시됩니다. '
-      +'<span style="color:var(--text3)">(기능 추가 이전에 저장된 데이터에는 시군구 항목이 없습니다)</span></div>';
-  }
+    };
+    var heat = isRt ? dhKoreaSection(ds,cyc,meta) : dhHeatSection(ds,cyc,meta);
+    if(heat){ html+=heat; return; }
+    html+='<div class="card" style="padding:12px;margin-bottom:12px;font-size:11.5px;color:var(--text3)">'
+      +(isRt?'🇰🇷 전국 시도 지도: 이 데이터에는 시도별 값이 없습니다. <b style="color:var(--text2)">실거래가격지수 통계표를 다시 업로드</b>'
+            :'🗺️ 수도권 시군구 히트맵: 이 데이터에는 시군구 값이 없습니다. <b style="color:var(--text2)">'
+              +(cyc==='W'?'주간':'월간')+' 통계표를 다시 업로드</b>')
+      +'한 뒤 🔥 저장하면 표시됩니다. '
+      +'<span style="color:var(--text3)">(기능 추가 이전에 저장된 데이터에는 해당 항목이 없습니다)</span></div>';
+  })();
 
   // 섹션1: 매매·전세 지수 (지수 차트 + 변동률 차트)
   html+=dhSection('🏢 아파트 매매 가격지수', ds,dates,cyc,'sale',chgLabel,isRt,rgLabel,false,regions);
@@ -7308,6 +7440,13 @@ function dhReviveDates(ds){
     var g=ds.incheonGu;
     var list=Array.isArray(g)?g:Object.keys(g).map(function(k){ return g[k]; });
     ds.incheonGu=list.filter(Boolean).map(function(x){ return { name:x.name, data:dhToArr(x.data,L) }; });
+  }
+  // 실거래 전국 시도
+  if(ds.sido&&typeof ds.sido==='object'){
+    Object.keys(ds.sido).forEach(function(nm){
+      var o=ds.sido[nm]; if(!o){ delete ds.sido[nm]; return; }
+      ds.sido[nm]={name:o.name||nm, sale:dhToArr(o.sale,L), jeonse:dhToArr(o.jeonse,L)};
+    });
   }
   // 수도권 시군구 트리 (시도 → 권역 → 시군구) — 배열/객체 혼재 대응
   if(ds.sgg&&typeof ds.sgg==='object'){
