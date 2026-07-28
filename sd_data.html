@@ -6362,15 +6362,27 @@ function dhSyncToggles(){
 
 function dhNum(v){ if(v===null||v===undefined||v==='') return null;
   var n=parseFloat(String(v).replace(/,/g,'')); return isNaN(n)?null:n; }
+// 엑셀 날짜 셀은 라이브러리·PC 시간대에 따라 'UTC 자정' 또는 '로컬 자정'으로 만들어진다.
+// 그대로 getMonth()/getDate()를 읽으면 시간대 차이로 하루가 밀려(6.1→5.31) 월 라벨까지 틀어진다.
+// → 시각 성분이 자정인 쪽(로컬/UTC)을 골라 '날짜만' 남긴 로컬 Date로 정규화한다.
+function dhNormDay(d){
+  if(!(d instanceof Date)||isNaN(d.getTime())) return null;
+  if(d.getHours()===0&&d.getMinutes()===0&&d.getSeconds()===0)
+    return new Date(d.getFullYear(),d.getMonth(),d.getDate());
+  if(d.getUTCHours()===0&&d.getUTCMinutes()===0&&d.getUTCSeconds()===0)
+    return new Date(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate());
+  var t=new Date(d.getTime()+12*3600*1000);   // 그 외에는 정오 기준 반올림
+  return new Date(t.getFullYear(),t.getMonth(),t.getDate());
+}
 function dhYmd(v){ // 날짜 헤더 → Date (통계표마다 표기가 달라 폭넓게 수용)
-  if(v instanceof Date) return isNaN(v.getTime())?null:v;
+  if(v instanceof Date) return dhNormDay(v);
   if(typeof v==='number' && isFinite(v)){
     // 202606 / 20260601 형태
     if(v>=190001 && v<=299912){ var y6=Math.floor(v/100), m6=v%100; if(m6>=1&&m6<=12) return new Date(y6,m6-1,1); }
     if(v>=19000101 && v<=29991231){ var y8=Math.floor(v/10000), m8=Math.floor(v/100)%100, d8=v%100;
       if(m8>=1&&m8<=12&&d8>=1&&d8<=31) return new Date(y8,m8-1,d8); }
     // 엑셀 날짜 일련번호 (1899-12-30 기준)
-    if(v>20000 && v<80000){ var t=new Date(1899,11,30); t.setDate(t.getDate()+Math.round(v)); return t; }
+    if(v>20000 && v<80000){ var t=new Date(1899,11,30); t.setDate(t.getDate()+Math.round(v)); return dhNormDay(t); }
     return null;
   }
   if(typeof v==='string'){
@@ -7279,8 +7291,8 @@ function dhToArr(v,len){
 }
 function dhReviveDates(ds){
   if(!ds) return;
-  ds.dates=dhToArr(ds.dates).map(function(x){ return new Date(x); });
-  if(ds.volDates) ds.volDates=dhToArr(ds.volDates).map(function(x){ return new Date(x); });
+  ds.dates=dhToArr(ds.dates).map(function(x){ return dhNormDay(new Date(x)); }).filter(Boolean);
+  if(ds.volDates) ds.volDates=dhToArr(ds.volDates).map(function(x){ return dhNormDay(new Date(x)); }).filter(Boolean);
   var L=ds.dates.length;
   // 지역별 시계열 정규화
   var R=ds.regions||{};
