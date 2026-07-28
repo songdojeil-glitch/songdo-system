@@ -6389,42 +6389,83 @@ function dhYmd(v){ // 날짜 헤더 → Date (통계표마다 표기가 달라 �
 
 // ── 인천 시군구(구별) 행 수집 — 시도='14.인천' & 시군구 컬럼(idx3)이 채워진 행
 // ── 수도권 시군구 수집 (시도 합산 / 생활권역 합산 / 시군구 3단계, 매매·전세 동시)
-// statOf(r) → '매매지수' | '전세지수' | 그 외(무시).  월간·주간 시트 구조 차이는 statOf로 흡수.
+// 통계표의 시군구 행은 '하부권역' 칸이 비어 있어(권역 행에만 채워짐) 이름으로 권역을 매핑한다.
+// 권역 정의: 한국부동산원 통계개요 '광역단위 지역구분 > 생활권역' (2020 도시기본계획)
 var DH_SGG_SIDO=[['11.서울','서울'],['14.인천','인천'],['19.경기','경기']];
+var DH_GWON_MAP={
+  '서울':{ '도심권':['종로','중','용산'],
+    '동북권':['성동','광진','동대문','중랑','성북','강북','도봉','노원'],
+    '서북권':['은평','서대문','마포'],
+    '서남권':['양천','강서','구로','금천','영등포','동작','관악'],
+    '동남권':['서초','강남','송파','강동'] },
+  '경기':{ '경부1권':['과천','안양','성남','군포','의왕'],
+    '경부2권':['안성','용인','수원'],
+    '서해안권':['부천','안산','시흥','광명','화성','오산','평택'],
+    '동부1권':['남양주','구리','하남','광주'],
+    '동부2권':['이천','여주'],
+    '경의권':['김포','고양','파주'],
+    '경원권':['포천','동두천','양주','의정부'] }
+};
+var DH_GUN=['강화','옹진','양평','가평','연천'];
 function dhStripNo(s){ return String(s==null?'':s).replace(/^\d+[.\s]*/,'').trim(); }
+function dhGwonOfName(sido,base){
+  var m=DH_GWON_MAP[sido]; if(!m) return null;
+  var ks=Object.keys(m);
+  for(var i=0;i<ks.length;i++) if(m[ks[i]].indexOf(base)>=0) return ks[i];
+  return null;
+}
+function dhSggName(sido,base,gu){
+  if(gu) return dhStripNo(gu)+'구';                       // 경기 자치구: 장안구, 분당구 …
+  if(DH_GUN.indexOf(base)>=0) return base+'군';
+  return base + (sido==='경기'?'시':'구');
+}
 function dhCollectSgg(A,dcols,statOf){
   var out={};
   DH_SGG_SIDO.forEach(function(p){ out[p[1]]={ name:p[1], total:{name:p[1],sale:null,jeonse:null}, gwons:[] }; });
+  var sidoOf=function(r){ for(var k=0;k<DH_SGG_SIDO.length;k++) if(r[1]===DH_SGG_SIDO[k][0]) return DH_SGG_SIDO[k][1]; return null; };
+
+  // 1차: 자치구를 가진 시(수원·성남·고양 …) 파악 → 상위 시 합계 행은 중복이므로 제외
+  var hasGu={};
+  for(var i=1;i<A.length;i++){
+    var r0=A[i]; if(!r0) continue;
+    var st0=statOf(r0); if(st0!=='매매지수'&&st0!=='전세지수') continue;
+    var sd0=sidoOf(r0); if(!sd0) continue;
+    if(r0[3]!=null&&r0[3]!==''&&r0[4]!=null&&r0[4]!=='') hasGu[sd0+'|'+dhStripNo(r0[3])]=1;
+  }
+
   function gwonOf(o,gn){
-    for(var i=0;i<o.gwons.length;i++) if(o.gwons[i].name===gn) return o.gwons[i];
+    for(var j=0;j<o.gwons.length;j++) if(o.gwons[j].name===gn) return o.gwons[j];
     var g={name:gn, total:{name:gn,sale:null,jeonse:null}, items:[], _i:{}};
     o.gwons.push(g); return g;
   }
-  for(var i=1;i<A.length;i++){
-    var r=A[i]; if(!r) continue;
+  for(var i2=1;i2<A.length;i2++){
+    var r=A[i2]; if(!r) continue;
     var st=statOf(r); if(st!=='매매지수'&&st!=='전세지수') continue;
-    var sido=null;
-    for(var k=0;k<DH_SGG_SIDO.length;k++) if(r[1]===DH_SGG_SIDO[k][0]) sido=DH_SGG_SIDO[k][1];
-    if(!sido) continue;
+    var sido=sidoOf(r); if(!sido) continue;
     var o=out[sido];
     var key=(st==='매매지수')?'sale':'jeonse';
     var arr=dcols.map(function(x){ return dhNum(r[x.c]); });
     var hasG=(r[2]!=null&&r[2]!==''), hasS=(r[3]!=null&&r[3]!=='');
-    if(!hasG&&!hasS){ o.total[key]=arr; }                       // 시도 합산
-    else if(hasG&&!hasS){ gwonOf(o,dhStripNo(r[2])).total[key]=arr; }  // 권역 합산
-    else {
-      var g=gwonOf(o, hasG?dhStripNo(r[2]):'기타');
-      var nm=dhStripNo(r[3]); if(!nm) continue;
-      if(!/[구군시]$/.test(nm)) nm+='구';
-      var it=g._i[nm];
-      if(!it){ it={name:nm,sale:null,jeonse:null}; g._i[nm]=it; g.items.push(it); }
-      it[key]=arr;
-    }
+    if(!hasG&&!hasS){ o.total[key]=arr; continue; }        // 시도 합산
+    if(hasG&&!hasS){ gwonOf(o,dhStripNo(r[2])).total[key]=arr; continue; }  // 권역 합산
+    var base=dhStripNo(r[3]);
+    var gu=(r[4]!=null&&r[4]!=='')?r[4]:null;
+    if(!gu && hasGu[sido+'|'+base]) continue;              // 자치구가 따로 있는 시의 합계 행 → 제외
+    var gn=dhGwonOfName(sido,base) || (hasG?dhStripNo(r[2]):'기타');
+    var g=gwonOf(o,gn);
+    var nm=dhSggName(sido,base,gu); if(!nm) continue;
+    var it=g._i[nm];
+    if(!it){ it={name:nm, full:(gu?base+' '+nm:nm), sale:null, jeonse:null}; g._i[nm]=it; g.items.push(it); }
+    it[key]=arr;
   }
-  // 내부 인덱스 제거 + 항목 없는 권역(상위 묶음 행만 있는 경우) 정리
+  // 권역 순서를 통계개요 정의 순으로 정렬 + 내부 인덱스 제거
   Object.keys(out).forEach(function(s){
+    var order=Object.keys(DH_GWON_MAP[s]||{});
     out[s].gwons.forEach(function(g){ delete g._i; });
     out[s].gwons=out[s].gwons.filter(function(g){ return g.items.length>0; });
+    if(order.length) out[s].gwons.sort(function(a,b){
+      var ia=order.indexOf(a.name), ib=order.indexOf(b.name);
+      return (ia<0?99:ia)-(ib<0?99:ib); });
   });
   return out;
 }
@@ -6721,9 +6762,16 @@ function dhKpiTop(ds,cyc,regions,isRt){
 // ══ 인천시 구별 매매 가격지수 (주택가격동향조사 전용) ══
 var DH_GU_COLORS=['#c92a4a','#e8590c','#f59f00','#2f9e44','#0e7490','#1971c2','#7048e8','#c2255c','#495057','#0ca678'];
 // 2026.7 인천시 행정구역 개편으로 폐지된 구 → 표·차트에서 제외
-var DH_GU_DEFUNCT=['중구','동구','서구'];
+// 행정구역 개편 대응: 기준 시점에 값이 없는 구는 표시하지 않는다.
+// (이름 목록을 박아두면 개편 이전 자료에서 멀쩡한 구까지 사라지므로 데이터로 판정)
+function dhHasLatest(arr){
+  var a=dhToArr(arr);
+  return a.length>0 && a[a.length-1]!=null;
+}
 function dhGuList(ds){
-  return (ds.incheonGu||[]).filter(function(g){ return DH_GU_DEFUNCT.indexOf(g.name)<0; });
+  var all=(ds.incheonGu||[]);
+  var live=all.filter(function(g){ return dhHasLatest(g.data); });
+  return live.length?live:all;
 }
 // ══ 수도권 시군구 히트맵 (생활권역 묶음) ══
 // 한 칸 = 지역명 + 매매 증감(위) + 전세 증감(아래), 두 값 각각 독립 히트 색상
@@ -6756,9 +6804,7 @@ function dhHeatSection(ds,cyc,meta){
   ['서울','인천','경기'].forEach(function(sd){
     var o=sgg[sd]; if(!o) return;
     var gwons=(o.gwons||[]).map(function(g){
-      var items=(g.items||[]).filter(function(it){
-        return !(sd==='인천' && DH_GU_DEFUNCT.indexOf(it.name)>=0);
-      });
+      var items=(g.items||[]).filter(function(it){ return dhHasLatest(it.sale)||dhHasLatest(it.jeonse); });
       var gn=(g.name==='기타')?'시·군·구':g.name;   // 권역이 없는 시도(인천)의 기본 묶음 표기
       var gt=g.total?{name:gn, sale:g.total.sale, jeonse:g.total.jeonse}:null;
       return {name:gn, total:gt, items:items};
@@ -6856,7 +6902,7 @@ function dhIncheonSection(ds,cyc){
     +'<div style="font-size:13px;font-weight:700;margin-bottom:4px">🏙️ 인천시 구별 아파트 매매 가격지수 '
       +'<span style="font-size:11px;color:var(--text3);font-weight:400">(지수값 + '+chgL+' 변동률)</span></div>'
     +'<div style="font-size:11px;color:var(--text3);margin-bottom:10px">※ 주택가격동향조사(KHPI) 공표 시군구 기준 · 아파트'
-      +'<span style="margin-left:6px">· 2026.7 행정구역 개편으로 폐지된 '+DH_GU_DEFUNCT.join('·')+'는 제외</span></div>'
+      +'<span style="margin-left:6px">· 기준 시점에 값이 없는 구(행정구역 개편 등)는 제외</span></div>'
     +'<div class="table-scroll" style="overflow-x:auto;margin-bottom:12px"><table class="data-table" style="font-size:11px"><thead><tr>'
       +'<th>지역</th><th></th>'+dhead+'</tr></thead><tbody>'+rows+'</tbody></table></div>'
     +'<div style="font-size:11px;color:var(--text3);margin-bottom:4px">구별 지수 추이</div>'
@@ -6947,9 +6993,9 @@ function dhRenderCore(){
     var heat=dhHeatSection(ds,cyc,{
       ref: lastD?dhFmtDate(lastD,cyc):'',
       prev: prevD?dhFmtDate(prevD,cyc):'',
-      range: (ds.dates&&ds.dates.length)
-        ? dhFmtDate(ds.dates[0],cyc)+'~'+dhFmtDate(ds.dates[ds.dates.length-1],cyc)
-          +' ('+ds.dates.length+(cyc==='W'?'주':'개월')+')' : '',
+      range: dates.length
+        ? dhFmtDate(dates[0],cyc)+'~'+dhFmtDate(dates[dates.length-1],cyc)
+          +' ('+dates.length+(cyc==='W'?'주':'개월')+')' : '',
       src: '한국부동산원 주택가격동향조사(KHPI)',
       updated: (G_DH.updated&&G_DH.updated[dKey])||''
     });
