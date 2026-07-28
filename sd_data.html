@@ -6360,9 +6360,30 @@ function dhSyncToggles(){
 
 function dhNum(v){ if(v===null||v===undefined||v==='') return null;
   var n=parseFloat(String(v).replace(/,/g,'')); return isNaN(n)?null:n; }
-function dhYmd(v){ // 날짜 → 라벨
-  if(v instanceof Date) return v; 
-  if(typeof v==='string'){ var m=v.match(/(\d{4})[-.](\d{1,2})(?:[-.](\d{1,2}))?/); if(m) return new Date(+m[1],+m[2]-1,m[3]?+m[3]:1); }
+function dhYmd(v){ // 날짜 헤더 → Date (통계표마다 표기가 달라 폭넓게 수용)
+  if(v instanceof Date) return isNaN(v.getTime())?null:v;
+  if(typeof v==='number' && isFinite(v)){
+    // 202606 / 20260601 형태
+    if(v>=190001 && v<=299912){ var y6=Math.floor(v/100), m6=v%100; if(m6>=1&&m6<=12) return new Date(y6,m6-1,1); }
+    if(v>=19000101 && v<=29991231){ var y8=Math.floor(v/10000), m8=Math.floor(v/100)%100, d8=v%100;
+      if(m8>=1&&m8<=12&&d8>=1&&d8<=31) return new Date(y8,m8-1,d8); }
+    // 엑셀 날짜 일련번호 (1899-12-30 기준)
+    if(v>20000 && v<80000){ var t=new Date(1899,11,30); t.setDate(t.getDate()+Math.round(v)); return t; }
+    return null;
+  }
+  if(typeof v==='string'){
+    var s=v.trim(); if(!s) return null;
+    // '2026-06', '2026.06.01', '2026/6/1', '2026년 6월', '2026년 6월 1일'
+    var m=s.match(/(\d{4})\s*[^\d]{1,2}\s*(\d{1,2})(?:\s*[^\d]{1,2}\s*(\d{1,2}))?/);
+    if(m){ var mo=+m[2]; if(mo>=1&&mo<=12) return new Date(+m[1],mo-1,m[3]?+m[3]:1); }
+    // '26.06', '26.06.28' (두 자리 연도)
+    var m2=s.match(/^(\d{2})\s*[.\-/]\s*(\d{1,2})(?:\s*[.\-/]\s*(\d{1,2}))?$/);
+    if(m2){ var mo2=+m2[2]; if(mo2>=1&&mo2<=12) return new Date(2000+ +m2[1],mo2-1,m2[3]?+m2[3]:1); }
+    // 숫자만 있는 문자열
+    var only=s.replace(/[^\d]/g,'');
+    if(only.length===6||only.length===8) return dhYmd(parseInt(only,10));
+    return null;
+  }
   return null;
 }
 
@@ -6797,6 +6818,8 @@ function dhHeatSection(ds,cyc,meta){
       +'기준 '+(meta.ref||'-')+'</span>'
     +(meta.prev?'<span style="background:var(--bg3);color:var(--text2);font-size:10.5px;border-radius:4px;padding:3px 8px">'
       +'비교 '+meta.prev+' ('+chgL+')</span>':'')
+    +(meta.range?'<span style="background:var(--bg3);color:var(--text2);font-size:10.5px;border-radius:4px;padding:3px 8px">'
+      +'데이터 '+meta.range+'</span>':'')
     +'<span style="background:var(--bg3);color:var(--text2);font-size:10.5px;border-radius:4px;padding:3px 8px">'
       +(meta.src||'한국부동산원 주택가격동향조사(KHPI)')+' · 아파트</span>'
     +(meta.updated?'<span style="color:var(--text3);font-size:10.5px">통계표 갱신 '+meta.updated+'</span>':'')
@@ -6924,6 +6947,9 @@ function dhRenderCore(){
     var heat=dhHeatSection(ds,cyc,{
       ref: lastD?dhFmtDate(lastD,cyc):'',
       prev: prevD?dhFmtDate(prevD,cyc):'',
+      range: (ds.dates&&ds.dates.length)
+        ? dhFmtDate(ds.dates[0],cyc)+'~'+dhFmtDate(ds.dates[ds.dates.length-1],cyc)
+          +' ('+ds.dates.length+(cyc==='W'?'주':'개월')+')' : '',
       src: '한국부동산원 주택가격동향조사(KHPI)',
       updated: (G_DH.updated&&G_DH.updated[dKey])||''
     });
