@@ -6421,13 +6421,22 @@ var DH_GWON_MAP={
     '경원권':['포천','동두천','양주','의정부'] }
 };
 var DH_GUN=['강화','옹진','양평','가평','연천'];
+// 경기 자치구 → 모시 (시 이름 없이 '일산동구'만 들어와도 권역을 찾도록)
+var DH_GG_GU={ '장안':'수원','권선':'수원','팔달':'수원','영통':'수원',
+  '수정':'성남','중원':'성남','분당':'성남', '만안':'안양','동안':'안양',
+  '원미':'부천','소사':'부천','오정':'부천', '상록':'안산','단원':'안산',
+  '덕양':'고양','일산동':'고양','일산서':'고양',
+  '처인':'용인','기흥':'용인','수지':'용인',
+  '만세':'화성','효행':'화성','병점':'화성','동탄':'화성' };
 function dhStripNo(s){ return String(s==null?'':s).replace(/^\d+[.\s]*/,'').trim(); }
 function dhGwonOfName(sido,base){
   var m=DH_GWON_MAP[sido]; if(!m) return null;
   // 통계표마다 표기가 달라('종로','종로구','수원시 영통구','수원영통') 접미사·공백을 지우고
   // 완전일치 → 접두일치(긴 이름 우선) 순으로 찾는다.
   var raw=String(base||'').trim();
-  var flat=raw.replace(/\s/g,'').replace(/[시군구]/g,'');
+  // 접미사는 '토큰 끝'에서만 떼야 한다. 전부 지우면 '구로구'→'로'처럼 이름이 망가진다.
+  var flat=raw.split(/\s+/).map(function(t){ return t.replace(/[시군구]$/,''); }).join('');
+  if(sido==='경기' && DH_GG_GU[flat]) flat=DH_GG_GU[flat];   // '일산동' → '고양'
   var pairs=[];
   Object.keys(m).forEach(function(g){ m[g].forEach(function(n){ pairs.push([n,g]); }); });
   var i;
@@ -6871,7 +6880,8 @@ function dhKpiTop(ds,cyc,regions,isRt){
     +'<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px">'
       +'<div style="font-size:13px;font-weight:700">📌 개황 (Overview) <span style="font-size:11px;color:var(--text3);font-weight:400">'
       +(isRt?'실거래가격지수':'주택가격동향조사')+' · 아파트 · '+chgL+' 기준</span></div>'
-      +'<div style="font-size:11px;color:var(--text3)">기준 '+(ref||'-')+'</div></div>'
+      +'<div style="font-size:11px;color:var(--text3)">조회 시점 '+(ref||'-')
+        +' <span style="color:var(--text3)">· 기준시점 '+dhBasePoint(isRt)+'</span></div></div>'
     +'<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">'+badges+'</div>'
     +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px;align-items:start">'
       +'<div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:10px">'
@@ -6899,6 +6909,10 @@ function dhGuList(ds){
   var live=all.filter(function(g){ return dhHasLatest(g.data); });
   return live.length?live:all;
 }
+// 한국부동산원 표기: '조회 시점'(자료를 보는 시점) / '기준시점'(지수=100 기준)
+var DH_BASE_PT={ khpi:'2026.01=100.0', rt:'2017.11=100.0' };
+function dhBasePoint(isRt){ return isRt?DH_BASE_PT.rt:DH_BASE_PT.khpi; }
+
 // ══ 수도권 시군구 히트맵 (생활권역 묶음) ══
 // 한 칸 = 지역명 + 매매 증감(위) + 전세 증감(아래), 두 값 각각 독립 히트 색상
 function dhHeatChg(arr){
@@ -6925,16 +6939,32 @@ function dhHeatSection(ds,cyc,meta){
   var chgL=(cyc==='W')?'전주비':'전월비';
   meta=meta||{};
 
-  // 표시 대상 수집 (인천은 폐지 구 제외 — 서울 중구와 이름이 겹치므로 인천에만 적용)
+  // 표시 대상 수집 — 권역 묶음은 '저장된 값'이 아니라 렌더 시점에 이름으로 다시 계산한다.
+  // (파싱 당시 규칙으로 굳어버리면, 예전에 저장된 자료가 계속 '기타'로 남는다)
   var blocks=[];
   ['서울','인천','경기'].forEach(function(sd){
     var o=sgg[sd]; if(!o) return;
-    var gwons=(o.gwons||[]).map(function(g){
-      var items=(g.items||[]).filter(function(it){ return dhHasLatest(it.sale)||dhHasLatest(it.jeonse); });
-      var gn=(g.name==='기타')?'시·군·구':g.name;   // 권역이 없는 시도(인천)의 기본 묶음 표기
-      var gt=g.total?{name:gn, sale:g.total.sale, jeonse:g.total.jeonse}:null;
-      return {name:gn, total:gt, items:items};
-    }).filter(function(g){ return g.items.length; });
+    var order=Object.keys(DH_GWON_MAP[sd]||{});
+    var byG={}, seq=[], totals={};
+    (o.gwons||[]).forEach(function(g){
+      if(g.total&&g.name) totals[g.name]=g.total;                 // 권역 합산 행은 이름 그대로 보관
+      (g.items||[]).forEach(function(it){
+        if(!(dhHasLatest(it.sale)||dhHasLatest(it.jeonse))) return;
+        var gn = dhGwonOfName(sd, it.full||it.name)               // ① 이름으로 권역 판정
+              || (order.indexOf(g.name)>=0 ? g.name : null)       // ② 저장된 권역명이 유효하면 사용
+              || '시·군·구';                                       // ③ 권역이 없는 시도(인천)
+        if(!byG[gn]){ byG[gn]={name:gn, total:null, items:[]}; seq.push(gn); }
+        byG[gn].items.push(it);
+      });
+    });
+    seq.forEach(function(gn){
+      var t=totals[gn];
+      if(t) byG[gn].total={name:gn, sale:t.sale, jeonse:t.jeonse};
+    });
+    var gwons=seq.map(function(gn){ return byG[gn]; }).filter(function(g){ return g.items.length; });
+    gwons.sort(function(a,b){                                      // 통계개요 정의 순서
+      var ia=order.indexOf(a.name), ib=order.indexOf(b.name);
+      return (ia<0?99:ia)-(ib<0?99:ib); });
     if(gwons.length||o.total) blocks.push({sido:sd, total:o.total, gwons:gwons});
   });
   if(!blocks.length) return '';
@@ -7017,9 +7047,11 @@ function dhHeatSection(ds,cyc,meta){
   // 자료 기준 표시: 기준 시점 / 직전 비교 시점 / 통계 출처 / 통계표 갱신일
   var basis='<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:6px 0 8px">'
     +'<span style="background:#2b3648;color:#fff;font-size:10.5px;font-weight:700;border-radius:4px;padding:3px 8px">'
-      +'기준 '+(meta.ref||'-')+'</span>'
+      +'조회 시점 '+(meta.ref||'-')+'</span>'
     +(meta.prev?'<span style="background:var(--bg3);color:var(--text2);font-size:10.5px;border-radius:4px;padding:3px 8px">'
-      +'비교 '+meta.prev+' ('+chgL+')</span>':'')
+      +'비교 시점 '+meta.prev+' ('+chgL+')</span>':'')
+    +(meta.basePt?'<span style="background:#fff4e6;color:#a35200;border:1px solid #ffd8a8;font-size:10.5px;border-radius:4px;padding:3px 8px">'
+      +'기준시점 '+meta.basePt+'</span>':'')
     +(meta.range?'<span style="background:var(--bg3);color:var(--text2);font-size:10.5px;border-radius:4px;padding:3px 8px">'
       +'데이터 '+meta.range+'</span>':'')
     +'<span style="background:var(--bg3);color:var(--text2);font-size:10.5px;border-radius:4px;padding:3px 8px">'
@@ -7099,8 +7131,9 @@ function dhKoreaSection(ds,cyc,meta){
   }).join('');
 
   var basis='<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:6px 0 10px">'
-    +'<span style="background:#2b3648;color:#fff;font-size:10.5px;font-weight:700;border-radius:4px;padding:3px 8px">기준 '+(meta.ref||'-')+'</span>'
-    +(meta.prev?'<span style="background:var(--bg3);color:var(--text2);font-size:10.5px;border-radius:4px;padding:3px 8px">비교 '+meta.prev+' ('+chgL+')</span>':'')
+    +'<span style="background:#2b3648;color:#fff;font-size:10.5px;font-weight:700;border-radius:4px;padding:3px 8px">조회 시점 '+(meta.ref||'-')+'</span>'
+    +(meta.prev?'<span style="background:var(--bg3);color:var(--text2);font-size:10.5px;border-radius:4px;padding:3px 8px">비교 시점 '+meta.prev+' ('+chgL+')</span>':'')
+    +(meta.basePt?'<span style="background:#fff4e6;color:#a35200;border:1px solid #ffd8a8;font-size:10.5px;border-radius:4px;padding:3px 8px">기준시점 '+meta.basePt+'</span>':'')
     +(meta.range?'<span style="background:var(--bg3);color:var(--text2);font-size:10.5px;border-radius:4px;padding:3px 8px">데이터 '+meta.range+'</span>':'')
     +'<span style="background:var(--bg3);color:var(--text2);font-size:10.5px;border-radius:4px;padding:3px 8px">한국부동산원 공동주택 실거래가격지수 · 아파트</span>'
     +(meta.origin?'<span style="background:var(--bg3);color:var(--text2);font-size:10.5px;border-radius:4px;padding:3px 8px">출처 '+meta.origin+'</span>':'')
@@ -7240,6 +7273,7 @@ function dhRenderCore(){
       range: dates.length
         ? dhFmtDate(dates[0],cyc)+'~'+dhFmtDate(dates[dates.length-1],cyc)
           +' ('+dates.length+(cyc==='W'?'주':'개월')+')' : '',
+      basePt: dhBasePoint(isRt),
       src: isRt?'한국부동산원 공동주택 실거래가격지수':'한국부동산원 주택가격동향조사(KHPI)',
       origin: (G_DH._src&&G_DH._src[dKey])||'☁️ Firebase',
       updated: (G_DH.updated&&G_DH.updated[dKey])||''
