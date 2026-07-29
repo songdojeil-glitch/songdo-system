@@ -6948,7 +6948,69 @@ function dhKpiTop(ds,cyc,regions,isRt){
         +'<div class="table-scroll" style="overflow-x:auto"><table class="data-table" style="font-size:11px">'+colg+'<thead>'+head+'</thead><tbody>'+trs+'</tbody></table></div>'
         +(isW?'<div style="font-size:10px;color:var(--text3);margin-top:6px">※ 주간은 전년말비·전년동월비 미산출</div>':'')
       +'</div>'
-    +'</div></div>';
+    +'</div>'
+    +dhBar3DPair(ds,regions,isRt,chgL)
+    +'</div>';
+}
+
+// ══ 3D 막대 그래프 (한국부동산원 개황 페이지 스타일) ══
+// 아이소메트릭 입체 막대: 앞면(진한 색) + 윗면(밝게) + 옆면(어둡게)
+function dhShade(hex,f){   // f>1 밝게, f<1 어둡게
+  var n=parseInt(hex.slice(1),16), r=(n>>16)&255, g=(n>>8)&255, b=n&255;
+  function m(v){ return Math.max(0,Math.min(255, Math.round(f>=1 ? v+(255-v)*(f-1) : v*f))); }
+  return '#'+((1<<24)+(m(r)<<16)+(m(g)<<8)+m(b)).toString(16).slice(1);
+}
+function dhBar3D(title, items, baseHex){
+  var vals=items.map(function(x){ return x.v; }).filter(function(v){ return v!=null; });
+  if(!vals.length) return '';
+  var maxAbs=Math.max.apply(null, vals.map(Math.abs)); if(!maxAbs) maxAbs=1;
+  var n=items.length;
+  var W=44, GAP=34, D=11;                       // 막대 폭 / 간격 / 깊이
+  var PADL=26, PADR=26, H=112;                  // 좌우 여백 / 막대 최대 높이
+  var vw=PADL+PADR+n*W+(n-1)*GAP;
+  var hasNeg=vals.some(function(v){ return v<0; });
+  var TOP=34, BASE=TOP+H, vh=BASE+(hasNeg?H*0.55:0)+34;
+  var maxV=Math.max.apply(null,vals), minV=Math.min.apply(null,vals);
+  var span=Math.max(Math.abs(maxV), Math.abs(minV))||1;
+
+  var bars=items.map(function(it,i){
+    var x=PADL+i*(W+GAP), v=it.v;
+    if(v==null){
+      return '<text x="'+(x+W/2)+'" y="'+(BASE+18)+'" text-anchor="middle" font-size="11" fill="#adb5bd">-</text>'
+        +'<text x="'+(x+W/2)+'" y="'+(vh-8)+'" text-anchor="middle" font-size="11.5" fill="#495057">'+it.name+'</text>';
+    }
+    // 값이 클수록 진하게 (부동산원 자료의 명암 배치)
+    var rel=Math.abs(v)/span;
+    var front=dhShade(baseHex, 0.72+0.55*rel);
+    var top=dhShade(front,1.28), side=dhShade(front,0.74);
+    var h=Math.max(3, Math.abs(v)/maxAbs*H);
+    var y0=(v>=0)?(BASE-h):BASE;                // 앞면 상단 y
+    var g='';
+    g+='<polygon points="'+x+','+y0+' '+(x+D)+','+(y0-D)+' '+(x+W+D)+','+(y0-D)+' '+(x+W)+','+y0+'" fill="'+top+'"/>';
+    g+='<polygon points="'+(x+W)+','+y0+' '+(x+W+D)+','+(y0-D)+' '+(x+W+D)+','+(y0+h-D)+' '+(x+W)+','+(y0+h)+'" fill="'+side+'"/>';
+    g+='<rect x="'+x+'" y="'+y0+'" width="'+W+'" height="'+h+'" fill="'+front+'"/>';
+    var ly=(v>=0)?(y0-D-8):(y0+h+16);
+    g+='<text x="'+(x+W/2+D/2)+'" y="'+ly+'" text-anchor="middle" font-size="14" font-weight="700" fill="#343a40">'
+       +(v>0?'':(v<0?'-':''))+Math.abs(v).toFixed(2)+'</text>';
+    g+='<text x="'+(x+W/2)+'" y="'+(vh-8)+'" text-anchor="middle" font-size="11.5" fill="#495057">'+it.name+'</text>';
+    return g;
+  }).join('');
+
+  return '<div style="flex:1 1 300px;min-width:280px">'
+    +'<div style="text-align:center;font-size:12px;font-weight:700;color:var(--text2);margin-bottom:2px">'+title+'</div>'
+    +'<svg viewBox="0 0 '+vw+' '+vh+'" style="width:100%;height:auto;max-height:230px">'
+      +'<line x1="6" y1="'+BASE+'" x2="'+(vw-6)+'" y2="'+BASE+'" stroke="#dee2e6" stroke-width="1"/>'
+      +bars
+    +'</svg></div>';
+}
+function dhBar3DPair(ds,regions,isRt,chgL){
+  var sale=regions.map(function(rg){ return {name:dhRgLabel(rg,isRt).replace(/\(.*\)/,''), v:dhStats(ds,rg,'sale').mom}; });
+  var jeon=regions.map(function(rg){ return {name:dhRgLabel(rg,isRt).replace(/\(.*\)/,''), v:dhStats(ds,rg,'jeonse').mom}; });
+  var a=dhBar3D('매매 '+chgL+'(%)', sale, '#4c5bd4');
+  var b=dhBar3D('전세 '+chgL+'(%)', jeon, '#e0483d');
+  if(!a&&!b) return '';
+  return '<div style="margin-top:12px;padding-top:10px;border-top:1px dashed var(--border)">'
+    +'<div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start">'+a+b+'</div></div>';
 }
 
 // ══ 인천시 구별 매매 가격지수 (주택가격동향조사 전용) ══
