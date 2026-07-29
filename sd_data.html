@@ -6963,18 +6963,29 @@ function dhZoomOpen(html){
   var ov=document.getElementById('dh-zoom-ov');
   if(!ov){
     ov=document.createElement('div'); ov.id='dh-zoom-ov';
-    ov.style.cssText='position:fixed;inset:0;background:rgba(15,20,30,.72);z-index:9999;display:none;padding:20px;overflow:auto';
-    ov.innerHTML='<div id="dh-zoom-card" style="max-width:1700px;margin:0 auto;background:var(--card);border-radius:12px;padding:18px 18px 26px;position:relative">'
+    ov.style.cssText='position:fixed;inset:0;background:rgba(15,20,30,.72);z-index:9999;display:none;padding:20px;overflow:auto;-webkit-overflow-scrolling:touch';
+    ov.innerHTML='<div id="dh-zoom-card" style="max-width:1700px;margin:0 auto;background:var(--card);border-radius:12px;padding:44px 18px 28px;position:relative">'
       +'<button id="dh-zoom-close" style="position:absolute;top:10px;right:12px;border:1px solid var(--border);background:var(--bg2);color:var(--text);border-radius:8px;padding:5px 12px;font-size:12px;cursor:pointer;z-index:2">✕ 닫기</button>'
-      +'<div id="dh-zoom-body" style="overflow-x:auto"></div></div>';
+      +'<div id="dh-zoom-body" style="overflow-x:auto;overflow-y:visible"></div></div>';
     document.body.appendChild(ov);
     ov.addEventListener('click',function(e){ if(e.target===ov||e.target.id==='dh-zoom-close') dhZoomClose(); });
     document.addEventListener('keydown',function(e){ if(e.key==='Escape') dhZoomClose(); });
   }
   var k=1.75;   // 확대 배율 (인라인 font-size까지 함께 커지도록 transform 사용)
-  document.getElementById('dh-zoom-body').innerHTML=
-    '<div style="width:'+(100/k).toFixed(3)+'%;transform:scale('+k+');transform-origin:top left">'+html+'</div>';
+  var bd=document.getElementById('dh-zoom-body');
+  bd.style.height='';
+  bd.innerHTML='<div id="dh-zoom-inner" style="width:'+(100/k).toFixed(3)+'%;transform:scale('+k+');transform-origin:top left">'+html+'</div>';
   ov.style.display='block';
+  // transform:scale은 레이아웃 높이를 늘리지 않는다 → 확대된 실제 높이를 부모에 반영해야
+  // 아래쪽이 잘리지 않는다. (폰트·이미지 로딩까지 감안해 두 번 재계산)
+  var fit=function(){
+    var inner=document.getElementById('dh-zoom-inner'); if(!inner) return;
+    var h=inner.getBoundingClientRect().height;        // scale이 반영된 실제 높이
+    if(h>0) bd.style.height=Math.ceil(h)+'px';
+  };
+  if(window.requestAnimationFrame) requestAnimationFrame(fit); else setTimeout(fit,0);
+  setTimeout(fit,120);
+  setTimeout(fit,400);
 }
 function dhZoomPanel(el){ if(el) dhZoomOpen(el.innerHTML); }
 // 차트: 세로 확대 (컨테이너 높이만 조절 → Chart.js가 자동 리사이즈)
