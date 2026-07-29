@@ -798,12 +798,14 @@ tr.naver-fav>td:first-child{border-left:3px solid #b8860b;}
       <button class="filter-btn" onclick="dhSetStat('rt',this)">실거래가격지수</button>
     </div>
   </div>
-  <div class="filter-row" style="margin-top:-4px">
+  <div class="filter-row" style="margin-top:-4px" id="dh-cycle-row">
     <span class="filter-label">주기</span>
     <div class="filter-group" id="dh-cycle-group">
       <button class="filter-btn on" onclick="dhSetCycle('M',this)">월간(최근 13개월)</button>
-      <button class="filter-btn" onclick="dhSetCycle('W',this)">주간(최근 12주)</button>
+      <button class="filter-btn" id="dh-btn-week" onclick="dhSetCycle('W',this)">주간(최근 12주)</button>
     </div>
+    <span id="dh-cycle-note" style="display:none;font-size:11px;color:var(--text3);margin-left:6px">
+      실거래가격지수는 월간만 공표 (매매 1개월·전세 2개월 시차)</span>
   </div>
 
   <div id="dh-body">
@@ -6314,14 +6316,15 @@ var DH_REGIONS=['서울강북','서울강남','경기','인천','연수구'];
 function dhSetStat(v,btn){ G_DH.stat=v;
   var g=document.getElementById('dh-stat-group');
   if(g&&btn){g.querySelectorAll('.filter-btn').forEach(function(b){b.classList.remove('on');});btn.classList.add('on');}
-  // 실거래는 주간 없음 → 월간 강제
-  if(v==='rt' && G_DH.cycle==='W'){ dhSetCycle('M'); }
+  // 실거래는 주간 공표가 없음 → 월간 강제 + 주간 버튼 숨김
+  if(v==='rt' && G_DH.cycle==='W'){ G_DH.cycle='M'; }
+  dhSyncToggles();
   dhRender();
 }
-function dhSetCycle(v,btn){ G_DH.cycle=v;
-  var g=document.getElementById('dh-cycle-group');
-  if(g){ g.querySelectorAll('.filter-btn').forEach(function(b){
-    b.classList.toggle('on', (b.textContent.indexOf(v==='M'?'월간':'주간')>=0)); }); }
+function dhSetCycle(v,btn){
+  if(v==='W' && G_DH.stat==='rt') v='M';   // 실거래에는 주간이 없다
+  G_DH.cycle=v;
+  dhSyncToggles();
   dhRender();
 }
 
@@ -6351,7 +6354,16 @@ function dhUpload(input, kind){
   reader.readAsArrayBuffer(file);
   input.value='';
 }
+// 실거래가격지수는 주간 공표가 없으므로 주간 버튼 자체를 숨긴다.
+function dhSyncCycleUI(){
+  var isRt=(G_DH.stat==='rt');
+  var wb=document.getElementById('dh-btn-week');
+  if(wb) wb.style.display = isRt?'none':'';
+  var nt=document.getElementById('dh-cycle-note');
+  if(nt) nt.style.display = isRt?'':'none';
+}
 function dhSyncToggles(){
+  dhSyncCycleUI();
   var sg=document.getElementById('dh-stat-group');
   if(sg) sg.querySelectorAll('.filter-btn').forEach(function(b){
     b.classList.toggle('on', (G_DH.stat==='rt')===(b.textContent.indexOf('실거래')>=0)); });
@@ -7352,15 +7364,22 @@ function dhVolSection(ds){
   var vdates=(ds.volDates||[]).slice(-13);
   var regs=['서울강북','서울강남','경기','인천'];
   var rows=regs.map(function(rg){
-    var arr=(ds.regions[rg]||{}).vol||[]; var slice=arr.slice(-vdates.length);
+    var arr=dhToArr((ds.regions[rg]||{}).vol); var slice=arr.slice(-vdates.length);
+    var base=arr.length-vdates.length;
     var vcells=slice.map(function(v){ return '<td class="num">'+(v==null?'-':Math.round(v).toLocaleString())+'</td>'; }).join('');
-    return '<tr><td style="font-weight:600">'+rg+'</td>'+vcells+'</tr>';
+    // 지수 표와 동일하게 값 아래에 전월비 증감률(%) 행을 붙인다
+    var ccells=slice.map(function(v,i){ var ch=dhChg(arr,base+i);
+      var col=ch==null?'var(--text3)':(ch>0?'#e03131':(ch<0?'#1971c2':'var(--text3)'));
+      return '<td class="num" style="color:'+col+';font-size:10px">'+(ch==null?'-':(ch>0?'+':'')+ch.toFixed(1))+'</td>'; }).join('');
+    return '<tr><td rowspan="2" style="font-weight:600;vertical-align:middle">'+rg+'</td>'
+      +'<td style="font-size:10px;color:var(--text3)">건수</td>'+vcells+'</tr>'
+      +'<tr><td style="font-size:10px;color:var(--text3)">전월비%</td>'+ccells+'</tr>';
   }).join('');
   var dhead=vdates.map(function(d){ return '<th style="font-size:10px;text-align:right">'+dhFmtDate(d,'M')+'</th>'; }).join('');
   return '<div class="card" style="padding:14px;margin-bottom:12px">'
     +'<div style="font-size:13px;font-weight:700;margin-bottom:4px">📊 아파트 매매 거래량 (건)</div>'
     +'<div style="font-size:11px;color:var(--yellow);margin-bottom:10px">※ 연수구 거래량은 미제공 (시도 단위까지). 최신월은 신고 지연으로 잠정치</div>'
-    +'<div class="table-scroll" style="overflow-x:auto;margin-bottom:12px"><table class="data-table" style="font-size:11px"><thead><tr><th>지역</th>'+dhead+'</tr></thead><tbody>'+rows+'</tbody></table></div>'
+    +'<div class="table-scroll" style="overflow-x:auto;margin-bottom:12px"><table class="data-table" style="font-size:11px"><thead><tr><th>지역</th><th></th>'+dhead+'</tr></thead><tbody>'+rows+'</tbody></table></div>'
     +'<div class="chart-wrap" style="height:220px"><canvas id="dh-ch-vol"></canvas></div></div>';
 }
 
