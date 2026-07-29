@@ -6312,6 +6312,26 @@ var G_DH = { stat:'khpi', cycle:'M',
   khpi_m:null, khpi_w:null, rt:null,   // 파싱 결과 저장
   updated:{} };
 var DH_REGIONS=['서울강북','서울강남','경기','인천','연수구'];
+// 서울 권역이 담는 자치구 수 — 두 통계가 서로 다르다.
+//  · 주택가격동향조사: 강북권역 = 도심3 + 동북8 + 서북3 = 14개구 / 강남권역 = 서남7 + 동남4 = 11개구
+//  · 실거래가격지수 : 강북권역·강남권역 미공표 → 동북권 8개구 / 동남권 4개구를 사용
+var DH_RG_CNT={ khpi:{'서울강북':'14개구','서울강남':'11개구'},
+                rt:  {'서울강북':'동북권 8개구','서울강남':'동남권 4개구'} };
+// 표·그래프(하단 섹션) 전용 지역 — 개황 KPI는 DH_REGIONS를 그대로 쓴다.
+// 서울 전체 + 서울 동남권 4개구(서초·강남·송파·강동) 중심으로 본다.
+var DH_SEC_REGIONS_KHPI=['서울','서울동남','인천','연수구'];
+var DH_SEC_REGIONS_RT  =['서울','서울동남','인천'];
+var DH_SEC_LABEL={'서울':'서울 전체','서울동남':'서울동남권(4개구)'};
+function DH_ALL_REGIONS(){   // 파서가 만들어야 할 전체 시리즈 (KPI용 + 표/그래프용)
+  var out=DH_REGIONS.slice();
+  DH_SEC_REGIONS_KHPI.concat(DH_SEC_REGIONS_RT).forEach(function(r){ if(out.indexOf(r)<0) out.push(r); });
+  return out;
+}
+function dhRgLabel(rg,isRt){
+  if(DH_SEC_LABEL[rg]) return DH_SEC_LABEL[rg];
+  var m=DH_RG_CNT[isRt?'rt':'khpi'][rg];
+  return m? rg+'('+m+')' : rg;
+}
 
 function dhSetStat(v,btn){ G_DH.stat=v;
   var g=document.getElementById('dh-stat-group');
@@ -6562,6 +6582,7 @@ function dhParseKhpiMonthly(wb){
   out.dates=dates;
   // 지역 매칭 (map: [시도명, 하부권역, 시군구]. 수도권은 C1='01.수도권' 특수 매칭)
   var map={ '서울강북':['11.서울','01.강북권역',null],'서울강남':['11.서울','02.강남권역',null],
+    '서울':['11.서울',null,null],'서울동남':['11.서울','07.동남권',null],
     '경기':['19.경기',null,null],'인천':['14.인천',null,null],'연수구':['14.인천',null,'연수'] };
   function findRow(sido,hb,sgg,stat){
     for(var i=1;i<A.length;i++){ var r=A[i];
@@ -6571,8 +6592,8 @@ function dhParseKhpiMonthly(wb){
     }
     return null;
   }
-  DH_REGIONS.forEach(function(rg){
-    var m=map[rg]; var o={sale:[],jeonse:[],midSale:[],midJeonse:[],vol:[]};
+  DH_ALL_REGIONS().forEach(function(rg){
+    var m=map[rg]; if(!m) return; var o={sale:[],jeonse:[],midSale:[],midJeonse:[],vol:[]};
     ['매매지수','전세지수'].forEach(function(stat){
       var row=findRow(m[0],m[1],m[2],stat);
       var arr=dcols.map(function(x){ return row?dhNum(row[x.c]):null; });
@@ -6592,7 +6613,7 @@ function dhParseKhpiMonthly(wb){
       if(r[6]!=='01.아파트' || r[8]!==stat) continue;
       if(sido.indexOf('C1:')===0){ if(r[0]===sido.slice(3) && r[2]==null && r[3]==null) return r; }
       else if(r[1]===sido && r[2]===hb && r[3]===sgg) return r; } return null; }
-    DH_REGIONS.forEach(function(rg){ var m=map[rg];
+    DH_ALL_REGIONS().forEach(function(rg){ var m=map[rg]; if(!m||!out.regions[rg]) return;
       // 중위단위(㎡당, 천원) 사용 → 평당가 계산 가능
       [['중위단위매매가','midSale'],['중위단위전세가','midJeonse']].forEach(function(pair){
         var row=findP(m[0],m[1],m[2],pair[0]);
@@ -6607,14 +6628,27 @@ function dhParseKhpiMonthly(wb){
   if(wv){ var V=XLSX.utils.sheet_to_json(wv,{header:1,raw:true,defval:null});
     // 헤더 R3(idx2), 지역 col2(idx1), 주택 col1(idx0), 값 col4~(idx3~)
     var vhdr=V[2]||[]; var vcols=[]; for(var c3=3;c3<vhdr.length;c3++){ var d3=dhYmd(vhdr[c3]); if(d3) vcols.push({c:c3,d:d3}); }
-    var vmap={'서울강북':'강북','서울강남':'강남','경기':'경기','인천':'인천'};
+    var vmap={'서울강북':'강북','서울강남':'강남','경기':'경기','인천':'인천','서울':'서울'};
     function findV(reg){ for(var i=3;i<V.length;i++){ if(V[i]&&V[i][0]==='아파트'&&V[i][1]===reg) return V[i]; } return null; }
     out.volDates=vcols.map(function(x){return x.d;});
-    DH_REGIONS.forEach(function(rg){
+    DH_ALL_REGIONS().forEach(function(rg){
+      if(!out.regions[rg]) return;
       var vr=vmap[rg]; if(!vr){ out.regions[rg].vol=[]; return; }
       var row=findV(vr);
       out.regions[rg].vol = row? vcols.map(function(x){ return dhNum(row[x.c]); }) : [];
     });
+    // 서울동남권 거래량은 미공표 → 4개 자치구(서초·강남·송파·강동) 합으로 산출
+    if(out.regions['서울동남']){
+      var gu4=['서초구','강남구','송파구','강동구'].map(findV).filter(Boolean);
+      out.regions['서울동남'].vol = gu4.length===4
+        ? vcols.map(function(x){ var t=0,ok=false;
+            gu4.forEach(function(r){ var v=dhNum(r[x.c]); if(v!=null){ t+=v; ok=true; } });
+            return ok?t:null; })
+        : [];
+    }
+    // 거래량은 '양'이 중요하므로 서울 전체(=강북+강남)도 함께 보관
+    var srow=findV('서울');
+    if(srow) out.volSeoul = vcols.map(function(x){ return dhNum(srow[x.c]); });
   }
   return out;
 }
@@ -6629,6 +6663,7 @@ function dhParseKhpiWeekly(wb){
   out.dates=dcols.map(function(x){return x.d;});
   // 주간: col2(idx1)=시도, col3(idx2)=하부권역, col4(idx3)=시군구, col7(idx6)=통계량
   var map={ '서울강북':['11.서울','01.강북권역',null],'서울강남':['11.서울','02.강남권역',null],
+    '서울':['11.서울',null,null],'서울동남':['11.서울','07.동남권',null],
     '경기':['19.경기',null,null],'인천':['14.인천',null,null],'연수구':['14.인천',null,'연수'] };
   function findRow(sido,hb,sgg,stat){
     for(var i=1;i<A.length;i++){ var r=A[i];
@@ -6638,7 +6673,7 @@ function dhParseKhpiWeekly(wb){
     }
     return null;
   }
-  DH_REGIONS.forEach(function(rg){ var m=map[rg]; var o={sale:[],jeonse:[],midSale:[],midJeonse:[],vol:[]};
+  DH_ALL_REGIONS().forEach(function(rg){ var m=map[rg]; if(!m) return; var o={sale:[],jeonse:[],midSale:[],midJeonse:[],vol:[]};
     var rs=findRow(m[0],m[1],m[2],'매매지수'); var rj=findRow(m[0],m[1],m[2],'전세지수');
     o.sale=dcols.map(function(x){ return rs?dhNum(rs[x.c]):null; });
     o.jeonse=dcols.map(function(x){ return rj?dhNum(rj[x.c]):null; });
@@ -6730,15 +6765,17 @@ function dhParseRealtx(wb){
     return arr;
   }
   // 지역 컬럼도 이름으로 찾는다 (열 순서가 바뀌어도 안전). 못 찾으면 기존 위치로 폴백.
-  var LABEL={ '서울강북':'동북권', '서울강남':'동남권', '경기':'경기', '인천':'인천', '연수구':null };
-  var FALLBACK={ '서울강북':6, '서울강남':7, '경기':17, '인천':12, '연수구':null };
+  var LABEL={ '서울강북':'동북권', '서울강남':'동남권', '경기':'경기', '인천':'인천', '연수구':null,
+              '서울':'서울', '서울동남':'동남권' };
+  var FALLBACK={ '서울강북':6, '서울강남':7, '경기':17, '인천':12, '연수구':null,
+              '서울':4, '서울동남':7 };
   function colOf(sh,rg){
     if(!sh) return null;
     var lb=LABEL[rg]; if(!lb) return null;
     var c=sh.cols[lb];
     return (c===undefined)? FALLBACK[rg] : c;
   }
-  DH_REGIONS.forEach(function(rg){
+  DH_ALL_REGIONS().forEach(function(rg){
     out.regions[rg]={
       sale:      series(S.sale,      colOf(S.sale,rg)),
       jeonse:    series(S.jeonse,    colOf(S.jeonse,rg)),
@@ -6816,8 +6853,10 @@ function dhMapSvg(ds,regions){
   function block(rg,x,y,w,h,rx){
     if(!S[rg]) return '';
     var b=dhBand(S[rg].mom), cx=x+w/2, cy=y+h/2;
+    var cnt=(DH_RG_CNT[G_DH.stat==='rt'?'rt':'khpi'][rg]||'');
     return '<rect x="'+x+'" y="'+y+'" width="'+w+'" height="'+h+'" rx="'+(rx||10)+'" fill="'+b.bg+'" stroke="#ffffff" stroke-width="2.5"/>'
-      +'<text x="'+cx+'" y="'+(cy-6)+'" text-anchor="middle" font-size="12.5" font-weight="700" fill="'+b.fg+'">'+rg+'</text>'
+      +'<text x="'+cx+'" y="'+(cy-6)+'" text-anchor="middle" font-size="12.5" font-weight="700" fill="'+b.fg+'">'+rg
+        +(cnt?'<tspan font-size="9.5" font-weight="400"> ('+cnt+')</tspan>':'')+'</text>'
       +'<text x="'+cx+'" y="'+(cy+15)+'" text-anchor="middle" font-size="16" font-weight="700" fill="'+b.fg+'">'
       +dhArrow(S[rg].mom)+' '+(S[rg].mom==null?'-':Math.abs(S[rg].mom).toFixed(2)+'%')+'</text>';
   }
@@ -6852,7 +6891,7 @@ function dhKpiTop(ds,cyc,regions,isRt){
     var s=dhStats(ds,rg,'sale'), j=dhStats(ds,rg,'jeonse');
     var b=dhBand(s.mom);
     return '<div style="flex:1 1 150px;min-width:145px;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:10px 12px">'
-      +'<div style="font-size:11px;font-weight:700;color:var(--text2);margin-bottom:6px">'+rg+'</div>'
+      +'<div style="font-size:11px;font-weight:700;color:var(--text2);margin-bottom:6px">'+dhRgLabel(rg,isRt)+'</div>'
       +'<div style="display:flex;align-items:baseline;gap:6px">'
         +'<span style="font-size:22px;font-weight:700;font-family:var(--font2);color:var(--text)">'+(s.idx==null?'-':s.idx.toFixed(1))+'</span>'
         +'<span style="font-size:9.5px;color:var(--text3)">매매지수</span></div>'
@@ -6871,7 +6910,7 @@ function dhKpiTop(ds,cyc,regions,isRt){
     return '<td class="num" style="color:'+c+';font-weight:600;'+(extra||'')+'">'+dhSign(v)+'</td>'; }
   var trs=regions.map(function(rg){
     var s=dhStats(ds,rg,'sale'), j=dhStats(ds,rg,'jeonse');
-    return '<tr><td style="font-weight:600;text-align:left">'+rg+'</td>'
+    return '<tr><td style="font-weight:600;text-align:left">'+dhRgLabel(rg,isRt)+'</td>'
       +'<td class="num">'+(s.idx==null?'-':s.idx.toFixed(1))+'</td>'+cols.map(function(c){return cell(s[c[0]]);}).join('')
       +'<td class="num" style="'+DIV+'">'+(j.idx==null?'-':j.idx.toFixed(1))+'</td>'+cols.map(function(c){return cell(j[c[0]]);}).join('')
       +'</tr>';
@@ -7261,10 +7300,14 @@ function dhRenderCore(){
   var isRt=(G_DH.stat==='rt');
 
   // 지역 라벨: 두 통계 모두 '서울강북 / 서울강남'으로 통일 표기
-  function rgLabel(rg){ return rg; }
+  function rgLabel(rg){ return dhRgLabel(rg,isRt); }
   // 실거래는 연수구(시군구) 미제공 → 지역 목록에서 제외
   var regions = isRt ? DH_REGIONS.filter(function(r){ return r!=='연수구'; }) : DH_REGIONS.slice();
   G_DH._activeRegions = regions;
+  // 하단 표·그래프는 '서울 전체 / 서울동남권 4구' 중심으로 본다 (개황 KPI는 위 목록 유지)
+  var secRegions = (isRt ? DH_SEC_REGIONS_RT : DH_SEC_REGIONS_KHPI)
+    .filter(function(r){ var o=ds.regions[r]; return o && (dhLastIdx(dhToArr(o.sale))>=0 || dhLastIdx(dhToArr(o.jeonse))>=0); });
+  if(!secRegions.length) secRegions = regions;   // 예전 저장 데이터 대비 폴백
 
   var html='';
   // 안내
@@ -7302,13 +7345,13 @@ function dhRenderCore(){
 
   // 섹션1: 매매·전세 지수 (지수 차트 + 변동률 차트)
   var IDX=isRt?'실거래가격지수':'가격지수';   // 실거래 탭은 용어를 '실거래가격지수'로 통일
-  html+=dhSection('🏢 아파트 매매 '+IDX, ds,dates,cyc,'sale',chgLabel,isRt,rgLabel,false,regions);
-  html+=dhSection('🏠 아파트 전세 '+IDX, ds,dates,cyc,'jeonse',chgLabel,isRt,rgLabel,false,regions);
+  html+=dhSection('🏢 아파트 매매 '+IDX, ds,dates,cyc,'sale',chgLabel,isRt,rgLabel,false,secRegions);
+  html+=dhSection('🏠 아파트 전세 '+IDX, ds,dates,cyc,'jeonse',chgLabel,isRt,rgLabel,false,secRegions);
 
   // 섹션2: 중위가격 (월간만) — 평당가, 변동률 차트 없음
   if(cyc==='M'){
-    html+=dhSection('💰 아파트 중위 매매가격 (평당)', ds,dates,cyc,'midSale',chgLabel,isRt,rgLabel,true,regions);
-    html+=dhSection('💰 아파트 중위 전세가격 (평당)', ds,dates,cyc,'midJeonse',chgLabel,isRt,rgLabel,true,regions);
+    html+=dhSection('💰 아파트 중위 매매가격 (평당)', ds,dates,cyc,'midSale',chgLabel,isRt,rgLabel,true,secRegions);
+    html+=dhSection('💰 아파트 중위 전세가격 (평당)', ds,dates,cyc,'midJeonse',chgLabel,isRt,rgLabel,true,secRegions);
   }
   // 섹션3: 거래량 (KHPI 월간만)
   if(!isRt && cyc==='M'){
@@ -7319,7 +7362,7 @@ function dhRenderCore(){
     html+=dhIncheonSection(ds,cyc);
   }
   body.innerHTML=html;
-  dhDrawCharts(ds,dates,cyc,regions);
+  dhDrawCharts(ds,dates,cyc,secRegions);
   if(!isRt) dhDrawIncheon(ds,cyc);
 }
 
@@ -7362,23 +7405,33 @@ function dhPyeong(v){ if(v==null) return '-'; return Math.round(v).toLocaleStrin
 // 거래량 섹션
 function dhVolSection(ds){
   var vdates=(ds.volDates||[]).slice(-13);
-  var regs=['서울강북','서울강남','경기','인천'];
-  var rows=regs.map(function(rg){
-    var arr=dhToArr((ds.regions[rg]||{}).vol); var slice=arr.slice(-vdates.length);
+  var regs=DH_SEC_REGIONS_KHPI;
+  var series=[];
+  regs.forEach(function(rg){
+    var arr=dhToArr((ds.regions[rg]||{}).vol);
+    if(dhLastIdx(arr)<0) return;                      // 연수구 등 미제공 지역은 생략
+    series.push({name:dhRgLabel(rg,false), arr:arr, strong:(rg==='서울')});
+  });
+  if(!series.length && ds.volSeoul && dhLastIdx(dhToArr(ds.volSeoul))>=0)
+    series.push({name:'서울 전체', arr:dhToArr(ds.volSeoul), strong:true});
+  var rows=series.map(function(sr){
+    var rg=sr.name;
+    var arr=sr.arr; var slice=arr.slice(-vdates.length);
     var base=arr.length-vdates.length;
     var vcells=slice.map(function(v){ return '<td class="num">'+(v==null?'-':Math.round(v).toLocaleString())+'</td>'; }).join('');
     // 지수 표와 동일하게 값 아래에 전월비 증감률(%) 행을 붙인다
     var ccells=slice.map(function(v,i){ var ch=dhChg(arr,base+i);
       var col=ch==null?'var(--text3)':(ch>0?'#e03131':(ch<0?'#1971c2':'var(--text3)'));
       return '<td class="num" style="color:'+col+';font-size:10px">'+(ch==null?'-':(ch>0?'+':'')+ch.toFixed(1))+'</td>'; }).join('');
-    return '<tr><td rowspan="2" style="font-weight:600;vertical-align:middle">'+rg+'</td>'
-      +'<td style="font-size:10px;color:var(--text3)">건수</td>'+vcells+'</tr>'
-      +'<tr><td style="font-size:10px;color:var(--text3)">전월비%</td>'+ccells+'</tr>';
+    var bg=sr.strong?'background:var(--bg2);':'';
+    return '<tr><td rowspan="2" style="font-weight:'+(sr.strong?'700':'600')+';vertical-align:middle;'+bg+'">'+rg+'</td>'
+      +'<td style="font-size:10px;color:var(--text3);'+bg+'">건수</td>'+vcells+'</tr>'
+      +'<tr><td style="font-size:10px;color:var(--text3);'+bg+'">전월비%</td>'+ccells+'</tr>';
   }).join('');
   var dhead=vdates.map(function(d){ return '<th style="font-size:10px;text-align:right">'+dhFmtDate(d,'M')+'</th>'; }).join('');
   return '<div class="card" style="padding:14px;margin-bottom:12px">'
     +'<div style="font-size:13px;font-weight:700;margin-bottom:4px">📊 아파트 매매 거래량 (건)</div>'
-    +'<div style="font-size:11px;color:var(--yellow);margin-bottom:10px">※ 연수구 거래량은 미제공 (시도 단위까지). 최신월은 신고 지연으로 잠정치</div>'
+    +'<div style="font-size:11px;color:var(--yellow);margin-bottom:10px">※ 서울동남권은 미공표라 서초·강남·송파·강동 4개구 합으로 산출 · 연수구 거래량은 미제공(시도 단위까지) · 최신월은 신고 지연으로 잠정치</div>'
     +'<div class="table-scroll" style="overflow-x:auto;margin-bottom:12px"><table class="data-table" style="font-size:11px"><thead><tr><th>지역</th><th></th>'+dhead+'</tr></thead><tbody>'+rows+'</tbody></table></div>'
     +'<div class="chart-wrap" style="height:220px"><canvas id="dh-ch-vol"></canvas></div></div>';
 }
@@ -7444,7 +7497,8 @@ function dhDrawCharts(ds,dates,cyc,regions){
   Object.keys(_dhCharts).forEach(function(k){ try{_dhCharts[k].destroy();}catch(e){} });
   _dhCharts={};
   var lbl=(getComputedStyle(document.documentElement).getPropertyValue('--text2')||'#4a5568').trim();
-  var colors={'서울강북':'#e03131','서울강남':'#f76707','경기':'#2f9e44','인천':'#1971c2','연수구':'#7048e8'};
+  var colors={'서울강북':'#e03131','서울강남':'#f76707','경기':'#2f9e44','인천':'#1971c2','연수구':'#7048e8',
+    '서울':'#2b3648','서울동남':'#c92a4a'};
   var labels=dates.map(function(d){ return dhFmtDate(d,cyc); });
   var isRt=(G_DH.stat==='rt');
   // 범례도 표에 맞춰 '서울강북 / 서울강남'으로 통일
@@ -7487,9 +7541,12 @@ function dhDrawCharts(ds,dates,cyc,regions){
   if(!isRt && cyc==='M'){
     var vc=document.getElementById('dh-ch-vol');
     if(vc){ var vdates=(ds.volDates||[]).slice(-13); var vlabels=vdates.map(function(d){return dhFmtDate(d,'M');});
-      var regs=['서울강북','서울강남','경기','인천'];
-      _dhCharts.vol=new Chart(vc,{type:'bar',data:{labels:vlabels,datasets:regs.map(function(rg){
-        return {label:rg,data:((ds.regions[rg]||{}).vol||[]).slice(-vdates.length),backgroundColor:colors[rg]}; })},
+      var vsets=[];
+      DH_SEC_REGIONS_KHPI.forEach(function(rg){
+        var arr=dhToArr((ds.regions[rg]||{}).vol);
+        if(dhLastIdx(arr)<0) return;
+        vsets.push({label:dhRgLabel(rg,false),data:arr.slice(-vdates.length),backgroundColor:colors[rg]||'#868e96'}); });
+      _dhCharts.vol=new Chart(vc,{type:'bar',data:{labels:vlabels,datasets:vsets},
         plugins:[dhBarLabel(function(v){return Math.round(v).toLocaleString();})],
         options:{responsive:true,maintainAspectRatio:false,layout:{padding:{top:18}},
           plugins:{legend:{labels:{color:lbl,font:{size:dhF(DH_FS.legend)},boxWidth:dhF(DH_FS.box)}}},
@@ -7582,6 +7639,7 @@ function dhReviveDates(ds){
     var list=Array.isArray(g)?g:Object.keys(g).map(function(k){ return g[k]; });
     ds.incheonGu=list.filter(Boolean).map(function(x){ return { name:x.name, data:dhToArr(x.data,L) }; });
   }
+  if(ds.volSeoul) ds.volSeoul=dhToArr(ds.volSeoul,(ds.volDates||[]).length);
   // KHPI 전국 시도 합산
   if(ds.sidoAll&&typeof ds.sidoAll==='object'){
     Object.keys(ds.sidoAll).forEach(function(nm){
