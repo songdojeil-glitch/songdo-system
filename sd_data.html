@@ -6311,7 +6311,8 @@ function initDanjiImageTab(){
 var G_DH = { stat:'khpi', cycle:'M',
   khpi_m:null, khpi_w:null, rt:null,   // 파싱 결과 저장
   updated:{} };
-var DH_REGIONS=['서울강북','서울강남','경기','인천','연수구'];
+var DH_REGIONS=['서울','서울동남','경기','인천','연수구'];
+var DH_REGIONS_LEGACY=['서울강북','서울강남'];   // 파서 호환용(화면에는 미표시)
 // 서울 권역이 담는 자치구 수 — 두 통계가 서로 다르다.
 //  · 주택가격동향조사: 강북권역 = 도심3 + 동북8 + 서북3 = 14개구 / 강남권역 = 서남7 + 동남4 = 11개구
 //  · 실거래가격지수 : 강북권역·강남권역 미공표 → 동북권 8개구 / 동남권 4개구를 사용
@@ -6319,12 +6320,15 @@ var DH_RG_CNT={ khpi:{'서울강북':'14개구','서울강남':'11개구'},
                 rt:  {'서울강북':'동북권 8개구','서울강남':'동남권 4개구'} };
 // 표·그래프(하단 섹션) 전용 지역 — 개황 KPI는 DH_REGIONS를 그대로 쓴다.
 // 서울 전체 + 서울 동남권 4개구(서초·강남·송파·강동) 중심으로 본다.
-var DH_SEC_REGIONS_KHPI=['서울','서울동남','인천','연수구'];
-var DH_SEC_REGIONS_RT  =['서울','서울동남','인천'];
-var DH_SEC_LABEL={'서울':'서울 전체','서울동남':'서울동남권(4개구)'};
-function DH_ALL_REGIONS(){   // 파서가 만들어야 할 전체 시리즈 (KPI용 + 표/그래프용)
+var DH_SEC_REGIONS_KHPI=['서울','서울동남','경기','인천','연수구'];
+var DH_SEC_REGIONS_RT  =['서울','서울동남','경기','인천'];
+// 서울동남권(서초·강남·송파·강동)은 화면에서 '서울강남(4개구)'로 통일 표기
+var DH_SEC_LABEL={'서울':'서울 전체','서울동남':'서울강남(4개구)'};
+var DH_SEC_SHORT={'서울':'서울 전체','서울동남':'서울강남'};   // 지도 등 좁은 칸용
+function DH_ALL_REGIONS(){   // 파서가 만들어야 할 전체 시리즈
   var out=DH_REGIONS.slice();
-  DH_SEC_REGIONS_KHPI.concat(DH_SEC_REGIONS_RT).forEach(function(r){ if(out.indexOf(r)<0) out.push(r); });
+  DH_REGIONS_LEGACY.concat(DH_SEC_REGIONS_KHPI, DH_SEC_REGIONS_RT)
+    .forEach(function(r){ if(out.indexOf(r)<0) out.push(r); });
   return out;
 }
 function dhRgLabel(rg,isRt){
@@ -6853,9 +6857,10 @@ function dhMapSvg(ds,regions){
   function block(rg,x,y,w,h,rx){
     if(!S[rg]) return '';
     var b=dhBand(S[rg].mom), cx=x+w/2, cy=y+h/2;
-    var cnt=(DH_RG_CNT[G_DH.stat==='rt'?'rt':'khpi'][rg]||'');
+    var nm=DH_SEC_SHORT[rg]||rg;
+    var cnt=(rg==='서울동남')?'4개구':(DH_RG_CNT[G_DH.stat==='rt'?'rt':'khpi'][rg]||'');
     return '<rect x="'+x+'" y="'+y+'" width="'+w+'" height="'+h+'" rx="'+(rx||10)+'" fill="'+b.bg+'" stroke="#ffffff" stroke-width="2.5"/>'
-      +'<text x="'+cx+'" y="'+(cy-6)+'" text-anchor="middle" font-size="12.5" font-weight="700" fill="'+b.fg+'">'+rg
+      +'<text x="'+cx+'" y="'+(cy-6)+'" text-anchor="middle" font-size="12.5" font-weight="700" fill="'+b.fg+'">'+nm
         +(cnt?'<tspan font-size="9.5" font-weight="400"> ('+cnt+')</tspan>':'')+'</text>'
       +'<text x="'+cx+'" y="'+(cy+15)+'" text-anchor="middle" font-size="16" font-weight="700" fill="'+b.fg+'">'
       +dhArrow(S[rg].mom)+' '+(S[rg].mom==null?'-':Math.abs(S[rg].mom).toFixed(2)+'%')+'</text>';
@@ -6866,8 +6871,8 @@ function dhMapSvg(ds,regions){
     +'<text x="440" y="46" text-anchor="middle" font-size="12.5" font-weight="700" fill="'+gyeonggi.fg+'">경기</text>'
     +'<text x="440" y="67" text-anchor="middle" font-size="16" font-weight="700" fill="'+gyeonggi.fg+'">'
       +dhArrow(S['경기']?S['경기'].mom:null)+' '+((S['경기']&&S['경기'].mom!=null)?Math.abs(S['경기'].mom).toFixed(2)+'%':'-')+'</text>'
-    +block('서울강북',225,42,175,92)
-    +block('서울강남',225,140,175,88)
+    +block('서울',225,42,175,92)
+    +block('서울동남',225,140,175,88)
     +block('인천',48,104,155,96)
     +block('연수구',86,206,117,60)
     +'</svg>';
@@ -7302,9 +7307,11 @@ function dhRenderCore(){
   // 지역 라벨: 두 통계 모두 '서울강북 / 서울강남'으로 통일 표기
   function rgLabel(rg){ return dhRgLabel(rg,isRt); }
   // 실거래는 연수구(시군구) 미제공 → 지역 목록에서 제외
-  var regions = isRt ? DH_REGIONS.filter(function(r){ return r!=='연수구'; }) : DH_REGIONS.slice();
+  // 개황 KPI·지도·요약표와 하단 표·그래프 모두 동일 지역 구성을 쓴다
+  var regions = (isRt ? DH_SEC_REGIONS_RT : DH_SEC_REGIONS_KHPI)
+    .filter(function(r){ var o=ds.regions[r]; return o && (dhLastIdx(dhToArr(o.sale))>=0 || dhLastIdx(dhToArr(o.jeonse))>=0); });
+  if(!regions.length) regions = (isRt ? DH_SEC_REGIONS_RT : DH_SEC_REGIONS_KHPI).slice();
   G_DH._activeRegions = regions;
-  // 하단 표·그래프는 '서울 전체 / 서울동남권 4구' 중심으로 본다 (개황 KPI는 위 목록 유지)
   var secRegions = (isRt ? DH_SEC_REGIONS_RT : DH_SEC_REGIONS_KHPI)
     .filter(function(r){ var o=ds.regions[r]; return o && (dhLastIdx(dhToArr(o.sale))>=0 || dhLastIdx(dhToArr(o.jeonse))>=0); });
   if(!secRegions.length) secRegions = regions;   // 예전 저장 데이터 대비 폴백
@@ -7431,7 +7438,7 @@ function dhVolSection(ds){
   var dhead=vdates.map(function(d){ return '<th style="font-size:10px;text-align:right">'+dhFmtDate(d,'M')+'</th>'; }).join('');
   return '<div class="card" style="padding:14px;margin-bottom:12px">'
     +'<div style="font-size:13px;font-weight:700;margin-bottom:4px">📊 아파트 매매 거래량 (건)</div>'
-    +'<div style="font-size:11px;color:var(--yellow);margin-bottom:10px">※ 서울동남권은 미공표라 서초·강남·송파·강동 4개구 합으로 산출 · 연수구 거래량은 미제공(시도 단위까지) · 최신월은 신고 지연으로 잠정치</div>'
+    +'<div style="font-size:11px;color:var(--yellow);margin-bottom:10px">※ 서울강남(4개구)은 거래량 미공표라 서초·강남·송파·강동 합으로 산출 · 연수구 거래량은 미제공(시도 단위까지) · 최신월은 신고 지연으로 잠정치</div>'
     +'<div class="table-scroll" style="overflow-x:auto;margin-bottom:12px"><table class="data-table" style="font-size:11px"><thead><tr><th>지역</th><th></th>'+dhead+'</tr></thead><tbody>'+rows+'</tbody></table></div>'
     +'<div class="chart-wrap" style="height:220px"><canvas id="dh-ch-vol"></canvas></div></div>';
 }
