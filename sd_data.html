@@ -218,6 +218,22 @@ body.zoom-mode .chart-wrap canvas {
   font-size: 14px; cursor: pointer; display: flex;
   align-items: center; justify-content: center; z-index: 10;
 }
+/* ── 상세 모달 인쇄 버튼 (우측 상단) */
+.modal-print-btn {
+  background: rgba(14,116,144,.10);
+  border: 1px solid var(--accent);
+  color: var(--accent) !important;
+  border-radius: 8px;
+  height: 30px; padding: 0 10px;
+  font-size: 12px; font-weight: 700; font-family: var(--font);
+  cursor: pointer; flex-shrink: 0;
+  display: inline-flex; align-items: center; justify-content: center; gap: 4px;
+  white-space: nowrap; line-height: 1;
+}
+.modal-print-btn:hover { background: var(--accent); color: #fff !important; }
+/* 정적 모달(우측 상단 고정형)에서 ✕ 버튼 좌측에 배치 */
+.modal-print-btn.pin-tr { position: absolute; top: 12px; right: 58px; z-index: 11; }
+.modal-print-btn.pin-tr-lg { position: absolute; top: 14px; right: 62px; z-index: 11; }
 .zoomable {
   cursor: zoom-in;
   transition: box-shadow .2s;
@@ -725,6 +741,8 @@ tr.naver-fav>td:first-child{border-left:3px solid #b8860b;}
   <!-- 단지 상세 모달 -->
   <div id="hs-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:9200;overflow-y:auto;padding:16px" onclick="hsCloseModal(event)">
     <div style="max-width:1650px;width:96vw;margin:0 auto;background:var(--bg2);border:2px solid var(--accent);border-radius:16px;padding:36px;position:relative" onclick="event.stopPropagation()">
+      <button type="button" class="modal-print-btn pin-tr-lg no-print" title="이 상세 화면 인쇄"
+        onclick="event.stopPropagation();printModal('hs-modal-content', window._hsPrintTitle||'단지 상세')">🖨️ 인쇄</button>
       <button onclick="hsCloseModal()" style="position:absolute;top:12px;right:16px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:50%;width:34px;height:34px;cursor:pointer;font-size:16px">✕</button>
       <div id="hs-modal-content"></div>
     </div>
@@ -1341,6 +1359,8 @@ tr.naver-fav>td:first-child{border-left:3px solid #b8860b;}
   <!-- 단지 상세 패널 (Lightbox) -->
   <div id="t2-detail-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:9100;overflow-y:auto;padding:16px" onclick="closeT2Detail(event)">
     <div id="t2-detail-inner" style="max-width:1440px;margin:0 auto;background:var(--bg2);border:2px solid var(--accent);border-radius:16px;padding:32px;position:relative" onclick="event.stopPropagation()">
+      <button type="button" class="modal-print-btn pin-tr no-print" title="이 상세 화면 인쇄"
+        onclick="event.stopPropagation();printModal('t2-detail-content', window._t2PrintTitle||'단지 상세')">🖨️ 인쇄</button>
       <button onclick="closeT2Detail()" style="position:absolute;top:12px;right:16px;background:rgba(0,0,0,.07);border:1px solid rgba(0,0,0,.12);color:#fff;border-radius:50%;width:28px;height:28px;cursor:pointer;font-size:14px">✕</button>
       <div id="t2-detail-content"></div>
     </div>
@@ -4186,10 +4206,10 @@ function printChartScale(){
   return Math.max(1.2, Math.min(2.4, w/PRINT_W));
 }
 // 활성 탭의 모든 Chart 인스턴스 수집 (탭별 변수에 흩어져 있어도 캔버스로 역참조)
-function _pcCharts(){
+function _pcCharts(scopeRoot){
   var out=[];
   if(typeof Chart==='undefined'||typeof Chart.getChart!=='function') return out;
-  var root=document.querySelector('.tc.on')||document;
+  var root=scopeRoot||document.querySelector('.tc.on')||document;
   Array.prototype.forEach.call(root.querySelectorAll('canvas'),function(cv){
     var c=null; try{ c=Chart.getChart(cv); }catch(e){}
     if(c) out.push(c);
@@ -4197,9 +4217,9 @@ function _pcCharts(){
   return out;
 }
 // 축·범례 폰트 일괄 확대/복원 (수치 라벨은 pxF()가 자동 반영)
-function applyPrintChartScale(s){
+function applyPrintChartScale(s, scopeRoot){
   PRINT_CHART_SCALE = s;
-  _pcCharts().forEach(function(c){
+  _pcCharts(scopeRoot).forEach(function(c){
     try{
       var o=c.options||{};
       var lg=o.plugins&&o.plugins.legend&&o.plugins.legend.labels;
@@ -4296,6 +4316,143 @@ function printCurrentTab(){
     // afterprint 미지원 브라우저 대비 폴백
     setTimeout(_cleanup, 1000);
   }, 320);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   상세 모달 인쇄 (공통)
+   - 모달 내용을 복제해 새 창에 A4 가로로 출력
+   - 캔버스(차트)는 PNG 스냅샷으로 치환, 입력창은 값 텍스트로 치환
+   ══════════════════════════════════════════════════════════════ */
+
+// 모달 헤더에 넣을 🖨️ 인쇄 버튼 HTML 생성
+//   boxId : 인쇄할 콘텐츠 컨테이너 id
+//   title : 인쇄물 제목 (동적 문자열 가능)
+function pmBtn(boxId, title){
+  var t=String(title==null?'상세':title)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+  return '<button type="button" class="modal-print-btn no-print" title="이 상세 화면 인쇄" '+
+    'onclick="event.stopPropagation();printModal(\''+boxId+'\',\''+t+'\')">🖨️ 인쇄</button>';
+}
+
+// 실제 인쇄 실행
+function printModal(target, title){
+  var box=(typeof target==='string')?document.getElementById(target):target;
+  if(!box){ alert('인쇄할 내용이 없습니다.'); return; }
+  var ttl=String(title||'상세 화면');
+  var now=new Date();
+  var ds=now.getFullYear()+'.'+String(now.getMonth()+1).padStart(2,'0')+'.'+String(now.getDate()).padStart(2,'0')
+        +' '+String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0');
+
+  // ① 모달 내부 차트만 인쇄용 배율로 확대 (축 눈금·수치 라벨 가독성)
+  var bw=box.clientWidth||1000;
+  var pmScale=Math.max(1, Math.min(2.4, bw/1000));
+  var scaled=false;
+  try{ applyPrintChartScale(pmScale, box); scaled=true; }catch(e){}
+  var _restore=function(){ if(scaled){ try{ applyPrintChartScale(1, box); }catch(e){} scaled=false; } };
+
+  setTimeout(function(){
+    try{
+      // ② 캔버스 → PNG 스냅샷 (원본 순서 보존)
+      var srcCans=box.querySelectorAll('canvas');
+      var snaps=[];
+      Array.prototype.forEach.call(srcCans,function(cv){
+        var d=''; try{ d=cv.toDataURL('image/png',1.0); }catch(e){}
+        snaps.push(d);
+      });
+      // ③ 입력 요소 현재값 수집
+      var srcFields=box.querySelectorAll('input,select,textarea');
+      var vals=[];
+      Array.prototype.forEach.call(srcFields,function(el){
+        var v='';
+        if(el.tagName==='SELECT') v=(el.options[el.selectedIndex]||{}).text||'';
+        else if(el.type==='checkbox'||el.type==='radio') v=el.checked?'☑':'☐';
+        else v=el.value||'';
+        vals.push(v);
+      });
+
+      // ④ 복제 후 치환
+      var clone=box.cloneNode(true);
+      Array.prototype.forEach.call(clone.querySelectorAll('canvas'),function(cv,i){
+        if(snaps[i]){
+          var img=document.createElement('img');
+          img.src=snaps[i];
+          img.setAttribute('style','width:100%;height:auto;display:block');
+          if(cv.parentNode) cv.parentNode.replaceChild(img,cv);
+        } else if(cv.parentNode){ cv.parentNode.removeChild(cv); }
+      });
+      Array.prototype.forEach.call(clone.querySelectorAll('input,select,textarea'),function(el,i){
+        var sp=document.createElement('span');
+        sp.textContent=vals[i]||'';
+        sp.setAttribute('style','display:inline-block;font-weight:600;padding:1px 2px');
+        if(el.parentNode) el.parentNode.replaceChild(sp,el);
+      });
+      // 버튼·인쇄 제외 요소 제거
+      Array.prototype.forEach.call(clone.querySelectorAll('button,.no-print,.zoom-close-btn,.col-resizer'),function(el){
+        if(el.parentNode) el.parentNode.removeChild(el);
+      });
+      // 스크롤 제한 해제 (잘림 방지)
+      Array.prototype.forEach.call(clone.querySelectorAll('*'),function(el){
+        if(!el.style) return;
+        if(el.style.maxHeight) el.style.maxHeight='none';
+        if(el.style.height && /vh|px/.test(el.style.height) && el.querySelector && el.querySelector('img')) el.style.height='auto';
+        if(el.style.overflow) el.style.overflow='visible';
+        if(el.style.overflowY) el.style.overflowY='visible';
+        if(el.style.overflowX) el.style.overflowX='visible';
+      });
+
+      // ⑤ 인쇄 창 생성
+      var w=window.open('','_blank');
+      if(!w){ alert('팝업이 차단되어 인쇄 창을 열 수 없습니다.\n브라우저 주소창의 팝업 차단을 해제한 뒤 다시 시도해 주세요.'); _restore(); return; }
+      w.document.open();
+      w.document.write(
+        '<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8">'+
+        '<title>'+ttl.replace(/[<>]/g,'')+'</title>'+
+        '<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&display=swap" rel="stylesheet">'+
+        '<style>'+_pmPrintCss()+'</style></head><body>'+
+        '<div class="pm-head">'+
+          '<div class="pm-title">송도제일 데이터관리 시스템 &nbsp;|&nbsp; '+
+            ttl.replace(/&/g,'&amp;').replace(/</g,'&lt;')+'</div>'+
+          '<div class="pm-meta">'+ds+' 출력</div>'+
+        '</div>'+
+        '<div class="pm-body">'+clone.innerHTML+'</div>'+
+        '</body></html>');
+      w.document.close();
+      w.focus();
+      // 이미지·웹폰트 로드 여유 후 인쇄
+      setTimeout(function(){ try{ w.print(); }catch(e){} }, 700);
+    }catch(err){
+      alert('인쇄 준비 중 오류가 발생했습니다: '+err.message);
+    }
+    _restore();
+  }, 260);
+}
+
+// 인쇄 창 전용 스타일 (본 문서의 CSS 변수를 그대로 이식)
+function _pmPrintCss(){
+  return ''+
+  '@page{size:A4 landscape;margin:10mm}'+
+  ':root{--bg:#fff;--bg2:#fff;--bg3:#fafbfc;--card:#fff;--border:#c8ced8;'+
+  '--accent:#0e7490;--accent2:#d9480f;--accent3:#087f5b;--accent4:#8a6408;'+
+  '--text:#1a2332;--text2:#3d4a5c;--text3:#5a6a82;--red:#c92a4a;--green:#087f5b;'+
+  '--yellow:#8a6408;--blue:#0e7490;--purple:#6d28d9;--font:"Noto Sans KR",sans-serif}'+
+  '*{margin:0;padding:0;box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}'+
+  'body{font-family:"Noto Sans KR",sans-serif;background:#fff;color:#1a2332;font-size:11px;padding:0}'+
+  '.pm-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;'+
+  'border-bottom:2px solid #0e7490;padding-bottom:6px;margin-bottom:12px}'+
+  '.pm-title{font-size:15px;font-weight:700;color:#0e7490}'+
+  '.pm-meta{font-size:10px;color:#666;white-space:nowrap}'+
+  '.pm-body{width:100%}'+
+  '.pm-body *{max-height:none!important;overflow:visible!important;box-shadow:none!important}'+
+  'img{max-width:100%;height:auto}'+
+  'table{border-collapse:collapse;width:100%;table-layout:auto}'+
+  'th{background:#eef1f5!important;color:#000!important;border:0.5pt solid #999;padding:3px 5px;font-size:9.5px}'+
+  'td{border:0.5pt solid #ccc;padding:3px 5px;font-size:9.5px;white-space:normal!important;'+
+  'text-overflow:clip!important;max-width:none!important}'+
+  'tr{page-break-inside:avoid}'+
+  'thead{display:table-header-group}'+
+  '.badge{display:inline-block;padding:2px 7px;border-radius:5px;font-size:10px;font-weight:700}'+
+  '.pm-body>div{page-break-inside:auto}';
 }
 
 function sw(n){
@@ -5973,6 +6130,7 @@ function hsRenderTable(){
 function hsOpenModal(nm){
   var d=G_HS.danji.filter(function(x){ return x.단지명===nm; })[0];
   if(!d) return;
+  window._hsPrintTitle=String(nm||'단지')+' 단지 상세 (주택공급현황)';
   var pct=function(v){ return v==null?'-':(Math.round(v*1000)/10)+'%'; };
   var tot=(d.types||[]).reduce(function(a,t){return a+(t.세대수||0);},0);
   // 면적 구간 요약 (세대수 + 비율)
@@ -9168,6 +9326,7 @@ function openT2Detail(unitName){
   if(!overlay||!content) return;
   var trade=G.t2trade||'sale';
   var trdLabel=trade==='sale'?'매매':trade==='jeonse'?'전세':'월세';
+  window._t2PrintTitle=String(unitName||'단지')+' 단지 상세 ('+trdLabel+')';
   var now=new Date();
   var endYm=now.getFullYear()*100+(now.getMonth()+1);
   var startDate=new Date(now.getFullYear(),now.getMonth()-11,1);
@@ -10215,7 +10374,10 @@ function openT12DistModal(distNum){
         '<span class="badge" style="background:'+color+'22;color:'+color+';font-size:13px;padding:5px 12px">'+distNm+'</span>'+
         '<span style="font-size:11px;color:var(--yellow);background:rgba(184,134,11,.1);padding:3px 8px;border-radius:6px">최근 12개월</span>'+
       '</div>'+
+      '<div style="display:flex;align-items:center;gap:8px;flex-shrink:0">'+
+      pmBtn('trade-detail-box', distNm+' 전월세 현황 (최근 12개월)')+
       '<button onclick="closeTradeDetail()" style="background:rgba(0,0,0,.06);border:1px solid rgba(0,0,0,.10);color:var(--text3);border-radius:50%;width:30px;height:30px;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center">✕</button>'+
+      '</div>'+
     '</div>'+
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">'+
       '<div style="background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:14px">'+
@@ -11545,7 +11707,7 @@ function renderDistAvgChart(){
     colors.push(DIST_COLORS[g]);
   });
   var fmtAok = function(v){return v>0?v+'억':'';};
-  var plugin = makeAnnualLabelPlugin(fmtAok, '#ffe082');
+  var plugin = makeAnnualLabelPlugin(fmtAok, '#8a6408');
   charts.distAvg = new Chart(ctx,{
     type:'bar',
     plugins:[plugin],
@@ -11616,7 +11778,7 @@ function renderDistRentAvgChart(){
     if(!avgP) return;
     labels.push(DIST_NAMES[g]); vals.push(Math.round(avgP/1000)/10); colors.push(DIST_COLORS[g]); // 억, 부동소수점 방지
   });
-  var plugin=makeAnnualLabelPlugin(function(v){return Math.round(v*10)/10+'억';}, '#81d4fa');
+  var plugin=makeAnnualLabelPlugin(function(v){return Math.round(v*10)/10+'억';}, '#0b6e99');
   charts.distRentAvg=new Chart(el.getContext('2d'),{type:'bar',plugins:[plugin],
     data:{labels:labels,datasets:[{data:vals,backgroundColor:colors.map(function(c){return c+'55';}),borderColor:colors,borderWidth:2,borderRadius:4}]},
     options:{responsive:true,maintainAspectRatio:false,
@@ -11637,7 +11799,7 @@ function renderDistRentPyeongChart(){
     if(!avgPy) return;
     labels.push(DIST_NAMES[g]); vals.push(Math.round(avgPy)); colors.push(DIST_COLORS[g]); // 만원 단위
   });
-  var plugin=makeAnnualLabelPlugin(function(v){return Math.round(v).toLocaleString()+'만';}, '#80cbc4');
+  var plugin=makeAnnualLabelPlugin(function(v){return Math.round(v).toLocaleString()+'만';}, '#0f766e');
   charts.distRentPyeong=new Chart(el.getContext('2d'),{type:'bar',plugins:[plugin],
     data:{labels:labels,datasets:[{data:vals,backgroundColor:colors.map(function(c){return c+'55';}),borderColor:colors,borderWidth:2,borderRadius:4}]},
     options:{responsive:true,maintainAspectRatio:false,
@@ -13740,8 +13902,13 @@ function openChartZoom(title, id){
   overlay.id='chart-zoom-overlay';
   overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.9);z-index:9200;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px';
   overlay.innerHTML='<div style="width:100%;max-width:1200px;background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:24px;position:relative">'
+    +'<div id="chart-zoom-inner">'
     +'<div style="font-size:14px;font-weight:700;color:var(--text1);margin-bottom:16px">📈 '+title+'</div>'
     +'<div style="height:500px"><canvas id="'+id+'-canvas"></canvas></div>'
+    +'</div>'
+    +'<button type="button" class="modal-print-btn no-print" title="확대 화면 인쇄" '
+    +'style="position:absolute;top:12px;right:84px;z-index:11" '
+    +'onclick="event.stopPropagation();printModal(\'chart-zoom-inner\',\''+String(title||'차트').replace(/'/g,'&#39;').replace(/"/g,'&quot;')+'\')">🖨️ 인쇄</button>'
     +'<button id="chart-zoom-close-btn" style="position:absolute;top:12px;right:12px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:4px 12px;color:var(--text1);cursor:pointer;font-size:13px">✕ 닫기</button>'
     +'</div>';
   overlay.addEventListener('click',function(e){ if(e.target===overlay) overlay.remove(); });
@@ -15930,6 +16097,8 @@ if(typeof window.fbAutoLoad === 'function'){
 <!-- 확대 오버레이 (Lightbox) -->
 <div class="zoom-overlay" id="zoom-overlay" onclick="closeZoom(event)">
   <div class="zoom-overlay-inner" id="zoom-overlay-inner">
+    <button type="button" class="modal-print-btn pin-tr no-print" title="확대 화면 인쇄"
+      onclick="event.stopPropagation();printModal('zoom-overlay-content','확대 보기')">🖨️ 인쇄</button>
     <button class="zoom-close-btn" onclick="closeZoom()">✕</button>
     <div id="zoom-overlay-content"></div>
   </div>
@@ -15944,7 +16113,11 @@ if(typeof window.fbAutoLoad === 'function'){
         <span id="nd-fav-btn" class="fav-star off" onclick="ndToggleFav()" title="관심매물 토글">☆</span>
         <span id="nd-title" style="font-size:14px;font-weight:700;color:var(--text)"></span>
       </div>
+      <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
+      <button type="button" class="modal-print-btn no-print" title="이 매물 상세 인쇄"
+        onclick="event.stopPropagation();printModal('naver-detail-box', (document.getElementById('nd-title')||{}).textContent||'매물 상세')">🖨️ 인쇄</button>
       <button onclick="closeNaverDetail()" style="background:none;border:none;color:var(--text3);font-size:20px;cursor:pointer;line-height:1">✕</button>
+      </div>
     </div>
     <!-- 기본 정보 (읽기) -->
     <div class="nd-grid" id="nd-info" style="margin-bottom:14px"></div>
@@ -16248,7 +16421,10 @@ function _buildTradeModal(r, mainVal, mainLabel, avg1y, diffAmt, diffPct,
         '</div>'+
         '<div style="font-size:16px;font-weight:700;color:var(--text)">'+r['단지명']+'</div>'+
       '</div>'+
+      '<div style="display:flex;align-items:center;gap:8px;flex-shrink:0">'+
+      pmBtn('trade-detail-box', (r['단지명']||'단지')+' 거래 상세')+
       '<button onclick="closeTradeDetail()" style="background:rgba(0,0,0,.06);border:1px solid rgba(0,0,0,.10);color:var(--text3);border-radius:50%;width:30px;height:30px;font-size:16px;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center">✕</button>'+
+      '</div>'+
     '</div>'+
     flagHtml+
     '<div style="display:grid;grid-template-columns:1fr 1fr;border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:16px">'+
@@ -16430,7 +16606,10 @@ function openDistModal(distNum){
         '<span class="badge" style="background:'+color+'22;color:'+color+';font-size:13px;padding:5px 12px">'+distNm+'</span>'+
         '<span style="font-size:13px;color:var(--text3)">공구 현황 (최근 1년)</span>'+
       '</div>'+
+      '<div style="display:flex;align-items:center;gap:8px;flex-shrink:0">'+
+      pmBtn('trade-detail-box', distNm+' 공구 현황 (최근 1년)')+
       '<button onclick="closeTradeDetail()" style="background:rgba(0,0,0,.06);border:1px solid rgba(0,0,0,.10);color:var(--text3);border-radius:50%;width:30px;height:30px;font-size:16px;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center">✕</button>'+
+      '</div>'+
     '</div>'+
     '<div style="display:grid;grid-template-columns:1fr 1fr;border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:16px">'+
       tdPair('🏠 매매 건수', recentSale.length+'건', '🏡 전세 건수(신규)', recentRent.length+'건')+
@@ -16484,7 +16663,7 @@ function openDistModal(distNum){
     var c2=document.getElementById('td-price-chart');
     if(c2){
       if(window._tdChart2){window._tdChart2.destroy();window._tdChart2=null;}
-      window._tdChart2=new Chart(c2,{type:'line',plugins:[makeLineLabelPlugin('#ffe082',function(v){return v+'억';})],
+      window._tdChart2=new Chart(c2,{type:'line',plugins:[makeLineLabelPlugin('#8a6408',function(v){return v+'억';})],
         data:{labels:monthLabels,datasets:[{label:'평균 매매가',data:monthPriceData,
           borderColor:'#b8860b',backgroundColor:'rgba(184,134,11,.1)',
           borderWidth:2,pointRadius:4,pointBackgroundColor:'#b8860b',tension:0.3,spanGaps:true}]},
