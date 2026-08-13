@@ -1124,11 +1124,11 @@ tr.naver-fav>td:first-child{border-left:3px solid #b8860b;}
     </div>
     <div class="grid-2" style="margin-top:12px">
       <div class="chart-card zoomable" onclick="openZoom(this)">
-        <div class="chart-card-title">📈 연도별 거래량 추이 (아파트 / 분양권)</div>
+        <div class="chart-card-title">📈 연도별 거래량 추이 (아파트 / 분양권) <span style="font-size:9px;color:var(--accent)" id="yr-trend-area-label"></span></div>
         <div class="chart-wrap"><canvas id="chart-yr-trend"></canvas></div>
       </div>
       <div class="chart-card zoomable" onclick="openZoom(this)">
-        <div class="chart-card-title">💰 연도별 84㎡형 평균가격 (억원) <span style="font-size:9px;color:var(--text3)">전용 83.5~85.5㎡</span></div>
+        <div class="chart-card-title">💰 연도별 평균 매매가 (억원) <span style="font-size:9px;color:var(--accent)" id="yr-avg-area-label"></span></div>
         <div class="chart-wrap"><canvas id="chart-yr-84avg"></canvas></div>
       </div>
     </div>
@@ -11229,7 +11229,7 @@ function renderTab0(){
   $set('dist-area-label', areaLabel());
   $set('dist-year-label', (yr==='recent'?'최근1년':yr+'년')+' 기준');
   $set('dist-compare-sub', (yr==='recent'?'최근1년':yr+'년')+' · '+areaLabel());
-  $set('yr-sec-sub', '전체 공구 · 연도별 누계');
+  $set('yr-sec-sub', '전체 공구 · 연도별 누계 · '+areaLabel());
 
   var distStats = {};
   var distRentStats = {};
@@ -11837,15 +11837,55 @@ function renderDistRentCntChart(){
         y:{beginAtZero:true,ticks:{color:'#4a5568',font:{size:10}},grid:{color:'rgba(0,0,0,.08)'}}}}}); 
 }
 
+// ── 연도별 집계 (거래량 + 평균가) — 상단 '면적' 필터 연동
+//    G.saleData 를 직접 집계하므로 면적 버튼을 바꾸면 두 차트가 함께 갱신된다.
+//    거래해제 건은 제외. 연도·기간 필터는 적용하지 않는다(연도별 누계 비교가 목적).
+function getYearStatsByArea(){
+  if(getYearStatsByArea._key===G.area && getYearStatsByArea._src===G.saleData)
+    return getYearStatsByArea._val;
+
+  var YR_FROM=2019, YR_TO=new Date().getFullYear();
+  var acc={};
+  (G.saleData||[]).forEach(function(r){
+    // 거래해제 제외 (엑셀 원본은 '해제사유발생일', 일부 경로는 '해제사유')
+    var cx1=r['해제사유발생일'], cx2=r['해제사유'];
+    if(cx1&&cx1!=='-'&&cx1!=='') return;
+    if(cx2&&cx2!=='-'&&cx2!=='') return;
+    if(!areaFilter(r)) return;                 // ★ 상단 면적 필터
+    var yr=parseInt(r['연도']||0);
+    if(!yr){ var ym=parseInt(r['계약년월']||0); if(ym) yr=Math.floor(ym/100); }
+    if(!yr||yr<YR_FROM||yr>YR_TO) return;
+    var p=parseFloat(r['거래금액']||0);
+    if(!acc[yr]) acc[yr]={aptN:0,preN:0,aptP:[],preP:[]};
+    if(r['구분']==='분양권'){ acc[yr].preN++; if(p>0) acc[yr].preP.push(p); }
+    else { acc[yr].aptN++; if(p>0) acc[yr].aptP.push(p); }
+  });
+
+  var avgAok=function(arr){
+    if(!arr.length) return null;
+    return Math.round(arr.reduce(function(a,b){return a+b;},0)/arr.length/10000*100)/100; // 억, 소수2자리
+  };
+  var out={labels:[],aptN:[],preN:[],aptAvg:[],preAvg:[],aptC:[],preC:[]};
+  for(var y=YR_FROM;y<=YR_TO;y++){
+    var s=acc[y]; if(!s) continue;
+    if(!s.aptN&&!s.preN) continue;
+    out.labels.push(y+'년');
+    out.aptN.push(s.aptN);            out.preN.push(s.preN);
+    out.aptAvg.push(avgAok(s.aptP));  out.preAvg.push(avgAok(s.preP));
+    out.aptC.push(s.aptP.length);     out.preC.push(s.preP.length);
+  }
+  getYearStatsByArea._key=G.area;
+  getYearStatsByArea._src=G.saleData;
+  getYearStatsByArea._val=out;
+  return out;
+}
+
 function renderYrTrendChart(){
   var ctx = document.getElementById('chart-yr-trend').getContext('2d');
   if(charts.yrTrend) charts.yrTrend.destroy();
-  var yt = DATA.year_trends||{};
-  var labels=[],apt=[],pre=[];
-  for(var yr=2019;yr<=2026;yr++){
-    var d=yt['yr_'+yr]; if(!d) continue;
-    labels.push(yr+'년'); apt.push(d.apt||0); pre.push(d.pre||0);
-  }
+  var st = getYearStatsByArea();
+  $set('yr-trend-area-label', st.labels.length?('· '+areaLabel()):'');
+  var labels=st.labels, apt=st.aptN, pre=st.preN;
   // 총계 표시 (아파트+분양권 합산)
   var totals = apt.map(function(v,i){return v+(pre[i]||0);});
   var pluginTotal = {
@@ -11888,41 +11928,15 @@ function renderYrTrendChart(){
       }}});
 }
 
-// ── 연도별 84㎡형 평균가격 (아파트 / 분양권)
-//    면적 기준은 탭 필터 '전용 84㎡'와 동일하게 83.5~85.5㎡, 거래해제 건은 제외
+// ── 연도별 평균 매매가 (아파트 / 분양권) — 상단 '면적' 필터 연동
 function renderYr84AvgChart(){
   var el=document.getElementById('chart-yr-84avg'); if(!el) return;
   if(charts.yr84avg){ charts.yr84avg.destroy(); charts.yr84avg=null; }
 
-  var YR_FROM=2019, YR_TO=new Date().getFullYear();
-  var acc={};   // {연도:{apt:[],pre:[]}}
-  (G.saleData||[]).forEach(function(r){
-    // 거래해제 제외 (엑셀 원본은 '해제사유발생일', 일부 경로는 '해제사유')
-    var cx1=r['해제사유발생일'], cx2=r['해제사유'];
-    if(cx1&&cx1!=='-'&&cx1!=='') return;
-    if(cx2&&cx2!=='-'&&cx2!=='') return;
-    var yr=parseInt(r['연도']||0);
-    if(!yr){ var ym=parseInt(r['계약년월']||0); if(ym) yr=Math.floor(ym/100); }
-    if(!yr||yr<YR_FROM||yr>YR_TO) return;
-    var sqm=parseFloat(r['전용(㎡)']||r['전용㎡']||0);
-    if(!(sqm>=83.5&&sqm<85.5)) return;
-    var p=parseFloat(r['거래금액']||0); if(!(p>0)) return;
-    if(!acc[yr]) acc[yr]={apt:[],pre:[]};
-    if(r['구분']==='분양권') acc[yr].pre.push(p); else acc[yr].apt.push(p);
-  });
+  var st=getYearStatsByArea();
+  var labels=st.labels, aptV=st.aptAvg, preV=st.preAvg, aptN=st.aptC, preN=st.preC;
+  $set('yr-avg-area-label', labels.length?('· '+areaLabel()):'');
 
-  var avgAok=function(arr){
-    if(!arr.length) return null;
-    return Math.round(arr.reduce(function(a,b){return a+b;},0)/arr.length/10000*100)/100; // 억, 소수 2자리
-  };
-  var labels=[], aptV=[], preV=[], aptN=[], preN=[];
-  for(var y=YR_FROM;y<=YR_TO;y++){
-    var s=acc[y]; if(!s) continue;
-    if(!s.apt.length&&!s.pre.length) continue;
-    labels.push(y+'년');
-    aptV.push(avgAok(s.apt)); preV.push(avgAok(s.pre));
-    aptN.push(s.apt.length);  preN.push(s.pre.length);
-  }
   if(!labels.length){
     var c0=el.getContext('2d');
     c0.clearRect(0,0,el.width,el.height);
