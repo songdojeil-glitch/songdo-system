@@ -31,7 +31,7 @@
 * { margin:0; padding:0; box-sizing:border-box; }
 body { background:var(--bg); color:var(--text); font-family:var(--font); font-size:13px; min-height:100vh; zoom:var(--ui-scale,1.15); overflow-x:hidden; }
 /* zoom으로 인한 가로 넘침 방지: 콘텐츠 래퍼가 뷰포트 폭에 맞도록 */
-.main, .tc, .grid-2, .district-grid { max-width:100%; box-sizing:border-box; }
+.main, .tc, .grid-2, .chart-flow-2, .district-grid { max-width:100%; box-sizing:border-box; }
 
 /* ── 상단 헤더 */
 .header {
@@ -172,6 +172,7 @@ body.zoom-mode .zoomable:hover {
 /* 촬영모드: 차트/그리드 너비를 zoom 보정 (1/1.5 = 66.67%) */
 body.zoom-mode .chart-card,
 body.zoom-mode .grid-2,
+body.zoom-mode .chart-flow-2,
 body.zoom-mode .district-grid,
 body.zoom-mode #annual-charts,
 body.zoom-mode #dist-charts-wrap,
@@ -259,6 +260,20 @@ body.zoom-mode .chart-wrap canvas {
 
 /* ── 그리드 레이아웃 */
 .grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+/* 여러 섹션의 차트를 '빈칸 없이' 이어붙여 2열로 흘려보내는 그리드
+   (섹션 래퍼는 display:contents 로 만들어 자식 카드가 직접 그리드에 참여) */
+.chart-flow-2 {
+  display:grid; grid-template-columns:1fr 1fr;
+  gap:10px; align-items:stretch;
+}
+.chart-flow-2 > .chart-card,
+.chart-flow-2 .chart-card { margin:0 !important; height:100%; }
+/* 섹션 래퍼: 거래구분 필터로 style.display='none'/'' 토글되므로
+   기본 display 를 CSS 에서 contents 로 지정해야 복원 시에도 유지된다 */
+#t12-dc-sec-jeonse, #t12-dc-sec-wolse,
+#t12-sec-jeonse-charts, #t12-sec-wolse-charts, #t12-sec-jeonse-rate {
+  display: contents;
+}
 .grid-3 { display:grid; grid-template-columns:1fr 1fr 1fr 1fr; gap:12px; }
 .grid-12 { display:grid; grid-template-columns:1fr 2fr; gap:12px; }
 .grid-21 { display:grid; grid-template-columns:2fr 1fr; gap:12px; }
@@ -427,6 +442,7 @@ body.zoom-mode .chart-wrap canvas {
 @media(max-width:768px) {
   .district-grid { grid-template-columns:1fr 1fr; }
   .grid-2, .grid-3 { grid-template-columns:1fr; }
+  .chart-flow-2 { grid-template-columns:1fr; }
   .kpi-row-6, .kpi-row-5, .kpi-row-4 { grid-template-columns:repeat(2,1fr); }
 }
 
@@ -545,14 +561,20 @@ tr.naver-fav>td:first-child{border-left:3px solid #b8860b;}
   .sec-hdr { page-break-after:avoid; }
   /* ★ 인쇄 시 모든 차트 그리드를 1열로 → 그래프가 가로 전체 폭 사용 (모든 탭 공통) */
   .grid-2, .grid-3, .grid-3col, .grid-4,
+  .chart-flow-2,
+  #t12-dc-sec-jeonse, #t12-dc-sec-wolse,
+  #t12-sec-jeonse-charts, #t12-sec-wolse-charts, #t12-sec-jeonse-rate,
   [class*="grid-"] {
     display:block !important;
     grid-template-columns:none !important;
     gap:0 !important;
   }
   /* 그리드 자식(차트 카드)이 100% 폭을 차지하도록 */
-  .grid-2 > *, .grid-3 > *, .grid-3col > *, .grid-4 > *, [class*="grid-"] > * {
+  .grid-2 > *, .grid-3 > *, .grid-3col > *, .grid-4 > *,
+  .chart-flow-2 > *, .chart-flow-2 .chart-card,
+  [class*="grid-"] > * {
     width:100% !important; max-width:100% !important;
+    height:auto !important;
     margin-bottom:10pt !important; page-break-inside:avoid;
   }
   /* KPI 행은 예외 — 가로 배치 유지 */
@@ -2539,33 +2561,23 @@ tr.naver-fav>td:first-child{border-left:3px solid #b8860b;}
       <div class="sec-hdr-bar" style="background:var(--accent3)"></div>
       <div class="sec-hdr-title" id="t12-dist-chart-title">📊 기간별 전월세 현황</div>
     </div>
+    <!-- 기간 차트 7개를 빈칸 없이 2열로 흘려보냄 (전세 3 + 월세 3 + 거래율 1) -->
+    <div class="chart-flow-2" id="t12-dc-grid" style="margin-bottom:14px">
     <!-- 전세 기간 차트 -->
     <div id="t12-dc-sec-jeonse">
-    <div class="grid-2" style="margin-bottom:10px">
       <div class="chart-card zoomable" onclick="openZoom(this)"><div class="chart-card-title">📈 전세 거래량 <span style="font-size:9px;color:var(--text3)">(신규+갱신)</span></div><div class="chart-wrap"><canvas id="t12-dc-jeonse-vol"></canvas></div></div>
       <div class="chart-card zoomable" onclick="openZoom(this)"><div class="chart-card-title">💰 전세 평균가 <span style="font-size:9px;color:var(--text3)">(신규, 만원)</span></div><div class="chart-wrap"><canvas id="t12-dc-jeonse-price"></canvas></div></div>
-    </div>
-    <div class="grid-2" style="margin-bottom:10px">
       <div class="chart-card zoomable" onclick="openZoom(this)"><div class="chart-card-title">📐 전세 평당가 <span style="font-size:9px;color:var(--text3)">(신규, 만원/평)</span></div><div class="chart-wrap"><canvas id="t12-dc-jeonse-pyeong"></canvas></div></div>
-      <div></div>
-    </div>
     </div><!-- /t12-dc-sec-jeonse -->
     <!-- 월세 기간 차트 -->
     <div id="t12-dc-sec-wolse">
-    <div class="grid-2" style="margin-bottom:10px">
       <div class="chart-card zoomable" onclick="openZoom(this)"><div class="chart-card-title">📈 월세 거래량 <span style="font-size:9px;color:var(--text3)">(신규+갱신)</span></div><div class="chart-wrap"><canvas id="t12-dc-wolse-vol"></canvas></div></div>
       <div class="chart-card zoomable" onclick="openZoom(this)"><div class="chart-card-title">💰 월세 환산보증금 <span style="font-size:9px;color:var(--text3)">(신규, 만원)</span></div><div class="chart-wrap"><canvas id="t12-dc-wolse-price"></canvas></div></div>
-    </div>
-    <div class="grid-2" style="margin-bottom:10px">
       <div class="chart-card zoomable" onclick="openZoom(this)"><div class="chart-card-title">📐 월세 환산보증금 평당가 <span style="font-size:9px;color:var(--text3)">(신규, 만원/평)</span></div><div class="chart-wrap"><canvas id="t12-dc-wolse-pyeong"></canvas></div></div>
-      <div></div>
-    </div>
     </div><!-- /t12-dc-sec-wolse -->
     <!-- 전월세 거래율 (공통) -->
-    <div class="grid-2" style="margin-bottom:14px">
-      <div class="chart-card zoomable" onclick="openZoom(this)"><div class="chart-card-title">🔄 전월세 거래율 Lease Turnover Rate <span style="font-size:9px;color:var(--text3)">(신규+갱신)</span></div><div class="chart-wrap"><canvas id="t12-dc-lease-rate"></canvas></div></div>
-      <div></div>
-    </div>
+    <div class="chart-card zoomable" onclick="openZoom(this)"><div class="chart-card-title">🔄 전월세 거래율 Lease Turnover Rate <span style="font-size:9px;color:var(--text3)">(신규+갱신)</span></div><div class="chart-wrap"><canvas id="t12-dc-lease-rate"></canvas></div></div>
+    </div><!-- /t12-dc-grid -->
   </div>
   <!-- 최근 전세 실거래 -->
   <div id="t12-sec-jeonse-recent">
@@ -2631,35 +2643,27 @@ tr.naver-fav>td:first-child{border-left:3px solid #b8860b;}
     <div class="sec-hdr-bar" style="background:var(--accent3)"></div>
     <div class="sec-hdr-title">🏘️ 공구별 전월세 현황 비교 <span style="color:var(--text3);font-size:11px;font-weight:400;margin-left:8px" id="t12-compare-sub"></span></div>
   </div>
+  <!-- 공구별 비교 차트 9개를 동일 크기로 빈칸 없이 2열 배치 -->
+  <div class="chart-flow-2" id="t12-compare-grid" style="margin-top:10px;margin-bottom:12px">
   <!-- 전세 비교 차트 3개 -->
   <div id="t12-sec-jeonse-charts">
-  <div class="grid-2" style="margin-top:10px">
     <div class="chart-card zoomable" onclick="openZoom(this)"><div class="chart-card-title">🏠 공구별 평균 전세가 <span style="font-size:9px;color:var(--text3)">(신규, 만원)</span></div><div class="chart-wrap"><canvas id="chart-dist-rentavg"></canvas></div></div>
     <div class="chart-card zoomable" onclick="openZoom(this)"><div class="chart-card-title">📐 공구별 전세 평당가 <span style="font-size:9px;color:var(--text3)">(신규, 만원/평)</span></div><div class="chart-wrap"><canvas id="chart-dist-rentpyeong"></canvas></div></div>
-  </div>
-  <div style="height:10px"></div>
-  <div class="chart-card zoomable" onclick="openZoom(this)" style="margin-bottom:10px"><div class="chart-card-title">📊 공구별 전세 거래량 <span style="font-size:9px;color:var(--text3)">(신규+갱신, 건)</span></div><div class="chart-wrap"><canvas id="chart-dist-rentcnt"></canvas></div></div>
+    <div class="chart-card zoomable" onclick="openZoom(this)"><div class="chart-card-title">📊 공구별 전세 거래량 <span style="font-size:9px;color:var(--text3)">(신규+갱신, 건)</span></div><div class="chart-wrap"><canvas id="chart-dist-rentcnt"></canvas></div></div>
   </div><!-- /t12-sec-jeonse-charts -->
   <!-- 월세 비교 차트 3개 -->
   <div id="t12-sec-wolse-charts">
-  <div class="grid-2" style="margin-top:10px">
     <div class="chart-card zoomable" onclick="openZoom(this)"><div class="chart-card-title">💰 공구별 월세 환산보증금 <span style="font-size:9px;color:var(--text3)">(신규, 만원)</span></div><div class="chart-wrap"><canvas id="chart-dist-wolseavg"></canvas></div></div>
     <div class="chart-card zoomable" onclick="openZoom(this)"><div class="chart-card-title">📐 공구별 월세 환산보증금 평당가 <span style="font-size:9px;color:var(--text3)">(신규, 만원/평)</span></div><div class="chart-wrap"><canvas id="chart-dist-wolsepyeong"></canvas></div></div>
-  </div>
-  <div style="height:10px"></div>
-  <div class="chart-card zoomable" onclick="openZoom(this)" style="margin-bottom:10px"><div class="chart-card-title">📊 공구별 월세 거래량 <span style="font-size:9px;color:var(--text3)">(신규+갱신, 건)</span></div><div class="chart-wrap"><canvas id="chart-dist-wolsecnt"></canvas></div></div>
+    <div class="chart-card zoomable" onclick="openZoom(this)"><div class="chart-card-title">📊 공구별 월세 거래량 <span style="font-size:9px;color:var(--text3)">(신규+갱신, 건)</span></div><div class="chart-wrap"><canvas id="chart-dist-wolsecnt"></canvas></div></div>
   </div><!-- /t12-sec-wolse-charts -->
+  <!-- 전세가율 3개 -->
   <div id="t12-sec-jeonse-rate">
-  <div style="height:12px"></div>
-  <div class="grid-2">
     <div class="chart-card zoomable" onclick="openZoom(this)"><div class="chart-card-title">🏠 전세 신규 vs 갱신 현황</div><div class="chart-wrap"><canvas id="chart-rent-split"></canvas></div></div>
     <div class="chart-card zoomable" onclick="openZoom(this)"><div class="chart-card-title">📊 공구별 전세가율 (%)</div><div class="chart-wrap"><canvas id="chart-jeonse-rate"></canvas></div></div>
-  </div>
-  <div style="height:10px"></div>
-  <div class="grid-2">
     <div class="chart-card zoomable" onclick="openZoom(this)"><div class="chart-card-title">📈 연도별 전세가율 추이</div><div class="chart-wrap"><canvas id="chart-jeonse-trend"></canvas></div></div>
-    <div></div>
-  </div>
+  </div><!-- /t12-sec-jeonse-rate -->
+  </div><!-- /t12-compare-grid -->
 </div>
 
 
@@ -10379,15 +10383,13 @@ function openT12DistModal(distNum){
       '<button onclick="closeTradeDetail()" style="background:rgba(0,0,0,.06);border:1px solid rgba(0,0,0,.10);color:var(--text3);border-radius:50%;width:30px;height:30px;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center">✕</button>'+
       '</div>'+
     '</div>'+
-    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">'+
-      '<div style="background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:14px">'+
-        '<div style="font-size:11px;color:var(--accent3);font-weight:700;margin-bottom:8px">📊 월별 전세 거래량 <span style="font-size:9px;color:#aaa">(신규+갱신)</span></div>'+
-        '<canvas id="t12-td-jvol" height="80"></canvas>'+
-      '</div>'+
-      '<div style="background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:14px">'+
-        '<div style="font-size:11px;color:var(--accent2);font-weight:700;margin-bottom:8px">📊 월별 월세 거래량 <span style="font-size:9px;color:#aaa">(신규+갱신)</span></div>'+
-        '<canvas id="t12-td-wvol" height="80"></canvas>'+
-      '</div>'+
+    '<div style="background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:10px">'+
+      '<div style="font-size:11px;color:var(--accent3);font-weight:700;margin-bottom:8px">📊 월별 전세 거래량 <span style="font-size:9px;color:#aaa">(신규+갱신)</span></div>'+
+      '<canvas id="t12-td-jvol" height="70"></canvas>'+
+    '</div>'+
+    '<div style="background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:10px">'+
+      '<div style="font-size:11px;color:var(--accent2);font-weight:700;margin-bottom:8px">📊 월별 월세 거래량 <span style="font-size:9px;color:#aaa">(신규+갱신)</span></div>'+
+      '<canvas id="t12-td-wvol" height="70"></canvas>'+
     '</div>'+
     '<div style="background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:10px">'+
       '<div style="font-size:11px;color:var(--yellow);font-weight:700;margin-bottom:8px">💰 월별 평균 전세가 <span style="font-size:9px;color:#aaa">(신규, 억원)</span></div>'+
@@ -10454,7 +10456,7 @@ function openT12DistModal(distNum){
     }
     if(_t12tdChart){_t12tdChart.destroy();_t12tdChart=null;} _t12tdChart=mkBarChart('t12-td-jvol',monthLabels,jVolData,'#00b8a9');
     if(_t12tdChart2){_t12tdChart2.destroy();_t12tdChart2=null;} _t12tdChart2=mkBarChart('t12-td-wvol',monthLabels,wVolData,'#ff8c42');
-    if(_t12tdChart3){_t12tdChart3.destroy();_t12tdChart3=null;} _t12tdChart3=mkLineChart('t12-td-jprice',monthLabels,jPriceData,'#b8860b','억',10000);
+    if(_t12tdChart3){_t12tdChart3.destroy();_t12tdChart3=null;} _t12tdChart3=mkLineChart('t12-td-jprice',monthLabels,jPriceData,'#b8860b','억',1);
     if(_t12tdChart4){_t12tdChart4.destroy();_t12tdChart4=null;} _t12tdChart4=mkLineChart('t12-td-jpyeong',monthLabels,jPyeongData,'#d9480f','만',null);
   },60);
 }
