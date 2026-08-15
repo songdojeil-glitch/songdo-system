@@ -102,6 +102,7 @@ body { background:var(--bg); color:var(--text); font-family:var(--font); font-si
 .kpi-row-6 { grid-template-columns:repeat(6,1fr); }
 .kpi-row-4 { grid-template-columns:repeat(4,1fr); }
 .kpi-row-7 { grid-template-columns:repeat(7,1fr); }
+.kpi-row-8 { grid-template-columns:repeat(8,1fr); }
 .kpi-row-3 { grid-template-columns:repeat(3,1fr); }
 .kpi-card {
   background:var(--card); border:1px solid var(--border); border-radius:10px;
@@ -436,18 +437,22 @@ body.zoom-mode .chart-wrap canvas {
 .empty-desc { font-size:12px; }
 
 /* ── 반응형 */
+/* 8열은 폭이 좁아지면 금방 답답해지므로 한 단계 먼저 접는다 */
+@media(max-width:1700px) {
+  .kpi-row-8 { grid-template-columns:repeat(4,1fr); }
+}
 @media(max-width:1200px) {
   .district-grid { grid-template-columns:repeat(2,1fr); }
   .kpi-row-5 { grid-template-columns:repeat(3,1fr); }
   .kpi-row-6 { grid-template-columns:repeat(3,1fr); }
-  .kpi-row-7 { grid-template-columns:repeat(4,1fr); }
+  .kpi-row-7, .kpi-row-8 { grid-template-columns:repeat(4,1fr); }
   .grid-12, .grid-21 { grid-template-columns:1fr; }
 }
 @media(max-width:768px) {
   .district-grid { grid-template-columns:1fr 1fr; }
   .grid-2, .grid-3 { grid-template-columns:1fr; }
   .chart-flow-2 { grid-template-columns:1fr; }
-  .kpi-row-7, .kpi-row-6, .kpi-row-5, .kpi-row-4 { grid-template-columns:repeat(2,1fr); }
+  .kpi-row-8, .kpi-row-7, .kpi-row-6, .kpi-row-5, .kpi-row-4 { grid-template-columns:repeat(2,1fr); }
 }
 
 /* ── 네이버매물 상세모달 ── */
@@ -981,7 +986,7 @@ tr.naver-fav>td:first-child{border-left:3px solid #b8860b;}
   </div>
 
   <!-- KPI 상단 -->
-  <div class="kpi-row kpi-row-7 zoomable" id="kpi-top" onclick="openZoom(this)" style="cursor:zoom-in"></div>
+  <div class="kpi-row kpi-row-8 zoomable" id="kpi-top" onclick="openZoom(this)" style="cursor:zoom-in"></div>
 
   <!-- 기간별 차트 (분기/월별 선택 시 표시) — 최근 실거래 위 배치 -->
   <div id="dist-charts-wrap" style="margin-top:14px;display:none">
@@ -11310,35 +11315,115 @@ function renderTab0(){
   var jPyDiff   = jPyPrev>0?Math.round((jPy-jPyPrev)/jPyPrev*100):0;
   var yrLabel2  = yr==='recent'?'최근1년':yr+'년';
 
-  document.getElementById('kpi-top').innerHTML = [
+  // ── 매매 KPI 추가 지표 ─────────────────────────────
+  // 중위 매매가: 거래금액을 오름차순 정렬한 뒤 가운데 값(짝수면 가운데 두 건의 평균).
+  //   표본은 현재 화면 필터(연도·면적·공구·매매유형)를 통과한 '거래 1건 = 1표본', 해제 거래는 제외.
+  //   평균은 초고가 몇 건에 끌려가지만 중위값은 그렇지 않아 체감가에 가깝다.
+  var median = function(arr){
+    if(!arr||!arr.length) return 0;
+    var a=arr.slice().sort(function(x,y){return x-y;}), n=a.length, h=Math.floor(n/2);
+    return Math.round(n%2 ? a[h] : (a[h-1]+a[h])/2);
+  };
+  var curMed  = median(prices);
+  var prevMed = median(prevPrices);
+  var medDiff = prevMed>0?Math.round((curMed-prevMed)/prevMed*100):0;
+
+  // 매매 거래율: 거래건수 ÷ 세대수(입주+분양). 공구 필터를 그대로 반영한다.
+  var unitsBase = 0;
+  if(DATA && DATA.district){
+    DISTS.forEach(function(g){
+      if(G.t0Dist!=='all' && parseInt(G.t0Dist)!==g) return;
+      var d=DATA.district[String(g)]; if(!d) return;
+      unitsBase += (d.units||0)+(d.units_pre||0);
+    });
+  }
+  var turnRate     = unitsBase>0?Math.round(curCnt/unitsBase*1000)/10:0;
+  var prevTurnRate = unitsBase>0?Math.round(prevCnt/unitsBase*1000)/10:0;
+  var turnDiffPP   = (unitsBase>0&&prevCnt>0)?Math.round((turnRate-prevTurnRate)*10)/10:null;
+
+  // 아파트 VS 분양권 구성비 (매매유형 필터가 '전체'일 때만 의미가 있다)
+  var aptCnt=0, preCnt=0;
+  filteredRows.forEach(function(r){ if(r['구분']==='분양권') preCnt++; else aptCnt++; });
+  var typeTot   = aptCnt+preCnt;
+  var aptShare  = typeTot?Math.round(aptCnt/typeTot*100):0;
+  var preShare  = typeTot?100-aptShare:0;
+  var pAptCnt=0, pPreCnt=0;
+  prevRows.forEach(function(r){ if(r['구분']==='분양권') pPreCnt++; else pAptCnt++; });
+  var pTypeTot  = pAptCnt+pPreCnt;
+  var pAptShare = pTypeTot?Math.round(pAptCnt/pTypeTot*100):null;
+  var aptSharePP= (pAptShare===null)?null:(aptShare-pAptShare);
+
+  // 기간 최고 거래가 (+ 단지·층·계약월)
+  var topDeal=null;
+  filteredRows.forEach(function(r){
+    var v=parseFloat(r['거래금액']||0); if(!(v>0)) return;
+    if(!topDeal||v>topDeal.v) topDeal={v:v,nm:r['단지명']||'',fl:r['층']||'',ym:String(r['계약년월']||'')};
+  });
+  var topDealSub='-';
+  if(topDeal){
+    var tym=topDeal.ym.length>=6?(topDeal.ym.slice(0,4)+'.'+topDeal.ym.slice(4,6)):'';
+    topDealSub=[topDeal.nm, topDeal.fl?topDeal.fl+'층':'', tym].filter(Boolean).join(' · ');
+  }
+
+  // 매매가 대비 전세가율 = 전세 평균가(신규) ÷ 매매 평균가 × 100
+  var jrRate     = (curAvg>0&&jAvg>0)?Math.round(jAvg/curAvg*1000)/10:0;
+  var jrRatePrev = (prevAvg>0&&jAvgPrev>0)?Math.round(jAvgPrev/prevAvg*1000)/10:0;
+  var jrDiffPP   = (jrRate>0&&jrRatePrev>0)?Math.round((jrRate-jrRatePrev)*10)/10:null;
+
+  // %p 배지 (구성비·비율 카드용) — 증감률(%)과 구분해서 표기한다
+  var makePP = function(d, label){
+    if(d===null||d===undefined) return '';
+    var t = d>0 ? '<span style="color:var(--red)">▲'+d+'%p</span>'
+          : d<0 ? '<span style="color:var(--accent3)">▼'+Math.abs(d)+'%p</span>'
+                : '<span style="color:var(--text3)">－ 0%p</span>';
+    return t+'('+label+')';
+  };
+
+  var kpiCards = [
     {label:'매매 거래건수',val:curCnt.toLocaleString()+'건',
       sub:yrLabel2+' · '+areaLabel(),
       badge:prevCnt?makeYoY(cntDiff)+'('+salePF.label+')':'',
       color:'var(--accent)'},
+    {label:'매매 거래율',val:unitsBase>0?(turnRate+'%'):'-',
+      sub:unitsBase>0?(curCnt.toLocaleString()+'건 ÷ '+unitsBase.toLocaleString()+'세대'):'세대수 자료 없음',
+      badge:makePP(turnDiffPP, salePF.label),
+      color:'var(--accent2)'},
+    {label:'아파트 VS 분양권',
+      val: typeTot
+        ? '<span style="color:var(--accent)">'+aptShare+'%</span>'
+          +'<span style="font-size:13px;font-weight:700;color:var(--text3);margin:0 6px">VS</span>'
+          +'<span style="color:var(--yellow)">'+preShare+'%</span>'
+        : '-',
+      sub:'아파트 '+aptCnt.toLocaleString()+'건 VS 분양권 '+preCnt.toLocaleString()+'건',
+      badge:(aptSharePP===null?'':'아파트 비중 '+makePP(aptSharePP, salePF.label)),
+      color:'var(--blue)'},
     {label:'평균 매매가',val:fmt만(curAvg),
       sub:yrLabel2+' · '+areaLabel(),
       badge:prevAvg?makeYoY(priceDiff)+'('+salePF.label+')':'',
       color:'var(--yellow)'},
+    {label:'중위 매매가',val:fmt만(curMed),
+      sub:curMed&&curAvg?('평균 대비 '+(curMed>=curAvg?'+':'-')+fmt만(Math.abs(curMed-curAvg))):(yrLabel2+' 기준'),
+      badge:prevMed?makeYoY(medDiff)+'('+salePF.label+')':'',
+      color:'var(--purple)'},
     {label:'매매 평당가',val:curPyeong?fmt평(curPyeong):'-',
       sub:yrLabel2+' · '+areaLabel(),
-      badge:prevPyeong?makeYoY(pyeongDiff)+'('+salePF.label+')':'',color:'var(--orange,#ff8c42)'},
-    {label:'전세 거래건수',val:jCnt.toLocaleString()+'건',
-      sub:'신규 '+jNewCnt+'건 + 갱신 '+jRenewCnt+'건',
-      badge:jCntPrev?makeYoY(jCntDiff)+'('+rentPF.label+')':'',
+      badge:prevPyeong?makeYoY(pyeongDiff)+'('+salePF.label+')':'',
+      color:'var(--orange,#ff8c42)'},
+    {label:'기간 최고 거래가',val:topDeal?fmt만(topDeal.v):'-',
+      sub:topDealSub,
+      badge:'',
+      color:'var(--red)'},
+    {label:'매매가 대비 전세가율',val:jrRate?(jrRate+'%'):'-',
+      sub:jrRate?('전세 '+fmt만(jAvg)+' ÷ 매매 '+fmt만(curAvg)+' · 전세 신규 기준'):'전세 자료 없음',
+      badge:makePP(jrDiffPP, rentPF.label),
       color:'var(--accent3)'},
-    {label:'전세 평균가(신규)',val:fmt만(jAvg),
-      sub:'신규 계약 기준',
-      badge:jAvgPrev?makeYoY(jAvgDiff)+'('+rentPF.label+')':'',
-      color:'var(--teal,#00b8a9)'},
-    {label:'전세 평당가(신규)',val:jPy?fmt평(jPy):'-',
-      sub:'신규 계약 기준',
-      badge:jPyPrev?makeYoY(jPyDiff)+'('+rentPF.label+')':'',
-      color:'var(--purple)'},
-    {label:'월세 거래건수 (신규+갱신)',val:(rentCur.wolse_cnt||0).toLocaleString()+'건',
-      sub:'신규 '+(rentCur.wolse_new||0)+'건 · 갱신 '+(rentCur.wolse_renew||0)+'건',
-      badge:(rentPrev2.wolse_cnt>0?makeYoY(Math.round(((rentCur.wolse_cnt||0)-(rentPrev2.wolse_cnt||0))/(rentPrev2.wolse_cnt||1)*100))+'('+rentPF.label+')':''),
-      color:'var(--accent2)'},
-  ].map(function(k){
+  ];
+  // 매매유형 필터가 '전체'가 아니면 아파트/분양권 구성비는 항상 100:0 이라 뺀다
+  if(G.saleType!=='all') kpiCards=kpiCards.filter(function(k){ return k.label!=='아파트 VS 분양권'; });
+  var kpiTopEl=document.getElementById('kpi-top');
+  if(kpiTopEl) kpiTopEl.className='kpi-row kpi-row-'+kpiCards.length+' zoomable';
+
+  document.getElementById('kpi-top').innerHTML = kpiCards.map(function(k){
     return '<div class="kpi-card" style="--kpi-color:'+k.color+'">'+
       '<div class="kpi-label">'+k.label+'</div>'+
       '<div class="kpi-val">'+k.val+'</div>'+
