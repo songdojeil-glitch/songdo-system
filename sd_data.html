@@ -2571,7 +2571,7 @@ tr.naver-fav>td:first-child{border-left:3px solid #b8860b;}
     <div class="filter-group" id="t12-sub-btns"></div>
   </div>
   <!-- KPI 카드 -->
-  <div class="kpi-row kpi-row-7 zoomable" id="t12-kpi-top" onclick="openZoom(this)" style="cursor:zoom-in;margin-top:10px"></div>
+  <div class="kpi-row kpi-row-8 zoomable" id="t12-kpi-top" onclick="openZoom(this)" style="cursor:zoom-in;margin-top:10px"></div>
   
   <!-- 분기/월별 기간 차트 (연간이 아닐 때만 표시) -->
   <div id="t12-dist-charts-wrap" style="display:none;margin-top:14px">
@@ -2678,8 +2678,8 @@ tr.naver-fav>td:first-child{border-left:3px solid #b8860b;}
   <!-- 전세가율 3개 -->
   <div id="t12-sec-jeonse-rate">
     <div class="chart-card zoomable" onclick="openZoom(this)"><div class="chart-card-title">🏠 전세 신규 vs 갱신 현황</div><div class="chart-wrap"><canvas id="chart-rent-split"></canvas></div></div>
-    <div class="chart-card zoomable" onclick="openZoom(this)"><div class="chart-card-title">📊 공구별 전세가율 (%)</div><div class="chart-wrap"><canvas id="chart-jeonse-rate"></canvas></div></div>
-    <div class="chart-card zoomable" onclick="openZoom(this)"><div class="chart-card-title">📈 연도별 전세가율 추이</div><div class="chart-wrap"><canvas id="chart-jeonse-trend"></canvas></div></div>
+    <div class="chart-card zoomable" onclick="openZoom(this)"><div class="chart-card-title">📊 공구별 전세가율 (%) <span style="font-size:9px;color:var(--text3)">(전세 신규 기준)</span></div><div class="chart-wrap"><canvas id="chart-jeonse-rate"></canvas></div></div>
+    <div class="chart-card zoomable" onclick="openZoom(this)"><div class="chart-card-title">📈 연도별 전세가율 추이 <span style="font-size:9px;color:var(--text3)">(갱신 제외)</span></div><div class="chart-wrap"><canvas id="chart-jeonse-trend"></canvas></div></div>
   </div><!-- /t12-sec-jeonse-rate -->
   </div><!-- /t12-compare-grid -->
 </div>
@@ -9717,6 +9717,14 @@ function makePrevYrFilter(rows, yr){
   };
 }
 
+// 중위값 — 오름차순 정렬 후 가운데 값(짝수면 가운데 두 값의 평균).
+// 평균은 초고가 몇 건에 끌려가지만 중위값은 그렇지 않아 체감가에 가깝다.
+function medianOf(arr){
+  if(!arr||!arr.length) return 0;
+  var a=arr.slice().sort(function(x,y){return x-y;}), n=a.length, h=Math.floor(n/2);
+  return Math.round(n%2 ? a[h] : (a[h-1]+a[h])/2);
+}
+
 // 연도 레이블 표시용
 function yrLabel(yr){
   if(yr==='recent'){
@@ -10035,6 +10043,11 @@ function renderTab12(){
     var dJPy    =t12Pct(avgFn(jeonseAll.pyeongs), avgFn(pj.pyeongs));
     var dWConv  =t12Pct(avgFn(wolseAll.convs),    avgFn(pw.convs));
     var dWCnt   =t12Pct(wolseAll.cnt, pw.cnt);
+    // 중위 전세가 — 신규 계약만. jeonseAll.prices 자체가 이미 신규 보증금만 담고 있다.
+    var jMed    =medianOf(jeonseAll.prices);
+    var jMedPrev=medianOf(pj.prices);
+    var dJMed   =t12Pct(jMed, jMedPrev);
+    var jAvgNow =avgFn(jeonseAll.prices);
     var ratioVal = rentTot
       ? '<span style="color:var(--accent3)">'+jShare+'%</span>'
         +'<span style="font-size:13px;font-weight:700;color:var(--text3);margin:0 6px">VS</span>'
@@ -10045,6 +10058,7 @@ function renderTab12(){
       {label:'전월세 비율 (전세 VS 월세)',val:ratioVal,sub:'전세 '+jeonseAll.cnt.toLocaleString()+'건 VS 월세 '+wolseAll.cnt.toLocaleString()+'건',badge:(shareDiff===null?'':'전세 비중 '+t12Badge(shareDiff,'%p')),color:'var(--accent)'},
       {label:'전세 거래건수 (신규+갱신)',val:jeonseAll.cnt.toLocaleString()+'건',sub:jRate+'% | 신규 '+jeonseAll.newCnt+'건 / 갱신 '+jeonseAll.renewCnt+'건',badge:t12Badge(dJCnt),color:'var(--green)'},
       {label:'전세 평균가 (신규)',val:fmt만(avgFn(jeonseAll.prices)),sub:'신규 '+jeonseAll.newCnt+'건 / 갱신 '+jeonseAll.renewCnt+'건',badge:t12Badge(dJAvg),color:'var(--teal,#00b8a9)'},
+      {label:'중위 전세가 (신규)',val:fmt만(jMed),sub:(jMed&&jAvgNow)?('평균 대비 '+(jMed>=jAvgNow?'+':'-')+fmt만(Math.abs(jMed-jAvgNow))):(yrLabel+' 기준'),badge:t12Badge(dJMed),color:'var(--blue)'},
       {label:'전세 평당가 (신규)',val:fmt평(avgFn(jeonseAll.pyeongs)),sub:yrLabel+' 기준',badge:t12Badge(dJPy),color:'var(--purple)'},
       {label:'월세 환산보증금 평균 (신규)',val:fmt만(avgFn(wolseAll.convs)),sub:'이율 '+(CONV_RATE*100).toFixed(1)+'% 기준',badge:t12Badge(dWConv),color:'var(--orange,#ff8c42)'},
       {label:'월세 거래건수 (신규+갱신)',val:wolseAll.cnt.toLocaleString()+'건',sub:wRate+'%',badge:t12Badge(dWCnt),color:'var(--accent2)'},
@@ -11319,13 +11333,8 @@ function renderTab0(){
   // 중위 매매가: 거래금액을 오름차순 정렬한 뒤 가운데 값(짝수면 가운데 두 건의 평균).
   //   표본은 현재 화면 필터(연도·면적·공구·매매유형)를 통과한 '거래 1건 = 1표본', 해제 거래는 제외.
   //   평균은 초고가 몇 건에 끌려가지만 중위값은 그렇지 않아 체감가에 가깝다.
-  var median = function(arr){
-    if(!arr||!arr.length) return 0;
-    var a=arr.slice().sort(function(x,y){return x-y;}), n=a.length, h=Math.floor(n/2);
-    return Math.round(n%2 ? a[h] : (a[h-1]+a[h])/2);
-  };
-  var curMed  = median(prices);
-  var prevMed = median(prevPrices);
+  var curMed  = medianOf(prices);
+  var prevMed = medianOf(prevPrices);
   var medDiff = prevMed>0?Math.round((curMed-prevMed)/prevMed*100):0;
 
   // 매매 거래율: 거래건수 ÷ 세대수(입주+분양). 공구 필터를 그대로 반영한다.
@@ -12380,6 +12389,9 @@ function renderJeonseRateChart(){
     if(!yrFilter(r,G.yr)||!areaFilter(r)) return;
     var g=parseInt(r['공구'])||0, p=parseFloat(r['보증금(만원)']||r['보증금']||r['보증금액']||0);
     var type=r['전월세구분']||r['계약구분']||'';
+    // 신규 계약만 — 갱신은 과거 시세라 현재 갭을 왜곡한다. 상단 KPI '전세 평균가(신규)' 와 동일 기준.
+    var ct=r['계약구분']||'';
+    if(ct.indexOf('신규')<0) return;
     if(type.indexOf('전세')>=0&&rentByDist[g]!==undefined&&p>0) rentByDist[g].push(p);
   });
   var labels=[],saleVals=[],rentVals=[],rateVals=[];
@@ -12420,7 +12432,7 @@ function renderJeonseRateChart(){
 
   charts.jeonseRate=new Chart(ctx1,{type:'bar',plugins:[jrLblPlugin],data:{labels:labels,datasets:[
     {label:'매매 평균(억)',data:saleVals,backgroundColor:'rgba(255,107,53,.5)',borderColor:'#d9480f',borderWidth:2,borderRadius:4,yAxisID:'y'},
-    {label:'전세 평균(억)',data:rentVals,backgroundColor:'rgba(0,212,255,.5)',borderColor:'#0e7490',borderWidth:2,borderRadius:4,yAxisID:'y'},
+    {label:'전세 평균(억, 신규)',data:rentVals,backgroundColor:'rgba(0,212,255,.5)',borderColor:'#0e7490',borderWidth:2,borderRadius:4,yAxisID:'y'},
     {label:'전세가율(%)',data:rateVals,type:'line',borderColor:'#b8860b',borderWidth:2.5,pointBackgroundColor:'#b8860b',pointRadius:5,fill:false,yAxisID:'y2',tension:0.3},
   ]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:tc,font:{size:10}}}},
     scales:{x:{ticks:{color:tc,font:{size:11}},grid:{display:false}},
@@ -12440,6 +12452,10 @@ function renderJeonseRateChart(){
       if(parseInt(r['연도'])!==y||!areaFilter(r)) return;
       var p=parseFloat(r['보증금(만원)']||r['보증금']||r['보증금액']||0);
       var type=r['전월세구분']||r['계약구분']||'';
+      // 갱신 제외. '신규만'으로 잡지 않는 이유 — 계약구분(신규/갱신)은 갱신요구권 도입 이후 자료라
+      // 그 이전 연도는 구분값이 비어 있다. 신규만 걸면 초기 연도가 통째로 비어 추이가 끊긴다.
+      var ct=r['계약구분']||'';
+      if(ct.indexOf('갱신')>=0) return;
       if(type.indexOf('전세')>=0&&p>0) ra.push(p);
     });
     var sAvg=avg(sa),rAvg=avg(ra);
