@@ -183,9 +183,9 @@ body.zoom-mode #t1-trend-wrap {
 body.zoom-mode .chart-wrap canvas {
   max-width: 100% !important;
 }
-/* 촬영모드에서 차트 캔버스 크기 고정 해제 */
+/* 촬영모드에서도 캔버스는 래퍼 높이를 따른다 (기존 200px 고정은 래퍼 240px 과 어긋남) */
 body.zoom-mode .chart-wrap canvas {
-  max-height: 200px !important;
+  max-height: 100% !important;
 }
 
 /* ── 개별 확대 (Lightbox) */
@@ -286,6 +286,8 @@ body.zoom-mode .chart-wrap canvas {
 }
 /* 차트 캔버스가 컨테이너를 넘지 않도록 상시 보정 (zoom 대응) */
 .chart-wrap canvas, .chart-card canvas { max-width:100% !important; box-sizing:border-box; }
+/* 세로도 래퍼 안으로 가둔다 — Chart.js 가 래퍼보다 큰 높이를 잡으면 x축 라벨이 카드 밖으로 나간다 */
+.chart-wrap canvas { max-height:100% !important; }
 .chart-card-title { font-size:11px; color:var(--text2); font-weight:700; margin-bottom:12px; }
 .dh-zoomable { cursor: zoom-in; transition: box-shadow .12s; }
 .dh-zoomable:hover { box-shadow: 0 0 0 2px var(--accent); }
@@ -296,6 +298,7 @@ body.zoom-mode .chart-wrap canvas {
   height:240px;
   display:block;
   padding-bottom:6px;
+  overflow:hidden;            /* 캔버스가 카드 밖으로 삐져나오지 않게 */
 }
 
 /* ── 공구 카드 그리드 */
@@ -9672,6 +9675,43 @@ function yrFilter(r, yr){
   return rowYr===parseInt(yr);
 }
 
+// ── 전년 동기(same-period) 비교 ────────────────────────────────
+// 진행 중인 연도(예: 2026년이 8월까지만 있는 상태)를 전년도 12개월 전체와 비교하면
+// 거래건수가 시장과 무관하게 급감한 것처럼 보인다. 전년도도 같은 월까지만 잘라서 본다.
+// rows에서 해당 연도의 마지막 계약월(1~12)을 구한다. recent 계열은 이미 기간이 같아 0.
+function yrLastMonth(rows, yr){
+  if(yr==null||yr==='recent'||yr==='recent_prev') return 0;
+  var y=parseInt(yr), mx=0;
+  (rows||[]).forEach(function(r){
+    var ym=parseInt(String(r['계약년월']||'').slice(0,6))||0;
+    if(!ym||Math.floor(ym/100)!==y) return;
+    var m=ym%100; if(m>0&&m<=12&&m>mx) mx=m;
+  });
+  return mx;
+}
+// 전년 비교용 필터를 만든다. → {prevYr, partial, maxMonth, label, test(r)}
+// partial=true면 전년도도 1~maxMonth월만 통과시킨다.
+function makePrevYrFilter(rows, yr){
+  var prevYr = (yr==='recent')?'recent_prev':(parseInt(yr)-1);
+  var mx = yrLastMonth(rows, yr);
+  var partial = (mx>0 && mx<12);
+  return {
+    prevYr: prevYr,
+    maxMonth: mx,
+    partial: partial,
+    // 배지 문구: 진행 중 연도면 비교 구간을 함께 표기 (예: '전년동기比 1~8월')
+    label: (prevYr==='recent_prev') ? '직전1년比' : (partial ? ('전년동기比 1~'+mx+'월') : '전년比'),
+    test: function(r){
+      if(!yrFilter(r, prevYr)) return false;
+      if(!partial) return true;
+      var ym=parseInt(String(r['계약년월']||'').slice(0,6))||0;
+      if(!ym) return false;
+      var m=ym%100;
+      return m>0 && m<=mx;
+    }
+  };
+}
+
 // 연도 레이블 표시용
 function yrLabel(yr){
   if(yr==='recent'){
@@ -9923,6 +9963,55 @@ function renderTab12(){
   var jRate=Math.round(jeonseAll.cnt/totalUnits*1000)/10;
   var wRate=Math.round(wolseAll.cnt/totalUnits*1000)/10;
 
+  // ── 전년 동기 집계 (KPI 전년비 배지용)
+  // 본 집계와 동일한 필터·동일한 규칙(가격·평당가·환산보증금은 신규 계약만)을 그대로 적용해야 비교가 성립한다.
+  function t12AggYr(targetYr, pf){
+    var J={cnt:0,newCnt:0,renewCnt:0,prices:[],pyeongs:[]}, W={cnt:0,convs:[]};
+    if(!G.rentData) return {j:J,w:W};
+    var pass = pf ? pf.test : function(r){ return yrFilter(r,targetYr); };
+    G.rentData.forEach(function(r){
+      if(!areaFilter(r)) return;
+      if(!t0DistFilter(r)) return;
+      if(!pass(r)) return;
+      if(!(parseInt(r['공구'])||0)) return;
+      var jt=r['전월세구분']||'', ct=r['계약구분']||'';
+      var p=parseFloat(r['보증금(만원)']||r['보증금']||r['보증금액']||0);
+      var m=parseFloat(r['월세(만원)']||r['월세금(만원)']||r['월세금']||r['월세금액']||0);
+      var py=parseFloat(r['평당가']||0);
+      var isNew=(ct.indexOf('신규')>=0);
+      if(jt==='전세'){
+        J.cnt++;
+        if(isNew){
+          J.newCnt++;
+          if(p>0) J.prices.push(p);
+          if(!py) py=calcPyeong(p,r);
+          if(py>0) J.pyeongs.push(py);
+        } else if(ct.indexOf('갱신')>=0){ J.renewCnt++; }
+      } else if(jt==='월세'){
+        W.cnt++;
+        if(isNew){
+          var conv=Math.round(p+m*12/CONV_RATE);
+          if(!conv&&p>0) conv=p;
+          if(conv>0) W.convs.push(conv);
+        }
+      }
+    });
+    return {j:J,w:W};
+  }
+  var t12PF=makePrevYrFilter(G.rentData, yr);       // 전년 동기 비교 필터
+  var t12Prev=t12AggYr(prevYr, t12PF);
+  var prevLabel=t12PF.label;
+  // 증감률(%) — 전년 값이 0이면 비교 불가(null → 배지 미표시)
+  var t12Pct=function(cur,prv){ return (prv>0)?Math.round((cur-prv)/prv*100):null; };
+  var t12Badge=function(d,unit){
+    if(d===null||d===undefined) return '';
+    var u=unit||'%';
+    var s = d>0 ? '<span style="color:var(--red)">▲'+d+u+'</span>'
+          : d<0 ? '<span style="color:var(--accent3)">▼'+Math.abs(d)+u+'</span>'
+                : '<span style="color:var(--text3)">－ 0'+u+'</span>';
+    return s+'('+prevLabel+')';
+  };
+
   // ── KPI 카드
   var kpiEl=document.getElementById('t12-kpi-top');
   if(kpiEl){
@@ -9930,25 +10019,38 @@ function renderTab12(){
     var rentTot=jeonseAll.cnt+wolseAll.cnt;
     var jShare=rentTot?Math.round(jeonseAll.cnt/rentTot*100):0;
     var wShare=rentTot?100-jShare:0;
+    // 전년비 계산
+    var pj=t12Prev.j, pw=t12Prev.w;
+    var prevTot=pj.cnt+pw.cnt;
+    var prevJShare=prevTot?Math.round(pj.cnt/prevTot*100):null;
+    var shareDiff=(prevJShare===null)?null:(jShare-prevJShare);   // 비중은 %p로 표기
+    var dTotCnt =t12Pct(rentTot, prevTot);
+    var dJCnt   =t12Pct(jeonseAll.cnt, pj.cnt);
+    var dJAvg   =t12Pct(avgFn(jeonseAll.prices),  avgFn(pj.prices));
+    var dJPy    =t12Pct(avgFn(jeonseAll.pyeongs), avgFn(pj.pyeongs));
+    var dWConv  =t12Pct(avgFn(wolseAll.convs),    avgFn(pw.convs));
+    var dWCnt   =t12Pct(wolseAll.cnt, pw.cnt);
     var ratioVal = rentTot
       ? '<span style="color:var(--accent3)">'+jShare+'%</span>'
         +'<span style="font-size:13px;font-weight:700;color:var(--text3);margin:0 6px">VS</span>'
         +'<span style="color:var(--accent2)">'+wShare+'%</span>'
       : '-';
     var kpis=[
-      {label:'전월세 거래건수 (Lease Turnover Rate)',val:(jeonseAll.cnt+wolseAll.cnt).toLocaleString()+'건',sub:leaseRate+'% | 전세 '+jeonseAll.cnt+'건 / 월세 '+wolseAll.cnt+'건',color:'var(--accent3)'},
-      {label:'전월세 비율 (전세 VS 월세)',val:ratioVal,sub:'전세 '+jeonseAll.cnt.toLocaleString()+'건 VS 월세 '+wolseAll.cnt.toLocaleString()+'건',color:'var(--accent)'},
-      {label:'전세 거래건수 (신규+갱신)',val:jeonseAll.cnt.toLocaleString()+'건',sub:jRate+'% | 신규 '+jeonseAll.newCnt+'건 / 갱신 '+jeonseAll.renewCnt+'건',color:'var(--green)'},
-      {label:'전세 평균가 (신규)',val:fmt만(avgFn(jeonseAll.prices)),sub:'신규 '+jeonseAll.newCnt+'건 / 갱신 '+jeonseAll.renewCnt+'건',color:'var(--teal,#00b8a9)'},
-      {label:'전세 평당가 (신규)',val:fmt평(avgFn(jeonseAll.pyeongs)),sub:yrLabel+' 기준',color:'var(--purple)'},
-      {label:'월세 환산보증금 평균 (신규)',val:fmt만(avgFn(wolseAll.convs)),sub:'이율 '+(CONV_RATE*100).toFixed(1)+'% 기준',color:'var(--orange,#ff8c42)'},
-      {label:'월세 거래건수 (신규+갱신)',val:wolseAll.cnt.toLocaleString()+'건',sub:wRate+'%',color:'var(--accent2)'},
+      {label:'전월세 거래건수 (Lease Turnover Rate)',val:(jeonseAll.cnt+wolseAll.cnt).toLocaleString()+'건',sub:leaseRate+'% | 전세 '+jeonseAll.cnt+'건 / 월세 '+wolseAll.cnt+'건',badge:t12Badge(dTotCnt),color:'var(--accent3)'},
+      {label:'전월세 비율 (전세 VS 월세)',val:ratioVal,sub:'전세 '+jeonseAll.cnt.toLocaleString()+'건 VS 월세 '+wolseAll.cnt.toLocaleString()+'건',badge:(shareDiff===null?'':'전세 비중 '+t12Badge(shareDiff,'%p')),color:'var(--accent)'},
+      {label:'전세 거래건수 (신규+갱신)',val:jeonseAll.cnt.toLocaleString()+'건',sub:jRate+'% | 신규 '+jeonseAll.newCnt+'건 / 갱신 '+jeonseAll.renewCnt+'건',badge:t12Badge(dJCnt),color:'var(--green)'},
+      {label:'전세 평균가 (신규)',val:fmt만(avgFn(jeonseAll.prices)),sub:'신규 '+jeonseAll.newCnt+'건 / 갱신 '+jeonseAll.renewCnt+'건',badge:t12Badge(dJAvg),color:'var(--teal,#00b8a9)'},
+      {label:'전세 평당가 (신규)',val:fmt평(avgFn(jeonseAll.pyeongs)),sub:yrLabel+' 기준',badge:t12Badge(dJPy),color:'var(--purple)'},
+      {label:'월세 환산보증금 평균 (신규)',val:fmt만(avgFn(wolseAll.convs)),sub:'이율 '+(CONV_RATE*100).toFixed(1)+'% 기준',badge:t12Badge(dWConv),color:'var(--orange,#ff8c42)'},
+      {label:'월세 거래건수 (신규+갱신)',val:wolseAll.cnt.toLocaleString()+'건',sub:wRate+'%',badge:t12Badge(dWCnt),color:'var(--accent2)'},
     ];
     kpiEl.innerHTML=kpis.map(function(k){
       return '<div class="kpi-card" style="--kpi-color:'+k.color+'">'+
         '<div class="kpi-label">'+k.label+'</div>'+
         '<div class="kpi-val">'+k.val+'</div>'+
-        '<div class="kpi-sub">'+k.sub+'</div></div>';
+        '<div class="kpi-sub">'+k.sub+'</div>'+
+        (k.badge?'<div class="kpi-badge">'+k.badge+'</div>':'')+
+        '</div>';
     }).join('');
   }
 
@@ -11115,9 +11217,12 @@ function renderTab0(){
     return areaFilter(r);
   }) : [];
 
+  // 전년 비교는 같은 기간끼리 (2026년이 8월까지면 2025년도 1~8월만)
+  var salePF = makePrevYrFilter(G.saleData, yr);
+  var rentPF = makePrevYrFilter(G.rentData, yr);
   var prevRows = G.saleData ? G.saleData.filter(function(r){
     if(r['해제사유']&&r['해제사유']!=='-'&&r['해제사유']!=='') return false;
-    if(!yrFilter(r,prevYr)) return false;
+    if(!salePF.test(r)) return false;
     if(G.saleType!=='all' && r['구분']!==(G.saleType==='apt'?'아파트':'분양권')) return false;
     if(!t0DistFilter(r)) return false;
     return areaFilter(r);
@@ -11145,13 +11250,14 @@ function renderTab0(){
   };
 
   // ── 전세 실시간 필터링 (기준연도 + 면적 + 공구 모두 반영)
-  function calcRentStats(targetYr){
+  function calcRentStats(targetYr, pf){
     var result = {cnt:0, new_prices:[], new_pyeongs:[], renew_cnt:0, wolse_cnt:0, wolse_new:0, wolse_renew:0};
     if(!G.rentData) return result;
+    var passYr = pf ? pf.test : function(r){ return yrFilter(r, targetYr); };
     // 월세 카운트 별도 집계
     G.rentData.forEach(function(r){
       if(r['전월세구분']!=='월세') return;
-      if(!yrFilter(r, targetYr)) return;
+      if(!passYr(r)) return;
       if(!areaFilter(r)) return;
       if(!t0DistFilter(r)) return;
       result.wolse_cnt++;
@@ -11161,7 +11267,7 @@ function renderTab0(){
     });
     G.rentData.forEach(function(r){
       if(r['전월세구분']==='월세') return;
-      if(!yrFilter(r, targetYr)) return;
+      if(!passYr(r)) return;
       if(!areaFilter(r)) return;
       if(!t0DistFilter(r)) return;
       var price = parseFloat(r['보증금']||r['보증금액']||0);
@@ -11189,7 +11295,7 @@ function renderTab0(){
   }
 
   var rentCur  = calcRentStats(yr);
-  var rentPrev2 = calcRentStats(prevYr);
+  var rentPrev2 = calcRentStats(prevYr, rentPF);
 
   var jCnt     = rentCur.cnt;
   var jCntPrev = rentPrev2.cnt;
@@ -11207,30 +11313,30 @@ function renderTab0(){
   document.getElementById('kpi-top').innerHTML = [
     {label:'매매 거래건수',val:curCnt.toLocaleString()+'건',
       sub:yrLabel2+' · '+areaLabel(),
-      badge:prevCnt?makeYoY(cntDiff)+'(전년比)':'',
+      badge:prevCnt?makeYoY(cntDiff)+'('+salePF.label+')':'',
       color:'var(--accent)'},
     {label:'평균 매매가',val:fmt만(curAvg),
       sub:yrLabel2+' · '+areaLabel(),
-      badge:prevAvg?makeYoY(priceDiff)+'(전년比)':'',
+      badge:prevAvg?makeYoY(priceDiff)+'('+salePF.label+')':'',
       color:'var(--yellow)'},
     {label:'매매 평당가',val:curPyeong?fmt평(curPyeong):'-',
       sub:yrLabel2+' · '+areaLabel(),
-      badge:prevPyeong?makeYoY(pyeongDiff)+'(전년比)':'',color:'var(--orange,#ff8c42)'},
+      badge:prevPyeong?makeYoY(pyeongDiff)+'('+salePF.label+')':'',color:'var(--orange,#ff8c42)'},
     {label:'전세 거래건수',val:jCnt.toLocaleString()+'건',
       sub:'신규 '+jNewCnt+'건 + 갱신 '+jRenewCnt+'건',
-      badge:jCntPrev?makeYoY(jCntDiff)+'(전년比)':'',
+      badge:jCntPrev?makeYoY(jCntDiff)+'('+rentPF.label+')':'',
       color:'var(--accent3)'},
     {label:'전세 평균가(신규)',val:fmt만(jAvg),
       sub:'신규 계약 기준',
-      badge:jAvgPrev?makeYoY(jAvgDiff)+'(전년比)':'',
+      badge:jAvgPrev?makeYoY(jAvgDiff)+'('+rentPF.label+')':'',
       color:'var(--teal,#00b8a9)'},
     {label:'전세 평당가(신규)',val:jPy?fmt평(jPy):'-',
       sub:'신규 계약 기준',
-      badge:jPyPrev?makeYoY(jPyDiff)+'(전년比)':'',
+      badge:jPyPrev?makeYoY(jPyDiff)+'('+rentPF.label+')':'',
       color:'var(--purple)'},
     {label:'월세 거래건수 (신규+갱신)',val:(rentCur.wolse_cnt||0).toLocaleString()+'건',
       sub:'신규 '+(rentCur.wolse_new||0)+'건 · 갱신 '+(rentCur.wolse_renew||0)+'건',
-      badge:(rentPrev2.wolse_cnt>0?makeYoY(Math.round(((rentCur.wolse_cnt||0)-(rentPrev2.wolse_cnt||0))/(rentPrev2.wolse_cnt||1)*100))+'(전년比)':''),
+      badge:(rentPrev2.wolse_cnt>0?makeYoY(Math.round(((rentCur.wolse_cnt||0)-(rentPrev2.wolse_cnt||0))/(rentPrev2.wolse_cnt||1)*100))+'('+rentPF.label+')':''),
       color:'var(--accent2)'},
   ].map(function(k){
     return '<div class="kpi-card" style="--kpi-color:'+k.color+'">'+
@@ -11284,10 +11390,14 @@ function renderTab0(){
     var prevSubPeriod = (yr==='recent') ? 0 : (G.subPeriod||0);
     var prevPeriod    = (yr==='recent') ? 'annual' : period;
     var prevYrForSub  = (yr==='recent') ? 'recent_prev' : (parseInt(yr)-1);
+    // 연간 비교일 때만 전년도를 같은 월까지로 자른다 (분기/월별은 이미 기간이 맞음)
+    var prevMonthCap  = (prevPeriod==='annual' && salePF.partial) ? salePF.maxMonth : 0;
+    var capOk = function(ym){ return !prevMonthCap || ((parseInt(ym)||0)%100)<=prevMonthCap; };
     G.saleData.filter(function(r){
       if(r['해제사유']&&r['해제사유']!=='-'&&r['해제사유']!=='') return false;
       var ym=parseInt(r['계약년월']||0);
       if(!subPeriodFilter(ym, prevYrForSub, prevPeriod, prevSubPeriod)) return false;
+      if(!capOk(ym)) return false;
       if(!t0DistFilter(r)) return false;
       return areaFilter(r);
     }).forEach(function(r){
@@ -11413,6 +11523,7 @@ function renderTab0(){
       G.saleData.filter(function(r){
         var ym3=parseInt(r['계약년월']||0);
         if(!subPeriodFilter(ym3, prevYrForSub, prevPeriod, prevSubPeriod)) return false;
+        if(!capOk(ym3)) return false;
         if(parseInt(r['공구'])!==g) return false;
         return areaFilter(r);
       }).forEach(function(r){
