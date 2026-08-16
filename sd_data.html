@@ -9029,14 +9029,18 @@ function normalizeBP(r){
   if(!r) return r;
   var raw = r['분양평수정밀'];
   if(!(parseFloat(raw)>0)){
-    // 우선순위 1) 분양평수 컬럼(소수점 포함)
-    var pv = parseFloat(String(r['분양평수']||'').replace(/[^0-9.]/g,''))||0;
-    // 2) 분양㎡ / 타입 앞 숫자 ÷ 3.3058  (분양평형이 정수로 절삭 저장된 경우 대비)
+    // 우선순위 1) 분양면적(㎡) 원본 — 가장 신뢰할 수 있는 값. 나머지는 전부 여기서 파생된 값이다.
+    //    e편한세상처럼 전용률이 낮은(70%대) 단지는 추정 전용률로 되짚으면 평형이 2평까지 어긋난다.
+    var sq = findBunyangSqmCol(r);
+    var pv = sq>0 ? sq/3.3058 : 0;
+    // 2) 분양평수 컬럼(평, 소수점 포함)
+    if(!(pv>0)) pv = parseFloat(String(r['분양평수']||'').replace(/[^0-9.]/g,''))||0;
+    // 3) 타입 앞 숫자를 분양면적㎡ 로 간주 (예: '99.3A')
     if(!(pv>0)){
-      var m = String(r['분양m²']||r['분양㎡']||r['타입']||'').match(/^(\d+(?:\.\d+)?)/);
+      var m = String(r['타입']||'').match(/^(\d+(?:\.\d+)?)/);
       if(m){ var mm=parseFloat(m[1]); if(mm>=40) pv = mm/3.3058; }
     }
-    // 3) 분양평형 원본값 (소수점이 살아있으면 그대로 사용)
+    // 4) 마지막으로 분양평형 원본값 (이미 절삭돼 있을 수 있어 최후순위)
     if(!(pv>0)) pv = parseFloat(String(r['분양평형']||'').replace(/[^0-9.]/g,''))||0;
     if(pv>0) r['분양평수정밀'] = pv;
   }
@@ -9044,6 +9048,41 @@ function normalizeBP(r){
   if(ex>0) r['분양평형'] = Math.floor(ex);
   return r;
 }
+// ── 분양면적(㎡) 컬럼 동적 탐색
+// 파일마다 헤더가 '분양면적' / '분양면적(㎡)' / '공급면적' / '분양m²' / '공급㎡' 등으로 제각각이라
+// 고정 이름 목록으로는 놓친다. '분양|공급' + '면적|㎡|m²|m2' 조합을 키에서 직접 찾는다.
+// (전용면적 컬럼은 반드시 제외 — 이름이 비슷해 잘못 잡히면 평형이 통째로 어긋난다)
+function findBunyangSqmCol(r){
+  if(!r) return 0;
+  var ks=Object.keys(r);
+  for(var i=0;i<ks.length;i++){
+    var k=ks[i];
+    if(k.indexOf('전용')>=0) continue;
+    var isBy=(k.indexOf('분양')>=0||k.indexOf('공급')>=0);
+    if(!isBy) continue;
+    var isArea=(k.indexOf('면적')>=0||k.indexOf('㎡')>=0||k.indexOf('m²')>=0||k.indexOf('m2')>=0||k.indexOf('M2')>=0);
+    if(!isArea) continue;
+    if(k.indexOf('평수')>=0||k.indexOf('평형')>=0) continue;   // 평 단위 컬럼은 여기서 제외
+    var v=parseFloat(String(r[k]||'').replace(/[^0-9.]/g,''))||0;
+    if(v>=40) return v;   // ㎡ 값으로 볼 수 있는 하한
+  }
+  return 0;
+}
+
+// ── 분양면적(㎡) — 원본 컬럼이 있으면 그대로, 없으면 분양평수정밀 × 3.3058 로 역산
+// 표시된 평형이 이상할 때 이 값을 보면 원인(원본 면적 자체가 다른지)이 바로 드러난다.
+function getBunyangSqm(r){
+  if(!r) return 0;
+  var direct = findBunyangSqmCol(r);
+  if(direct>0) return direct;
+  var ex = parseFloat(r['분양평수정밀']||0);
+  if(ex>0) return Math.round(ex*3.3058*10)/10;
+  var m = String(r['타입']||r['타입명']||'').match(/^(\d+(?:\.\d+)?)/);
+  if(m){ var mm=parseFloat(m[1]); if(mm>=40) return mm; }
+  return 0;
+}
+function fmt㎡(v){ return v>0 ? (Math.round(v*10)/10)+'㎡' : '-'; }
+
 // ── 평당가 계산 헬퍼: 분양평형 기준 (전용㎡ 미사용)
 // 분양평형 = r['분양평형'] 또는 r['타입'] 앞 숫자(분양면적㎡) ÷ 3.3058
 function getBP(r){
@@ -10931,6 +10970,14 @@ function renderT2Dashboard(){
         return b===bp;
       });
       if(!rows.length) return;
+      // 이 평형대의 대표 면적 — 같은 평형에 84.8/84.9/85.0 처럼 섞여 있으므로 최빈값을 쓴다
+      var modeOf=function(vals){
+        var c={},best=0,bv=0;
+        vals.forEach(function(v){ if(!(v>0)) return; var k=Math.round(v*10); c[k]=(c[k]||0)+1; if(c[k]>best){best=c[k];bv=k/10;} });
+        return bv;
+      };
+      var bsqRep=modeOf(rows.map(getBunyangSqm));
+      var sqmRep=modeOf(rows.map(function(r){return parseFloat(r['전용(㎡)']||r['전용']||0);}));
       var prices=rows.map(function(r){
         if(trade==='sale') return parseFloat(r['거래금액']||0);
         if(trade==='jeonse') return parseFloat(r['보증금']||r['보증금액']||0);
@@ -10938,7 +10985,10 @@ function renderT2Dashboard(){
       }).filter(Boolean);
       var avgP=avg2(prices),maxP=prices.length?Math.max.apply(null,prices):0,minP=prices.length?Math.min.apply(null,prices):0;
       var py=avgP&&bp?Math.round(avgP/bp):0;
-      sumRows+='<tr><td class="num">'+bp+'평</td><td class="num">'+rows.length+'</td>'+
+      sumRows+='<tr><td class="num">'+bp+'평</td>'+
+        '<td class="num" style="color:var(--text2)">'+fmt㎡(bsqRep)+'</td>'+
+        '<td class="num" style="color:var(--text2)">'+fmt㎡(sqmRep)+'</td>'+
+        '<td class="num">'+rows.length+'</td>'+
         '<td class="num" style="color:var(--yellow)">'+fmt천2(avgP)+'</td>'+
         '<td class="num" style="color:var(--yellow)">'+fmt천2(maxP)+'</td>'+
         '<td class="num" style="color:#1971c2">'+fmt천2(minP)+'</td>'+
@@ -10949,7 +10999,10 @@ function renderT2Dashboard(){
       '<div style="overflow-x:auto;margin-bottom:14px">'+
         '<table class="data-table" style="font-size:11px">'+
           '<thead><tr>'+
-            '<th class="num">평형</th><th class="num">건수</th>'+
+            '<th class="num">평형</th>'+
+            '<th class="num" style="color:var(--text2)">분양㎡</th>'+
+            '<th class="num" style="color:var(--text2)">전용㎡</th>'+
+            '<th class="num">건수</th>'+
             '<th class="num" style="color:var(--yellow)">평균'+priceHdrLabel+'</th>'+
             '<th class="num" style="color:var(--yellow)">최고'+priceHdrLabel+'</th>'+
             '<th class="num" style="color:#1971c2">최저'+priceHdrLabel+'</th>'+
@@ -11093,11 +11146,13 @@ function renderT2Dashboard(){
     var ymStr=ym.length>=6?ym.slice(0,4)+'.'+ym.slice(4,6)+(dd?'.'+String(dd).padStart(2,'0'):''):'';
     var sqm=parseFloat(r['전용(㎡)']||r['전용']||0);
     var bp=parseInt(r['분양평형']||0);
+    var bsq=getBunyangSqm(r);
+    var bsqTd='<td class="num" style="color:var(--text2)">'+fmt㎡(bsq)+'</td>';
     if(trade==='sale'){
       var p=parseFloat(r['거래금액']||0), py=parseFloat(r['평당가']||0);
       if(!py) py=calcPyeong(p,r);
       return '<tr><td class="num" style="font-size:11px;color:var(--text3)">'+ymStr+'</td>'+
-        '<td class="num">'+(sqm?sqm.toFixed(1)+'㎡':'-')+'</td><td class="num">'+(bp||'-')+'</td>'+
+        '<td class="num">'+(sqm?sqm.toFixed(1)+'㎡':'-')+'</td>'+bsqTd+'<td class="num">'+(bp||'-')+'</td>'+
         '<td class="num" style="color:var(--yellow);font-weight:700">'+fmt만(p)+'</td>'+
         '<td class="num" style="color:#d9480f">'+fmt평(py)+'</td>'+
         '<td class="num">'+(r['층']||'-')+'층</td><td style="text-align:center;font-size:10px;color:var(--text3)">'+(r['구분']||'-')+'</td></tr>';
@@ -11107,7 +11162,7 @@ function renderT2Dashboard(){
       var conv=Math.round(dep+mon*12/CONV);
       var py2=calcPyeong(trade==='jeonse'?dep:conv, r);
       return '<tr><td class="num" style="font-size:11px;color:var(--text3)">'+ymStr+'</td>'+
-        '<td class="num">'+(sqm?sqm.toFixed(1)+'㎡':'-')+'</td><td class="num">'+(bp||'-')+'</td>'+
+        '<td class="num">'+(sqm?sqm.toFixed(1)+'㎡':'-')+'</td>'+bsqTd+'<td class="num">'+(bp||'-')+'</td>'+
         '<td class="num" style="color:var(--accent3);font-weight:700">'+fmt만(dep)+'</td>'+
         (trade==='monthly'?'<td class="num" style="color:var(--accent2)">'+Math.round(mon).toLocaleString()+'만</td><td class="num" style="color:var(--yellow)">'+fmt만(conv)+'</td>':'')+
         '<td class="num" style="color:#d9480f">'+fmt평(py2)+'</td>'+
@@ -11115,13 +11170,13 @@ function renderT2Dashboard(){
     }
   }
   var theadHTML='';
-  var tbodyHTML=recent10.map(mkRecentRow).join('')||'<tr><td colspan="8" style="text-align:center;padding:16px;color:var(--text3)">데이터 없음</td></tr>';
+  var tbodyHTML=recent10.map(mkRecentRow).join('')||'<tr><td colspan="10" style="text-align:center;padding:16px;color:var(--text3)">데이터 없음</td></tr>';
   if(trade==='sale'){
-    theadHTML='<tr><th class="num">날짜</th><th class="num">전용㎡</th><th class="num">분양평형</th><th class="num" style="color:var(--yellow)">거래가</th><th class="num" style="color:#d9480f">평당가</th><th class="num">층</th><th>구분</th></tr>';
+    theadHTML='<tr><th class="num">날짜</th><th class="num">전용㎡</th><th class="num" style="color:var(--text2)">분양㎡</th><th class="num">분양평형</th><th class="num" style="color:var(--yellow)">거래가</th><th class="num" style="color:#d9480f">평당가</th><th class="num">층</th><th>구분</th></tr>';
   } else if(trade==='jeonse'){
-    theadHTML='<tr><th class="num">날짜</th><th class="num">전용㎡</th><th class="num">분양평형</th><th class="num" style="color:var(--accent3)">보증금</th><th class="num" style="color:#d9480f">평당가</th><th class="num">층</th><th>계약구분</th></tr>';
+    theadHTML='<tr><th class="num">날짜</th><th class="num">전용㎡</th><th class="num" style="color:var(--text2)">분양㎡</th><th class="num">분양평형</th><th class="num" style="color:var(--accent3)">보증금</th><th class="num" style="color:#d9480f">평당가</th><th class="num">층</th><th>계약구분</th></tr>';
   } else {
-    theadHTML='<tr><th class="num">날짜</th><th class="num">전용㎡</th><th class="num">분양평형</th><th class="num" style="color:var(--accent3)">보증금</th><th class="num" style="color:var(--accent2)">월세</th><th class="num" style="color:var(--yellow)">환산보증금</th><th class="num" style="color:#d9480f">평당가</th><th class="num">층</th><th>계약구분</th></tr>';
+    theadHTML='<tr><th class="num">날짜</th><th class="num">전용㎡</th><th class="num" style="color:var(--text2)">분양㎡</th><th class="num">분양평형</th><th class="num" style="color:var(--accent3)">보증금</th><th class="num" style="color:var(--accent2)">월세</th><th class="num" style="color:var(--yellow)">환산보증금</th><th class="num" style="color:#d9480f">평당가</th><th class="num">층</th><th>계약구분</th></tr>';
   }
   var rth=document.getElementById('t2-recent-thead'); if(rth) rth.innerHTML=theadHTML;
   var rtb=document.getElementById('t2-recent-tbody'); if(rtb) rtb.innerHTML=tbodyHTML;
@@ -11148,7 +11203,7 @@ function renderT2Dashboard(){
   $set('t2-top10-title','💰 최근1년 '+nm+' TOP10 거래가 · '+trdLbl);
   var t10th=document.getElementById('t2-top10-thead'); if(t10th) t10th.innerHTML=theadHTML;
   var t10tb=document.getElementById('t2-top10-tbody');
-  if(t10tb) t10tb.innerHTML=top10.map(mkRecentRow).join('')||'<tr><td colspan="8" style="text-align:center;padding:16px;color:var(--text3)">데이터 없음</td></tr>';
+  if(t10tb) t10tb.innerHTML=top10.map(mkRecentRow).join('')||'<tr><td colspan="10" style="text-align:center;padding:16px;color:var(--text3)">데이터 없음</td></tr>';
 
   // ── 기간별 차트 4개 (당해 + 전년도 회색)
   var maxP=period==='quarter'?4:12;
