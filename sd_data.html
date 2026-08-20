@@ -710,7 +710,8 @@ tr.naver-fav>td:first-child{border-left:3px solid #b8860b;}
   <div id="t16-filters" class="card" style="padding:10px 14px;margin-bottom:12px">
     <div class="filter-row"><span class="filter-label">기준일</span><div class="filter-group" id="t16-date"></div></div>
     <div class="filter-row"><span class="filter-label">거래구분</span><div class="filter-group" id="t16-deal"></div>
-      <span class="filter-label" style="margin-left:14px">기간단위</span><div class="filter-group" id="t16-period"></div></div>
+      <span class="filter-label" style="margin-left:14px">기간단위</span><div class="filter-group" id="t16-period"></div>
+      <span class="filter-label" style="margin-left:14px" title="마지막 조사가 이 기간을 넘긴 단지는 월별 집계에서 뺍니다">이월 한도</span><div class="filter-group" id="t16-carry"></div></div>
     <div class="filter-row"><span class="filter-label">공구</span><div class="filter-group" id="t16-dist"></div></div>
     <div class="filter-row"><span class="filter-label">면적</span><div class="filter-group" id="t16-area"></div></div>
     <div class="filter-row"><span class="filter-label">단지</span><div class="filter-group" id="t16-unit" style="max-height:70px;overflow:auto"></div></div>
@@ -724,6 +725,7 @@ tr.naver-fav>td:first-child{border-left:3px solid #b8860b;}
     <div class="chart-card"><div class="chart-card-title">📊 매물 건수 추이 (실제 물건 수)</div><div class="chart-wrap"><canvas id="t16-ch-cnt"></canvas></div></div>
     <div class="chart-card"><div class="chart-card-title">💰 중위 호가 추이 (억)</div><div class="chart-wrap"><canvas id="t16-ch-price"></canvas></div></div>
   </div>
+  <div class="card" id="t16-cov" style="padding:10px 14px;margin-bottom:12px"></div>
 
   <div class="sec-hdr" style="margin-bottom:8px"><div class="sec-hdr-bar" style="background:var(--accent2)"></div>
     <div class="sec-hdr-title">🏘️ 공구별 현황 <span id="t16-dist-sub" style="font-size:11px;color:var(--text3)"></span></div></div>
@@ -4778,6 +4780,8 @@ function slimNaverRow(r){
   };
   var w=parseInt(r.월세)||0;      if(w>0) o.w=w;
   var d=parseInt(r.중복등록수)||0; if(d>0) o.d=d;
+  var a=String(r.조사일||'').replace(/[^0-9]/g,'').slice(0,8);
+  if(a.length===8) o.a=a;          // 이 단지를 실제로 조사한 날
   return o;
 }
 
@@ -4795,6 +4799,8 @@ function saveNaverSnapshot(rows, dstr){
   var ymd=naverSnapDate(dstr);
   var dd=naverDedupe(rows);
   var slim=dd.rows.map(slimNaverRow);
+  // 조사일이 없는 행(이전 버전에서 올린 데이터)은 이 스냅샷 날짜를 조사일로 본다
+  slim.forEach(function(r){ if(!r.a) r.a=ymd; });
   var danji={}; slim.forEach(function(r){ if(r.n) danji[r.n]=1; });
   var danjiCnt=Object.keys(danji).length;
   var byType={매매:0,전세:0,월세:0};
@@ -15697,10 +15703,16 @@ function processNaverRows(rows, fileCnt){
         var newDanjiSet={};
         newParsed.forEach(function(r){ if(r.단지명) newDanjiSet[r.단지명]=true; });
         var kept=G.naverData.filter(function(r){ return !newDanjiSet[r.단지명]; });
+        // 이번에 올린 단지에만 조사일 도장을 찍는다. 나머지 단지는 예전 조사일을 그대로 유지해야
+        // 월별 집계에서 '언제 본 값인지'를 구분할 수 있다.
+        var _today=naverSnapDate();
+        newParsed.forEach(function(r){ r.조사일=_today; });
         G.naverData = fixNaverDist(kept.concat(newParsed));
         G._naverManualUploaded = true;
         showToast('✅ '+newParsed.length+'건 업데이트 (전체 '+G.naverData.length+'건 유지)');
       } else {
+        var _today0=naverSnapDate();
+        newParsed.forEach(function(r){ r.조사일=_today0; });
         G.naverData = fixNaverDist(newParsed);
         G._naverManualUploaded = true;
         showToast('✅ 네이버 매물 '+G.naverData.length+'건 로드');
@@ -15723,7 +15735,67 @@ function processNaverRows(rows, fileCnt){
 // 다른 함수에서 참조하면 ReferenceError 가 난다. 여기서 전역으로 따로 둔다.
 function T16_CONV(){ return window._convRate||0.058; }
 function t16Avg(arr){ return (arr&&arr.length)?Math.round(arr.reduce(function(a,b){return a+b;},0)/arr.length):0; }
-var G16={date:'',deal:'all',dist:'all',area:'all',unit:'all',period:'snap',cache:{},index:[],loaded:false};
+var G16={date:'',deal:'all',dist:'all',area:'all',unit:'all',period:'snap',carry:60,cache:{},index:[],loaded:false};
+
+// ── 단지별 관측 이력 만들기
+// 스냅샷은 그 시점 화면 전체(=조사 안 한 단지의 옛 값까지)를 담는다.
+// 그래서 스냅샷을 그대로 더하면 신선도가 뒤섞인다. 여기서 (단지, 조사일) 단위로 풀어헤친다.
+function t16Obs(){
+  if(G16._obsKey===JSON.stringify(Object.keys(G16.cache).sort())) return G16._obs;
+  var obs={};   // {단지명: {조사일: [행...]}}
+  Object.keys(G16.cache).sort().forEach(function(snap){
+    (G16.cache[snap]||[]).forEach(function(r){
+      var a=r.a||snap, n=r.n||'';
+      if(!n) return;
+      if(!obs[n]) obs[n]={};
+      if(!obs[n][a]) obs[n][a]=[];
+      obs[n][a].push(r);
+    });
+  });
+  // 같은 (단지, 조사일)이 여러 스냅샷에 복사돼 들어온다 → 건수가 가장 많은 판본 하나만 남긴다
+  Object.keys(obs).forEach(function(n){
+    Object.keys(obs[n]).forEach(function(a){
+      var seen={}, uniq=[];
+      obs[n][a].forEach(function(r){
+        var k=[r.t,r.s,r.f,r.p,r.w||0].join('|');
+        if(!seen[k]){ seen[k]=1; uniq.push(r); }
+      });
+      obs[n][a]=uniq;
+    });
+  });
+  G16._obs=obs; G16._obsKey=JSON.stringify(Object.keys(G16.cache).sort());
+  return obs;
+}
+function t16DayDiff(a,b){   // YYYYMMDD 두 개의 일수 차
+  var f=function(x){return new Date(+x.slice(0,4), +x.slice(4,6)-1, +x.slice(6,8));};
+  return Math.round((f(b)-f(a))/86400000);
+}
+// 특정 시점(cutoff) 기준으로 각 단지의 '가장 최근에 알려진 값'을 모은다 (재고 실사 방식)
+function t16AsOf(cutoff){
+  var obs=t16Obs(), rows=[], live=0, carry=0, drop=0, fresh={};
+  Object.keys(obs).forEach(function(n){
+    var days=Object.keys(obs[n]).filter(function(a){return a<=cutoff;}).sort();
+    if(!days.length) return;
+    var last=days[days.length-1];
+    var gap=t16DayDiff(last,cutoff);
+    if(G16.carry>0 && gap>G16.carry){ drop++; return; }   // 너무 오래된 값은 버린다
+    if(gap<=0||last.slice(0,6)===cutoff.slice(0,6)) live++; else carry++;
+    fresh[n]=last;
+    rows=rows.concat(obs[n][last]);
+  });
+  return {rows:rows, live:live, carry:carry, drop:drop, fresh:fresh};
+}
+function t16PeriodEnd(label){
+  if(/^\d{4}\.\d{2}$/.test(label)){
+    var y=+label.slice(0,4), m=+label.slice(5,7);
+    var d=new Date(y,m,0);
+    return label.slice(0,4)+label.slice(5,7)+('0'+d.getDate()).slice(-2);
+  }
+  var qm=label.match(/^(\d{4}) (\d)Q$/);
+  if(qm){ var y2=+qm[1], q=+qm[2], d2=new Date(y2,q*3,0);
+    return qm[1]+('0'+(q*3)).slice(-2)+('0'+d2.getDate()).slice(-2); }
+  return label;
+}
 var T16_AREA=[['all','전체'],['u20','20평 미만'],['a20','20평대'],['a30','30평대'],['a40','40평대'],['a50','50평 이상']];
 
 function t16AreaOk(r){
@@ -15737,8 +15809,15 @@ function t16AreaOk(r){
     default: return true;
   }
 }
+function t16RowsAt(pt){
+  var rows=pt.asof? t16AsOf(pt.ymd).rows : (G16.cache[pt.ymd]||[]);
+  return t16Filter(rows);
+}
 function t16Rows(ymd){
   var rows=G16.cache[ymd]||[];
+  return t16Filter(rows);
+}
+function t16Filter(rows){
   return rows.filter(function(r){
     if(G16.deal!=='all'&&r.t!==G16.deal) return false;
     if(G16.dist!=='all'&&String(r.g)!==String(G16.dist)) return false;
@@ -15777,15 +15856,24 @@ function t16Reload(force){
 // 기간 대표 스냅샷 — 매물은 재고이므로 합산하지 않고 기간의 마지막 스냅샷을 쓴다
 function t16Series(){
   var dates=Object.keys(G16.cache).sort();
-  if(G16.period==='snap') return dates.map(function(d){return {label:d.slice(4,6)+'/'+d.slice(6,8),ymd:d};});
-  var bucket={};
-  dates.forEach(function(d){
-    var k=(G16.period==='month')?(d.slice(0,4)+'.'+d.slice(4,6))
-        :(d.slice(0,4)+' '+Math.ceil(parseInt(d.slice(4,6))/3)+'Q');
-    bucket[k]=d;   // 정렬돼 있으므로 마지막이 남는다
+  if(!dates.length) return [];
+  if(G16.period==='snap') return dates.map(function(d){return {label:d.slice(4,6)+'/'+d.slice(6,8),ymd:d,asof:false};});
+  // 월별·분기별은 '그 기간 말일 기준으로 각 단지의 최신 관측치를 모은 값'이다.
+  // 스냅샷을 그대로 쓰면 조사 안 한 단지의 옛 값이 그대로 섞여 실제 변화가 묻힌다.
+  var obs=t16Obs(), all=[];
+  Object.keys(obs).forEach(function(n){ Object.keys(obs[n]).forEach(function(a){ all.push(a); }); });
+  all.sort();
+  if(!all.length) return [];
+  var keys={};
+  all.forEach(function(a){
+    keys[(G16.period==='month')?(a.slice(0,4)+'.'+a.slice(4,6))
+        :(a.slice(0,4)+' '+Math.ceil(parseInt(a.slice(4,6))/3)+'Q')]=1;
   });
-  // 빈 구간은 만들지 않는다 — 없는 기간에 선을 이으면 없는 추세가 보인다
-  return Object.keys(bucket).sort().map(function(k){return {label:k,ymd:bucket[k]};});
+  var today=naverSnapDate();
+  return Object.keys(keys).sort().map(function(k){
+    var end=t16PeriodEnd(k);
+    return {label:k, ymd:(end>today?today:end), asof:true};   // 진행 중인 기간은 오늘 기준
+  });
 }
 
 function t16Render(){ try{ t16RenderInner(); }catch(e){
@@ -15809,6 +15897,7 @@ function t16RenderInner(){
   mk('t16-date', dates.map(function(d){return [d, d.slice(4,6)+'.'+d.slice(6,8)];}), G16.date, 't16Set_date');
   mk('t16-deal', [['all','전체'],['매매','매매'],['전세','전세'],['월세','월세']], G16.deal, 't16Set_deal');
   mk('t16-period', [['snap','스냅샷별'],['month','월별'],['quarter','분기별']], G16.period, 't16Set_period');
+  mk('t16-carry', [['30','30일'],['60','60일'],['90','90일'],['0','제한없음']], G16.carry, 't16Set_carry');
   mk('t16-dist', [['all','전체']].concat(DISTS.map(function(g){return [g,g+'공구'];})), G16.dist, 't16Set_dist');
   mk('t16-area', T16_AREA, G16.area, 't16Set_area');
   var unitSet={}; (G16.cache[G16.date]||[]).forEach(function(r){
@@ -15831,6 +15920,7 @@ function t16Set_period(v){G16.period=v;t16Render();}
 function t16Set_dist(v){G16.dist=v;G16.unit='all';t16Render();}
 function t16Set_area(v){G16.area=v;t16Render();}
 function t16Set_unit(v){G16.unit=v;t16Render();}
+function t16Set_carry(v){G16.carry=parseInt(v)||0;t16Render();}
 
 function t16Stat(rows){
   var vals=rows.map(t16Val).filter(function(v){return v>0;});
@@ -15862,15 +15952,17 @@ function t16Kpi(rows){
 function t16Trend(){
   var ser=t16Series();
   var labels=ser.map(function(x){return x.label;});
-  $set('t16-trend-sub','· '+(G16.period==='snap'?'스냅샷 '+ser.length+'개':G16.period==='month'?'월별 '+ser.length+'구간':'분기별 '+ser.length+'구간')
-    +(ser.length<2?' — 점이 1개라 추이선이 그려지지 않습니다':''));
   var deals=(G16.deal==='all')?['매매','전세','월세']:[G16.deal];
   var COL={'매매':'#e8590c','전세':'#0b6e99','월세':'#7048e8'};
-  var cntDs=[], priceDs=[];
+  var cntDs=[], priceDs=[], covs=[];
+  var rowsAt=ser.map(function(x){
+    if(x.asof){ var r=t16AsOf(x.ymd); covs.push(r); return t16Filter(r.rows); }
+    covs.push(null); return t16Rows(x.ymd);
+  });
   deals.forEach(function(t){
     var c=[],m=[];
-    ser.forEach(function(x){
-      var rs=t16Rows(x.ymd).filter(function(r){return r.t===t;});
+    rowsAt.forEach(function(all){
+      var rs=all.filter(function(r){return r.t===t;});
       c.push(rs.length||null);
       var st=t16Stat(rs);
       m.push(st.med?Math.round(st.med/1000)/10:null);
@@ -15880,6 +15972,54 @@ function t16Trend(){
   });
   t16Line('t16-ch-cnt',labels,cntDs,'건');
   t16Line('t16-ch-price',labels,priceDs,'억');
+
+  // ── 커버리지 — 이 숫자가 없으면 그래프를 믿을지 판단할 근거가 없다
+  var sub='· '+(G16.period==='snap'?'스냅샷 '+ser.length+'개 (그 시점 화면 그대로)'
+        :(G16.period==='month'?'월별':'분기별')+' '+ser.length+'구간 · 기간 말일 기준 각 단지 최신값 합산');
+  if(ser.length<2) sub+=' — 점이 1개라 추이선이 그려지지 않습니다';
+  $set('t16-trend-sub',sub);
+  var cov=document.getElementById('t16-cov');
+  if(cov){
+    if(G16.period==='snap'||!covs.filter(Boolean).length){ cov.innerHTML=''; }
+    else {
+      var h='<table style="width:100%;border-collapse:collapse;font-size:11px"><tr style="background:var(--bg3)">'
+        +'<th style="padding:5px;text-align:left">기간</th><th style="padding:5px">매물 수</th>'
+        +'<th style="padding:5px">실측 단지</th><th style="padding:5px">이월</th><th style="padding:5px">제외</th>'
+        +'<th style="padding:5px">동일 단지 증감</th></tr>';
+      ser.forEach(function(x,i){
+        var c=covs[i]; if(!c) return;
+        var cnt=rowsAt[i].length;
+        var chg='-';
+        if(i>0&&covs[i-1]){
+          // 두 기간 모두 '실측'된 단지만 비교한다 (조사 범위가 달라 생기는 착시 제거)
+          var A=covs[i-1], B=c, same=[];
+          Object.keys(B.fresh).forEach(function(n){
+            if(A.fresh[n]&&B.fresh[n]!==A.fresh[n]) same.push(n);
+          });
+          if(same.length){
+            var cntOf=function(cv,names){
+              var set={}; names.forEach(function(n){set[n]=1;});
+              return t16Filter(cv.rows.filter(function(r){return set[r.n];})).length;
+            };
+            var a=cntOf(A,same), b=cntOf(B,same);
+            var pct=a>0?Math.round((b-a)/a*1000)/10:null;
+            chg=(pct===null)?'-':('<b style="color:'+(pct>0?'var(--red)':pct<0?'var(--accent3)':'var(--text3)')+'">'
+              +(pct>0?'+':'')+pct+'%</b> <span style="color:var(--text3)">('+same.length+'개 단지 '+a+'→'+b+')</span>');
+          }
+        }
+        h+='<tr style="border-bottom:1px solid var(--border)"><td style="padding:5px">'+x.label+'</td>'
+          +'<td class="num" style="padding:5px;font-weight:700">'+cnt.toLocaleString()+'</td>'
+          +'<td class="num" style="padding:5px;color:var(--accent3)">'+c.live+'</td>'
+          +'<td class="num" style="padding:5px;color:var(--yellow)">'+c.carry+'</td>'
+          +'<td class="num" style="padding:5px;color:var(--text3)">'+c.drop+'</td>'
+          +'<td class="num" style="padding:5px">'+chg+'</td></tr>';
+      });
+      cov.innerHTML=h+'</table>'
+        +'<div style="font-size:10px;color:var(--text3);margin-top:6px;line-height:1.6">'
+        +'※ <b>실측</b>=그 기간에 조사한 단지 · <b>이월</b>=조사 안 해 직전 값을 그대로 쓴 단지 · <b>제외</b>=마지막 조사가 이월 한도를 넘겨 뺀 단지<br>'
+        +'※ <b>동일 단지 증감</b>은 두 기간 모두 실측된 단지만 비교한 값입니다. 조사 범위가 달라서 생기는 착시가 없으므로 <b>시장 판단은 이 숫자로</b> 하세요.</div>';
+    }
+  }
 }
 function t16Line(id,labels,ds,unit){
   var el=document.getElementById(id); if(!el) return;
@@ -16108,6 +16248,7 @@ function bfRun(){
     var ymd=el?String(el.value||'').replace(/[^0-9]/g,'').slice(0,8):'';
     if(ymd.length!==8||!q.rows.length) return;
     if(!byDate[ymd]) byDate[ymd]=[];
+    q.rows.forEach(function(r){ r.조사일=ymd; });
     byDate[ymd]=byDate[ymd].concat(q.rows);
   });
   var dates=Object.keys(byDate).sort();
