@@ -674,12 +674,12 @@ tr.naver-fav>td:first-child{border-left:3px solid #b8860b;}
     <button class="tab-btn" onclick="sw(13)">🏗️ 송도주택공급현황</button>
     <button class="tab-btn on" onclick="sw(0)">📡 매매 시황판</button>
     <button class="tab-btn" onclick="sw(12)">🏠 전월세 시황판</button>
-    <button class="tab-btn" onclick="sw(16)">📦 매물 시황판</button>
     <button class="tab-btn" onclick="sw(1)">🏘️ 공구별 현황</button>
     <button class="tab-btn" onclick="sw(2)">🏢 단지 시황판</button>
     <button class="tab-btn" onclick="sw(3)">📈 매매 실거래</button>
     <button class="tab-btn" onclick="sw(4)">🏠 전월세 실거래</button>
     <button class="tab-btn" onclick="sw(5)">🔔 신고가&amp;이상거래</button>
+    <button class="tab-btn" onclick="sw(16)">📦 매물 시황판</button>
     <button class="tab-btn" onclick="sw(6)">🏠 매물(APT)</button>
     <button class="tab-btn" onclick="sw(7)">🏢 매물(OP/생숙)</button>
     <button class="tab-btn" onclick="sw(8)">🏪 매물(상가/사무실)</button>
@@ -15740,9 +15740,22 @@ function t16GoUnit(name){
   G.t6search='';
   ['t6-search-input','naver-search'].forEach(function(id){ var el=document.getElementById(id); if(el) el.value=''; });
   G.t6unit=name;
+  // 시황판에서 보던 면적 조건을 그대로 이어간다 (84㎡형을 보다 넘어갔는데 전체가 뜨면 화면이 어긋난다)
+  var area=T16_AREA_MAP[G16.area]||'all';
+  G.naverArea=area;
+  // 필터 버튼 강조도 직접 맞춘다 — setNaverArea 를 거치지 않으므로 자동 갱신되지 않는다
+  var grp=document.querySelector('.filter-btn[onclick^="setNaverArea("]');
+  if(grp&&grp.parentElement){
+    grp.parentElement.querySelectorAll('.filter-btn').forEach(function(b){
+      var m=(b.getAttribute('onclick')||'').match(/setNaverArea\('([^']*)'/);
+      b.classList.toggle('on', !!m&&m[1]===area);
+    });
+  }
+  if(G16.deal!=='all') G.naverType=G16.deal;   // 거래구분도 이어간다
   sw(6);
   if(typeof renderTab6==='function') renderTab6();
-  showToast('🏢 '+name+' 매물로 이동');
+  var lbl=(T16_AREA.filter(function(x){return x[0]===G16.area;})[0]||['','전체'])[1];
+  showToast('🏢 '+name+' · '+lbl+(G16.deal!=='all'?' · '+G16.deal:'')+' 매물로 이동');
 }
 
 // tc16 전용 전역 헬퍼
@@ -15811,7 +15824,9 @@ function t16PeriodEnd(label){
     return qm[1]+('0'+(q*3)).slice(-2)+('0'+d2.getDate()).slice(-2); }
   return label;
 }
-var T16_AREA=[['all','전체'],['s84','전용 84㎡형'],['u20','20평 미만'],['a20','20평대'],['a30','30평대'],['a40','40평대'],['a50','50평 이상']];
+// 매물(APT) 탭의 면적 필터와 구간·표기를 1:1로 맞춘다 (탭을 오갈 때 조건이 그대로 이어져야 함)
+var T16_AREA=[['all','전체'],['u20','20평이하'],['a20','20평대'],['a30','30평대'],['s84','84㎡'],['a40','40평대'],['a50','50평대'],['a60','60평이상']];
+var T16_AREA_MAP={all:'all',u20:'u20',a20:'20',a30:'30',s84:'84',a40:'40',a50:'50',a60:'o60'};
 
 function t16AreaOk(r){
   var b=r.b||0;
@@ -15823,7 +15838,8 @@ function t16AreaOk(r){
     case 'a20': return b>=20&&b<30;
     case 'a30': return b>=30&&b<40;
     case 'a40': return b>=40&&b<50;
-    case 'a50': return b>=50;
+    case 'a50': return b>=50&&b<60;
+    case 'a60': return b>=60;
     default: return true;
   }
 }
