@@ -674,6 +674,7 @@ tr.naver-fav>td:first-child{border-left:3px solid #b8860b;}
     <button class="tab-btn" onclick="sw(13)">🏗️ 송도주택공급현황</button>
     <button class="tab-btn on" onclick="sw(0)">📡 매매 시황판</button>
     <button class="tab-btn" onclick="sw(12)">🏠 전월세 시황판</button>
+    <button class="tab-btn" onclick="sw(16)">📦 매물 시황판</button>
     <button class="tab-btn" onclick="sw(1)">🏘️ 공구별 현황</button>
     <button class="tab-btn" onclick="sw(2)">🏢 단지 시황판</button>
     <button class="tab-btn" onclick="sw(3)">📈 매매 실거래</button>
@@ -694,6 +695,50 @@ tr.naver-fav>td:first-child{border-left:3px solid #b8860b;}
 <!-- ══ TAB0 시황판 ══ -->
 <!-- ══ TAB13 주택공급현황 ══ -->
 <!-- ══ TAB13 주택공급현황 ══ -->
+<!-- ══ TAB16 매물 시황판 (네이버 매물 스냅샷 이력) ══ -->
+<div id="tc16" class="tc">
+  <div class="card" style="padding:14px;margin-bottom:12px">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+      <div>
+        <div class="sec-hdr-title">📦 매물 시황판 <span style="font-size:11px;color:var(--text3)">현재 시장에 나와 있는 매물 (실거래 아님)</span></div>
+        <div id="t16-src" style="font-size:11px;color:var(--text3);margin-top:4px">이력 로딩 전</div>
+      </div>
+      <button onclick="t16Reload(true)" style="padding:5px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:11px;cursor:pointer">🔄 이력 다시 읽기</button>
+    </div>
+  </div>
+
+  <div id="t16-filters" class="card" style="padding:10px 14px;margin-bottom:12px">
+    <div class="filter-row"><span class="filter-label">기준일</span><div class="filter-group" id="t16-date"></div></div>
+    <div class="filter-row"><span class="filter-label">거래구분</span><div class="filter-group" id="t16-deal"></div>
+      <span class="filter-label" style="margin-left:14px">기간단위</span><div class="filter-group" id="t16-period"></div></div>
+    <div class="filter-row"><span class="filter-label">공구</span><div class="filter-group" id="t16-dist"></div></div>
+    <div class="filter-row"><span class="filter-label">면적</span><div class="filter-group" id="t16-area"></div></div>
+    <div class="filter-row"><span class="filter-label">단지</span><div class="filter-group" id="t16-unit" style="max-height:70px;overflow:auto"></div></div>
+  </div>
+
+  <div class="kpi-row kpi-row-8 zoomable" id="t16-kpi" onclick="openZoom(this)" style="cursor:zoom-in;margin-bottom:12px"></div>
+
+  <div class="sec-hdr" style="margin-bottom:8px"><div class="sec-hdr-bar" style="background:var(--accent)"></div>
+    <div class="sec-hdr-title">📈 매물 추이 <span id="t16-trend-sub" style="font-size:11px;color:var(--text3)"></span></div></div>
+  <div class="chart-flow-2" style="margin-bottom:12px">
+    <div class="chart-card"><div class="chart-card-title">📊 매물 건수 추이 (실제 물건 수)</div><div class="chart-wrap"><canvas id="t16-ch-cnt"></canvas></div></div>
+    <div class="chart-card"><div class="chart-card-title">💰 중위 호가 추이 (억)</div><div class="chart-wrap"><canvas id="t16-ch-price"></canvas></div></div>
+  </div>
+
+  <div class="sec-hdr" style="margin-bottom:8px"><div class="sec-hdr-bar" style="background:var(--accent2)"></div>
+    <div class="sec-hdr-title">🏘️ 공구별 현황 <span id="t16-dist-sub" style="font-size:11px;color:var(--text3)"></span></div></div>
+  <div class="chart-flow-2" style="margin-bottom:12px">
+    <div class="chart-card"><div class="chart-card-title">📦 공구별 매물 건수</div><div class="chart-wrap"><canvas id="t16-ch-dcnt"></canvas></div></div>
+    <div class="chart-card"><div class="chart-card-title">💰 공구별 중위 호가 (억)</div><div class="chart-wrap"><canvas id="t16-ch-dprice"></canvas></div></div>
+  </div>
+
+  <div class="sec-hdr" style="margin-bottom:8px"><div class="sec-hdr-bar" style="background:var(--purple)"></div>
+    <div class="sec-hdr-title">🏢 단지별 매물 현황 <span id="t16-unit-sub" style="font-size:11px;color:var(--text3)"></span></div></div>
+  <div class="card" style="padding:0;margin-bottom:12px"><div class="table-scroll" style="max-height:460px;overflow:auto">
+    <table class="data-table" style="table-layout:auto"><thead id="t16-tb-head"></thead><tbody id="t16-tb-body"></tbody></table>
+  </div></div>
+</div>
+
 <div id="tc13" class="tc">
   <div class="card" style="padding:14px;margin-bottom:12px">
     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
@@ -4507,6 +4552,7 @@ function sw(n){
   if(n===13) initHousingTab();
   if(n===14) initDanjiImageTab();
   if(n===15) initDomesticTab();
+  if(n===16) initTab16();
 }
 
 // ── 필터 버튼 그룹 헬퍼
@@ -15664,6 +15710,224 @@ function processNaverRows(rows, fileCnt){
     } catch(err){
       showToast('❌ 파싱 오류: '+err.message);
     }
+}
+
+// ══════════════════════════════════════════════════════════
+// TAB16 매물 시황판 (3단계)
+// 스냅샷 이력을 모두 메모리에 올려두고 필터·집계는 전부 클라이언트에서 처리한다.
+// 매물은 '재고'라 기간 누적이 아니라 그 시점의 잔량이다. 따라서 기간 집계는
+// 합산이 아니라 '그 기간의 대표 스냅샷 1개'(가장 마지막 것)를 고르는 방식이다.
+// ══════════════════════════════════════════════════════════
+var G16={date:'',deal:'all',dist:'all',area:'all',unit:'all',period:'snap',cache:{},index:[],loaded:false};
+var T16_AREA=[['all','전체'],['u20','20평 미만'],['a20','20평대'],['a30','30평대'],['a40','40평대'],['a50','50평 이상']];
+
+function t16AreaOk(r){
+  var b=r.b||0;
+  switch(G16.area){
+    case 'u20': return b>0&&b<20;
+    case 'a20': return b>=20&&b<30;
+    case 'a30': return b>=30&&b<40;
+    case 'a40': return b>=40&&b<50;
+    case 'a50': return b>=50;
+    default: return true;
+  }
+}
+function t16Rows(ymd){
+  var rows=G16.cache[ymd]||[];
+  return rows.filter(function(r){
+    if(G16.deal!=='all'&&r.t!==G16.deal) return false;
+    if(G16.dist!=='all'&&String(r.g)!==String(G16.dist)) return false;
+    if(G16.unit!=='all'&&r.n!==G16.unit) return false;
+    return t16AreaOk(r);
+  });
+}
+// 월세는 환산보증금으로 환산해 다른 거래구분과 같은 축에서 비교한다
+function t16Val(r){ return (r.t==='월세'&&r.w>0)?Math.round(r.p+r.w*12/CONV_RATE):r.p; }
+
+function initTab16(){ if(!G16.loaded) t16Reload(false); else t16Render(); }
+
+function t16Reload(force){
+  var el=document.getElementById('t16-src');
+  if(el) el.textContent='⏳ 이력 목록 읽는 중...';
+  loadNaverSnapIndex().then(function(ix){
+    G16.index=ix||[];
+    if(!G16.index.length){
+      if(el) el.textContent='이력이 없습니다. 매물(APT) 탭에서 📸 스냅샷 또는 📁 과거 백필을 먼저 실행하세요.';
+      return;
+    }
+    var todo=G16.index.filter(function(m){ return force||!G16.cache[m.date]; });
+    var done=0;
+    if(!todo.length){ G16.loaded=true; t16Render(); return; }
+    (function step(){
+      if(!todo.length){ G16.loaded=true; t16Render(); return; }
+      var m=todo.shift();
+      if(el) el.textContent='⏳ 스냅샷 불러오는 중 '+(++done)+'/'+(done+todo.length)+' — '+m.date;
+      loadNaverSnapshot(m.date).then(function(v){
+        G16.cache[m.date]=(v&&v.rows)?v.rows:[];
+      }).catch(function(){ G16.cache[m.date]=[]; }).then(step);
+    })();
+  });
+}
+
+// 기간 대표 스냅샷 — 매물은 재고이므로 합산하지 않고 기간의 마지막 스냅샷을 쓴다
+function t16Series(){
+  var dates=Object.keys(G16.cache).sort();
+  if(G16.period==='snap') return dates.map(function(d){return {label:d.slice(4,6)+'/'+d.slice(6,8),ymd:d};});
+  var bucket={};
+  dates.forEach(function(d){
+    var k=(G16.period==='month')?(d.slice(0,4)+'.'+d.slice(4,6))
+        :(d.slice(0,4)+' '+Math.ceil(parseInt(d.slice(4,6))/3)+'Q');
+    bucket[k]=d;   // 정렬돼 있으므로 마지막이 남는다
+  });
+  // 빈 구간은 만들지 않는다 — 없는 기간에 선을 이으면 없는 추세가 보인다
+  return Object.keys(bucket).sort().map(function(k){return {label:k,ymd:bucket[k]};});
+}
+
+function t16Render(){
+  if(!G16.index.length) return;
+  var dates=Object.keys(G16.cache).sort();
+  if(!G16.date||dates.indexOf(G16.date)<0) G16.date=dates[dates.length-1];
+  var meta=G16.index.filter(function(m){return m.date===G16.date;})[0]||{};
+  $set('t16-src','☁️ 이력 '+dates.length+'회 · 기준일 '+G16.date+' (등록 '+(meta.cnt_raw||0)+'건 → 실제 물건 '+(meta.cnt_uniq||0)+'건, '+(meta.danji||0)+'개 단지)');
+
+  // ── 필터 버튼
+  var mk=function(id,items,cur,fn){
+    var h=items.map(function(it){
+      return '<button class="filter-btn'+(String(cur)===String(it[0])?' on':'')+'" onclick="'+fn+'(\''+it[0]+'\')">'+it[1]+'</button>';
+    }).join('');
+    var e=document.getElementById(id); if(e) e.innerHTML=h;
+  };
+  mk('t16-date', dates.map(function(d){return [d, d.slice(4,6)+'.'+d.slice(6,8)];}), G16.date, 't16Set_date');
+  mk('t16-deal', [['all','전체'],['매매','매매'],['전세','전세'],['월세','월세']], G16.deal, 't16Set_deal');
+  mk('t16-period', [['snap','스냅샷별'],['month','월별'],['quarter','분기별']], G16.period, 't16Set_period');
+  mk('t16-dist', [['all','전체']].concat(DISTS.map(function(g){return [g,g+'공구'];})), G16.dist, 't16Set_dist');
+  mk('t16-area', T16_AREA, G16.area, 't16Set_area');
+  var unitSet={}; (G16.cache[G16.date]||[]).forEach(function(r){
+    if(G16.dist!=='all'&&String(r.g)!==String(G16.dist)) return;
+    if(r.n) unitSet[r.n]=1;
+  });
+  var units=Object.keys(unitSet).sort();
+  if(G16.unit!=='all'&&units.indexOf(G16.unit)<0) G16.unit='all';
+  mk('t16-unit', [['all','전체']].concat(units.map(function(u){return [u,u];})), G16.unit, 't16Set_unit');
+
+  var cur=t16Rows(G16.date);
+  t16Kpi(cur);
+  t16Trend();
+  t16DistCharts(cur);
+  t16UnitTable(cur);
+}
+function t16Set_date(v){G16.date=v;t16Render();}
+function t16Set_deal(v){G16.deal=v;t16Render();}
+function t16Set_period(v){G16.period=v;t16Render();}
+function t16Set_dist(v){G16.dist=v;G16.unit='all';t16Render();}
+function t16Set_area(v){G16.area=v;t16Render();}
+function t16Set_unit(v){G16.unit=v;t16Render();}
+
+function t16Stat(rows){
+  var vals=rows.map(t16Val).filter(function(v){return v>0;});
+  var py=rows.map(function(r){return (r.b>0&&t16Val(r)>0)?t16Val(r)/r.b:0;}).filter(function(v){return v>0;});
+  return {cnt:rows.length, avg:avgFn(vals), med:medianOf(vals), py:avgFn(py)};
+}
+function t16Kpi(rows){
+  var el=document.getElementById('t16-kpi'); if(!el) return;
+  var all=t16Stat(rows);
+  var byT={}; ['매매','전세','월세'].forEach(function(t){ byT[t]=t16Stat(rows.filter(function(r){return r.t===t;})); });
+  var tot=rows.length||1;
+  var cards=[
+    {label:'전체 매물 수',val:all.cnt.toLocaleString()+'건',sub:G16.date.slice(4,6)+'/'+G16.date.slice(6,8)+' 기준 · 중복 제거',color:'var(--accent)'},
+    {label:'매매 매물 수',val:byT['매매'].cnt.toLocaleString()+'건',sub:Math.round(byT['매매'].cnt/tot*100)+'%',color:'var(--yellow)'},
+    {label:'전세 매물 수',val:byT['전세'].cnt.toLocaleString()+'건',sub:Math.round(byT['전세'].cnt/tot*100)+'%',color:'var(--green)'},
+    {label:'월세 매물 수',val:byT['월세'].cnt.toLocaleString()+'건',sub:Math.round(byT['월세'].cnt/tot*100)+'%',color:'var(--accent2)'},
+    {label:'매매 평균 호가',val:fmt만(byT['매매'].avg),sub:'평당 '+fmt평(byT['매매'].py),color:'var(--red)'},
+    {label:'매매 중위 호가',val:fmt만(byT['매매'].med),sub:byT['매매'].med&&byT['매매'].avg?('평균 대비 '+(byT['매매'].med>=byT['매매'].avg?'+':'-')+fmt만(Math.abs(byT['매매'].med-byT['매매'].avg))):'-',color:'var(--purple)'},
+    {label:'전세 중위 호가',val:fmt만(byT['전세'].med),sub:'평균 '+fmt만(byT['전세'].avg),color:'var(--teal,#00b8a9)'},
+    {label:'월세 중위 환산보증금',val:fmt만(byT['월세'].med),sub:'이율 '+(CONV_RATE*100).toFixed(1)+'% 기준',color:'var(--orange,#ff8c42)'}
+  ];
+  el.className='kpi-row kpi-row-8 zoomable';
+  el.innerHTML=cards.map(function(k){
+    return '<div class="kpi-card" style="--kpi-color:'+k.color+'"><div class="kpi-label">'+k.label+'</div>'+
+      '<div class="kpi-val">'+k.val+'</div><div class="kpi-sub">'+k.sub+'</div></div>';
+  }).join('');
+}
+
+function t16Trend(){
+  var ser=t16Series();
+  var labels=ser.map(function(x){return x.label;});
+  $set('t16-trend-sub','· '+(G16.period==='snap'?'스냅샷 '+ser.length+'개':G16.period==='month'?'월별 '+ser.length+'구간':'분기별 '+ser.length+'구간')
+    +(ser.length<2?' — 점이 1개라 추이선이 그려지지 않습니다':''));
+  var deals=(G16.deal==='all')?['매매','전세','월세']:[G16.deal];
+  var COL={'매매':'#e8590c','전세':'#0b6e99','월세':'#7048e8'};
+  var cntDs=[], priceDs=[];
+  deals.forEach(function(t){
+    var c=[],m=[];
+    ser.forEach(function(x){
+      var rs=t16Rows(x.ymd).filter(function(r){return r.t===t;});
+      c.push(rs.length||null);
+      var st=t16Stat(rs);
+      m.push(st.med?Math.round(st.med/1000)/10:null);
+    });
+    cntDs.push({label:t,data:c,borderColor:COL[t],backgroundColor:COL[t]+'33',borderWidth:2,tension:.25,spanGaps:false});
+    priceDs.push({label:t,data:m,borderColor:COL[t],backgroundColor:COL[t]+'33',borderWidth:2,tension:.25,spanGaps:false});
+  });
+  t16Line('t16-ch-cnt',labels,cntDs,'건');
+  t16Line('t16-ch-price',labels,priceDs,'억');
+}
+function t16Line(id,labels,ds,unit){
+  var el=document.getElementById(id); if(!el) return;
+  if(charts[id]){ charts[id].destroy(); }
+  charts[id]=new Chart(el.getContext('2d'),{type:'line',data:{labels:labels,datasets:ds},
+    options:{responsive:true,maintainAspectRatio:false,
+      layout:{padding:{top:pxF(20)}},
+      plugins:{legend:{display:ds.length>1,labels:{font:{size:pxF(11)}}},
+        tooltip:{callbacks:{label:function(c){return c.dataset.label+': '+(c.parsed.y==null?'-':c.parsed.y+unit);}}}},
+      scales:{x:{ticks:{font:{size:pxF(10)}}},
+        y:{grace:'12%',ticks:{font:{size:pxF(10)},callback:function(v){return v+unit;}}}}}});
+}
+function t16DistCharts(rows){
+  $set('t16-dist-sub','· '+G16.date.slice(4,6)+'/'+G16.date.slice(6,8)+' 기준'+(G16.deal==='all'?'':' · '+G16.deal));
+  var labels=[],cnts=[],meds=[];
+  DISTS.forEach(function(g){
+    var rs=rows.filter(function(r){return String(r.g)===String(g);});
+    if(!rs.length) return;
+    labels.push(g+'공구'); cnts.push(rs.length);
+    var st=t16Stat(rs); meds.push(Math.round(st.med/1000)/10);
+  });
+  t16Bar('t16-ch-dcnt',labels,cnts,'건','#1971c2');
+  t16Bar('t16-ch-dprice',labels,meds,'억','#e8590c');
+}
+function t16Bar(id,labels,data,unit,color){
+  var el=document.getElementById(id); if(!el) return;
+  if(charts[id]){ charts[id].destroy(); }
+  charts[id]=new Chart(el.getContext('2d'),{type:'bar',
+    data:{labels:labels,datasets:[{data:data,backgroundColor:color+'88',borderColor:color,borderWidth:1.5,borderRadius:4}]},
+    options:{responsive:true,maintainAspectRatio:false,layout:{padding:{top:pxF(22)}},
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:function(c){return c.parsed.y+unit;}}}},
+      scales:{x:{ticks:{font:{size:pxF(10)}}},y:{beginAtZero:true,ticks:{font:{size:pxF(10)},callback:function(v){return v+unit;}}}}}});
+}
+function t16UnitTable(rows){
+  $set('t16-unit-sub','· 매물 많은 순');
+  var by={};
+  rows.forEach(function(r){
+    if(!by[r.n]) by[r.n]={g:r.g,cnt:0,매매:[],전세:[],월세:[]};
+    by[r.n].cnt++;
+    if(by[r.n][r.t]) by[r.n][r.t].push(t16Val(r));
+  });
+  var names=Object.keys(by).sort(function(a,b){return by[b].cnt-by[a].cnt;});
+  var th=document.getElementById('t16-tb-head'), tb=document.getElementById('t16-tb-body');
+  if(th) th.innerHTML='<tr><th>공구</th><th>단지명</th><th class="num">매물 수</th>'
+    +'<th class="num">매매 건</th><th class="num">매매 중위</th>'
+    +'<th class="num">전세 건</th><th class="num">전세 중위</th>'
+    +'<th class="num">월세 건</th><th class="num">월세 중위</th></tr>';
+  if(tb) tb.innerHTML=names.map(function(n){
+    var e=by[n];
+    var c=function(k){return e[k].length;};
+    var m=function(k){return e[k].length?fmt만(medianOf(e[k])):'-';};
+    return '<tr><td>'+(e.g||'-')+'공구</td><td>'+n+'</td>'
+      +'<td class="num" style="font-weight:700">'+e.cnt+'</td>'
+      +'<td class="num">'+c('매매')+'</td><td class="num" style="color:#d9480f">'+m('매매')+'</td>'
+      +'<td class="num">'+c('전세')+'</td><td class="num" style="color:#0b6e99">'+m('전세')+'</td>'
+      +'<td class="num">'+c('월세')+'</td><td class="num" style="color:#7048e8">'+m('월세')+'</td></tr>';
+  }).join('')||'<tr><td colspan="9" style="text-align:center;padding:16px;color:var(--text3)">조건에 맞는 매물이 없습니다</td></tr>';
 }
 
 // ══════════════════════════════════════════════════════════
