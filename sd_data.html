@@ -4679,6 +4679,35 @@ function naverDedupe(rows){
   return {rows:out, rawCnt:(rows||[]).length, uniqCnt:out.length};
 }
 
+// 중복 제거 진단 — 합쳐진 그룹 안에서 '방향'이 갈리는 건을 센다.
+// 같은 단지·같은 층·같은 평형·같은 호가라도 향이 다르면 같은 층의 다른 호수(옆집)일 수 있다.
+// 즉 아래 '향 불일치' 수치는 과합침(over-merge) 의심 건수다.
+function naverDedupeReport(rows){
+  var g={};
+  (rows||[]).forEach(function(r){
+    var k=naverDedupKey(r);
+    if(!g[k]) g[k]={n:0,dirs:{},sample:r};
+    g[k].n++;
+    var d=String(r.방향||'').trim();
+    if(d) g[k].dirs[d]=(g[k].dirs[d]||0)+1;
+  });
+  var merged=0, dirSplit=0, examples=[];
+  for(var k in g){
+    var e=g[k];
+    if(e.n<=1) continue;
+    merged+=e.n-1;
+    var dn=Object.keys(e.dirs).length;
+    if(dn>1){
+      dirSplit+=e.n-1;
+      if(examples.length<10) examples.push({
+        단지:e.sample.단지명, 거래:e.sample.거래유형, 전용:e.sample.전용,
+        층:e.sample.층, 호가:e.sample.호가, 합쳐진행:e.n, 방향:Object.keys(e.dirs).join('/')
+      });
+    }
+  }
+  return {merged:merged, dirSplit:dirSplit, examples:examples};
+}
+
 // 스냅샷용 슬림 행 — 분석에 쓰는 필드만. 1행 약 70바이트.
 function slimNaverRow(r){
   var o={
@@ -15617,10 +15646,16 @@ function processNaverRows(rows, fileCnt){
 function naverSnapshotNow(){
   if(!G.naverData||!G.naverData.length){ showToast('⚠️ 저장할 매물이 없습니다.'); return; }
   var dd=naverDedupe(G.naverData);
+  var rep=naverDedupeReport(G.naverData);
+  if(rep.examples.length) console.table(rep.examples);
+  var mergedCnt=dd.rawCnt-dd.uniqCnt;
   var msg='📸 오늘 날짜로 매물 스냅샷을 남깁니다.\n\n'
     +'등록 건수: '+dd.rawCnt+'건\n'
     +'실제 물건 수(중복 제거): '+dd.uniqCnt+'건\n'
-    +'중복으로 합쳐진 행: '+(dd.rawCnt-dd.uniqCnt)+'건\n\n계속할까요?';
+    +'중복으로 합쳐진 행: '+mergedCnt+'건'
+    +(mergedCnt?' ('+Math.round(mergedCnt/dd.rawCnt*1000)/10+'%)':'')+'\n'
+    +'  └ 이 중 향이 서로 다른 건: '+rep.dirSplit+'건'
+    +(rep.dirSplit?' — 옆집일 수 있음 (콘솔에 예시 출력)':'')+'\n\n계속할까요?';
   if(!confirm(msg)) return;
   showToast('⏳ 스냅샷 저장 중...');
   saveNaverSnapshot(G.naverData).then(function(res){
