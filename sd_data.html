@@ -1880,11 +1880,13 @@ tr.naver-fav>td:first-child{border-left:3px solid #b8860b;}
         <input type="file" accept=".xlsx" multiple style="display:none" id="upload-naver" onchange="onUploadNaver(this)">
       </label>
       <span class="upload-status" id="naver-status">미업로드</span>
+      <span class="upload-status" id="naver-snap-status" style="color:var(--text3)">📸 스냅샷 —</span>
     </div>
     <div style="margin-left:auto;display:flex;gap:6px;align-items:center">
       <button onclick="fbSaveData()" style="padding:4px 12px;background:#ff6600;border:none;color:#fff;border-radius:6px;cursor:pointer;font-size:11px;font-weight:700">
         🔥 Firebase 저장
       </button>
+      <button onclick="naverSnapshotNow()" style="padding:4px 10px;background:#e7f5ff;border:1px solid #1971c2;border-radius:6px;color:#1864ab;font-size:11px;cursor:pointer" title="현재 매물 상태를 오늘 날짜 이력으로 남깁니다 (덮어쓰지 않음)">📸 스냅샷</button>
       <button onclick="exportFavExcel()" style="padding:4px 10px;background:#fdf6e3;border:1px solid #b8860b;border-radius:6px;color:#8a6508;font-size:11px;cursor:pointer">⭐ 엑셀</button>
       <button onclick="printFavList()" style="padding:4px 10px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:11px;cursor:pointer">🖨️ 인쇄</button>
       <button onclick="showNaverDeleteModal()" style="padding:4px 10px;background:#fdeaea;border:1px solid #e03131;border-radius:6px;color:#c92a2a;font-size:11px;cursor:pointer" title="단지별 또는 전체 삭제">🗑️ 삭제</button>
@@ -4638,6 +4640,97 @@ document.addEventListener('DOMContentLoaded', function() {
 
 
 // ══ 네이버 매물 관심매물 & 상세모달 ══
+// ══════════════════════════════════════════════════════════
+// 매물 스냅샷 이력 (sd_naver_apt_hist)
+//   sd_naver_apt        : 현재값 — 저장할 때마다 덮어씀 (기존 구조 그대로)
+//   sd_naver_apt_hist/{YYYYMMDD}       : 그 시점 매물 전체 (append 전용, 삭제 안 함)
+//   sd_naver_apt_hist_index/{YYYYMMDD} : 건수 요약만 — 앱 시작 시 이것만 읽는다
+// 단지별 업로드가 해당 단지 행을 교체하는 구조라, 저장 시점마다 스냅샷을 떠두지 않으면
+// 직전 상태가 영구히 사라진다.
+// ══════════════════════════════════════════════════════════
+
+// 물건 식별키 — 같은 물건을 여러 중개사가 올린 것을 하나로 본다.
+// 동·호수가 모두 있으면 그게 가장 정확하고, 없으면 조건 조합으로 근사한다.
+function naverDedupKey(r){
+  var nm=(r.단지명||'').trim(), tp=(r.거래유형||'').trim();
+  var dong=String(r.동||'').trim(), ho=String(r.호수||'').trim();
+  if(dong&&ho) return 'A|'+nm+'|'+tp+'|'+dong+'|'+ho;
+  var sq=Math.round((parseFloat(r.전용)||0)*10)/10;
+  return 'B|'+nm+'|'+tp+'|'+sq+'|'+String(r.층||'').trim()+'|'+(parseInt(r.호가)||0)+'|'+(parseInt(r.월세)||0);
+}
+
+// 중복 제거 — 실제 물건 수 기준. 겹친 행은 중복등록수가 가장 큰 행을 대표로 남긴다.
+function naverDedupe(rows){
+  var map={}, order=[];
+  (rows||[]).forEach(function(r){
+    var k=naverDedupKey(r);
+    if(!map[k]){ map[k]={row:r, n:1}; order.push(k); return; }
+    map[k].n++;
+    var cur=parseInt(map[k].row.중복등록수)||0, nw=parseInt(r.중복등록수)||0;
+    if(nw>cur) map[k].row=r;
+  });
+  var out=order.map(function(k){
+    var e=map[k], r=e.row;
+    // 추출기가 이미 묶어준 중복등록수와, 행이 겹쳐서 합쳐진 수 중 큰 값을 남긴다
+    var dup=Math.max(parseInt(r.중복등록수)||0, e.n>1?e.n:0);
+    if(dup!==(parseInt(r.중복등록수)||0)){ r=JSON.parse(JSON.stringify(r)); r.중복등록수=dup; }
+    return r;
+  });
+  return {rows:out, rawCnt:(rows||[]).length, uniqCnt:out.length};
+}
+
+// 스냅샷용 슬림 행 — 분석에 쓰는 필드만. 1행 약 70바이트.
+function slimNaverRow(r){
+  var o={
+    g:parseInt(r.공구)||0,
+    n:r.단지명||'',
+    t:r.거래유형||'',
+    s:parseFloat(r.전용)||0,
+    b:parseInt(r.분양평형)||0,
+    f:String(r.층||''),
+    p:parseInt(r.호가)||0
+  };
+  var w=parseInt(r.월세)||0;      if(w>0) o.w=w;
+  var d=parseInt(r.중복등록수)||0; if(d>0) o.d=d;
+  return o;
+}
+
+// 스냅샷 날짜 — 기본은 오늘. 과거 엑셀 백필(2단계)에서는 날짜를 넘겨받는다.
+function naverSnapDate(dstr){
+  if(dstr) return String(dstr).replace(/[^0-9]/g,'').slice(0,8);
+  var d=new Date();
+  return d.getFullYear()+('0'+(d.getMonth()+1)).slice(-2)+('0'+d.getDate()).slice(-2);
+}
+
+// 스냅샷 저장. 같은 날짜면 마지막 저장으로 갱신된다(하루 여러 번 저장 대비).
+function saveNaverSnapshot(rows, dstr){
+  if(!window._fbSet||!window._fbRef||!window._fbDb) return Promise.reject(new Error('Firebase 미연결'));
+  if(!rows||!rows.length) return Promise.reject(new Error('저장할 매물이 없습니다'));
+  var ymd=naverSnapDate(dstr);
+  var dd=naverDedupe(rows);
+  var slim=dd.rows.map(slimNaverRow);
+  var danji={}; slim.forEach(function(r){ if(r.n) danji[r.n]=1; });
+  var danjiCnt=Object.keys(danji).length;
+  var byType={매매:0,전세:0,월세:0};
+  slim.forEach(function(r){ if(byType[r.t]!==undefined) byType[r.t]++; });
+  var meta={
+    date:ymd,
+    cnt_raw:dd.rawCnt,          // 등록 건수 (중복 포함)
+    cnt_uniq:dd.uniqCnt,        // 실제 물건 수 (중복 제거) ← 분석 기준
+    danji:danjiCnt,
+    sale:byType.매매, jeonse:byType.전세, wolse:byType.월세,
+    saved_at:new Date().toISOString().slice(0,16).replace('T',' ')
+  };
+  var payload={}; for(var k in meta) payload[k]=meta[k];
+  payload.rows=slim;
+  var kb=Math.round(JSON.stringify(payload).length/1024);
+  return window._fbSet(window._fbRef(window._fbDb,'sd_naver_apt_hist/'+ymd), payload)
+    .then(function(){
+      return window._fbSet(window._fbRef(window._fbDb,'sd_naver_apt_hist_index/'+ymd), meta);
+    })
+    .then(function(){ return {ymd:ymd, kb:kb, meta:meta}; });
+}
+
 function _naverKey(r){
   return (r.단지명||'')+'|'+(r.거래유형||'')+'|'+(r.전용||'')+'|'+(r.호가||'')+'|'+(r.층||'')+'|'+(r.입력일||'');
 }
@@ -15520,6 +15613,44 @@ function processNaverRows(rows, fileCnt){
     }
 }
 
+// 수동 스냅샷 — Firebase 저장과 무관하게 지금 상태를 이력에 남긴다
+function naverSnapshotNow(){
+  if(!G.naverData||!G.naverData.length){ showToast('⚠️ 저장할 매물이 없습니다.'); return; }
+  var dd=naverDedupe(G.naverData);
+  var msg='📸 오늘 날짜로 매물 스냅샷을 남깁니다.\n\n'
+    +'등록 건수: '+dd.rawCnt+'건\n'
+    +'실제 물건 수(중복 제거): '+dd.uniqCnt+'건\n'
+    +'중복으로 합쳐진 행: '+(dd.rawCnt-dd.uniqCnt)+'건\n\n계속할까요?';
+  if(!confirm(msg)) return;
+  showToast('⏳ 스냅샷 저장 중...');
+  saveNaverSnapshot(G.naverData).then(function(res){
+    $set('naver-snap-status','📸 '+res.ymd+' 스냅샷 ('+res.meta.cnt_uniq+'건)');
+    showToast('✅ 스냅샷 저장 완료 — '+res.ymd+' / 실제 물건 '+res.meta.cnt_uniq+'건 ('+res.kb+'KB)', 4000);
+  }).catch(function(e){ showToast('❌ 스냅샷 저장 실패: '+e.message); });
+}
+
+// 이력 인덱스 조회 (앱 시작 시 이것만 읽는다 — 본문은 필요할 때만)
+function loadNaverSnapIndex(){
+  if(!window._fbGet||!window._fbRef||!window._fbDb) return Promise.resolve([]);
+  return window._fbGet(window._fbRef(window._fbDb,'sd_naver_apt_hist_index')).then(function(sn){
+    if(!sn.exists()) return [];
+    var v=sn.val()||{}, out=[];
+    for(var k in v){ if(v[k]) out.push(v[k]); }
+    out.sort(function(a,b){ return String(a.date).localeCompare(String(b.date)); });
+    G._naverSnapIndex=out;
+    console.log('[sd_data] 매물 스냅샷 이력 '+out.length+'개', out.map(function(x){return x.date+':'+x.cnt_uniq;}).join(' '));
+    return out;
+  }).catch(function(e){ console.warn('스냅샷 인덱스 로드 실패',e); return []; });
+}
+
+// 특정 날짜 스냅샷 본문 로드 (3단계 분석 화면에서 사용)
+function loadNaverSnapshot(ymd){
+  if(!window._fbGet||!window._fbRef||!window._fbDb) return Promise.resolve(null);
+  return window._fbGet(window._fbRef(window._fbDb,'sd_naver_apt_hist/'+naverSnapDate(ymd))).then(function(sn){
+    return sn.exists()?sn.val():null;
+  });
+}
+
 function loadNaverDemo(){
   G.naverData = NAVER_DEMO;
   $set('naver-status', '✅ 샘플 '+NAVER_DEMO.length+'건');
@@ -16320,6 +16451,13 @@ window.fbAutoLoad = function(){
         $set('data-updated', upd ? '저장: '+upd : '');
         $set('fb-status','🔥 자동로드 완료');
         G._fbAutoLoadDone = true;  // 자동로드 완료 — 이제 업로드해도 안전
+        // 매물 스냅샷 이력 목록만 미리 읽어둔다 (본문은 필요할 때 loadNaverSnapshot)
+        loadNaverSnapIndex().then(function(ix){
+          if(ix&&ix.length){
+            var last=ix[ix.length-1];
+            $set('naver-snap-status','📸 이력 '+ix.length+'회 · 최근 '+last.date+' ('+last.cnt_uniq+'건)');
+          }
+        });
         renderAll();
         // 현재 TAB6가 활성 상태일 때만 렌더 (비활성이면 탭 전환 시 자동 렌더)
         if(G.naverData && document.getElementById('tc6').classList.contains('on')) renderTab6();
@@ -16458,6 +16596,11 @@ function fbSaveData(){
       var naverPayload = {data: fixNaverDist(G.naverData), updated: today, cnt: G.naverData.length};
       set(dbRef(db,'sd_naver_apt'), naverPayload).then(function(){
         $set('naver-status','✅ 네이버 '+G.naverData.length+'건 저장완료');
+        // 현재값 저장에 성공했을 때만 이력 스냅샷을 남긴다
+        saveNaverSnapshot(G.naverData).then(function(res){
+          $set('naver-snap-status','📸 '+res.ymd+' 스냅샷 ('+res.meta.cnt_uniq+'건)');
+          showToast('📸 매물 스냅샷 저장 — 실제 물건 '+res.meta.cnt_uniq+'건 / 등록 '+res.meta.cnt_raw+'건 ('+res.kb+'KB)', 4000);
+        }).catch(function(e){ console.warn('스냅샷 저장 오류',e); showToast('⚠️ 스냅샷 저장 실패: '+e.message); });
       }).catch(function(e){ console.warn('naver_apt 저장 오류',e); });
     }
     $set('fb-save-btn','🔥 Firebase 저장');
