@@ -15718,6 +15718,11 @@ function processNaverRows(rows, fileCnt){
 // 매물은 '재고'라 기간 누적이 아니라 그 시점의 잔량이다. 따라서 기간 집계는
 // 합산이 아니라 '그 기간의 대표 스냅샷 1개'(가장 마지막 것)를 고르는 방식이다.
 // ══════════════════════════════════════════════════════════
+// tc16 전용 전역 헬퍼
+// 주의: 기존 CONV_RATE·avgFn 은 renderTab12 안에서 var 로 선언된 '지역' 변수라
+// 다른 함수에서 참조하면 ReferenceError 가 난다. 여기서 전역으로 따로 둔다.
+function T16_CONV(){ return window._convRate||0.058; }
+function t16Avg(arr){ return (arr&&arr.length)?Math.round(arr.reduce(function(a,b){return a+b;},0)/arr.length):0; }
 var G16={date:'',deal:'all',dist:'all',area:'all',unit:'all',period:'snap',cache:{},index:[],loaded:false};
 var T16_AREA=[['all','전체'],['u20','20평 미만'],['a20','20평대'],['a30','30평대'],['a40','40평대'],['a50','50평 이상']];
 
@@ -15742,7 +15747,7 @@ function t16Rows(ymd){
   });
 }
 // 월세는 환산보증금으로 환산해 다른 거래구분과 같은 축에서 비교한다
-function t16Val(r){ return (r.t==='월세'&&r.w>0)?Math.round(r.p+r.w*12/CONV_RATE):r.p; }
+function t16Val(r){ return (r.t==='월세'&&r.w>0)?Math.round(r.p+r.w*12/T16_CONV()):r.p; }
 
 function initTab16(){ if(!G16.loaded) t16Reload(false); else t16Render(); }
 
@@ -15783,7 +15788,11 @@ function t16Series(){
   return Object.keys(bucket).sort().map(function(k){return {label:k,ymd:bucket[k]};});
 }
 
-function t16Render(){
+function t16Render(){ try{ t16RenderInner(); }catch(e){
+  console.error('[tc16] 렌더 오류',e);
+  $set('t16-src','⚠️ 화면 생성 오류: '+(e&&e.message?e.message:e));
+} }
+function t16RenderInner(){
   if(!G16.index.length) return;
   var dates=Object.keys(G16.cache).sort();
   if(!G16.date||dates.indexOf(G16.date)<0) G16.date=dates[dates.length-1];
@@ -15826,7 +15835,7 @@ function t16Set_unit(v){G16.unit=v;t16Render();}
 function t16Stat(rows){
   var vals=rows.map(t16Val).filter(function(v){return v>0;});
   var py=rows.map(function(r){return (r.b>0&&t16Val(r)>0)?t16Val(r)/r.b:0;}).filter(function(v){return v>0;});
-  return {cnt:rows.length, avg:avgFn(vals), med:medianOf(vals), py:avgFn(py)};
+  return {cnt:rows.length, avg:t16Avg(vals), med:medianOf(vals), py:t16Avg(py)};
 }
 function t16Kpi(rows){
   var el=document.getElementById('t16-kpi'); if(!el) return;
@@ -15841,7 +15850,7 @@ function t16Kpi(rows){
     {label:'매매 평균 호가',val:fmt만(byT['매매'].avg),sub:'평당 '+fmt평(byT['매매'].py),color:'var(--red)'},
     {label:'매매 중위 호가',val:fmt만(byT['매매'].med),sub:byT['매매'].med&&byT['매매'].avg?('평균 대비 '+(byT['매매'].med>=byT['매매'].avg?'+':'-')+fmt만(Math.abs(byT['매매'].med-byT['매매'].avg))):'-',color:'var(--purple)'},
     {label:'전세 중위 호가',val:fmt만(byT['전세'].med),sub:'평균 '+fmt만(byT['전세'].avg),color:'var(--teal,#00b8a9)'},
-    {label:'월세 중위 환산보증금',val:fmt만(byT['월세'].med),sub:'이율 '+(CONV_RATE*100).toFixed(1)+'% 기준',color:'var(--orange,#ff8c42)'}
+    {label:'월세 중위 환산보증금',val:fmt만(byT['월세'].med),sub:'이율 '+(T16_CONV()*100).toFixed(1)+'% 기준',color:'var(--orange,#ff8c42)'}
   ];
   el.className='kpi-row kpi-row-8 zoomable';
   el.innerHTML=cards.map(function(k){
