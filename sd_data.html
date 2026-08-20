@@ -4651,19 +4651,26 @@ document.addEventListener('DOMContentLoaded', function() {
 
 // 물건 식별키 — 같은 물건을 여러 중개사가 올린 것을 하나로 본다.
 // 동·호수가 모두 있으면 그게 가장 정확하고, 없으면 조건 조합으로 근사한다.
-function naverDedupKey(r){
+// 물건 식별키. strict=true 면 방향까지 본다(참고 지표 전용).
+// 기본값이 방향을 빼는 이유:
+//   - 같은 층에 조건이 완전히 같은 옆집이 동시에 나와 있을 확률은 낮다
+//   - 반면 중개업소가 방향을 잘못 입력해 같은 매물이 둘로 쪼개지는 경우가 더 흔하다
+//   - 설령 옆집이 합쳐져도 이 데이터의 목적(시장·단지 단위 추이)에는 영향이 없다
+// 잘못 합치는 것보다 잘못 쪼개지는 쪽이 이 용도에서는 더 나쁘다.
+function naverDedupKey(r, strict){
   var nm=(r.단지명||'').trim(), tp=(r.거래유형||'').trim();
   var dong=String(r.동||'').trim(), ho=String(r.호수||'').trim();
   if(dong&&ho) return 'A|'+nm+'|'+tp+'|'+dong+'|'+ho;
   var sq=Math.round((parseFloat(r.전용)||0)*10)/10;
-  return 'B|'+nm+'|'+tp+'|'+sq+'|'+String(r.층||'').trim()+'|'+(parseInt(r.호가)||0)+'|'+(parseInt(r.월세)||0);
+  var base='B|'+nm+'|'+tp+'|'+sq+'|'+String(r.층||'').trim()+'|'+(parseInt(r.호가)||0)+'|'+(parseInt(r.월세)||0);
+  return strict ? base+'|'+String(r.방향||'').trim() : base;
 }
 
 // 중복 제거 — 실제 물건 수 기준. 겹친 행은 중복등록수가 가장 큰 행을 대표로 남긴다.
-function naverDedupe(rows){
+function naverDedupe(rows, strict){
   var map={}, order=[];
   (rows||[]).forEach(function(r){
-    var k=naverDedupKey(r);
+    var k=naverDedupKey(r, strict);
     if(!map[k]){ map[k]={row:r, n:1}; order.push(k); return; }
     map[k].n++;
     var cur=parseInt(map[k].row.중복등록수)||0, nw=parseInt(r.중복등록수)||0;
@@ -4679,33 +4686,30 @@ function naverDedupe(rows){
   return {rows:out, rawCnt:(rows||[]).length, uniqCnt:out.length};
 }
 
-// 중복 제거 진단 — 합쳐진 그룹 안에서 '방향'이 갈리는 건을 센다.
-// 같은 단지·같은 층·같은 평형·같은 호가라도 향이 다르면 같은 층의 다른 호수(옆집)일 수 있다.
-// 즉 아래 '향 불일치' 수치는 과합침(over-merge) 의심 건수다.
+// 중복 제거 진단
+//  A키(동+호수)=가장 정확 / B키(전용·층·호가·월세)=근사
+//  strictUniq 는 방향까지 봤을 때의 물건 수 — 기록만 해두고 분석 기준으로는 쓰지 않는다.
+//  나중에 판단을 뒤집고 싶어질 때 과거 스냅샷을 다시 처리하지 않아도 되게 하기 위한 보험.
 function naverDedupeReport(rows){
-  var g={};
+  var g={}, noDir=0;
   (rows||[]).forEach(function(r){
     var k=naverDedupKey(r);
-    if(!g[k]) g[k]={n:0,dirs:{},sample:r};
+    if(!g[k]) g[k]={n:0,sample:r,kind:k.charAt(0)};
     g[k].n++;
-    var d=String(r.방향||'').trim();
-    if(d) g[k].dirs[d]=(g[k].dirs[d]||0)+1;
+    if(k.charAt(0)!=='A'&&!String(r.방향||'').trim()) noDir++;
   });
-  var merged=0, dirSplit=0, examples=[];
+  var mergedA=0, mergedB=0, examples=[];
   for(var k in g){
     var e=g[k];
     if(e.n<=1) continue;
-    merged+=e.n-1;
-    var dn=Object.keys(e.dirs).length;
-    if(dn>1){
-      dirSplit+=e.n-1;
-      if(examples.length<10) examples.push({
-        단지:e.sample.단지명, 거래:e.sample.거래유형, 전용:e.sample.전용,
-        층:e.sample.층, 호가:e.sample.호가, 합쳐진행:e.n, 방향:Object.keys(e.dirs).join('/')
-      });
-    }
+    if(e.kind==='A') mergedA+=e.n-1; else mergedB+=e.n-1;
+    if(examples.length<15) examples.push({
+      키:e.kind, 단지:e.sample.단지명, 거래:e.sample.거래유형, 전용:e.sample.전용,
+      층:e.sample.층, 방향:e.sample.방향||'(없음)', 호가:e.sample.호가, 합쳐진행:e.n
+    });
   }
-  return {merged:merged, dirSplit:dirSplit, examples:examples};
+  var strictUniq=naverDedupe(rows, true).uniqCnt;
+  return {mergedA:mergedA, mergedB:mergedB, noDir:noDir, strictUniq:strictUniq, examples:examples};
 }
 
 // 스냅샷용 슬림 행 — 분석에 쓰는 필드만. 1행 약 70바이트.
@@ -4746,6 +4750,7 @@ function saveNaverSnapshot(rows, dstr){
     date:ymd,
     cnt_raw:dd.rawCnt,          // 등록 건수 (중복 포함)
     cnt_uniq:dd.uniqCnt,        // 실제 물건 수 (중복 제거) ← 분석 기준
+    cnt_uniq_dir:naverDedupe(rows, true).uniqCnt,  // 참고: 방향까지 봤을 때의 물건 수
     danji:danjiCnt,
     sale:byType.매매, jeonse:byType.전세, wolse:byType.월세,
     saved_at:new Date().toISOString().slice(0,16).replace('T',' ')
@@ -15654,8 +15659,8 @@ function naverSnapshotNow(){
     +'실제 물건 수(중복 제거): '+dd.uniqCnt+'건\n'
     +'중복으로 합쳐진 행: '+mergedCnt+'건'
     +(mergedCnt?' ('+Math.round(mergedCnt/dd.rawCnt*1000)/10+'%)':'')+'\n'
-    +'  └ 이 중 향이 서로 다른 건: '+rep.dirSplit+'건'
-    +(rep.dirSplit?' — 옆집일 수 있음 (콘솔에 예시 출력)':'')+'\n\n계속할까요?';
+    +'  └ 동·호수 기준: '+rep.mergedA+'건 / 조건 기준: '+rep.mergedB+'건\n'
+    +'  └ (참고) 방향까지 봤다면: '+rep.strictUniq+'건\n\n계속할까요?';
   if(!confirm(msg)) return;
   showToast('⏳ 스냅샷 저장 중...');
   saveNaverSnapshot(G.naverData).then(function(res){
