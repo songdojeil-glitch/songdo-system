@@ -15730,6 +15730,21 @@ function processNaverRows(rows, fileCnt){
 // 매물은 '재고'라 기간 누적이 아니라 그 시점의 잔량이다. 따라서 기간 집계는
 // 합산이 아니라 '그 기간의 대표 스냅샷 1개'(가장 마지막 것)를 고르는 방식이다.
 // ══════════════════════════════════════════════════════════
+// 단지별 표에서 단지를 누르면 매물(APT) 탭의 그 단지로 바로 이동한다
+function t16GoUnit(name){
+  if(!name) return;
+  if(!G.naverData||!G.naverData.length){ showToast('⚠️ 매물 데이터가 로드되지 않았습니다.'); return; }
+  var has=G.naverData.some(function(r){ return r.단지명===name; });
+  if(!has){ showToast('⚠️ 현재 매물 데이터에 「'+name+'」이(가) 없습니다. (과거 스냅샷에만 있는 단지)'); return; }
+  G.naverDist='all';                 // 공구 필터에 걸려 단지가 안 보이는 상황 방지
+  G.t6search='';
+  ['t6-search-input','naver-search'].forEach(function(id){ var el=document.getElementById(id); if(el) el.value=''; });
+  G.t6unit=name;
+  sw(6);
+  if(typeof renderTab6==='function') renderTab6();
+  showToast('🏢 '+name+' 매물로 이동');
+}
+
 // tc16 전용 전역 헬퍼
 // 주의: 기존 CONV_RATE·avgFn 은 renderTab12 안에서 var 로 선언된 '지역' 변수라
 // 다른 함수에서 참조하면 ReferenceError 가 난다. 여기서 전역으로 따로 둔다.
@@ -15796,10 +15811,13 @@ function t16PeriodEnd(label){
     return qm[1]+('0'+(q*3)).slice(-2)+('0'+d2.getDate()).slice(-2); }
   return label;
 }
-var T16_AREA=[['all','전체'],['u20','20평 미만'],['a20','20평대'],['a30','30평대'],['a40','40평대'],['a50','50평 이상']];
+var T16_AREA=[['all','전체'],['s84','전용 84㎡형'],['u20','20평 미만'],['a20','20평대'],['a30','30평대'],['a40','40평대'],['a50','50평 이상']];
 
 function t16AreaOk(r){
   var b=r.b||0;
+  // 84㎡형은 다른 탭과 같은 기준(전용 83.5~85.5㎡)을 쓴다.
+  // 백필분은 전용이 정수(84)로 들어오므로 그 범위도 함께 걸린다.
+  if(G16.area==='s84'){ var sq=r.s||0; return sq>=83.5&&sq<=85.5; }
   switch(G16.area){
     case 'u20': return b>0&&b<20;
     case 'a20': return b>=20&&b<30;
@@ -15857,7 +15875,21 @@ function t16Reload(force){
 function t16Series(){
   var dates=Object.keys(G16.cache).sort();
   if(!dates.length) return [];
-  if(G16.period==='snap') return dates.map(function(d){return {label:d.slice(4,6)+'/'+d.slice(6,8),ymd:d,asof:false};});
+  if(G16.period==='snap'){
+    // 한 달에 여러 번 저장했어도 그래프는 월 1회로 묶는다.
+    // 대표는 '등록 단지 수가 가장 많은 날' — 가장 넓게 훑은 날이 그 달을 가장 잘 대변한다.
+    // (같으면 나중 날짜. 부분 갱신만 한 날이 대표가 되면 건수가 뚝 떨어져 보인다)
+    var best={};
+    dates.forEach(function(d){
+      var u={}; (G16.cache[d]||[]).forEach(function(r){ if(r.n) u[r.n]=1; });
+      var cnt=Object.keys(u).length;
+      var k=d.slice(0,6);
+      if(!best[k]||cnt>best[k].cnt||(cnt===best[k].cnt&&d>best[k].ymd)) best[k]={ymd:d,cnt:cnt};
+    });
+    return Object.keys(best).sort().map(function(k){
+      return {label:k.slice(0,4)+'.'+k.slice(4,6),ymd:best[k].ymd,asof:false,units:best[k].cnt};
+    });
+  }
   // 월별·분기별은 '그 기간 말일 기준으로 각 단지의 최신 관측치를 모은 값'이다.
   // 스냅샷을 그대로 쓰면 조사 안 한 단지의 옛 값이 그대로 섞여 실제 변화가 묻힌다.
   var obs=t16Obs(), all=[];
@@ -15896,7 +15928,7 @@ function t16RenderInner(){
   };
   mk('t16-date', dates.map(function(d){return [d, d.slice(4,6)+'.'+d.slice(6,8)];}), G16.date, 't16Set_date');
   mk('t16-deal', [['all','전체'],['매매','매매'],['전세','전세'],['월세','월세']], G16.deal, 't16Set_deal');
-  mk('t16-period', [['snap','스냅샷별'],['month','월별'],['quarter','분기별']], G16.period, 't16Set_period');
+  mk('t16-period', [['snap','월 대표일'],['month','월별(합산)'],['quarter','분기별']], G16.period, 't16Set_period');
   mk('t16-carry', [['30','30일'],['60','60일'],['90','90일'],['0','제한없음']], G16.carry, 't16Set_carry');
   mk('t16-dist', [['all','전체']].concat(DISTS.map(function(g){return [g,g+'공구'];})), G16.dist, 't16Set_dist');
   mk('t16-area', T16_AREA, G16.area, 't16Set_area');
@@ -15974,7 +16006,8 @@ function t16Trend(){
   t16Line('t16-ch-price',labels,priceDs,'억');
 
   // ── 커버리지 — 이 숫자가 없으면 그래프를 믿을지 판단할 근거가 없다
-  var sub='· '+(G16.period==='snap'?'스냅샷 '+ser.length+'개 (그 시점 화면 그대로)'
+  var sub='· '+(G16.period==='snap'
+        ?('월 대표일 '+ser.length+'개 · 그 달에서 등록 단지가 가장 많은 날 ['+ser.map(function(x){return x.label+'→'+x.ymd.slice(4,6)+'/'+x.ymd.slice(6,8)+'('+(x.units||0)+'단지)';}).join(', ')+']')
         :(G16.period==='month'?'월별':'분기별')+' '+ser.length+'구간 · 기간 말일 기준 각 단지 최신값 합산');
   if(ser.length<2) sub+=' — 점이 1개라 추이선이 그려지지 않습니다';
   $set('t16-trend-sub',sub);
@@ -16025,12 +16058,13 @@ function t16Line(id,labels,ds,unit){
   var el=document.getElementById(id); if(!el) return;
   if(charts[id]){ charts[id].destroy(); }
   charts[id]=new Chart(el.getContext('2d'),{type:'line',data:{labels:labels,datasets:ds},
+    plugins:[dhLineLabel(function(v){ return (unit==='억')?(Math.round(v*10)/10+unit):(v+unit); })],
     options:{responsive:true,maintainAspectRatio:false,
-      layout:{padding:{top:pxF(20)}},
+      layout:{padding:{top:pxF(24)}},
       plugins:{legend:{display:ds.length>1,labels:{font:{size:pxF(11)}}},
         tooltip:{callbacks:{label:function(c){return c.dataset.label+': '+(c.parsed.y==null?'-':c.parsed.y+unit);}}}},
       scales:{x:{ticks:{font:{size:pxF(10)}}},
-        y:{grace:'12%',ticks:{font:{size:pxF(10)},callback:function(v){return v+unit;}}}}}});
+        y:{grace:'18%',ticks:{font:{size:pxF(10)},callback:function(v){return v+unit;}}}}}});
 }
 function t16DistCharts(rows){
   $set('t16-dist-sub','· '+G16.date.slice(4,6)+'/'+G16.date.slice(6,8)+' 기준'+(G16.deal==='all'?'':' · '+G16.deal));
@@ -16049,12 +16083,13 @@ function t16Bar(id,labels,data,unit,color){
   if(charts[id]){ charts[id].destroy(); }
   charts[id]=new Chart(el.getContext('2d'),{type:'bar',
     data:{labels:labels,datasets:[{data:data,backgroundColor:color+'88',borderColor:color,borderWidth:1.5,borderRadius:4}]},
-    options:{responsive:true,maintainAspectRatio:false,layout:{padding:{top:pxF(22)}},
+    plugins:[dhBarLabel(function(v){ return (unit==='억')?(Math.round(v*10)/10+unit):(v.toLocaleString()+unit); })],
+    options:{responsive:true,maintainAspectRatio:false,layout:{padding:{top:pxF(26)}},
       plugins:{legend:{display:false},tooltip:{callbacks:{label:function(c){return c.parsed.y+unit;}}}},
-      scales:{x:{ticks:{font:{size:pxF(10)}}},y:{beginAtZero:true,ticks:{font:{size:pxF(10)},callback:function(v){return v+unit;}}}}}});
+      scales:{x:{ticks:{font:{size:pxF(10)}}},y:{beginAtZero:true,grace:'15%',ticks:{font:{size:pxF(10)},callback:function(v){return v+unit;}}}}}});
 }
 function t16UnitTable(rows){
-  $set('t16-unit-sub','· 매물 많은 순');
+  $set('t16-unit-sub','· 매물 많은 순 · 단지명을 누르면 매물(APT) 탭으로 이동');
   var by={};
   rows.forEach(function(r){
     if(!by[r.n]) by[r.n]={g:r.g,cnt:0,매매:[],전세:[],월세:[]};
@@ -16071,7 +16106,9 @@ function t16UnitTable(rows){
     var e=by[n];
     var c=function(k){return e[k].length;};
     var m=function(k){return e[k].length?fmt만(medianOf(e[k])):'-';};
-    return '<tr><td>'+(e.g||'-')+'공구</td><td>'+n+'</td>'
+    return '<tr style="cursor:pointer" onclick="t16GoUnit(\''+n.replace(/'/g,"\\'")+'\')" title="클릭하면 매물(APT) 탭에서 이 단지 매물을 봅니다">'
+      +'<td>'+(e.g||'-')+'공구</td>'
+      +'<td style="color:var(--accent);font-weight:700;text-decoration:underline">'+n+'</td>'
       +'<td class="num" style="font-weight:700">'+e.cnt+'</td>'
       +'<td class="num">'+c('매매')+'</td><td class="num" style="color:#d9480f">'+m('매매')+'</td>'
       +'<td class="num">'+c('전세')+'</td><td class="num" style="color:#0b6e99">'+m('전세')+'</td>'
