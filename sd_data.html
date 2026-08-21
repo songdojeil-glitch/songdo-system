@@ -6452,11 +6452,14 @@ var DI_FIXED=[
 // 동호수배치도는 호실마다 분양가 숫자가 박혀 있어 잔글씨 밀도가 가장 높다.
 // 압축률(q)이 낮으면 픽셀을 키워도 숫자 획이 뭉개지므로 px 와 q 를 함께 올린다.
 // 원본보다 크게 늘리지는 않으므로(축소 전용) 상한을 올려도 작은 원본은 그대로다.
+// raw:true 인 슬롯은 리사이즈·재압축을 전혀 하지 않고 원본 파일을 그대로 올린다.
+// 동호수배치도는 호실마다 분양가 숫자가 박혀 있어 어떤 재압축도 손해다.
 var DI_OPT={
-  dongho:{px:3600,q:0.94},
+  dongho:{raw:true},
   price :{px:3000,q:0.92},
   _def  :{px:1200,q:0.85}
 };
+var DI_RAW_WARN=12*1024*1024;   // 이보다 크면 업로드 전에 한 번 확인받는다
 function diStorageReady(){ return !!(window._fbStorageReady&&window._fbStorage&&window._fbSRef); }
 
 function diResizeImage(file, maxLong, cb, quality){
@@ -6574,7 +6577,7 @@ function diRenderPanel(){
     +'<span style="font-size:11px;color:var(--text3)">저장명: '+nm+'_타입_전용_평면도</span></div></div>';
   panel.innerHTML='<div class="card" style="padding:18px">'
     +'<div style="font-size:15px;font-weight:800;color:var(--accent);margin-bottom:2px">'+nm+'</div>'
-    +'<div style="font-size:11px;color:var(--text3);margin-bottom:16px">'+(d?d.공구+'공구 · '+fmtN(d.세대수)+'세대':'')+' · 업로드 시 자동 리사이즈 (동호수배치도 3600px·분양가 3000px — 잔글씨 보존)</div>'
+    +'<div style="font-size:11px;color:var(--text3);margin-bottom:16px">'+(d?d.공구+'공구 · '+fmtN(d.세대수)+'세대':'')+' · 업로드 시 자동 리사이즈 (동호수배치도는 <b>원본 그대로</b>, 분양가 3000px)</div>'
     +fixedHtml+planHtml+'</div>';
 }
 
@@ -6590,10 +6593,31 @@ function diSlotCell(nm, filename, caption, url){
   return '<div><div style="font-size:11px;color:var(--text3);margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+caption+'</div>'+box+'</div>';
 }
 
+// 원본 그대로 업로드 (캔버스를 거치지 않으므로 화질 손실 0)
+function diUploadRaw(file, nm, filename){
+  var mb=file.size/1024/1024;
+  if(file.size>DI_RAW_WARN &&
+     !confirm('원본 그대로 올립니다.\n\n파일 크기: '+(Math.round(mb*10)/10)+'MB\n'
+              +'용량이 커서 업로드와 열람이 느려질 수 있습니다. 계속할까요?')) return;
+  var img=new Image(), rd=new FileReader();
+  rd.onload=function(e){
+    var dataUrl=e.target.result;
+    img.onload=function(){
+      showToast('📐 원본 그대로 저장 '+img.width+'×'+img.height+' ('+(Math.round(mb*10)/10)+'MB) · 리사이즈 없음', 6000);
+      diPutImage(nm, filename, dataUrl);
+    };
+    img.onerror=function(){ diPutImage(nm, filename, dataUrl); };
+    img.src=dataUrl;
+  };
+  rd.onerror=function(){ showToast('❌ 파일을 읽지 못했습니다'); };
+  rd.readAsDataURL(file);
+}
+
 function diUploadFixed(input, nm, filename){
   var file=input.files[0]; if(!file) return;
   var key=String(filename).replace('.jpg','').replace(/\d+$/,'');
   var opt=DI_OPT[key]||DI_OPT._def;
+  if(opt.raw){ diUploadRaw(file, nm, filename); input.value=''; return; }
   diResizeImage(file, opt.px, function(dataUrl, info){
     if(!dataUrl){ showToast('❌ 이미지 처리 실패'); return; }
     if(info){
@@ -6644,18 +6668,89 @@ async function diDeleteImage(nm, filename){
     showToast('🗑️ 삭제 완료');
   }catch(e){ showToast('❌ 삭제 오류: '+e.message); }
 }
+// 이미지 확대 팝업 — 휠로 배율 조절, 드래그로 이동
+// 동호수배치도처럼 원본이 큰 이미지는 화면에 맞춰 축소되면 글씨가 안 보이므로
+// 확대 후에도 더 파고들 수 있어야 한다.
 function diZoomImage(url, caption){
   var overlay=document.getElementById('zoom-overlay');
   var inner=document.getElementById('zoom-overlay-inner');
   var content=document.getElementById('zoom-overlay-content');
   if(!overlay||!content) return;
   content.innerHTML='';
-  inner.style.cssText='background:var(--bg2);border:2px solid var(--accent);border-radius:16px;padding:20px;max-width:92vw;max-height:92vh;overflow:auto;cursor:default;position:relative';
+  inner.style.cssText='background:var(--bg2);border:2px solid var(--accent);border-radius:16px;padding:16px 20px 20px;max-width:94vw;max-height:94vh;overflow:hidden;cursor:default;position:relative';
+
   var wrap=document.createElement('div');
-  if(caption){ var tt=document.createElement('div'); tt.style.cssText='font-size:15px;font-weight:700;color:var(--text);margin-bottom:12px'; tt.textContent=caption; wrap.appendChild(tt); }
-  var img=document.createElement('img'); img.src=url;
-  img.style.cssText='max-width:100%;max-height:80vh;display:block;border-radius:8px;margin:0 auto';
-  wrap.appendChild(img); content.appendChild(wrap);
+  var head=document.createElement('div');
+  head.style.cssText='display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap';
+  if(caption){
+    var tt=document.createElement('div');
+    tt.style.cssText='font-size:15px;font-weight:700;color:var(--text)';
+    tt.textContent=caption; head.appendChild(tt);
+  }
+  var zl=document.createElement('span');
+  zl.style.cssText='font-size:11px;color:var(--text3);background:var(--bg3);padding:3px 8px;border-radius:10px';
+  head.appendChild(zl);
+  var mkBtn=function(t,fn){
+    var b=document.createElement('button');
+    b.textContent=t;
+    b.style.cssText='padding:3px 10px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:11px;cursor:pointer';
+    b.onclick=function(ev){ ev.stopPropagation(); fn(); };
+    head.appendChild(b); return b;
+  };
+  var box=document.createElement('div');
+  box.style.cssText='overflow:hidden;border-radius:8px;background:var(--bg);max-height:82vh;cursor:grab;touch-action:none';
+  var img=document.createElement('img'); img.src=url; img.draggable=false;
+  img.style.cssText='display:block;transform-origin:0 0;user-select:none;-webkit-user-drag:none';
+  box.appendChild(img);
+
+  var sc=1, base=1, tx=0, ty=0, panning=false, sx=0, sy=0;
+  function apply(){
+    img.style.transform='translate('+tx+'px,'+ty+'px) scale('+(base*sc)+')';
+    zl.textContent='🔍 '+Math.round(base*sc*100)+'%  (휠 확대 · 드래그 이동)';
+  }
+  function fit(){
+    // 처음에는 상자 안에 다 들어오도록 맞춘다
+    var bw=box.clientWidth||box.offsetWidth, bh=box.clientHeight||box.offsetHeight;
+    if(!img.naturalWidth||!bw) return;
+    base=Math.min(bw/img.naturalWidth, bh/img.naturalHeight, 1);
+    sc=1; tx=0; ty=0; apply();
+  }
+  img.onload=function(){
+    box.style.height=Math.min(window.innerHeight*0.82, img.naturalHeight)+'px';
+    setTimeout(fit,0);
+  };
+  box.addEventListener('wheel', function(e){
+    e.preventDefault(); e.stopPropagation();
+    var r=box.getBoundingClientRect();
+    var mx=e.clientX-r.left, my=e.clientY-r.top;      // 커서 위치를 기준으로 확대
+    var prev=base*sc;
+    sc*= (e.deltaY<0 ? 1.15 : 1/1.15);
+    sc=Math.max(0.2, Math.min(sc, 12/Math.max(base,0.0001)));
+    var now=base*sc, k=now/prev;
+    tx=mx-(mx-tx)*k; ty=my-(my-ty)*k;
+    apply();
+  }, {passive:false});
+  box.addEventListener('mousedown', function(e){
+    panning=true; sx=e.clientX-tx; sy=e.clientY-ty; box.style.cursor='grabbing'; e.preventDefault();
+  });
+  window.addEventListener('mousemove', function(e){
+    if(!panning) return; tx=e.clientX-sx; ty=e.clientY-sy; apply();
+  });
+  window.addEventListener('mouseup', function(){ panning=false; box.style.cursor='grab'; });
+  box.addEventListener('dblclick', function(e){ e.stopPropagation(); fit(); });
+  box.addEventListener('click', function(e){ e.stopPropagation(); });
+
+  mkBtn('－', function(){ sc/=1.3; apply(); });
+  mkBtn('＋', function(){ sc*=1.3; apply(); });
+  mkBtn('화면맞춤', fit);
+  mkBtn('원본크기', function(){ base=1; sc=1; tx=0; ty=0; apply(); });
+  var a=document.createElement('a');
+  a.href=url; a.target='_blank'; a.rel='noopener'; a.textContent='새 창에서 열기';
+  a.style.cssText='font-size:11px;color:var(--accent);text-decoration:underline;margin-left:2px';
+  a.onclick=function(ev){ ev.stopPropagation(); };
+  head.appendChild(a);
+
+  wrap.appendChild(head); wrap.appendChild(box); content.appendChild(wrap);
   overlay.classList.add('on');
   if(typeof _zoomOn!=='undefined') _zoomOn=true;
 }
