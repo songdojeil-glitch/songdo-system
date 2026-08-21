@@ -6409,6 +6409,8 @@ function hsOpenModal(nm){
       var cells=[];
       if(g.map) cells.push({u:g.map,c:'위치지도'});
       if(g.layout) cells.push({u:g.layout,c:'단지배치도'});
+      if(g.dongho) cells.push({u:g.dongho,c:'동호수배치도'});
+      if(g.price)  cells.push({u:g.price,c:'분양가'});
       g.photos.forEach(function(u,i){ cells.push({u:u,c:'전경'+(i+1)}); });
       g.plans.forEach(function(p){ cells.push({u:p.url,c:'평면도 '+p.타입+(p.전용?' (전용'+p.전용+'㎡)':'')}); });
       if(!cells.length){ box.innerHTML=''; return; }
@@ -6442,8 +6444,13 @@ var G_DI = { selDist:'all', selDanji:'', index:{}, curImgs:{} };
 var DI_FIXED=[
   {key:'map',label:'📍 위치지도',multi:false},
   {key:'layout',label:'🏗️ 단지배치도',multi:false},
+  {key:'dongho',label:'🏢 동호수배치도',multi:false},
+  {key:'price',label:'💰 분양가',multi:false},
   {key:'photo',label:'📷 단지전경',multi:true,max:4}
 ];
+// 슬롯별 리사이즈 상한(긴 변 px). 동호수배치도·분양가표는 잔글씨가 많아
+// 기본값 1200px 로 줄이면 숫자가 뭉개져 읽을 수 없다.
+var DI_MAXPX={ dongho:2000, price:2000 };
 function diStorageReady(){ return !!(window._fbStorageReady&&window._fbStorage&&window._fbSRef); }
 
 function diResizeImage(file, maxLong, cb){
@@ -6519,7 +6526,12 @@ function diRenderPanel(){
   if(!nm){ panel.innerHTML='<div class="card" style="padding:30px;text-align:center;color:var(--text3);font-size:13px">단지를 선택하세요</div>'; return; }
   var d=(G_HS.danji||[]).filter(function(x){return x.단지명===nm;})[0];
   var imgs=G_DI.curImgs||{};
-  var fixedHtml=DI_FIXED.map(function(s){
+  // 단일 이미지 슬롯은 한 줄에 나란히 배치한다 (배치도류를 좌우로 비교해 보기 위함)
+  var singles=DI_FIXED.filter(function(x){return !x.multi;});
+  var singleHtml='<div style="margin-bottom:14px"><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px">'
+    +singles.map(function(x){ return diSlotCell(nm, x.key+'.jpg', x.label, imgs[x.key+'.jpg']); }).join('')
+    +'</div></div>';
+  var fixedHtml=singleHtml+DI_FIXED.filter(function(x){return x.multi;}).map(function(s){
     if(s.multi){
       var cells='';
       for(var i=1;i<=s.max;i++){ var fn=s.key+i+'.jpg'; cells+=diSlotCell(nm,fn,s.label+' '+i,imgs[fn]); }
@@ -6552,7 +6564,7 @@ function diRenderPanel(){
     +'<span style="font-size:11px;color:var(--text3)">저장명: '+nm+'_타입_전용_평면도</span></div></div>';
   panel.innerHTML='<div class="card" style="padding:18px">'
     +'<div style="font-size:15px;font-weight:800;color:var(--accent);margin-bottom:2px">'+nm+'</div>'
-    +'<div style="font-size:11px;color:var(--text3);margin-bottom:16px">'+(d?d.공구+'공구 · '+fmtN(d.세대수)+'세대':'')+' · 업로드 시 자동 리사이즈</div>'
+    +'<div style="font-size:11px;color:var(--text3);margin-bottom:16px">'+(d?d.공구+'공구 · '+fmtN(d.세대수)+'세대':'')+' · 업로드 시 자동 리사이즈 (동호수배치도·분양가는 잔글씨 보존을 위해 2000px)</div>'
     +fixedHtml+planHtml+'</div>';
 }
 
@@ -6570,7 +6582,9 @@ function diSlotCell(nm, filename, caption, url){
 
 function diUploadFixed(input, nm, filename){
   var file=input.files[0]; if(!file) return;
-  diResizeImage(file, 1200, function(dataUrl){
+  var key=String(filename).replace('.jpg','').replace(/\d+$/,'');
+  var maxpx=DI_MAXPX[key]||1200;
+  diResizeImage(file, maxpx, function(dataUrl){
     if(!dataUrl){ showToast('❌ 이미지 처리 실패'); return; }
     diPutImage(nm, filename, dataUrl);
   });
@@ -6629,7 +6643,7 @@ function diZoomImage(url, caption){
   if(typeof _zoomOn!=='undefined') _zoomOn=true;
 }
 async function diGetImages(nm){
-  var out={map:null,layout:null,photos:[],plans:[]};
+  var out={map:null,layout:null,dongho:null,price:null,photos:[],plans:[]};
   if(!diStorageReady()||!nm) return out;
   try{
     var dirRef=window._fbSRef(window._fbStorage,'sd_danji_images/'+nm);
@@ -6638,6 +6652,8 @@ async function diGetImages(nm){
       var item=res.items[i], url=await window._fbGetURL(item), f=item.name;
       if(f==='map.jpg') out.map=url;
       else if(f==='layout.jpg') out.layout=url;
+      else if(f==='dongho.jpg') out.dongho=url;
+      else if(f==='price.jpg')  out.price=url;
       else if(f.indexOf('photo')===0) out.photos.push(url);
       else if(f.indexOf('plan__')===0){
         var m=f.replace('plan__','').replace('.jpg','').split('_');
@@ -6664,6 +6680,8 @@ async function diGetImagesB64(nm){
   try{
     if(g.map){ var b=await urlToB64(g.map); out.push({label:'['+nm+' 위치지도]',type:b.type,data:b.data}); }
     if(g.layout){ var b2=await urlToB64(g.layout); out.push({label:'['+nm+' 단지배치도]',type:b2.type,data:b2.data}); }
+    if(g.dongho){ var b2b=await urlToB64(g.dongho); out.push({label:'['+nm+' 동호수배치도]',type:b2b.type,data:b2b.data}); }
+    if(g.price){  var b2c=await urlToB64(g.price);  out.push({label:'['+nm+' 분양가표]',type:b2c.type,data:b2c.data}); }
     for(var i=0;i<g.photos.length;i++){ var bp=await urlToB64(g.photos[i]); out.push({label:'['+nm+' 전경'+(i+1)+']',type:bp.type,data:bp.data}); }
     for(var j=0;j<g.plans.length;j++){ var pl=g.plans[j]; var bpl=await urlToB64(pl.url);
       out.push({label:'['+nm+' 평면도 '+pl.타입+(pl.전용?' 전용'+pl.전용+'㎡':'')+']',type:bpl.type,data:bpl.data}); }
