@@ -6448,12 +6448,19 @@ var DI_FIXED=[
   {key:'price',label:'💰 분양가',multi:false},
   {key:'photo',label:'📷 단지전경',multi:true,max:4}
 ];
-// 슬롯별 리사이즈 상한(긴 변 px). 동호수배치도·분양가표는 잔글씨가 많아
-// 기본값 1200px 로 줄이면 숫자가 뭉개져 읽을 수 없다.
-var DI_MAXPX={ dongho:2000, price:2000 };
+// 슬롯별 리사이즈 옵션 (긴 변 px, JPEG 품질).
+// 동호수배치도는 호실마다 분양가 숫자가 박혀 있어 잔글씨 밀도가 가장 높다.
+// 압축률(q)이 낮으면 픽셀을 키워도 숫자 획이 뭉개지므로 px 와 q 를 함께 올린다.
+// 원본보다 크게 늘리지는 않으므로(축소 전용) 상한을 올려도 작은 원본은 그대로다.
+var DI_OPT={
+  dongho:{px:3600,q:0.94},
+  price :{px:3000,q:0.92},
+  _def  :{px:1200,q:0.85}
+};
 function diStorageReady(){ return !!(window._fbStorageReady&&window._fbStorage&&window._fbSRef); }
 
-function diResizeImage(file, maxLong, cb){
+function diResizeImage(file, maxLong, cb, quality){
+  var q=quality||0.85;
   var reader=new FileReader();
   reader.onload=function(e){
     var img=new Image();
@@ -6461,9 +6468,12 @@ function diResizeImage(file, maxLong, cb){
       var w=img.width,h=img.height,scale=Math.min(1,maxLong/Math.max(w,h));
       var nw=Math.round(w*scale),nh=Math.round(h*scale);
       var cv=document.createElement('canvas'); cv.width=nw; cv.height=nh;
-      var cx=cv.getContext('2d'); cx.fillStyle='#fff'; cx.fillRect(0,0,nw,nh);
+      var cx=cv.getContext('2d');
+      cx.fillStyle='#fff'; cx.fillRect(0,0,nw,nh);
+      // 잔글씨는 축소할 때 계단현상이 생긴다 — 브라우저 고품질 보간을 켠다
+      if('imageSmoothingQuality' in cx){ cx.imageSmoothingEnabled=true; cx.imageSmoothingQuality='high'; }
       cx.drawImage(img,0,0,nw,nh);
-      cb(cv.toDataURL('image/jpeg',0.85));
+      cb(cv.toDataURL('image/jpeg',q), {ow:w,oh:h,nw:nw,nh:nh});
     };
     img.onerror=function(){ cb(null); };
     img.src=e.target.result;
@@ -6564,7 +6574,7 @@ function diRenderPanel(){
     +'<span style="font-size:11px;color:var(--text3)">저장명: '+nm+'_타입_전용_평면도</span></div></div>';
   panel.innerHTML='<div class="card" style="padding:18px">'
     +'<div style="font-size:15px;font-weight:800;color:var(--accent);margin-bottom:2px">'+nm+'</div>'
-    +'<div style="font-size:11px;color:var(--text3);margin-bottom:16px">'+(d?d.공구+'공구 · '+fmtN(d.세대수)+'세대':'')+' · 업로드 시 자동 리사이즈 (동호수배치도·분양가는 잔글씨 보존을 위해 2000px)</div>'
+    +'<div style="font-size:11px;color:var(--text3);margin-bottom:16px">'+(d?d.공구+'공구 · '+fmtN(d.세대수)+'세대':'')+' · 업로드 시 자동 리사이즈 (동호수배치도 3600px·분양가 3000px — 잔글씨 보존)</div>'
     +fixedHtml+planHtml+'</div>';
 }
 
@@ -6583,11 +6593,18 @@ function diSlotCell(nm, filename, caption, url){
 function diUploadFixed(input, nm, filename){
   var file=input.files[0]; if(!file) return;
   var key=String(filename).replace('.jpg','').replace(/\d+$/,'');
-  var maxpx=DI_MAXPX[key]||1200;
-  diResizeImage(file, maxpx, function(dataUrl){
+  var opt=DI_OPT[key]||DI_OPT._def;
+  diResizeImage(file, opt.px, function(dataUrl, info){
     if(!dataUrl){ showToast('❌ 이미지 처리 실패'); return; }
+    if(info){
+      var kb=Math.round(dataUrl.length*0.75/1024);
+      var msg='📐 '+info.ow+'×'+info.oh+' → '+info.nw+'×'+info.nh+' ('+(kb>1024?(Math.round(kb/10.24)/100)+'MB':kb+'KB')+')';
+      // 원본이 상한보다 작으면 아무리 설정을 올려도 선명해지지 않는다 → 그 사실을 알려준다
+      if(Math.max(info.ow,info.oh)<opt.px*0.7) msg+=' ⚠️ 원본이 작아 더 선명해지지 않습니다 (권장 '+opt.px+'px 이상)';
+      showToast(msg, 6000);
+    }
     diPutImage(nm, filename, dataUrl);
-  });
+  }, opt.q);
   input.value='';
 }
 function diUploadPlan(input){
@@ -6597,7 +6614,7 @@ function diUploadPlan(input){
   var val=sel?sel.value:'';
   if(!val){ showToast('⚠️ 평면도 타입을 선택하세요'); input.value=''; return; }
   var filename='plan__'+val+'.jpg';
-  diResizeImage(file, 1000, function(dataUrl){
+  diResizeImage(file, 1400, function(dataUrl){
     if(!dataUrl){ showToast('❌ 이미지 처리 실패'); return; }
     diPutImage(nm, filename, dataUrl);
   });
