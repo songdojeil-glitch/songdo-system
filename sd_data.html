@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0" id="viewport-meta">
-<title>데이터관리 시스템 - SJTWS (SongdoJeil Total Work System)</title>
+<title>데이터관리 시스템 - SJDWS (SongdoJeil Data &amp; Work System)</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700;900&family=Oswald:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
@@ -58,14 +58,31 @@ body { background:var(--bg); color:var(--text); font-family:var(--font); font-si
 /* ── 탭 네비 */
 .tab-nav {
   background:var(--bg2); border-bottom:1px solid var(--border);
-  display:flex; gap:0; padding:0; overflow-x:auto;
-  scrollbar-width:none;
+  display:flex; gap:0; padding:0; overflow-x:auto; overflow-y:hidden;
+  scrollbar-width:thin;                 /* 노트북에서 잘릴 때 스크롤 막대가 보여야 한다 */
+  scroll-behavior:smooth;
+  position:relative;
 }
 .tab-nav-inner {
-  display:flex; gap:0; flex:1;
-  max-width:2560px; margin:0 auto; padding:0 20px;
+  /* flex:1 이면 안쪽이 컨테이너 폭까지 '줄어들어' 넘치는 탭이 잘리기만 하고
+     부모의 overflow-x 가 발동하지 않는다. 내용 폭 그대로 두어야 스크롤이 생긴다. */
+  display:flex; gap:0; flex:0 0 auto; width:max-content;
+  max-width:none; margin:0 auto; padding:0 20px;
 }
-.tab-nav::-webkit-scrollbar { display:none; }
+.tab-nav::-webkit-scrollbar { height:6px; }
+.tab-nav::-webkit-scrollbar-track { background:transparent; }
+.tab-nav::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
+.tab-nav::-webkit-scrollbar-thumb:hover { background:var(--text3); }
+/* 좌우 끝에서 더 있다는 걸 알려주는 화살표 */
+.tab-arrow {
+  position:absolute; top:0; bottom:0; width:26px; z-index:5;
+  display:none; align-items:center; justify-content:center;
+  background:var(--bg2); border:none; color:var(--text2);
+  font-size:15px; cursor:pointer; opacity:.95;
+}
+.tab-arrow.on { display:flex; }
+.tab-arrow.l { left:0;  box-shadow:6px 0 8px -4px rgba(0,0,0,.25); }
+.tab-arrow.r { right:0; box-shadow:-6px 0 8px -4px rgba(0,0,0,.25); }
 .tab-btn {
   padding:12px 18px; color:var(--text3); font-size:12px; font-weight:500;
   border:none; background:none; cursor:pointer; white-space:nowrap;
@@ -625,7 +642,7 @@ tr.naver-fav>td:first-child{border-left:3px solid #b8860b;}
 <!-- 헤더 -->
 <div class="header">
   <div class="header-inner">
-    <div class="logo">📡 데이터관리 시스템<span>SJTWS</span><span style="font-size:10px;color:var(--text3);font-weight:400;margin-left:5px;letter-spacing:0">SongdoJeil Total Work System</span></div>
+    <div class="logo">📡 데이터관리 시스템<span>SJDWS</span><span style="font-size:10px;color:var(--text3);font-weight:400;margin-left:5px;letter-spacing:0">SongdoJeil Data &amp; Work System</span></div>
     <div style="display:flex;align-items:center;gap:8px;margin-left:auto">
       <button id="nav-show-btn" onclick="toggleNav()"
         style="display:none;padding:3px 10px;background:rgba(14,116,144,.1);border:1px solid #0e749044;color:#0e7490;border-radius:12px;font-size:10px;cursor:pointer">
@@ -673,7 +690,9 @@ tr.naver-fav>td:first-child{border-left:3px solid #b8860b;}
 </div>
 
 <!-- 탭 네비 -->
-<div class="tab-nav">
+<div class="tab-nav" id="tab-nav">
+  <button class="tab-arrow l" id="tab-arrow-l" onclick="tabScroll(-1)" title="이전 메뉴">‹</button>
+  <button class="tab-arrow r" id="tab-arrow-r" onclick="tabScroll(1)" title="다음 메뉴">›</button>
   <div class="tab-nav-inner">
     <button class="tab-btn" onclick="sw(15)">📈 국내주택동향</button>
     <button class="tab-btn" onclick="sw(13)">🏗️ 송도주택공급현황</button>
@@ -2775,6 +2794,41 @@ function toggleUploadBar(){
 
 // ── 안전한 DOM 헬퍼
 function $id(id){ return document.getElementById(id); }
+// ── 상단 탭바 가로 스크롤
+// 노트북처럼 폭이 좁으면 탭이 화면 밖으로 밀린다. 스크롤·휠·화살표 세 가지로 접근 가능하게 한다.
+function tabScroll(dir){
+  var el=document.getElementById('tab-nav'); if(!el) return;
+  el.scrollLeft += dir*Math.max(200, el.clientWidth*0.6);
+  setTimeout(tabArrows, 300);
+}
+function tabArrows(){
+  var el=document.getElementById('tab-nav'); if(!el) return;
+  var over=el.scrollWidth-el.clientWidth;
+  var l=document.getElementById('tab-arrow-l'), r=document.getElementById('tab-arrow-r');
+  if(l) l.classList.toggle('on', over>4 && el.scrollLeft>2);
+  if(r) r.classList.toggle('on', over>4 && el.scrollLeft < over-2);
+}
+// 탭을 바꾸면 그 버튼이 보이도록 따라 움직인다 (잘린 탭을 눌러도 화면 밖에 남지 않게)
+function tabScrollIntoView(btn){
+  var el=document.getElementById('tab-nav'); if(!el||!btn) return;
+  var br=btn.getBoundingClientRect(), nr=el.getBoundingClientRect();
+  if(br.left < nr.left+30)       el.scrollLeft -= (nr.left+30-br.left);
+  else if(br.right > nr.right-30) el.scrollLeft += (br.right-(nr.right-30));
+  setTimeout(tabArrows, 300);
+}
+window.addEventListener('load', function(){
+  var el=document.getElementById('tab-nav'); if(!el) return;
+  tabArrows();
+  el.addEventListener('scroll', tabArrows);
+  window.addEventListener('resize', tabArrows);
+  // 세로 휠로도 가로 이동 (노트북 터치패드 배려)
+  el.addEventListener('wheel', function(e){
+    if(Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
+    if(el.scrollWidth<=el.clientWidth) return;
+    e.preventDefault(); el.scrollLeft += e.deltaY;
+  }, {passive:false});
+});
+
 function $set(id, val){ var el=document.getElementById(id); if(el) el.textContent=val; }
 function $style(id, prop, val){ var el=document.getElementById(id); if(el) el.style[prop]=val; }
 function $display(id, val){ var el=document.getElementById(id); if(el) el.style.display=val; }
@@ -4543,6 +4597,10 @@ function _pmPrintCss(){
 }
 
 function sw(n){
+  try{
+    var _b=document.querySelector('.tab-nav-inner .tab-btn[onclick="sw('+n+')"]');
+    if(_b) setTimeout(function(){ tabScrollIntoView(_b); },0);
+  }catch(_e){}
   document.querySelectorAll('.tc').forEach(function(e){e.classList.remove('on');});
   document.querySelectorAll('.tab-btn').forEach(function(e){e.classList.remove('on');});
   document.getElementById('tc'+n).classList.add('on');
