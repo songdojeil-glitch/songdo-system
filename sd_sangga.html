@@ -1465,6 +1465,16 @@ function initBuildings(){
 
 
 // ═══ 호실 상세 모달
+// 금액 입력 — 숫자만 받아 천단위 콤마를 자동으로 넣는다 (원 단위)
+function fmtMoneyIn(el){
+  var atEnd = (el.selectionStart===el.value.length);
+  var n = String(el.value||'').replace(/[^0-9]/g,'');
+  el.value = n ? Number(n).toLocaleString() : '';
+  if(atEnd){ el.selectionStart = el.selectionEnd = el.value.length; }
+  if(typeof onHmPriceChange==='function') onHmPriceChange();
+}
+function parseMoney(v){ return parseInt(String(v||'').replace(/[^0-9]/g,''),10) || 0; }
+
 // 전화번호 자동 하이픈 — 입력 도중에도 자연스럽게 붙도록 숫자만 뽑아 규칙에 맞춰 끊는다.
 //  02 지역번호(2자리)와 그 외(3자리)를 구분하고, 휴대폰/대표번호 8자리는 4-4 로 끊는다.
 function fmtTel(v){
@@ -1529,9 +1539,16 @@ function openHoModal(ho){
   info.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px';
   info.innerHTML = '<div><label class="fl">전용면적</label><input class="fi" value="'+p.area+'㎡ ('+p.areaPy+'평)" readonly style="background:#f5f5f3;font-size:12px"></div>'
     +'<div><label class="fl">분양면적</label><input class="fi" value="'+p.supArea+'㎡ ('+p.supAreaPy+'평)" readonly style="background:#f5f5f3;font-size:12px"></div>'
-    +'<div><label class="fl">공급금액</label><input class="fi" value="'+fmt(p.price)+'원" readonly style="background:#f5f5f3;font-size:12px"></div>'
-    +'<div><label class="fl">총분양가</label><input class="fi" value="'+fmt(p.total)+'원" readonly style="background:#f5f5f3;font-size:12px"></div>';
+    +'<div><label class="fl">공급(매매)금액 <span style="color:#1565c0;font-size:10px">수정가능</span></label>'
+      +'<input id="hm-price" class="fi" style="font-size:12px;text-align:right" inputmode="numeric" oninput="fmtMoneyIn(this)"></div>'
+    +'<div><label class="fl">총분양(매매)금액 <span style="color:#1565c0;font-size:10px">수정가능</span></label>'
+      +'<input id="hm-total" class="fi" style="font-size:12px;text-align:right" inputmode="numeric" oninput="fmtMoneyIn(this)"></div>'
+    +'<div style="grid-column:1/3;font-size:11px;color:#888;margin-top:-4px" id="hm-price-hint"></div>';
   body.appendChild(info);
+  document.getElementById('hm-price').value = fmt(p.price||0);
+  document.getElementById('hm-total').value = fmt(p.total||0);
+  _hmBase = {price:p.price||0, land:p.land||0, bldg:p.bldg||0, vat:p.vat||0, total:p.total||0};
+  onHmPriceChange();
 
   // 수정 섹션
   var edit = document.createElement('div');
@@ -1580,6 +1597,37 @@ function openHoModal(ho){
   document.getElementById('ho-modal-msg').style.display='none';
 }
 
+// 공급금액을 고치면 토지·건물·부가세도 같은 비율로 따라가야 견적서 숫자가 어긋나지 않는다.
+// 엑셀에 명시된 분할 비율이 있을 수 있으므로, 기존 비율을 그대로 유지한 채 배율만 적용한다.
+var _hmBase = null;
+function hmScaled(newPrice){
+  if(!_hmBase) return null;
+  var op = _hmBase.price;
+  if(op>0){
+    var k = newPrice/op;
+    return {land:Math.round(_hmBase.land*k), bldg:Math.round(_hmBase.bldg*k), vat:Math.round(_hmBase.vat*k), k:k};
+  }
+  // 원래 금액이 0이면 비율을 알 수 없다 → 최초 등록 때 쓰는 기본 분할을 적용
+  var bldg = Math.round(newPrice*0.398548);
+  return {land:Math.round(newPrice*0.601452), bldg:bldg, vat:Math.round(bldg*0.1), k:null};
+}
+function onHmPriceChange(){
+  var hint = document.getElementById('hm-price-hint');
+  var pe = document.getElementById('hm-price');
+  if(!hint||!pe||!_hmBase) return;
+  var np = parseMoney(pe.value);
+  var sc = hmScaled(np);
+  if(!sc){ hint.textContent=''; return; }
+  var diff = np - _hmBase.price;
+  var txt = '토지 '+fmt(sc.land)+' · 건물 '+fmt(sc.bldg)+' · 부가세 '+fmt(sc.vat)+' (자동 연동)';
+  if(diff!==0){
+    txt += '　|　공급금액 '+(diff>0?'+':'')+fmt(diff)+'원 변경';
+    var sugg = np + sc.vat;
+    txt += ' → 총액 제안 '+fmt(sugg)+'원';
+  }
+  hint.innerHTML = txt;
+}
+
 function calcHmYield(){
   var props = getCurProps();
   var p = props.find(function(x){return x.ho===_editHo;});
@@ -1587,7 +1635,8 @@ function calcHmYield(){
   var dep = parseFloat(document.getElementById('hm-deposit').value)||0;
   var mon = parseFloat(document.getElementById('hm-monthly').value)||0;
   if(!mon){document.getElementById('hm-yield-auto').textContent='월세 필요';return;}
-  var y = (mon*10000*12)/(p.price - dep*10000)*100;
+  var basePrice = parseMoney(document.getElementById('hm-price').value) || p.price;   // 화면에서 고친 금액 기준
+  var y = (mon*10000*12)/(basePrice - dep*10000)*100;
   document.getElementById('hm-yield-auto').textContent = y.toFixed(2)+'%';
 }
 
@@ -1601,11 +1650,21 @@ function saveHoModal(){
   p.tenant  = document.getElementById('hm-tenant').value.trim();
   p.deposit = parseFloat(document.getElementById('hm-deposit').value)||0;
   p.monthly = parseFloat(document.getElementById('hm-monthly').value)||0;
+  // 금액 — 토지·건물·부가세를 같은 비율로 함께 갱신 (견적서가 이 값들을 쓴다)
+  var newPrice = parseMoney(document.getElementById('hm-price').value);
+  var newTotal = parseMoney(document.getElementById('hm-total').value);
+  if(newPrice>0 && newPrice!==p.price){
+    var sc = hmScaled(newPrice);
+    if(sc){ p.land=sc.land; p.bldg=sc.bldg; p.vat=sc.vat; }
+    p.price = newPrice;
+  }
+  if(newTotal>0) p.total = newTotal;
+
   p.ownerNm  = document.getElementById('hm-owner-nm').value.trim();
   p.ownerTel = fmtTel(document.getElementById('hm-owner-tel').value);
   p.leaseNm  = document.getElementById('hm-lease-nm').value.trim();
   p.leaseTel = fmtTel(document.getElementById('hm-lease-tel').value);
-  // 수익률 재계산
+  // 수익률 재계산 (공급금액이 바뀌면 분모가 달라진다)
   if(p.monthly>0){
     p.yieldCur = parseFloat(((p.monthly*10000*12)/(p.price - p.deposit*10000)*100).toFixed(4));
   } else {
