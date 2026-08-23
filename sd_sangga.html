@@ -1226,11 +1226,16 @@ function addBldg(){
           p.deposit  = oldMap[p.ho].deposit  || p.deposit;
           p.monthly  = oldMap[p.ho].monthly  || p.monthly;
           p.yieldCur = oldMap[p.ho].yieldCur || p.yieldCur;
+          // 소유자·임차인은 엑셀에 없는 수기 입력값이므로 갱신 시 반드시 지켜야 한다
+          p.ownerNm  = oldMap[p.ho].ownerNm  || '';
+          p.ownerTel = oldMap[p.ho].ownerTel || '';
+          p.leaseNm  = oldMap[p.ho].leaseNm  || '';
+          p.leaseTel = oldMap[p.ho].leaseTel || '';
         }
       });
       BUILDINGS[existingIdx].props = props;
     } else {
-      BUILDINGS.push({ id:newId, name:name, props:props });
+      BUILDINGS.push({ id:newId, name:name, props:ensureContactFields(props) });
     }
     saveBuildingsToStorage();
     document.getElementById('bldg-modal').classList.remove('open');
@@ -1404,6 +1409,8 @@ function saveBuildingsToStorage(){
 function initBuildings(){
   function doInit(loaded){
     if(loaded && loaded.length > 0){ BUILDINGS = loaded; }
+    // 기존에 등록된 건물에도 소유자·임차인 항목을 만들어 둔다 (값은 비어 있음)
+    BUILDINGS.forEach(function(b){ ensureContactFields(b.props); });
     if(loaded && loaded.length > 0){
       BUILDINGS = loaded;
     }
@@ -1458,6 +1465,47 @@ function initBuildings(){
 
 
 // ═══ 호실 상세 모달
+// 전화번호 자동 하이픈 — 입력 도중에도 자연스럽게 붙도록 숫자만 뽑아 규칙에 맞춰 끊는다.
+//  02 지역번호(2자리)와 그 외(3자리)를 구분하고, 휴대폰/대표번호 8자리는 4-4 로 끊는다.
+function fmtTel(v){
+  var d = String(v||'').replace(/[^0-9]/g,'').slice(0,11);
+  if(!d) return '';
+  if(d.startsWith('02')){
+    if(d.length<3)  return d;
+    if(d.length<=5) return d.slice(0,2)+'-'+d.slice(2);
+    if(d.length<=9) return d.slice(0,2)+'-'+d.slice(2,5)+'-'+d.slice(5);
+    return d.slice(0,2)+'-'+d.slice(2,6)+'-'+d.slice(6,10);
+  }
+  if(d.startsWith('1') && d.length===8) return d.slice(0,4)+'-'+d.slice(4);   // 15xx·16xx 대표번호
+  // 010 은 항상 11자리(3-4-4)다. 일반 규칙을 태우면 입력 도중 010-6401 → 010-640-19 로 튄다.
+  if(d.startsWith('010')){
+    if(d.length<=3) return d;
+    if(d.length<=7) return d.slice(0,3)+'-'+d.slice(3);
+    return d.slice(0,3)+'-'+d.slice(3,7)+'-'+d.slice(7);
+  }
+  if(d.length<4)   return d;
+  if(d.length<=7)  return d.slice(0,3)+'-'+d.slice(3);
+  if(d.length<=10) return d.slice(0,3)+'-'+d.slice(3,6)+'-'+d.slice(6);
+  return d.slice(0,3)+'-'+d.slice(3,7)+'-'+d.slice(7);
+}
+// 입력창에 붙여 쓰는 핸들러 (커서가 끝에 있을 때만 자동 정리 — 중간 수정 중 커서 튐 방지)
+function onTelInput(el){
+  var atEnd = (el.selectionStart===el.value.length);
+  var v = fmtTel(el.value);
+  el.value = v;
+  if(atEnd){ el.selectionStart = el.selectionEnd = v.length; }
+}
+// 기존 등록 건물에는 이 항목들이 없다 → 읽을 때 빈 값으로 채워 넣는다 (있으면 그대로 둔다)
+function ensureContactFields(props){
+  (props||[]).forEach(function(p){
+    if(p.ownerNm  === undefined) p.ownerNm  = '';
+    if(p.ownerTel === undefined) p.ownerTel = '';
+    if(p.leaseNm  === undefined) p.leaseNm  = '';
+    if(p.leaseTel === undefined) p.leaseTel = '';
+  });
+  return props;
+}
+
 var _editHo = null;
 
 function openHoModal(ho){
@@ -1502,6 +1550,22 @@ function openHoModal(ho){
   document.getElementById('hm-deposit').value = p.deposit || 0;
   document.getElementById('hm-monthly').value = p.monthly || 0;
 
+  // 소유자 · 임차인 (상세 모달에서만 — 전체 호실 현황 표에는 노출하지 않는다)
+  var contact = document.createElement('div');
+  contact.style.cssText = 'border-top:0.5px solid #f0f0f0;padding-top:12px;margin-bottom:12px';
+  contact.innerHTML = '<p class="sec" style="margin-bottom:8px">👤 소유자 · 임차인 <span style="font-size:10px;color:#aaa;font-weight:400">개인정보 — 이 화면에서만 표시</span></p>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">'
+    +'<div><label class="fl">소유자 성함</label><input id="hm-owner-nm" class="fi" style="font-size:12px" placeholder="예: 홍길동"></div>'
+    +'<div><label class="fl">소유자 연락처</label><input id="hm-owner-tel" class="fi" style="font-size:12px" inputmode="numeric" maxlength="14" placeholder="010-0000-0000" oninput="onTelInput(this)"></div>'
+    +'<div><label class="fl">임차인 성함</label><input id="hm-lease-nm" class="fi" style="font-size:12px" placeholder="예: 김철수"></div>'
+    +'<div><label class="fl">임차인 연락처</label><input id="hm-lease-tel" class="fi" style="font-size:12px" inputmode="numeric" maxlength="14" placeholder="010-0000-0000" oninput="onTelInput(this)"></div>'
+    +'</div>';
+  body.appendChild(contact);
+  document.getElementById('hm-owner-nm').value  = p.ownerNm  || '';
+  document.getElementById('hm-owner-tel').value = fmtTel(p.ownerTel || '');
+  document.getElementById('hm-lease-nm').value  = p.leaseNm  || '';
+  document.getElementById('hm-lease-tel').value = fmtTel(p.leaseTel || '');
+
   // 수익률 표시
   var yieldDiv = document.createElement('div');
   yieldDiv.style.cssText = 'padding:10px;background:#f8f8f6;border-radius:8px;font-size:12px;color:#666';
@@ -1537,6 +1601,10 @@ function saveHoModal(){
   p.tenant  = document.getElementById('hm-tenant').value.trim();
   p.deposit = parseFloat(document.getElementById('hm-deposit').value)||0;
   p.monthly = parseFloat(document.getElementById('hm-monthly').value)||0;
+  p.ownerNm  = document.getElementById('hm-owner-nm').value.trim();
+  p.ownerTel = fmtTel(document.getElementById('hm-owner-tel').value);
+  p.leaseNm  = document.getElementById('hm-lease-nm').value.trim();
+  p.leaseTel = fmtTel(document.getElementById('hm-lease-tel').value);
   // 수익률 재계산
   if(p.monthly>0){
     p.yieldCur = parseFloat(((p.monthly*10000*12)/(p.price - p.deposit*10000)*100).toFixed(4));
