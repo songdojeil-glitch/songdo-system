@@ -1278,20 +1278,53 @@ function addBldg(){
           monthly: ['월세','임대료','월임대료'],
         };
 
+        // 헤더 매칭은 '완전일치'를 먼저 훑고, 못 찾은 항목만 '포함'으로 채운다.
+        // 부분일치만 쓰면 '전용평당 임대료' 가 '전용평' 에 걸려 임대료가 평수 자리에 앉는다.
+        // (송도스마트스퀘어처럼 한 시트에 분양표·임대표가 나란히 있는 경우 실제로 발생)
+        var norm = function(v){ return String(v==null?'':v).replace(/\s/g,''); };
         for(var ri=0; ri<Math.min(10, raw.length); ri++){
           var row = raw[ri];
           var matched = 0;
+          // 1차 — 완전일치
           Object.keys(HEADER_KEYS).forEach(function(key){
+            if(COL[key]!==undefined) return;
             HEADER_KEYS[key].forEach(function(kw){
+              if(COL[key]!==undefined) return;
               row.forEach(function(cell, ci){
-                if(String(cell).replace(/\s/g,'').includes(kw.replace(/\s/g,''))){
-                  if(!COL[key]) { COL[key]=ci; matched++; }
-                }
+                if(COL[key]===undefined && norm(cell)===norm(kw)){ COL[key]=ci; matched++; }
+              });
+            });
+          });
+          // 2차 — 포함(완전일치로 못 채운 항목만)
+          Object.keys(HEADER_KEYS).forEach(function(key){
+            if(COL[key]!==undefined) return;
+            HEADER_KEYS[key].forEach(function(kw){
+              if(COL[key]!==undefined) return;
+              row.forEach(function(cell, ci){
+                if(COL[key]===undefined && norm(cell).includes(norm(kw))){ COL[key]=ci; matched++; }
               });
             });
           });
           if(matched >= 3){ dataStart = ri+1; break; } // 헤더 행 발견
         }
+
+        // 평수 컬럼 보정
+        // 이 양식은 헤더에 '전용평'·'분양평' 이라는 말이 아예 없고, 헤더 아랫줄에 ㎡ / 평 로만 구분한다.
+        // 그래서 포함 매칭이 엉뚱하게 '전용평당 임대료' 를 집어간다. 두 가지로 막는다.
+        //  (1) '임대'·'평당' 이 든 셀은 평수 컬럼 후보에서 제외
+        //  (2) 면적 컬럼 바로 오른쪽 칸이 '평' 이면 그 자리를 평수 컬럼으로 확정
+        ['areaPy','supAreaPy'].forEach(function(k){
+          if(COL[k]===undefined) return;
+          var hv = '';
+          for(var rr=0; rr<Math.min(10, raw.length); rr++){
+            var c = norm(raw[rr][COL[k]]);
+            if(c){ hv += c; }
+          }
+          if(hv.indexOf('임대')>=0 || hv.indexOf('평당')>=0) COL[k] = undefined;   // 오매칭 해제
+        });
+        var subRow = raw[dataStart] || [];
+        if(norm(subRow[(COL.area!==undefined?COL.area:-9)+1])==='평')    COL.areaPy    = COL.area+1;
+        if(norm(subRow[(COL.supArea!==undefined?COL.supArea:-9)+1])==='평') COL.supAreaPy = COL.supArea+1;
 
         // 2단계: 헤더 못 찾으면 첫 번째 호수 패턴 행으로 dataStart 설정
         if(dataStart === 0){
@@ -1349,7 +1382,10 @@ function addBldg(){
           if(!ho || (!ho.includes('호') && !/^[A-Za-z]\d/.test(ho))) continue;
 
           var toNum = function(v){ return parseFloat(String(v||0).replace(/[^0-9.]/g,''))||0; };
-          var toInt = function(v){ return parseInt(String(v||0).replace(/[^0-9]/g,''))||0; };
+          // 소수점을 지우면 1232790.3 → 12327903 (10배) 이 되고,
+          // 엑셀이 저장한 부동소수점 꼬리(980585.9000000001)까지 본체에 붙어 천문학적 값이 된다.
+          // 반드시 숫자로 읽은 뒤 반올림해야 한다.
+          var toInt = function(v){ return Math.round(toNum(v)); };
           var round2 = function(v){ return Math.round(toNum(v)*100)/100; };
 
           var price   = toInt(row[COL.price]);
@@ -1381,6 +1417,43 @@ function addBldg(){
         }
 
         if(props.length===0){ throw new Error('호실 데이터를 찾을 수 없습니다.'); }
+
+        // ── 금액 단위 자동 감지 (원 / 천원 / 만원)
+        // 상가 한 호실의 공급금액이 1천만원 미만일 수는 없다. 그보다 작으면 축약 단위로 적힌 것이다.
+        // 잘못 짐작하면 기존 건물까지 망가지므로 반드시 확인을 받는다.
+        (function detectUnit(){
+          var vals = props.map(function(x){return x.price;}).filter(function(v){return v>0;}).sort(function(a,b){return a-b;});
+          if(!vals.length) return;
+          var med = vals[Math.floor(vals.length/2)];
+          var mul = 0, unit = '';
+          if(med < 100000)      { mul = 10000; unit = '만원'; }   // 중앙값 10만 미만 → 만원 단위
+          else if(med < 10000000){ mul = 1000;  unit = '천원'; }   // 중앙값 1천만 미만 → 천원 단위
+          if(!mul) return;                                        // 이미 원 단위
+          var sample = props.slice(0,3).map(function(x){
+            return '  · '+x.ho+'  '+x.price.toLocaleString()+' → '+fmtM(x.price*mul);
+          }).join('\n');
+          var msg = '💰 금액 단위 확인\n\n'
+            +'엑셀의 공급금액이 「'+unit+' 단위」로 보입니다.\n'
+            +'(중앙값 '+med.toLocaleString()+' — 상가 한 호실 값으로는 너무 작습니다)\n\n'
+            +sample+'\n\n'
+            +'원 단위로 '+mul.toLocaleString()+'배 변환할까요?\n'
+            +'[취소]를 누르면 엑셀 값 그대로 등록됩니다.';
+          if(!confirm(msg)) return;
+          props.forEach(function(x){
+            x.price = Math.round(x.price*mul);
+            x.land  = Math.round(x.land *mul);
+            x.bldg  = Math.round(x.bldg *mul);
+            x.vat   = Math.round(x.vat  *mul);
+            x.total = Math.round(x.total*mul);
+            // 보증금·월세는 앱 내부 단위가 '만원' 이라 환산 배율이 다르다
+            x.deposit = Math.round(x.deposit*mul/10000);
+            x.monthly = Math.round(x.monthly*mul/10000);
+            // 수익률 재계산 (분모가 바뀌었다)
+            var invest = x.price - x.deposit*10000;
+            x.yieldCur = (x.monthly>0 && invest>0)
+              ? parseFloat(((x.monthly*10000*12)/invest*100).toFixed(4)) : 0;
+          });
+        })();
         statusEl.style.background='#e8f5e9';
         statusEl.style.color='#2e7d32';
         statusEl.textContent='✅ '+props.length+'개 호실 인식 완료';
