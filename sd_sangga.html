@@ -867,7 +867,7 @@ body.zoom-mode .zoomable:hover{box-shadow:none !important;}
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
     <div>
       <h3 style="margin:0;font-size:15px;font-weight:700">🗂️ 도면 관리</h3>
-      <p style="margin:3px 0 0;font-size:11px;color:#888">PDF 업로드 → 페이지별 썸네일 → 슬롯에 배치 | 이미지 직접 업로드 (최대 15장, 2400px 자동 압축)</p>
+      <p style="margin:3px 0 0;font-size:11px;color:#888">PDF 업로드 → 페이지별 썸네일 → 슬롯에 배치 | 이미지 직접 업로드 (최대 20장, 2400px 자동 압축)</p>
     </div>
     <div style="display:flex;gap:6px">
       <label class="btn-s" style="cursor:pointer;background:#1565c0;color:#fff;border-color:#1565c0;font-size:11px">
@@ -1050,7 +1050,7 @@ body.zoom-mode .zoomable:hover{box-shadow:none !important;}
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
     <div>
       <h3 style="margin:0;font-size:15px;font-weight:700">📸 조감도 &amp; 사진</h3>
-      <p style="margin:3px 0 0;font-size:11px;color:#888">최대 15장 업로드 · 가로 1600px 자동 압축 · 드래그로 순서 변경 가능</p>
+      <p style="margin:3px 0 0;font-size:11px;color:#888">최대 20장 업로드 · 가로 1600px 자동 압축 · 드래그로 순서 변경 가능</p>
     </div>
     <div style="display:flex;gap:6px">
       <label class="btn-s" style="cursor:pointer;background:#7b1fa2;color:#fff;border-color:#7b1fa2;font-size:11px">
@@ -1071,7 +1071,7 @@ body.zoom-mode .zoomable:hover{box-shadow:none !important;}
   </div>
   <!-- PDF 썸네일 트레이 (조감도용) -->
   <div id="photo-pdf-tray" style="display:none;background:#f0f0f0;border-radius:10px;padding:10px;margin-bottom:12px">
-    <p style="font-size:11px;color:#666;margin:0 0 6px">📄 PDF 썸네일 — 클릭하면 사진 목록에 추가됩니다 (최대 15장)</p>
+    <p style="font-size:11px;color:#666;margin:0 0 6px">📄 PDF 썸네일 — 클릭하면 사진 목록에 추가됩니다 (최대 20장)</p>
     <div id="photo-pdf-thumbs" style="display:flex;gap:8px;flex-wrap:wrap;max-height:180px;overflow-y:auto"></div>
   </div>
   <!-- 그리드 뷰 -->
@@ -3911,6 +3911,8 @@ function updateBrochureCount(){
 // Firebase Realtime Database 는 값 하나가 커지면 쓰기가 실패한다.
 // 어느 페이지가 얼마나 큰지 알려주지 않으면 원인을 짐작할 수 없어 여기서 직접 잰다.
 var MAX_VAL_BYTES = 9 * 1024 * 1024;   // 안전선
+var MAX_PHOTOS = 20;                   // 조감도&사진 최대 장수
+var PHOTO_SCAN = 30;                   // 저장소 스캔 범위 (예전 30칸까지 쓴 이력이 있다)
 
 function saveBrochurePages(){
   if(!_brochurePages.length){alert('저장할 내용이 없습니다.');return;}
@@ -4006,8 +4008,8 @@ function initPhotoTab(){
 
 function onPhotoUpload(input){
   var files=Array.from(input.files);
-  var remain=15-_photos.length;
-  if(remain<=0){alert('최대 15장까지 업로드 가능합니다.');input.value='';return;}
+  var remain=MAX_PHOTOS-_photos.length;
+  if(remain<=0){alert('최대 '+MAX_PHOTOS+'장까지 업로드 가능합니다.\n(현재 '+_photos.length+'장)');input.value='';return;}
   files=files.slice(0,remain);
   var loaded=0;
   files.forEach(function(f){
@@ -4033,7 +4035,7 @@ function renderPhotoGrid(){
   if(!grid) return;
   updatePhotoCount();
   if(!_photos.length){
-    grid.innerHTML='<div style="grid-column:1/-1;text-align:center;padding:40px;color:#aaa;font-size:14px">📸 사진을 업로드하세요 (최대 15장)</div>';
+    grid.innerHTML='<div style="grid-column:1/-1;text-align:center;padding:40px;color:#aaa;font-size:14px">📸 사진을 업로드하세요 (최대 20장)</div>';
     return;
   }
   grid.innerHTML=_photos.map(function(p,i){
@@ -4083,6 +4085,8 @@ function slideNav(d){
 }
 
 function savePhotos(){
+  // 혹시 남아 있을 구멍(undefined·빈 url)을 여기서 한 번 더 걷어낸다.
+  _photos=(_photos||[]).filter(function(p){ return p && p.url; });
   if(!_photos.length){alert('저장할 사진이 없습니다.');return;}
   // 이미지 본체 저장 결과를 확인하지 않고 개수 저장만 성공하면 '완료'를 띄우던 구조였다.
   // 사진이 실패해도 개수는 올라가 있어, 다음 로드 때 빈 칸이 생긴다. 전부 기다린 뒤 판정한다.
@@ -4111,6 +4115,10 @@ function savePhotos(){
       console.error('[SD] savePhotos 실패', {실패건수:fail, 마지막오류:e});
       return;
     }
+    // 이전에 더 많이 저장돼 있었다면 뒤쪽 잔여 칸을 비워 다음 로드에서 유령 사진이 뜨지 않게 한다
+    for(var z=_photos.length; z<PHOTO_SCAN; z++){
+      window.storage.set(bldgKey('photo_img_')+z,'').catch(function(){});
+    }
     return window.storage.set(bldgKey('photos_count'),String(_photos.length)).then(function(r){
       if(!r){ showToast('❌ 개수 저장 실패 — 다시 시도해 주세요', 8000); return; }
       showToast('✅ 사진 저장 완료 ('+_photos.length+'장)');
@@ -4120,22 +4128,38 @@ function savePhotos(){
 
 function loadPhotos(){
   window.storage.get(bldgKey('photos_count')).then(function(r){
-    if(!r||!r.value) return;
-    var cnt=parseInt(r.value)||0;
-    var metaP=window.storage.get(bldgKey('photos_meta')).then(function(mr){
+    var cnt=(r&&r.value)?(parseInt(r.value)||0):0;
+    // 저장된 개수보다 넓게 훑는다. 개수가 실제와 어긋나 있어도 남아 있는 사진을 다 찾아낸다.
+    var scan=Math.max(cnt, MAX_PHOTOS);
+    if(scan>PHOTO_SCAN) scan=PHOTO_SCAN;
+    if(!scan) return;
+    window.storage.get(bldgKey('photos_meta')).then(function(mr){
       var meta=[];
       try{ if(mr&&mr.value) meta=JSON.parse(mr.value); }catch(e){}
-      _photos=[];
+      var slots=new Array(scan);
       var loaded=0;
-      for(var i=0;i<cnt;i++){
+      var finish=function(){
+        if(loaded<scan) return;
+        // ★ 핵심 — 인덱스 자리에 그대로 넣으면 지워진 칸이 '구멍'으로 남고
+        //    _photos.length 만 커져서 "15장 다 찼다"며 업로드가 막힌다.
+        //    빈 칸은 버리고 앞에서부터 다시 채운다.
+        var kept=[], holes=0;
+        for(var i=0;i<scan;i++){
+          if(slots[i]) kept.push(slots[i]);
+          else if(i<cnt) holes++;      // 개수에는 잡혀 있는데 실제로는 비어 있던 칸
+        }
+        _photos=kept;
+        renderPhotoGrid();
+        if(holes>0){
+          showToast('ℹ️ 비어 있던 사진 칸 '+holes+'개를 정리했습니다 — 현재 '+kept.length+'장 (저장하면 개수가 바로잡힙니다)', 8000);
+        }
+      };
+      for(var i=0;i<scan;i++){
         (function(idx){
           window.storage.get(bldgKey('photo_img_')+idx).then(function(ir){
-            if(ir&&ir.value){
-              _photos[idx]={url:ir.value, caption:(meta[idx]&&meta[idx].caption)||''};
-            }
-            loaded++;
-            if(loaded===cnt){ renderPhotoGrid(); }
-          }).catch(function(){ loaded++; });
+            if(ir&&ir.value) slots[idx]={url:ir.value, caption:(meta[idx]&&meta[idx].caption)||''};
+            loaded++; finish();
+          }).catch(function(){ loaded++; finish(); });
         })(i);
       }
     });
