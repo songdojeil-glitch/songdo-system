@@ -3908,25 +3908,51 @@ function updateBrochureCount(){
 }
 
 // 저장 (페이지별 분산 저장)
+// Firebase Realtime Database 는 값 하나가 커지면 쓰기가 실패한다.
+// 어느 페이지가 얼마나 큰지 알려주지 않으면 원인을 짐작할 수 없어 여기서 직접 잰다.
+var MAX_VAL_BYTES = 9 * 1024 * 1024;   // 안전선
+
 function saveBrochurePages(){
   if(!_brochurePages.length){alert('저장할 내용이 없습니다.');return;}
+  window._sdLastError=null;
   var total=_brochurePages.length;
-  showToast('저장 중... ('+total+'페이지)');
-  window.storage.set(bldgKey('brochure_count'),String(total)).catch(function(){});
-  var saved=0, failed=0;
+  var sizes=_brochurePages.map(function(pg){ return (pg.url||'').length; });
+  var sum=sizes.reduce(function(a,b){return a+b;},0);
+  var maxI=sizes.indexOf(Math.max.apply(null,sizes));
+  var over=sizes.filter(function(v){return v>MAX_VAL_BYTES;}).length;
+  var mb=function(n){ return Math.round(n/1024/1024*10)/10+'MB'; };
+
+  if(over){
+    if(!confirm('⚠️ '+over+'개 페이지가 '+mb(MAX_VAL_BYTES)+'를 넘습니다.\n'
+      +'가장 큰 페이지: '+(maxI+1)+'p '+mb(sizes[maxI])+'\n\n'
+      +'이대로 저장하면 해당 페이지는 실패할 가능성이 큽니다.\n'
+      +'PDF를 다시 낮은 해상도로 올리는 편이 확실합니다.\n\n계속할까요?')) return;
+  }
+
+  showToast('⏳ 저장 중... ('+total+'페이지, 합계 '+mb(sum)+' / 최대 '+(maxI+1)+'p '+mb(sizes[maxI])+')');
+  var saved=0, failed=0, failIdx=[];
+  var done=function(){
+    if(saved+failed<total) return;
+    var prog=document.getElementById('brochure-progress');
+    if(failed>0){
+      var e=window._sdLastError;
+      showToast('❌ '+saved+'/'+total+'페이지만 저장 — 실패: '+failIdx.map(function(i){return (i+1)+'p('+mb(sizes[i])+')';}).join(', ')
+        +(e?' · '+(e.code||'')+' '+e.msg:''), 10000);
+      if(prog) prog.textContent='❌ '+saved+'/'+total+'페이지 저장 (실패 '+failed+'개)';
+      console.error('[SD] saveBrochurePages 실패', {실패페이지:failIdx.map(function(i){return i+1;}), 크기:sizes, 마지막오류:e});
+      return;   // 개수를 갱신하지 않는다 — 빈 페이지가 생기는 것을 막는다
+    }
+    window.storage.set(bldgKey('brochure_count'),String(total)).then(function(r){
+      if(!r){ showToast('❌ 페이지 수 저장 실패', 8000); return; }
+      showToast('✅ 분양홍보자료 '+total+'페이지 저장 완료');
+      if(prog) prog.textContent='✅ '+total+'페이지 저장 완료';
+    });
+  };
   _brochurePages.forEach(function(pg,i){
     window.storage.set(bldgKey('brochure_p')+i, pg.url).then(function(r){
-      if(!r) failed++; else saved++;
-      if(saved+failed===total){
-        if(failed>0) showToast('⚠️ '+saved+'/'+total+'페이지 저장 ('+failed+'개 용량초과)');
-        else showToast('✅ 분양홍보자료 '+total+'페이지 저장 완료');
-        var prog=document.getElementById('brochure-progress');
-        if(prog) prog.textContent='✅ '+saved+'페이지 저장 완료';
-      }
-    }).catch(function(){
-      failed++;
-      if(saved+failed===total) showToast('⚠️ '+saved+'/'+total+'페이지 저장');
-    });
+      if(!r){ failed++; failIdx.push(i); } else saved++;
+      done();
+    }).catch(function(){ failed++; failIdx.push(i); done(); });
   });
 }
 
@@ -4061,23 +4087,33 @@ function savePhotos(){
   // 이미지 본체 저장 결과를 확인하지 않고 개수 저장만 성공하면 '완료'를 띄우던 구조였다.
   // 사진이 실패해도 개수는 올라가 있어, 다음 로드 때 빈 칸이 생긴다. 전부 기다린 뒤 판정한다.
   var meta=_photos.map(function(p){return {caption:p.caption};});
+  // storage.set 은 실패해도 예외를 던지지 않고 null 을 돌려준다.
+  // 따라서 .catch 가 아니라 '반환값이 있는지'로 판정해야 한다. (지난 수정이 여기서 헛돌았다)
+  window._sdLastError=null;
   var jobs=[];
-  jobs.push(window.storage.set(bldgKey('photos_meta'),JSON.stringify(meta)).then(function(){return true;}).catch(function(){return false;}));
+  var okOf=function(pr){ return pr.then(function(r){return !!r;}).catch(function(){return false;}); };
+  jobs.push(okOf(window.storage.set(bldgKey('photos_meta'),JSON.stringify(meta))));
+  var totalBytes=0;
   _photos.forEach(function(p,i){
-    jobs.push(window.storage.set(bldgKey('photo_img_')+i,p.url).then(function(){return true;}).catch(function(){return false;}));
+    totalBytes += (p.url||'').length;
+    jobs.push(okOf(window.storage.set(bldgKey('photo_img_')+i,p.url)));
   });
-  showToast('⏳ 사진 저장 중... ('+_photos.length+'장)');
+  showToast('⏳ 사진 저장 중... ('+_photos.length+'장, 약 '+Math.round(totalBytes/1024/1024*10)/10+'MB)');
   Promise.all(jobs).then(function(res){
     var fail=res.filter(function(x){return !x;}).length;
     if(fail){
-      // 실패분이 있으면 개수를 올리지 않는다. 개수만 커지면 빈 칸이 생긴다.
-      showToast('❌ 사진 '+fail+'건 저장 실패 — 개수를 갱신하지 않았습니다. 다시 시도해 주세요.', 7000);
+      // 실패분이 있으면 개수를 올리지 않는다. 개수만 커지면 다음 로드 때 빈 칸이 생긴다.
+      var e=window._sdLastError;
+      var big=_photos.filter(function(p){return (p.url||'').length>MAX_VAL_BYTES;}).length;
+      showToast('❌ 사진 '+fail+'건 저장 실패 — 개수 갱신 안 함'
+        +(big?' · 용량 초과 '+big+'장':'')
+        +(e?' · '+(e.code||'')+' '+e.msg:''), 9000);
+      console.error('[SD] savePhotos 실패', {실패건수:fail, 마지막오류:e});
       return;
     }
-    return window.storage.set(bldgKey('photos_count'),String(_photos.length)).then(function(){
+    return window.storage.set(bldgKey('photos_count'),String(_photos.length)).then(function(r){
+      if(!r){ showToast('❌ 개수 저장 실패 — 다시 시도해 주세요', 8000); return; }
       showToast('✅ 사진 저장 완료 ('+_photos.length+'장)');
-    }).catch(function(e){
-      showToast('❌ 저장 실패: '+(e&&e.message?e.message:'알 수 없는 오류'), 7000);
     });
   });
 }
@@ -5370,7 +5406,11 @@ window.storage=(function(){
   function ref(k){return firebase.database().ref(ROOT+'/'+k);}
   return{
     get:async function(k,s){try{var sn=await ref(k).once('value');var v=sn.val();if(v===null||v===undefined)return null;return{key:k,value:v,shared:!!s};}catch(e){console.error('[SD] get:',e);return null;}},
-    set:async function(k,v,s){try{await ref(k).set(v);return{key:k,value:v,shared:!!s};}catch(e){console.error('[SD] set:',e);return null;}},
+    set:async function(k,v,s){try{await ref(k).set(v);return{key:k,value:v,shared:!!s};}catch(e){
+      // 오류를 삼키고 null 만 돌려주면 호출부가 원인을 알 수 없다. 마지막 오류를 남겨 화면에 띄운다.
+      console.error('[SD] set:',k,e);
+      window._sdLastError={key:k, msg:(e&&e.message)||String(e), code:(e&&e.code)||'', size:(typeof v==='string'?v.length:0), at:new Date()};
+      return null;}},
     delete:async function(k,s){try{await ref(k).remove();return{key:k,deleted:true,shared:!!s};}catch(e){console.error('[SD] del:',e);return null;}},
     list:async function(p,s){try{var sn=await firebase.database().ref(ROOT).once('value');var all=sn.val()||{};var keys=Object.keys(all).filter(function(k){return!p||k.startsWith(p);});return{keys:keys,prefix:p,shared:!!s};}catch(e){return{keys:[]};}}
   };
