@@ -869,8 +869,14 @@ body.zoom-mode .zoomable:hover{box-shadow:none !important;}
       ⚠️ 주소를 비우면 검색이 엉뚱한 지점을 찾아옵니다.
       실제로 <b>브랜드명만으로 검색하니 부산·송파 지점</b>이 나왔습니다. 도로명주소를 꼭 넣어주세요.
     </div>
-    <button onclick="runAIFindUnits()" id="ai-loc-btn" class="btn-p" style="width:100%">🔎 호실번호 찾기</button>
+    <div style="display:flex;gap:8px;align-items:center">
+      <button onclick="runAIFindUnits()" id="ai-loc-btn" class="btn-p" style="flex:1">🔎 호실번호 찾기</button>
+      <button onclick="_aiStop=true" id="ai-loc-stop" class="btn-s" style="display:none">■ 중단</button>
+    </div>
     <div id="ai-loc-status" style="display:none;margin-top:10px;font-size:12px;color:#e65100"></div>
+    <div id="ai-loc-bar" style="display:none;margin-top:6px;height:6px;background:#f0f0f0;border-radius:3px;overflow:hidden">
+      <div id="ai-loc-bar-in" style="height:6px;width:0%;background:#e65100;transition:width .3s"></div>
+    </div>
   </div>
 
   <div id="ai-result-card" style="display:none" class="card">
@@ -6396,6 +6402,9 @@ function aiParseJson(txt){
 }
 
 /* ── 2단계: 호실번호 찾기 ── */
+var _aiStop=false;
+var AI_BATCH=15;    // 한 번에 조회할 업소 수
+
 function runAIFindUnits(){
   var addr=document.getElementById('ai-addr').value.trim();
   var alias=document.getElementById('ai-alias').value.trim();
@@ -6403,51 +6412,91 @@ function runAIFindUnits(){
   var targets=_aiRows.filter(function(x){return !x.ho;});
   if(!targets.length){ alert('호실번호가 비어 있는 업소가 없습니다.'); return; }
 
+  // 한 번에 다 보내면 응답 JSON 이 max_tokens 를 넘어 중간에서 잘리고,
+  // 잘린 JSON 은 닫는 대괄호가 없어 파싱 결과가 통째로 0건이 된다.
+  // 그래서 반드시 나눠서 보낸다.
+  var batches=[];
+  for(var k=0;k<targets.length;k+=AI_BATCH) batches.push(targets.slice(k,k+AI_BATCH));
+
+  var mins=Math.ceil(batches.length*20/60);
+  if(!confirm('업소 '+targets.length+'곳을 '+batches.length+'회로 나눠 조회합니다.\n'
+    +'예상 소요: 약 '+mins+'분\n\n'
+    +'진행 중에도 [중단]을 눌러 그때까지 찾은 결과만 쓸 수 있습니다.\n계속할까요?')) return;
+
   var btn=document.getElementById('ai-loc-btn'), st=document.getElementById('ai-loc-status');
+  var stop=document.getElementById('ai-loc-stop'), bar=document.getElementById('ai-loc-bar');
+  var barIn=document.getElementById('ai-loc-bar-in');
   btn.disabled=true; btn.textContent='🔎 찾는 중...';
-  st.style.display='block'; st.textContent='업소 '+targets.length+'곳을 조회하고 있습니다. 1~2분 걸릴 수 있습니다...';
+  stop.style.display='block'; bar.style.display='block';
+  st.style.display='block';
+  _aiStop=false;
 
-  // 업소를 하나씩 검색하면 호출이 너무 많다 — 층 단위로 묶어 한 번에 맡긴다
-  var list=targets.map(function(x,i){
-    return (i+1)+'. '+(x.dong?'['+x.dong+'동] ':'')+'['+(x.floor||'층미상')+'] '+x.name;
-  }).join('\n');
-  var prompt='아래 업소들이 입점한 상가 건물의 **호실번호**를 웹검색으로 찾아주세요.\n\n'
-    +'[건물 주소] '+addr+(alias?('\n[건물명] '+alias):'')+'\n\n[업소 목록]\n'+list+'\n\n'
-    +'검색 방법\n'
-    +'- 반드시 업소명과 함께 위 도로명주소를 넣어 검색하세요. 브랜드명만 검색하면 다른 지역 지점이 나옵니다.\n'
-    +'- 영업신고·인허가 주소가 실린 자료(지자체 공개자료, 맛집/학원/약국 디렉터리 등)가 가장 정확합니다.\n'
-    +'- 주소 형식 예: "인천광역시 연수구 첨단대로 40, B120호(송도동, 에스파이브시티)"\n\n'
-    +'출력 규칙\n'
-    +'- JSON 배열만 출력하세요. 설명 금지.\n'
-    +'- 형식: [{"name":"업소명","ho":"A101","conf":"높음","src":"근거 URL 또는 출처명"}]\n'
-    +'- ho 는 찾은 호실번호. 여러 호실이면 "A101~A105" 처럼 적으세요.\n'
-    +'- 동이 표시된 업소는 그 동의 호실만 인정하세요. 주소에 동 표기가 있으면 함께 확인하세요.\n'
-    +'- 확실하지 않으면 ho 를 빈 문자열로 두고 conf 를 "없음" 으로 하세요. **추측 금지.**\n'
-    +'- conf 는 높음/보통/낮음/없음 중 하나. 주소에 호수가 명시된 자료를 찾았으면 "높음".';
-
-  sgCallAPI({model:'claude-sonnet-4-6',max_tokens:4000,
-      messages:[{role:'user',content:prompt}],
-      tools:[{type:'web_search_20250305',name:'web_search'}]})
-  .then(function(d){
-    var txt=(d.content||[]).map(function(x){return x.type==='text'?x.text:'';}).join('\n');
-    var arr=aiParseJson(txt);
-    var found=0;
-    arr.forEach(function(r){
-      var nm=String(r.name||'').trim();
-      var row=_aiRows.find(function(x){ return x.name===nm && !x.ho; });
-      if(!row||!r.ho) return;
-      row.ho=String(r.ho).trim();
-      row.conf=String(r.conf||'보통');
-      row.src=String(r.src||'');
-      // 확신도가 낮으면 기본 체크를 꺼둔다 — 실수로 반영되는 것을 막는다
-      row.use=(row.conf==='높음');
-      found++;
-    });
-    st.textContent='✅ '+found+'/'+targets.length+'곳의 호실번호를 찾았습니다. 아래 표에서 확인 후 적용하세요.';
+  var found=0, done=0, failed=0;
+  var finish=function(){
+    btn.disabled=false; btn.textContent='🔎 호실번호 찾기';
+    stop.style.display='none';
+    st.textContent=(_aiStop?'⏹ 중단됨 — ':'✅ ')+found+'/'+targets.length+'곳의 호실번호를 찾았습니다.'
+      +(failed?' (실패 '+failed+'회)':'')+' 아래 표에서 확인 후 적용하세요.';
     renderAIResult();
-  })
-  .catch(function(e){ st.textContent='❌ 조회 실패: '+(e&&e.message?e.message:e); })
-  .then(function(){ btn.disabled=false; btn.textContent='🔎 호실번호 찾기'; });
+  };
+
+  var step=function(bi){
+    if(_aiStop || bi>=batches.length){ finish(); return; }
+    var batch=batches[bi];
+    st.textContent='🔎 조회 중... '+(bi+1)+'/'+batches.length+'회차 ('+done+'/'+targets.length+'곳 완료, '+found+'곳 확인)';
+    barIn.style.width=Math.round(bi/batches.length*100)+'%';
+
+    var list=batch.map(function(x,i){
+      return (i+1)+'. '+(x.dong?'['+x.dong+'동] ':'')+'['+(x.floor||'층미상')+'] '+x.name;
+    }).join('\n');
+    var prompt='아래 업소들이 입점한 상가 건물의 **호실번호**를 웹검색으로 찾아주세요.\n\n'
+      +'[건물 주소] '+addr+(alias?('\n[건물명] '+alias):'')+'\n\n[업소 목록]\n'+list+'\n\n'
+      +'검색 방법\n'
+      +'- 반드시 업소명과 함께 위 도로명주소를 넣어 검색하세요. 브랜드명만 검색하면 다른 지역 지점이 나옵니다.\n'
+      +'- 영업신고·인허가 주소가 실린 자료(지자체 공개자료, 맛집/학원/약국 디렉터리 등)가 가장 정확합니다.\n'
+      +'- 주소 형식 예: "인천광역시 연수구 첨단대로 40, B120호(송도동, 에스파이브시티)"\n'
+      +'- 한 번의 검색으로 이 주소의 여러 업소가 한꺼번에 나오면 그것도 활용하세요.\n\n'
+      +'출력 규칙\n'
+      +'- JSON 배열만 출력하세요. 설명 금지.\n'
+      +'- 위 '+batch.length+'개 업소 전부에 대해 한 줄씩, 빠짐없이 출력하세요.\n'
+      +'- 형식: [{"name":"업소명","ho":"A101","conf":"높음","src":"근거 URL 또는 출처명"}]\n'
+      +'- ho 는 찾은 호실번호. 여러 호실이면 "A101~A105" 처럼 적으세요.\n'
+      +'- 동이 표시된 업소는 그 동의 호실만 인정하세요. 주소에 동 표기가 있으면 함께 확인하세요.\n'
+      +'- 확실하지 않으면 ho 를 빈 문자열로 두고 conf 를 "없음" 으로 하세요. **추측 금지.**\n'
+      +'- conf 는 높음/보통/낮음/없음 중 하나. 주소에 호수가 명시된 자료를 찾았으면 "높음".';
+
+    sgCallAPI({model:'claude-sonnet-4-6',max_tokens:8000,
+        messages:[{role:'user',content:prompt}],
+        tools:[{type:'web_search_20250305',name:'web_search'}]})
+    .then(function(d){
+      var txt=(d.content||[]).map(function(x){return x.type==='text'?x.text:'';}).join('\n');
+      var arr=aiParseJson(txt);
+      if(!arr.length && d.stop_reason==='max_tokens'){
+        // 배치를 줄였는데도 잘리면 다음 회차부터 더 잘게 나눈다
+        AI_BATCH=Math.max(5, Math.floor(AI_BATCH/2));
+        console.warn('[AI] 응답이 잘려 배치 크기를 '+AI_BATCH+'로 줄입니다');
+      }
+      arr.forEach(function(r){
+        var nm=String(r.name||'').trim();
+        // 같은 배치 안에서만 찾아 다른 층의 동명 업소에 잘못 붙지 않게 한다
+        var row=batch.find(function(x){ return x.name===nm && !x.ho; })
+              || _aiRows.find(function(x){ return x.name===nm && !x.ho; });
+        if(!row||!r.ho) return;
+        row.ho=String(r.ho).trim();
+        row.conf=String(r.conf||'보통');
+        row.src=String(r.src||'');
+        row.use=(row.conf==='높음');   // 확신도 높음만 자동 체크
+        found++;
+      });
+    })
+    .catch(function(e){ failed++; console.warn('[AI] '+(bi+1)+'회차 실패',e); })
+    .then(function(){
+      done+=batch.length;
+      renderAIResult();               // 중간 결과를 바로 보여준다
+      setTimeout(function(){ step(bi+1); }, 400);
+    });
+  };
+  step(0);
 }
 
 /* ── 결과 표 ── */
