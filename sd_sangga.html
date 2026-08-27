@@ -844,8 +844,35 @@ body.zoom-mode .zoomable:hover{box-shadow:none !important;}
       🤖 AI 입점업종 자동 인식
     </button>
   </div>
+  <!-- 2단계: 호실 찾기 -->
+  <div id="ai-loc-card" style="display:none" class="card" style="border:1.5px solid #fff3e0">
+    <p class="sec" style="color:#e65100">🔎 2단계 — 호실번호 찾기</p>
+    <p style="font-size:12px;color:#888;margin:-4px 0 10px">
+      인포메이션 보드에 층만 있고 호수가 없을 때, 영업신고 주소가 실린 공개 자료에서 호실번호를 찾습니다.
+    </p>
+    <div style="display:grid;grid-template-columns:2fr 1fr;gap:8px;margin-bottom:10px">
+      <div>
+        <label class="fl">건물 도로명주소 <span style="font-size:10px;color:#e65100">※ 정확도의 핵심</span></label>
+        <input id="ai-addr" class="fi" style="font-size:12px" placeholder="예: 인천광역시 연수구 첨단대로 40">
+      </div>
+      <div>
+        <label class="fl">건물 별칭(선택)</label>
+        <input id="ai-alias" class="fi" style="font-size:12px" placeholder="예: 에스파이브시티">
+      </div>
+    </div>
+    <div style="font-size:11px;color:#e65100;background:#fff8e1;border-radius:6px;padding:8px 10px;margin-bottom:10px;line-height:1.5">
+      ⚠️ 주소를 비우면 검색이 엉뚱한 지점을 찾아옵니다.
+      실제로 <b>브랜드명만으로 검색하니 부산·송파 지점</b>이 나왔습니다. 도로명주소를 꼭 넣어주세요.
+    </div>
+    <button onclick="runAIFindUnits()" id="ai-loc-btn" class="btn-p" style="width:100%">🔎 호실번호 찾기</button>
+    <div id="ai-loc-status" style="display:none;margin-top:10px;font-size:12px;color:#e65100"></div>
+  </div>
+
   <div id="ai-result-card" style="display:none" class="card">
     <p class="sec">📋 AI 인식 결과 — 적용할 호실 매핑</p>
+    <div style="font-size:11px;color:#888;margin:-4px 0 10px">
+      체크한 항목만 적용됩니다. 호실번호는 <b>이 건물의 실제 호실 목록과 대조</b>해 존재하는 것만 반영합니다.
+    </div>
     <div id="ai-result-list"></div>
     <div style="margin-top:12px;display:flex;gap:8px">
       <button onclick="applyAIResult()" class="btn-p" style="flex:1">✅ 입점 현황에 적용</button>
@@ -6167,6 +6194,223 @@ function sblPrint(){
     +'<style>body{font-family:-apple-system,"Malgun Gothic",sans-serif;line-height:1.8;padding:30px;font-size:13px;white-space:pre-wrap}</style>'
     +'</head><body>'+txt+'</body></html>');
   w.document.close(); w.focus(); setTimeout(function(){ w.print(); },300);
+}
+</script>
+
+
+<script>
+/* ══════════════════════════════════════════════════════════
+   AI 입점 인식 (TAB5)
+   1단계 — 인포메이션 보드 사진에서 층·업소명 추출
+   2단계 — 영업신고 주소가 실린 공개 자료에서 호실번호 찾기
+   ══════════════════════════════════════════════════════════ */
+var _aiImg = null;      // {dataUrl, media_type}
+var _aiRows = [];       // [{floor, name, ho, conf, src, use}]
+
+function aiStatus(msg, kind){
+  var el=document.getElementById('ai-status');
+  if(!el) return;
+  el.style.display='block';
+  el.style.background = kind==='err' ? '#ffebee' : (kind==='ok' ? '#e8f5e9' : '#e3f2fd');
+  el.style.color      = kind==='err' ? '#c62828' : (kind==='ok' ? '#2e7d32' : '#1565c0');
+  el.textContent=msg;
+}
+
+function onAIDrop(ev){
+  ev.preventDefault();
+  var f=(ev.dataTransfer.files||[])[0];
+  if(f) aiLoadImage(f);
+}
+function onAIImgSelect(input){
+  var f=(input.files||[])[0];
+  input.value='';
+  if(f) aiLoadImage(f);
+}
+function aiLoadImage(file){
+  if(!/^image\//.test(file.type)){ aiStatus('이미지 파일만 올릴 수 있습니다.','err'); return; }
+  // 보드 사진은 글씨가 작다 — 너무 줄이면 업소명을 못 읽는다. 긴 변 2000px 유지.
+  compressImage(file, 2000, 0.92, function(dataUrl){
+    if(!dataUrl){ aiStatus('이미지 처리 실패','err'); return; }
+    _aiImg={ dataUrl:dataUrl, media_type:'image/jpeg' };
+    document.getElementById('ai-preview-img').src=dataUrl;
+    document.getElementById('ai-img-preview').style.display='block';
+    document.getElementById('ai-btn').style.display='block';
+    aiStatus('사진을 불러왔습니다. [AI 입점업종 자동 인식]을 눌러주세요.','ok');
+  });
+}
+
+/* ── 1단계: 보드에서 층·업소명 추출 ── */
+function runAIRecognize(){
+  if(!_aiImg){ aiStatus('먼저 사진을 올려주세요.','err'); return; }
+  var btn=document.getElementById('ai-btn');
+  btn.disabled=true; btn.textContent='🤖 인식 중...';
+  aiStatus('AI가 안내판을 읽고 있습니다...','info');
+
+  var prompt='이 사진은 상가 건물의 입점 안내판(인포메이션 보드)입니다.\n'
+    +'적혀 있는 모든 입점 업소를 층별로 빠짐없이 읽어 JSON 배열로만 답하세요.\n\n'
+    +'형식: [{"floor":"지상1층","name":"업소명","ho":"호실번호 또는 빈 문자열"}]\n\n'
+    +'규칙\n'
+    +'- 안내판에 호실번호가 적혀 있으면 ho 에 넣고, 없으면 빈 문자열로 두세요. 절대 추측하지 마세요.\n'
+    +'- 층 표기는 "지상1층", "지하1층" 형식으로 통일하세요.\n'
+    +'- 업소명은 보이는 그대로 적으세요. 임의로 바꾸지 마세요.\n'
+    +'- 설명·인사말 없이 JSON 배열만 출력하세요.';
+
+  fetch('https://api.anthropic.com/v1/messages',{
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:4000,
+      messages:[{role:'user',content:[
+        {type:'image',source:{type:'base64',media_type:_aiImg.media_type,data:_aiImg.dataUrl.split(',')[1]}},
+        {type:'text',text:prompt}
+      ]}]})
+  })
+  .then(function(r){ return r.json(); })
+  .then(function(d){
+    var txt=(d.content||[]).map(function(x){return x.type==='text'?x.text:'';}).join('');
+    var arr=aiParseJson(txt);
+    if(!arr.length) throw new Error('업소를 읽지 못했습니다. 사진이 선명한지 확인해 주세요.');
+    _aiRows=arr.map(function(x){
+      return {floor:String(x.floor||'').trim(), name:String(x.name||'').trim(),
+              ho:String(x.ho||'').trim(), conf:x.ho?'보드':'', src:'', use:true};
+    }).filter(function(x){return x.name;});
+    var noHo=_aiRows.filter(function(x){return !x.ho;}).length;
+    aiStatus('✅ '+_aiRows.length+'개 업소를 읽었습니다.'+(noHo?' (호실번호 없는 곳 '+noHo+'개)':''),'ok');
+    // 호실번호가 비어 있는 곳이 있으면 2단계를 열어준다
+    document.getElementById('ai-loc-card').style.display = noHo?'block':'none';
+    if(noHo && !document.getElementById('ai-addr').value){
+      var b=BUILDINGS.find(function(x){return x.id===curBldgId;});
+      if(b) document.getElementById('ai-alias').value=b.name;
+    }
+    renderAIResult();
+  })
+  .catch(function(e){ aiStatus('인식 실패: '+(e&&e.message?e.message:e),'err'); })
+  .then(function(){ btn.disabled=false; btn.textContent='🤖 AI 입점업종 자동 인식'; });
+}
+
+function aiParseJson(txt){
+  if(!txt) return [];
+  var t=txt.replace(/```json|```/g,'').trim();
+  var i=t.indexOf('['), j=t.lastIndexOf(']');
+  if(i<0||j<0) return [];
+  try{ var v=JSON.parse(t.slice(i,j+1)); return Array.isArray(v)?v:[]; }catch(e){ return []; }
+}
+
+/* ── 2단계: 호실번호 찾기 ── */
+function runAIFindUnits(){
+  var addr=document.getElementById('ai-addr').value.trim();
+  var alias=document.getElementById('ai-alias').value.trim();
+  if(!addr){ alert('건물 도로명주소를 입력해 주세요.\n주소가 없으면 다른 지역 지점을 찾아옵니다.'); return; }
+  var targets=_aiRows.filter(function(x){return !x.ho;});
+  if(!targets.length){ alert('호실번호가 비어 있는 업소가 없습니다.'); return; }
+
+  var btn=document.getElementById('ai-loc-btn'), st=document.getElementById('ai-loc-status');
+  btn.disabled=true; btn.textContent='🔎 찾는 중...';
+  st.style.display='block'; st.textContent='업소 '+targets.length+'곳을 조회하고 있습니다. 1~2분 걸릴 수 있습니다...';
+
+  // 업소를 하나씩 검색하면 호출이 너무 많다 — 층 단위로 묶어 한 번에 맡긴다
+  var list=targets.map(function(x,i){ return (i+1)+'. ['+(x.floor||'층미상')+'] '+x.name; }).join('\n');
+  var prompt='아래 업소들이 입점한 상가 건물의 **호실번호**를 웹검색으로 찾아주세요.\n\n'
+    +'[건물 주소] '+addr+(alias?('\n[건물명] '+alias):'')+'\n\n[업소 목록]\n'+list+'\n\n'
+    +'검색 방법\n'
+    +'- 반드시 업소명과 함께 위 도로명주소를 넣어 검색하세요. 브랜드명만 검색하면 다른 지역 지점이 나옵니다.\n'
+    +'- 영업신고·인허가 주소가 실린 자료(지자체 공개자료, 맛집/학원/약국 디렉터리 등)가 가장 정확합니다.\n'
+    +'- 주소 형식 예: "인천광역시 연수구 첨단대로 40, B120호(송도동, 에스파이브시티)"\n\n'
+    +'출력 규칙\n'
+    +'- JSON 배열만 출력하세요. 설명 금지.\n'
+    +'- 형식: [{"name":"업소명","ho":"A101","conf":"높음","src":"근거 URL 또는 출처명"}]\n'
+    +'- ho 는 찾은 호실번호. 여러 호실이면 "A101~A105" 처럼 적으세요.\n'
+    +'- 확실하지 않으면 ho 를 빈 문자열로 두고 conf 를 "없음" 으로 하세요. **추측 금지.**\n'
+    +'- conf 는 높음/보통/낮음/없음 중 하나. 주소에 호수가 명시된 자료를 찾았으면 "높음".';
+
+  fetch('https://api.anthropic.com/v1/messages',{
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:4000,
+      messages:[{role:'user',content:prompt}],
+      tools:[{type:'web_search_20250305',name:'web_search'}]})
+  })
+  .then(function(r){ return r.json(); })
+  .then(function(d){
+    var txt=(d.content||[]).map(function(x){return x.type==='text'?x.text:'';}).join('\n');
+    var arr=aiParseJson(txt);
+    var found=0;
+    arr.forEach(function(r){
+      var nm=String(r.name||'').trim();
+      var row=_aiRows.find(function(x){ return x.name===nm && !x.ho; });
+      if(!row||!r.ho) return;
+      row.ho=String(r.ho).trim();
+      row.conf=String(r.conf||'보통');
+      row.src=String(r.src||'');
+      // 확신도가 낮으면 기본 체크를 꺼둔다 — 실수로 반영되는 것을 막는다
+      row.use=(row.conf==='높음');
+      found++;
+    });
+    st.textContent='✅ '+found+'/'+targets.length+'곳의 호실번호를 찾았습니다. 아래 표에서 확인 후 적용하세요.';
+    renderAIResult();
+  })
+  .catch(function(e){ st.textContent='❌ 조회 실패: '+(e&&e.message?e.message:e); })
+  .then(function(){ btn.disabled=false; btn.textContent='🔎 호실번호 찾기'; });
+}
+
+/* ── 결과 표 ── */
+function aiHoExists(ho){
+  var b=BUILDINGS.find(function(x){return x.id===curBldgId;});
+  if(!b||!ho) return false;
+  var first=String(ho).split(/[~,]/)[0].trim().replace(/호$/,'');
+  return (b.props||[]).some(function(p){ return String(p.ho).replace(/호$/,'')===first; });
+}
+function renderAIResult(){
+  var box=document.getElementById('ai-result-list');
+  if(!_aiRows.length){ document.getElementById('ai-result-card').style.display='none'; return; }
+  document.getElementById('ai-result-card').style.display='block';
+  var CONF={'높음':'#2e7d32','보드':'#2e7d32','보통':'#ef6c00','낮음':'#c62828','없음':'#999','':'#999'};
+  box.innerHTML='<div style="overflow:auto"><table style="width:100%;font-size:11px;border-collapse:collapse">'
+    +'<tr style="background:#f5f5f3"><th style="padding:6px 4px;width:34px">적용</th><th style="padding:6px;text-align:left">층</th>'
+    +'<th style="padding:6px;text-align:left">업소명</th><th style="padding:6px;text-align:left">호실</th>'
+    +'<th style="padding:6px">확신도</th><th style="padding:6px;text-align:left">근거</th><th style="padding:6px">대조</th></tr>'
+    +_aiRows.map(function(r,i){
+        var ok=aiHoExists(r.ho);
+        var mark = !r.ho ? '<span style="color:#bbb">—</span>'
+                 : (ok?'<span style="color:#2e7d32">✔ 존재</span>':'<span style="color:#c62828">✖ 없음</span>');
+        return '<tr style="border-bottom:1px solid #f0f0f0'+(r.ho&&!ok?';background:#fff5f5':'')+'">'
+          +'<td style="text-align:center"><input type="checkbox" '+(r.use&&r.ho&&ok?'checked':'')
+            +(r.ho&&ok?'':' disabled')+' onchange="_aiRows['+i+'].use=this.checked"></td>'
+          +'<td style="padding:5px">'+(r.floor||'-')+'</td>'
+          +'<td style="padding:5px;font-weight:600">'+r.name+'</td>'
+          +'<td style="padding:5px"><input value="'+(r.ho||'')+'" oninput="_aiRows['+i+'].ho=this.value;renderAIResult()" '
+            +'style="width:88px;font-size:11px;padding:3px 5px;border:1px solid #e0e0e0;border-radius:4px"></td>'
+          +'<td style="padding:5px;text-align:center;color:'+(CONF[r.conf]||'#999')+'">'+(r.conf||'-')+'</td>'
+          +'<td style="padding:5px;max-width:190px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+(r.src||'')+'">'
+            +(r.src?'<span style="color:#888">'+r.src+'</span>':'-')+'</td>'
+          +'<td style="padding:5px;text-align:center">'+mark+'</td></tr>';
+      }).join('')
+    +'</table></div>'
+    +'<div style="font-size:11px;color:#888;margin-top:8px;line-height:1.6">'
+    +'※ <b>대조</b>는 이 건물에 실제로 있는 호실인지 확인한 결과입니다. 없는 호실은 적용할 수 없습니다.<br>'
+    +'※ 확신도가 <b>높음</b>인 것만 자동 체크됩니다. 나머지는 직접 확인 후 체크하세요.</div>';
+}
+
+/* ── 적용 ── */
+function applyAIResult(){
+  var b=BUILDINGS.find(function(x){return x.id===curBldgId;});
+  if(!b){ alert('건물을 먼저 선택해 주세요.'); return; }
+  var picks=_aiRows.filter(function(r){ return r.use && r.ho && aiHoExists(r.ho); });
+  if(!picks.length){ alert('적용할 항목이 없습니다. 체크박스를 확인해 주세요.'); return; }
+  if(!confirm(picks.length+'개 호실의 입점업종을 갱신합니다.\n\n'
+    +picks.slice(0,8).map(function(r){return '· '+r.ho+' → '+r.name;}).join('\n')
+    +(picks.length>8?'\n… 외 '+(picks.length-8)+'건':'')+'\n\n계속할까요?')) return;
+
+  var n=0;
+  picks.forEach(function(r){
+    var first=String(r.ho).split(/[~,]/)[0].trim().replace(/호$/,'');
+    var p=(b.props||[]).find(function(x){ return String(x.ho).replace(/호$/,'')===first; });
+    if(!p) return;
+    p.tenant=r.name;
+    if(!p.status||p.status.indexOf('미분양')>=0) p.status='임대완료';
+    n++;
+  });
+  saveBldgs();
+  renderDash();
+  document.getElementById('ai-result-card').style.display='none';
+  showToast('✅ '+n+'개 호실의 입점업종을 반영했습니다');
 }
 </script>
 
