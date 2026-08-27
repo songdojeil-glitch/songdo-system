@@ -840,6 +840,7 @@ body.zoom-mode .zoomable:hover{box-shadow:none !important;}
       <img id="ai-preview-img" style="max-width:100%;max-height:300px;border-radius:8px;border:0.5px solid #e0e0e0">
     </div>
     <div id="ai-status" style="display:none;margin-top:10px;padding:10px 14px;border-radius:8px;font-size:13px"></div>
+    <div style="margin-top:8px;text-align:right"><button onclick="resetApiKey()" style="background:none;border:none;color:#90a4ae;font-size:11px;cursor:pointer;text-decoration:underline">🔑 API 키 재설정</button></div>
     <button id="ai-btn" onclick="runAIRecognize()" style="display:none;margin-top:10px;width:100%;padding:11px;background:#1565c0;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer">
       🤖 AI 입점업종 자동 인식
     </button>
@@ -6150,13 +6151,9 @@ function genSblBlog(){
   document.getElementById('sbl-res').style.display='none';
   document.getElementById('sbl-ltxt').textContent='블로그 글을 작성하고 있습니다...';
 
-  fetch('https://api.anthropic.com/v1/messages',{
-    method:'POST', headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:4000,
+  sgCallAPI({model:'claude-sonnet-4-6',max_tokens:4000,
       messages:[{role:'user',content:prompt}],
       tools:[{type:'web_search_20250305',name:'web_search'}]})
-  })
-  .then(function(r){ return r.json(); })
   .then(function(d){
     var txt=(d.content||[]).map(function(it){ return it.type==='text'?it.text:''; }).filter(Boolean).join('\n');
     if(!txt) throw new Error('응답이 비어 있습니다');
@@ -6204,6 +6201,47 @@ function sblPrint(){
    1단계 — 인포메이션 보드 사진에서 층·업소명 추출
    2단계 — 영업신고 주소가 실린 공개 자료에서 호실번호 찾기
    ══════════════════════════════════════════════════════════ */
+// Anthropic API 호출 공통부
+// 브라우저에서 직접 부르려면 x-api-key·anthropic-version 과 함께
+// 'anthropic-dangerous-direct-browser-access' 헤더가 반드시 있어야 한다.
+// 이게 없으면 CORS 사전요청(preflight)에서 막혀 'Failed to fetch' 만 뜬다.
+function getApiKey(){
+  var k=localStorage.getItem('sd_api_key');
+  if(!k){
+    k=prompt('Anthropic API 키를 입력하세요:\n(한 번 입력하면 이 브라우저에 저장됩니다)','sk-ant-...');
+    if(!k) return null;
+    localStorage.setItem('sd_api_key', k.trim());
+  }
+  return k.trim();
+}
+function resetApiKey(){
+  localStorage.removeItem('sd_api_key');
+  showToast('🔑 저장된 API 키를 지웠습니다. 다음 실행 때 다시 물어봅니다.');
+}
+function sgCallAPI(body){
+  var key=getApiKey();
+  if(!key) return Promise.reject(new Error('API 키가 없습니다'));
+  return fetch('https://api.anthropic.com/v1/messages',{
+    method:'POST',
+    headers:{
+      'Content-Type':'application/json',
+      'x-api-key':key,
+      'anthropic-version':'2023-06-01',
+      'anthropic-dangerous-direct-browser-access':'true'
+    },
+    body:JSON.stringify(body)
+  }).then(function(r){
+    if(!r.ok){
+      return r.json().catch(function(){return {};}).then(function(e){
+        var msg=(e&&e.error&&e.error.message)||('HTTP '+r.status);
+        if(r.status===401){ msg='API 키가 올바르지 않습니다. 화면의 [키 재설정]을 눌러 다시 입력해 주세요.'; }
+        throw new Error(msg);
+      });
+    }
+    return r.json();
+  });
+}
+
 var _aiImg = null;      // {dataUrl, media_type}
 var _aiRows = [];       // [{floor, name, ho, conf, src, use}]
 
@@ -6255,15 +6293,11 @@ function runAIRecognize(){
     +'- 업소명은 보이는 그대로 적으세요. 임의로 바꾸지 마세요.\n'
     +'- 설명·인사말 없이 JSON 배열만 출력하세요.';
 
-  fetch('https://api.anthropic.com/v1/messages',{
-    method:'POST', headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:4000,
+  sgCallAPI({model:'claude-sonnet-4-6',max_tokens:4000,
       messages:[{role:'user',content:[
         {type:'image',source:{type:'base64',media_type:_aiImg.media_type,data:_aiImg.dataUrl.split(',')[1]}},
         {type:'text',text:prompt}
       ]}]})
-  })
-  .then(function(r){ return r.json(); })
   .then(function(d){
     var txt=(d.content||[]).map(function(x){return x.type==='text'?x.text:'';}).join('');
     var arr=aiParseJson(txt);
@@ -6321,13 +6355,9 @@ function runAIFindUnits(){
     +'- 확실하지 않으면 ho 를 빈 문자열로 두고 conf 를 "없음" 으로 하세요. **추측 금지.**\n'
     +'- conf 는 높음/보통/낮음/없음 중 하나. 주소에 호수가 명시된 자료를 찾았으면 "높음".';
 
-  fetch('https://api.anthropic.com/v1/messages',{
-    method:'POST', headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:4000,
+  sgCallAPI({model:'claude-sonnet-4-6',max_tokens:4000,
       messages:[{role:'user',content:prompt}],
       tools:[{type:'web_search_20250305',name:'web_search'}]})
-  })
-  .then(function(r){ return r.json(); })
   .then(function(d){
     var txt=(d.content||[]).map(function(x){return x.type==='text'?x.text:'';}).join('\n');
     var arr=aiParseJson(txt);
