@@ -6111,8 +6111,8 @@ function genSblBlog(){
     if(p.tenant) lines.push('입점업종: '+p.tenant);
   } else if(b&&b.props){
     var tot=b.props.length;
-    var lease=b.props.filter(function(x){return (x.status||'').indexOf('임대완료')>=0;}).length;
-    var sold=b.props.filter(function(x){return (x.status||'').indexOf('분양완료')>=0;}).length;
+    var lease=b.props.filter(function(x){return ['선임대','분양&임대','분양&자영'].indexOf(x.status)>=0;}).length;
+    var sold=b.props.filter(function(x){return x.status==='분양';}).length;
     lines.push('총 호실: '+tot+'개 (임대완료 '+lease+' · 분양완료 '+sold+')');
   }
 
@@ -6434,11 +6434,16 @@ function applyAIResult(){
     var p=(b.props||[]).find(function(x){ return String(x.ho).replace(/호$/,'')===first; });
     if(!p) return;
     p.tenant=r.name;
-    if(!p.status||p.status.indexOf('미분양')>=0) p.status='임대완료';
+    // 이 시스템의 현황 값은 선임대 / 분양&임대 / 분양 / 분양&자영 / 미분양 / 해제 다.
+    // '임대완료' 같은 없는 값을 넣으면 대시보드 집계·색상·필터에서 통째로 누락된다.
+    if(!p.status || p.status==='미분양') p.status='선임대';
     n++;
   });
   saveBldgs();
-  renderDash();
+  // 대시보드는 KPI(renderDash)와 호실 표(renderTable)가 별도 함수다. 둘 다 새로 그려야 한다.
+  if(typeof renderDash==='function') renderDash();
+  if(typeof renderTable==='function') renderTable();
+  if(typeof initFloorMap==='function' && document.getElementById('tc4') && document.getElementById('tc4').className.indexOf('on')>=0) initFloorMap();
   document.getElementById('ai-result-card').style.display='none';
   showToast('✅ '+n+'개 호실의 입점업종을 반영했습니다');
 }
