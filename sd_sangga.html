@@ -821,6 +821,23 @@ body.zoom-mode .zoomable:hover{box-shadow:none !important;}
 
 <!-- TAB4 층별 현황도 -->
 <div id="tc4" class="tc">
+  <!-- 입점현황 인포 (대시보드와 같은 내용) -->
+  <div class="card" id="ai-info-card2" style="display:none;border:1.5px solid #e3f2fd;background:#f8fbff">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+      <p class="sec" style="margin:0;color:#1565c0">🏢 층별 입점업체 <span id="ai-info-sub2" style="font-size:11px;color:#8fa8c0;font-weight:400"></span></p>
+      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+        <button onclick="aiInfoSetView('all')"  id="aiv2-all"  class="btn-s" style="font-size:11px">전체</button>
+        <button onclick="aiInfoSetView('todo')" id="aiv2-todo" class="btn-s" style="font-size:11px">미배정만</button>
+        <button onclick="aiInfoToggle()" id="ai-info-toggle2" class="btn-s" style="font-size:11px">접기</button>
+      </div>
+    </div>
+    <div style="font-size:11px;color:#7a92a8;margin:6px 0 10px;line-height:1.6">
+      안내판에서 읽은 층별 입점업체입니다. 업소명을 누르면 <b>주소를 붙인 검색</b>이 새 창에서 열리고,
+      오른쪽 칸에서 호실을 고르면 <b>바로 입점업종에 반영</b>됩니다.
+    </div>
+    <div id="ai-info-body2"></div>
+  </div>
+
   <div class="card">
     <div style="display:flex;gap:8px;margin-bottom:1rem;flex-wrap:wrap;align-items:center">
       <div id="map-floor-tabs" style="display:flex;gap:6px;flex-wrap:wrap;flex:1"></div>
@@ -2606,7 +2623,11 @@ function sw(n){
   if(n===6)initFloorPlanTab();
   if(n===7)initBrochureTab();
   if(n===8)initPhotoTab();
-  if(n===4)initFloorMap();
+  if(n===4){ initFloorMap();
+    if(typeof _aiRows!=='undefined' && !_aiRows.length && typeof aiLoadRows==='function'){
+      aiLoadRows(true).then(function(){ renderAIInfo(); });
+    } else if(typeof renderAIInfo==='function') renderAIInfo();
+  }
   if(n===5){ if(!_aiRows.length) aiLoadRows(true); if(typeof sgRenderUsage==='function') sgRenderUsage(); }
   if(n===9)initBlogTab();
 }
@@ -6755,7 +6776,7 @@ function pdMatch(rows, addr){
   if(typeof renderAIInfo==='function') renderAIInfo();
 }
 
-var _aiInfoView='todo';
+var _aiInfoView='all';   // 호실을 찾았든 못 찾았든 층별 목록은 항상 보여준다
 var _aiInfoOpen=true;
 
 /* ── 입점현황 인포 ──
@@ -6763,14 +6784,20 @@ var _aiInfoOpen=true;
    보기만 하는 표로 두면 결국 손으로 옮겨 적어야 하므로, 이 자리에서 바로 호실을 고를 수 있게 한다. */
 function aiInfoToggle(){
   _aiInfoOpen=!_aiInfoOpen;
-  document.getElementById('ai-info-body').style.display=_aiInfoOpen?'block':'none';
-  document.getElementById('ai-info-toggle').textContent=_aiInfoOpen?'접기':'펼치기';
+  ['ai-info-body','ai-info-body2'].forEach(function(id){
+    var e=document.getElementById(id); if(e) e.style.display=_aiInfoOpen?'block':'none';
+  });
+  ['ai-info-toggle','ai-info-toggle2'].forEach(function(id){
+    var e=document.getElementById(id); if(e) e.textContent=_aiInfoOpen?'접기':'펼치기';
+  });
 }
 function aiInfoSetView(v){
   _aiInfoView=v;
   ['todo','all'].forEach(function(k){
-    var b=document.getElementById('aiv-'+k);
-    if(b){ b.style.background=(k===v)?'#1565c0':''; b.style.color=(k===v)?'#fff':''; }
+    ['aiv-','aiv2-'].forEach(function(pre){
+      var b=document.getElementById(pre+k);
+      if(b){ b.style.background=(k===v)?'#1565c0':''; b.style.color=(k===v)?'#fff':''; }
+    });
   });
   renderAIInfo();
 }
@@ -6783,10 +6810,10 @@ function aiFloorKey(v){
   return g?('F'+g[1]):'';
 }
 function renderAIInfo(){
-  var card=document.getElementById('ai-info-card');
-  if(!card) return;
+  var cards=['ai-info-card','ai-info-card2'].map(function(id){return document.getElementById(id);}).filter(Boolean);
+  if(!cards.length) return;
   var b=BUILDINGS.find(function(x){return x.id===curBldgId;});
-  if(!b || !_aiRows.length){ card.style.display='none'; return; }
+  if(!b || !_aiRows.length){ cards.forEach(function(c){ c.style.display='none'; }); return; }
 
   // 이미 입점업종이 채워진 업소는 배정 완료로 본다
   var assigned={};
@@ -6798,13 +6825,21 @@ function renderAIInfo(){
     return true;
   });
   var todoCnt=_aiRows.filter(function(r){ return r.name && !assigned[r.name.trim()]; }).length;
-  card.style.display='block';
-  document.getElementById('ai-info-sub').textContent=
-    '· 인식 '+_aiRows.length+'곳 · 미배정 '+todoCnt+'곳'+(_aiInfoView==='todo'?' (미배정만 표시)':'');
+  cards.forEach(function(c){ c.style.display='block'; });
+  var subTxt='· 인식 '+_aiRows.length+'곳 · 배정 '+(_aiRows.length-todoCnt)+'곳 · 미배정 '+todoCnt+'곳'
+    +(_aiInfoView==='todo'?' (미배정만 표시)':'');
+  ['ai-info-sub','ai-info-sub2'].forEach(function(id){
+    var e=document.getElementById(id); if(e) e.textContent=subTxt;
+  });
 
+  var paint=function(h){
+    ['ai-info-body','ai-info-body2'].forEach(function(id){
+      var e=document.getElementById(id);
+      if(e){ e.innerHTML=h; e.style.display=_aiInfoOpen?'block':'none'; }
+    });
+  };
   if(!rows.length){
-    document.getElementById('ai-info-body').innerHTML=
-      '<div style="font-size:12px;color:#2e7d32;padding:10px">✅ 인식된 업소가 모두 호실에 배정됐습니다.</div>';
+    paint('<div style="font-size:12px;color:#2e7d32;padding:10px">✅ 인식된 업소가 모두 호실에 배정됐습니다.</div>');
     return;
   }
 
@@ -6829,7 +6864,11 @@ function renderAIInfo(){
     return '<div style="margin-bottom:12px">'
       +(d!=='-'?'<div style="font-size:12px;font-weight:800;color:#1565c0;margin-bottom:6px">'+d+'동</div>':'')
       +floors.map(function(f){
-          var list=grp[d][f];
+          var list=grp[d][f].slice().sort(function(x,y){
+            var ax=assigned[String(x.name).trim()]||'', ay=assigned[String(y.name).trim()]||'';
+            if(!!ax!==!!ay) return ax?-1:1;          // 호실 확인된 것 먼저
+            return String(ax).localeCompare(String(ay)) || String(x.name).localeCompare(String(y.name));
+          });
           // 이 층에서 아직 입점업종이 비어 있는 호실만 고를 수 있게 한다
           var free=(b.props||[]).filter(function(p){
             if(d!=='-' && String(p.ho).toUpperCase().indexOf(d.toUpperCase())!==0) return false;
@@ -6838,7 +6877,11 @@ function renderAIInfo(){
           var opts='<option value="">호실 선택</option>'
             +free.map(function(p){ return '<option value="'+p.ho+'">'+p.ho+'</option>'; }).join('');
           return '<div style="display:flex;gap:8px;align-items:flex-start;padding:6px 0;border-top:1px solid #e8f0f8">'
-            +'<div style="min-width:62px;font-size:11px;font-weight:700;color:#455a64;padding-top:4px">'+f+'</div>'
+            +'<div style="min-width:74px;padding-top:4px">'
+              +'<div style="font-size:11px;font-weight:700;color:#455a64">'+f+'</div>'
+              +'<div style="font-size:9px;color:#90a4ae">'
+                +list.filter(function(x){return assigned[String(x.name).trim()];}).length+'/'+list.length+'</div>'
+            +'</div>'
             +'<div style="flex:1;display:flex;flex-wrap:wrap;gap:5px">'
             +list.map(function(r){
                 var i=_aiRows.indexOf(r);
@@ -6857,8 +6900,7 @@ function renderAIInfo(){
         }).join('')
       +'</div>';
   }).join('');
-  document.getElementById('ai-info-body').innerHTML=html;
-  document.getElementById('ai-info-body').style.display=_aiInfoOpen?'block':'none';
+  paint(html);
 }
 
 // 인포 패널에서 호실을 고르면 즉시 반영한다
