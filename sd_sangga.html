@@ -6906,6 +6906,7 @@ function renderAIInfo(){
             return aiFloorKey(p.floor)===aiFloorKey(f) && !p.tenant;
           });
           var opts='<option value="">＋ 호실</option>'
+            +(free.length>1?'<option value="__ALL__">▣ 전체 '+free.length+'개 ('+free[0].ho+'~'+free[free.length-1].ho+')</option>':'')
             +free.map(function(p){ return '<option value="'+p.ho+'">'+p.ho+'</option>'; }).join('');
           return '<div style="display:flex;gap:8px;align-items:flex-start;padding:6px 0;border-top:1px solid #e8f0f8">'
             +'<div style="min-width:74px;padding-top:4px">'
@@ -6965,6 +6966,30 @@ function aiInfoAssign(i, ho){
   var b=BUILDINGS.find(function(x){return x.id===curBldgId;});
   var r=_aiRows[i];
   if(!b||!r) return;
+
+  // '전체' — 그 업소가 속한 동·층에서 비어 있는 호실을 한 번에 붙인다
+  // (한 층을 통째로 쓰는 병원·학원 등에 쓴다)
+  if(ho==='__ALL__'){
+    var d=(r.dong||'').toUpperCase();
+    var free=(b.props||[]).filter(function(p){
+      if(d && String(p.ho).toUpperCase().indexOf(d)!==0) return false;
+      return aiFloorKey(p.floor)===aiFloorKey(r.floor) && !p.tenant;
+    });
+    if(!free.length){ showToast('⚠️ 비어 있는 호실이 없습니다.'); renderAIInfo(); return; }
+    if(!confirm('"'+r.name+'"에 '+(r.floor||'')+' 의 빈 호실 '+free.length+'개를 모두 배정합니다.\n\n'
+      +free.map(function(p){return p.ho;}).join(', ')+'\n\n계속할까요?')){ renderAIInfo(); return; }
+    var cur=String(r.ho||'').split(',').map(function(x){return x.trim();}).filter(Boolean);
+    free.forEach(function(p){
+      p.tenant=r.name;
+      if(!p.status || p.status==='미분양') p.status='선임대';
+      if(cur.indexOf(p.ho)<0) cur.push(p.ho);
+    });
+    r.ho=cur.sort().join(','); r.conf=r.conf||'직접배정';
+    aiInfoRefreshAll();
+    showToast('✅ '+(r.floor||'')+' 전체 '+free.length+'개 호실 → '+r.name);
+    return;
+  }
+
   var p=(b.props||[]).find(function(x){ return String(x.ho)===ho; });
   if(!p){ showToast('⚠️ 호실을 찾지 못했습니다.'); return; }
   if(p.tenant && p.tenant!==r.name
