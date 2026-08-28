@@ -6454,7 +6454,9 @@ function runAIFindUnits(){
       +'검색 방법\n'
       +'- 반드시 업소명과 함께 위 도로명주소를 넣어 검색하세요. 브랜드명만 검색하면 다른 지역 지점이 나옵니다.\n'
       +'- 영업신고·인허가 주소가 실린 자료(지자체 공개자료, 맛집/학원/약국 디렉터리 등)가 가장 정확합니다.\n'
-      +'- 주소 형식 예: "인천광역시 연수구 첨단대로 40, B120호(송도동, 에스파이브시티)"\n'
+      +'- 실제 자료의 호수 표기는 제각각입니다. 예: "B동 4층 401,402,403호" / "1층 C-120호" / "A-155 호" / "C동 304호"\n'
+      +'- ho 에는 **호수만** 적으세요. "A동 6층 전체", "D동 4층" 처럼 층만 아는 경우는 ho 를 빈 문자열로 두고 conf 를 "없음" 으로 하세요.\n'
+      +'- 여러 호실이면 쉼표로 나열하세요. 예: "C-120호, C-121호" → "C120,C121"\n'
       +'- 한 번의 검색으로 이 주소의 여러 업소가 한꺼번에 나오면 그것도 활용하세요.\n\n'
       +'출력 규칙\n'
       +'- JSON 배열만 출력하세요. 설명 금지.\n'
@@ -6500,23 +6502,66 @@ function runAIFindUnits(){
 }
 
 /* ── 결과 표 ── */
+// 공개 자료의 호수 표기는 제각각이다. 실제로 확인한 예:
+//   'B동 4층 401,402,403,404,405호' / '1층 C-120호, C-121호' / 'A-155 호'
+//   '타임스페이스 C동 304호' / 'D동 4층' / 'A동 6층 전체'
+// 여기서 '동+숫자' 만 뽑아내지 못하면 대조가 전부 실패한다.
+function aiExtractHo(text, dong){
+  var t=String(text||'').replace(/\s+/g,' ').trim();
+  if(!t) return [];
+  var out=[];
+  // ① 'C-120호' · 'A155호' · 'B동 209호' 처럼 동 글자가 붙은 형태
+  var re=/([A-Da-d])\s*(?:동)?\s*-?\s*(\d{3,4})\s*호?/g, m;
+  while((m=re.exec(t))) out.push(m[1].toUpperCase()+m[2]);
+  // ② 동 표기 없이 숫자만 나열된 형태 ('401,402,403호') → 사진에 지정한 동을 붙인다
+  if(!out.length){
+    var nums=t.match(/\d{3,4}/g)||[];
+    // '4층'·'6층' 같은 층 표기는 숫자 1~2자리라 위 정규식에 안 걸린다.
+    // 그래도 '1층 120' 처럼 섞이면 층 부분을 먼저 떼어낸다.
+    var cleaned=t.replace(/(지하\s*)?\d{1,2}\s*층/g,' ');
+    nums=cleaned.match(/\d{3,4}/g)||[];
+    nums.forEach(function(n){ out.push((dong?String(dong).toUpperCase():'')+n); });
+  }
+  // 중복 제거
+  var seen={}, uniq=[];
+  out.forEach(function(x){ if(!seen[x]){ seen[x]=1; uniq.push(x); } });
+  return uniq;
+}
+// 호실번호가 아니라 층만 적힌 값인지 (예: 'A동 6층 전체', 'D동 4층')
+function aiIsFloorOnly(text){
+  var t=String(text||'');
+  if(/\d{3,4}/.test(t)) return false;      // 3자리 이상 숫자가 있으면 호수로 본다
+  return /층/.test(t);
+}
+// 비교용 정규화 — 하이픈·공백·'호' 를 떼고 대문자로
+function aiNormKey(v){ return String(v||'').toUpperCase().replace(/호$/,'').replace(/[^A-Z0-9]/g,''); }
+
 // 동이 나뉜 건물은 안내판에 '101'만 적혀 있고 실제 호실은 'A101' 이다.
 // 그대로 찾아보고, 없으면 사진에 지정한 동을 앞에 붙여 다시 찾는다.
 function aiResolveHo(ho, dong){
   var b=BUILDINGS.find(function(x){return x.id===curBldgId;});
   if(!b||!ho) return '';
-  var first=String(ho).split(/[~,]/)[0].trim().replace(/호$/,'');
+  if(aiIsFloorOnly(ho)) return '';        // 층 정보만 있는 값은 호실이 아니다
   var props=b.props||[];
-  var hit;
-  // 동이 지정돼 있으면 '동+번호'를 먼저 찾는다.
-  // 그냥 번호부터 찾으면 A동 보드의 101호가 동 없는 101호에 잘못 붙는다.
-  if(dong){
-    var withDong=String(dong).toUpperCase()+first;
-    hit=props.find(function(p){ return String(p.ho).replace(/호$/,'').toUpperCase()===withDong; });
+  var cands=aiExtractHo(ho, dong);
+  if(!cands.length) return '';
+  var norm=aiNormKey;
+  for(var i=0;i<cands.length;i++){
+    var c=norm(cands[i]);
+    // 동이 지정돼 있으면 '동+번호'를 먼저 맞춰본다.
+    // 번호부터 찾으면 A동 보드의 101호가 동 없는 101호에 잘못 붙는다.
+    var hit=props.find(function(p){ return norm(p.ho)===c; });
+    if(hit) return hit.ho;
+    if(dong && !/^[A-D]/.test(cands[i])){
+      var withDong=norm(String(dong)+cands[i]);
+      hit=props.find(function(p){ return norm(p.ho)===withDong; });
+      if(hit) return hit.ho;
+    }
+    // 동이 빠진 번호만 있는 경우 (props 가 '105' 처럼 동 없이 저장된 건물)
+    var bare=cands[i].replace(/^[A-D]/,'');
+    hit=props.find(function(p){ return norm(p.ho)===norm(bare); });
     if(hit) return hit.ho;
   }
-  hit=props.find(function(p){ return String(p.ho).replace(/호$/,'')===first; });
-  if(hit) return hit.ho;
   return '';
 }
 function aiHoExists(ho, dong){ return !!aiResolveHo(ho, dong); }
