@@ -6816,15 +6816,23 @@ function renderAIInfo(){
   if(!b || !_aiRows.length){ cards.forEach(function(c){ c.style.display='none'; }); return; }
 
   // 이미 입점업종이 채워진 업소는 배정 완료로 본다
+  // 한 업소가 여러 호실을 쓸 수 있으므로 배열로 모은다
   var assigned={};
-  (b.props||[]).forEach(function(p){ if(p.tenant) assigned[String(p.tenant).trim()]=p.ho; });
+  (b.props||[]).forEach(function(p){
+    if(!p.tenant) return;
+    var k=String(p.tenant).trim();
+    if(!assigned[k]) assigned[k]=[];
+    assigned[k].push(p.ho);
+  });
+  Object.keys(assigned).forEach(function(k){ assigned[k].sort(); });
 
+  var isDone=function(r){ return (assigned[String(r.name||'').trim()]||[]).length>0; };
   var rows=_aiRows.filter(function(r){
     if(!r.name) return false;
-    if(_aiInfoView==='todo') return !assigned[r.name.trim()];
+    if(_aiInfoView==='todo') return !isDone(r);
     return true;
   });
-  var todoCnt=_aiRows.filter(function(r){ return r.name && !assigned[r.name.trim()]; }).length;
+  var todoCnt=_aiRows.filter(function(r){ return r.name && !isDone(r); }).length;
   cards.forEach(function(c){ c.style.display='block'; });
   var subTxt='· 인식 '+_aiRows.length+'곳 · 배정 '+(_aiRows.length-todoCnt)+'곳 · 미배정 '+todoCnt+'곳'
     +(_aiInfoView==='todo'?' (미배정만 표시)':'');
@@ -6865,7 +6873,7 @@ function renderAIInfo(){
       +(d!=='-'?'<div style="font-size:12px;font-weight:800;color:#1565c0;margin-bottom:6px">'+d+'동</div>':'')
       +floors.map(function(f){
           var list=grp[d][f].slice().sort(function(x,y){
-            var ax=assigned[String(x.name).trim()]||'', ay=assigned[String(y.name).trim()]||'';
+            var ax=(assigned[String(x.name).trim()]||[])[0]||'', ay=(assigned[String(y.name).trim()]||[])[0]||'';
             if(!!ax!==!!ay) return ax?-1:1;          // 호실 확인된 것 먼저
             return String(ax).localeCompare(String(ay)) || String(x.name).localeCompare(String(y.name));
           });
@@ -6874,28 +6882,39 @@ function renderAIInfo(){
             if(d!=='-' && String(p.ho).toUpperCase().indexOf(d.toUpperCase())!==0) return false;
             return aiFloorKey(p.floor)===aiFloorKey(f) && !p.tenant;
           });
-          var opts='<option value="">호실 선택</option>'
+          var opts='<option value="">＋ 호실</option>'
             +free.map(function(p){ return '<option value="'+p.ho+'">'+p.ho+'</option>'; }).join('');
           return '<div style="display:flex;gap:8px;align-items:flex-start;padding:6px 0;border-top:1px solid #e8f0f8">'
             +'<div style="min-width:74px;padding-top:4px">'
               +'<div style="font-size:11px;font-weight:700;color:#455a64">'+f+'</div>'
               +'<div style="font-size:9px;color:#90a4ae">'
-                +list.filter(function(x){return assigned[String(x.name).trim()];}).length+'/'+list.length+'</div>'
+                +list.filter(function(x){return (assigned[String(x.name).trim()]||[]).length;}).length+'/'+list.length+'</div>'
             +'</div>'
             +'<div style="flex:1;display:flex;flex-wrap:wrap;gap:5px">'
             +list.map(function(r){
                 var i=_aiRows.indexOf(r);
-                var done=assigned[r.name.trim()];
+                var hos=assigned[String(r.name).trim()]||[];
+                var done=hos.length>0;
                 var q=encodeURIComponent(r.name+' '+(addr||bname));
                 return '<span style="display:inline-flex;align-items:center;gap:3px;background:'+(done?'#e8f5e9':'#fff')
                   +';border:1px solid '+(done?'#a5d6a7':'#cfe3ff')+';border-radius:14px;padding:2px 4px 2px 9px;font-size:11px">'
                   +'<a href="https://search.naver.com/search.naver?query='+q+'" target="_blank" rel="noopener" '
                   +'title="네이버에서 주소와 함께 검색" style="color:'+(done?'#2e7d32':'#1a2035')+';text-decoration:none;font-weight:600">'+r.name+' 🔍</a>'
-                  +(done?'<b style="color:#2e7d32;margin-left:2px">'+done+'</b>'
-                        :'<select onchange="aiInfoAssign('+i+',this.value)" '
-                         +'style="font-size:10px;border:1px solid #cfe3ff;border-radius:10px;padding:2px 4px;background:#f8fbff">'+opts+'</select>')
+                  // 배정된 호실은 각각 칩으로 — ✕ 를 누르면 그 호실만 해제된다
+                  +hos.map(function(h){
+                      return '<b style="display:inline-flex;align-items:center;gap:2px;color:#2e7d32;background:#fff;border:1px solid #a5d6a7;border-radius:9px;padding:0 3px 0 5px;margin-left:2px">'
+                        +h+'<button onclick="aiInfoUnassign(\''+String(h).replace(/'/g,"\\'")+'\')" title="이 호실만 해제" '
+                        +'style="background:none;border:none;color:#c62828;cursor:pointer;font-size:10px;padding:0 2px;line-height:1">✕</button></b>';
+                    }).join('')
+                  +'<select onchange="aiInfoAssign('+i+',this.value)" title="호실 추가 (여러 개 선택 가능)" '
+                    +'style="font-size:10px;border:1px solid '+(done?'#a5d6a7':'#cfe3ff')+';border-radius:10px;padding:2px 4px;background:'+(done?'#f4faf5':'#f8fbff')+';margin-left:2px">'+opts+'</select>'
+                  // 업소 자체를 목록에서 지운다 (배정된 호실도 함께 해제)
+                  +'<button onclick="aiInfoRemoveRow('+i+')" title="이 업소를 목록에서 삭제" '
+                    +'style="background:none;border:none;color:#b0bec5;cursor:pointer;font-size:11px;padding:0 3px;line-height:1">🗑</button>'
                   +'</span>';
               }).join('')
+            +'<button onclick="aiInfoAddRow(\''+d+'\',\''+f+'\')" title="이 층에 업소 추가" '
+              +'style="background:#fff;border:1px dashed #90caf9;color:#1565c0;border-radius:14px;padding:2px 10px;font-size:11px;cursor:pointer">＋ 업소 추가</button>'
             +'</div></div>';
         }).join('')
       +'</div>';
@@ -6903,7 +6922,20 @@ function renderAIInfo(){
   paint(html);
 }
 
-// 인포 패널에서 호실을 고르면 즉시 반영한다
+// 공통 — 반영 후 화면 전체 갱신
+function aiInfoRefreshAll(){
+  saveBldgs();
+  if(typeof aiSaveRows==='function') aiSaveRows();
+  if(typeof renderDash==='function') renderDash();
+  if(typeof renderTable==='function') renderTable();
+  if(typeof initFloorMap==='function' && document.getElementById('tc4')
+     && document.getElementById('tc4').className.indexOf('on')>=0) initFloorMap();
+  renderAIInfo();
+  if(typeof renderAIResult==='function' && document.getElementById('ai-result-card')
+     && document.getElementById('ai-result-card').style.display!=='none') renderAIResult();
+}
+
+// 호실 배정 — 한 업소에 여러 호실을 붙일 수 있다
 function aiInfoAssign(i, ho){
   if(!ho) return;
   var b=BUILDINGS.find(function(x){return x.id===curBldgId;});
@@ -6911,16 +6943,70 @@ function aiInfoAssign(i, ho){
   if(!b||!r) return;
   var p=(b.props||[]).find(function(x){ return String(x.ho)===ho; });
   if(!p){ showToast('⚠️ 호실을 찾지 못했습니다.'); return; }
-  if(p.tenant && !confirm(ho+'호에 이미 "'+p.tenant+'"가 있습니다.\n"'+r.name+'"로 바꿀까요?')) { renderAIInfo(); return; }
+  if(p.tenant && p.tenant!==r.name
+     && !confirm(ho+'호에 이미 "'+p.tenant+'"가 있습니다.\n"'+r.name+'"로 바꿀까요?')) { renderAIInfo(); return; }
   p.tenant=r.name;
   if(!p.status || p.status==='미분양') p.status='선임대';
-  r.ho=ho; r.conf=r.conf||'직접배정';
-  saveBldgs();
-  if(typeof aiSaveRows==='function') aiSaveRows();
-  renderDash(); renderTable(); renderAIInfo();
-  if(typeof renderAIResult==='function' && document.getElementById('ai-result-card')
-     && document.getElementById('ai-result-card').style.display!=='none') renderAIResult();
-  showToast('✅ '+ho+' → '+r.name);
+  // 이 업소에 붙은 호실을 모아 기록한다 (여러 개면 쉼표로)
+  var cur=String(r.ho||'').split(',').map(function(x){return x.trim();}).filter(Boolean);
+  if(cur.indexOf(ho)<0) cur.push(ho);
+  r.ho=cur.sort().join(',');
+  r.conf=r.conf||'직접배정';
+  aiInfoRefreshAll();
+  showToast('✅ '+ho+' → '+r.name+(cur.length>1?' (총 '+cur.length+'개 호실)':''));
+}
+
+// 호실 하나만 해제 — 업소는 목록에 남는다
+function aiInfoUnassign(ho){
+  var b=BUILDINGS.find(function(x){return x.id===curBldgId;});
+  if(!b) return;
+  var p=(b.props||[]).find(function(x){ return String(x.ho)===ho; });
+  if(!p) return;
+  var nm=p.tenant||'';
+  if(!confirm(ho+'호의 입점업종 "'+nm+'"을(를) 지울까요?')) return;
+  p.tenant='';
+  // 우리가 붙였던 '선임대'만 되돌린다. 보증금·월세가 있으면 실제 계약이므로 그대로 둔다.
+  if(p.status==='선임대' && !p.deposit && !p.monthly) p.status='미분양';
+  // 인식 목록의 호실 표기에서도 그 호실만 뺀다
+  _aiRows.forEach(function(r){
+    if(String(r.name).trim()!==String(nm).trim()) return;
+    var cur=String(r.ho||'').split(',').map(function(x){return x.trim();}).filter(Boolean);
+    r.ho=cur.filter(function(x){ return x!==ho; }).join(',');
+  });
+  aiInfoRefreshAll();
+  showToast('🗑 '+ho+' 입점업종을 해제했습니다');
+}
+
+// 업소를 목록에서 삭제 (배정된 호실도 함께 해제)
+function aiInfoRemoveRow(i){
+  var r=_aiRows[i];
+  if(!r) return;
+  var b=BUILDINGS.find(function(x){return x.id===curBldgId;});
+  var hos=(b?(b.props||[]):[]).filter(function(p){ return String(p.tenant||'').trim()===String(r.name).trim(); });
+  if(!confirm('"'+r.name+'"을(를) 목록에서 삭제할까요?'
+    +(hos.length?('\n\n배정된 호실 '+hos.map(function(p){return p.ho;}).join(', ')+' 의 입점업종도 함께 지워집니다.'):''))) return;
+  hos.forEach(function(p){
+    p.tenant='';
+    if(p.status==='선임대' && !p.deposit && !p.monthly) p.status='미분양';
+  });
+  _aiRows.splice(i,1);
+  aiInfoRefreshAll();
+  showToast('🗑 "'+r.name+'" 삭제');
+}
+
+// 이 층에 업소를 직접 추가 (안내판에 없던 곳)
+function aiInfoAddRow(dong, floor){
+  var nm=prompt((dong&&dong!=='-'?dong+'동 ':'')+floor+' 에 추가할 업소명을 입력하세요:','');
+  if(nm===null) return;
+  nm=String(nm).trim();
+  if(!nm) return;
+  if(_aiRows.some(function(r){ return String(r.name).trim()===nm && (r.dong||'-')===dong && (r.floor||'')===floor; })){
+    showToast('⚠️ 같은 층에 이미 "'+nm+'"이(가) 있습니다.'); return;
+  }
+  _aiRows.push({dong:(dong==='-'?'':dong), floor:floor, name:nm, ho:'', conf:'직접입력', src:'', use:false});
+  if(typeof aiSaveRows==='function') aiSaveRows(true);
+  renderAIInfo();
+  showToast('➕ '+floor+' "'+nm+'" 추가 — 오른쪽에서 호실을 고르세요');
 }
 
 var _aiFilter='all';
