@@ -902,6 +902,29 @@ body.zoom-mode .zoomable:hover{box-shadow:none !important;}
     </div>
   </div>
 
+  <!-- 3단계: 공공데이터 대조 (무료) -->
+  <div id="ai-pd-card" class="card" style="border:1.5px solid #e8f5e9;background:#f6fbf7">
+    <p class="sec" style="color:#2e7d32">🗂️ 3단계 — 공공데이터로 호실 찾기 <span style="font-size:11px;color:#81c784;font-weight:400">· API 비용 0원</span></p>
+    <p style="font-size:12px;color:#7d9e86;margin:-4px 0 10px;line-height:1.6">
+      영업신고 주소에는 호수까지 적혀 있습니다. 그 파일을 내려받아 여기에 올리면
+      <b>웹검색 없이</b> 업소명을 대조해 호실을 채웁니다.
+      <a href="https://www.data.go.kr/tcs/dss/selectDataSetList.do?keyword=지방행정 인허가" target="_blank" rel="noopener" style="color:#2e7d32">공공데이터포털에서 받기 ↗</a>
+    </p>
+    <div style="background:#fff;border:1px solid #dceddf;border-radius:8px;padding:10px 12px;margin-bottom:10px;font-size:11px;color:#5c7a66;line-height:1.7">
+      <b>받는 방법</b><br>
+      ① 공공데이터포털 → <b>지방행정 인허가데이터</b> 검색<br>
+      ② 업종 선택 — <b>일반음식점 · 휴게음식점 · 학원 · 약국 · 의원 · 미용업 · 체육시설</b> (상가에 많은 순)<br>
+      ③ 지역 <b>인천광역시</b> 로 받은 CSV/XLSX 를 그대로 올리세요. 연수구·해당 주소만 자동으로 걸러냅니다.
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <label class="btn-p" style="cursor:pointer;flex:1;text-align:center;padding:9px">
+        📂 공공데이터 파일 올리기 (여러 개 가능)
+        <input type="file" id="ai-pd-file" accept=".csv,.xlsx,.xls" multiple style="display:none" onchange="onPdFiles(this)">
+      </label>
+    </div>
+    <div id="ai-pd-status" style="display:none;margin-top:10px;font-size:12px;color:#2e7d32;line-height:1.7"></div>
+  </div>
+
   <div id="ai-result-card" style="display:none" class="card">
     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
       <p class="sec" style="margin:0">📋 AI 인식 결과 — 적용할 호실 매핑</p>
@@ -6699,6 +6722,185 @@ function aiResolveHo(ho, dong){
   return '';
 }
 function aiHoExists(ho, dong){ return !!aiResolveHo(ho, dong); }
+/* ══════════════════════════════════════════════════════════
+   3단계 — 공공데이터(인허가) 파일로 호실 찾기
+   웹검색은 회당 과금되지만 이 방식은 파일을 읽는 것이라 비용이 0이다.
+   영업신고 주소에 '하모니로 158, B120호' 처럼 호수가 들어 있는 점을 이용한다.
+   ══════════════════════════════════════════════════════════ */
+
+// 상호 비교용 정규화 — 공백·괄호·지점 표기·기호를 걷어낸다
+function pdNormName(v){
+  return String(v||'')
+    .replace(/\(.*?\)/g,'')
+    .replace(/(주)|㈜|주식회사|유한회사/g,'')
+    .replace(/[\s\-_.·,'"]/g,'')
+    .toUpperCase();
+}
+// 주소 비교용 — 도로명 핵심부만 (예: '하모니로158')
+function pdNormAddr(v){
+  return String(v||'').replace(/[\s,]/g,'').replace(/^인천광역시|^인천시|^인천/,'');
+}
+// 파일에서 열 이름 찾기 (기관마다 표기가 조금씩 다르다)
+function pdFindCol(headers, keys){
+  for(var k=0;k<keys.length;k++){
+    for(var i=0;i<headers.length;i++){
+      if(String(headers[i]||'').replace(/\s/g,'').indexOf(keys[k])>=0) return i;
+    }
+  }
+  return -1;
+}
+
+var _pdStat={files:0, rows:0, hit:0, matched:0, closed:0};
+
+function onPdFiles(input){
+  var files=Array.prototype.slice.call(input.files||[]);
+  input.value='';
+  if(!files.length) return;
+  var addr=(document.getElementById('ai-addr')||{}).value.trim();
+  if(!addr){ alert('먼저 2단계의 [건물 도로명주소]를 입력해 주세요.\n그 주소로 파일을 걸러냅니다.'); return; }
+  if(!_aiRows.length){ alert('먼저 1단계 안내판 인식을 실행해 업소 목록을 만들어 주세요.'); return; }
+
+  var st=document.getElementById('ai-pd-status');
+  st.style.display='block';
+  st.textContent='⏳ 파일을 읽는 중...';
+  _pdStat={files:0, rows:0, hit:0, matched:0, closed:0};
+  var done=0;
+  var all=[];
+  files.forEach(function(f){
+    pdReadFile(f).then(function(rows){
+      all=all.concat(rows);
+    }).catch(function(e){
+      console.warn('[공공데이터] 읽기 실패', f.name, e);
+    }).then(function(){
+      done++;
+      st.textContent='⏳ 파일 읽는 중... '+done+'/'+files.length;
+      if(done===files.length) pdMatch(all, addr);
+    });
+  });
+}
+
+function pdReadFile(file){
+  return new Promise(function(res, rej){
+    var rd=new FileReader();
+    rd.onerror=rej;
+    rd.onload=function(e){
+      try{
+        var wb;
+        if(/\.csv$/i.test(file.name)){
+          // 공공데이터 CSV 는 대개 EUC-KR 이라 UTF-8 로 읽으면 글자가 깨진다.
+          var buf=e.target.result;
+          var txt;
+          try{ txt=new TextDecoder('euc-kr').decode(buf); }catch(err){ txt=new TextDecoder('utf-8').decode(buf); }
+          if(txt.indexOf('\uFFFD')>=0){                 // 깨졌으면 UTF-8 로 재시도
+            try{ txt=new TextDecoder('utf-8').decode(buf); }catch(err){}
+          }
+          wb=XLSX.read(txt,{type:'string'});
+        } else {
+          wb=XLSX.read(new Uint8Array(e.target.result),{type:'array'});
+        }
+        var out=[];
+        wb.SheetNames.forEach(function(sn){
+          var aoa=XLSX.utils.sheet_to_json(wb.Sheets[sn],{header:1,defval:''});
+          if(!aoa.length) return;
+          // 헤더 줄 찾기 (첫 5줄 안에서 '사업장명' 또는 '도로명' 이 있는 줄)
+          var hi=-1;
+          for(var i=0;i<Math.min(6,aoa.length);i++){
+            var j=aoa[i].join('|');
+            if(j.indexOf('사업장명')>=0 || j.indexOf('도로명')>=0){ hi=i; break; }
+          }
+          if(hi<0) return;
+          var H=aoa[hi];
+          var cName=pdFindCol(H,['사업장명','업소명','상호','영업소명']);
+          var cAddr=pdFindCol(H,['도로명전체주소','도로명주소','소재지전체주소','소재지도로명']);
+          var cJi  =pdFindCol(H,['지번전체주소','소재지지번','지번주소']);
+          var cStat=pdFindCol(H,['영업상태명','상세영업상태명','영업상태']);
+          var cKind=pdFindCol(H,['업태구분명','업종명']);
+          if(cName<0 || (cAddr<0&&cJi<0)) return;
+          for(var r=hi+1;r<aoa.length;r++){
+            var row=aoa[r];
+            var nm=String(row[cName]||'').trim();
+            if(!nm) continue;
+            out.push({
+              name:nm,
+              addr:String((cAddr>=0?row[cAddr]:'')||'').trim() || String((cJi>=0?row[cJi]:'')||'').trim(),
+              stat:String((cStat>=0?row[cStat]:'')||'').trim(),
+              kind:String((cKind>=0?row[cKind]:'')||'').trim()
+            });
+          }
+        });
+        res(out);
+      }catch(err){ rej(err); }
+    };
+    if(/\.csv$/i.test(file.name)) rd.readAsArrayBuffer(file);
+    else rd.readAsArrayBuffer(file);
+  });
+}
+
+function pdMatch(rows, addr){
+  var st=document.getElementById('ai-pd-status');
+  _pdStat.rows=rows.length;
+  var key=pdNormAddr(addr);
+  // 이 건물 주소에 해당하는 행만 남긴다
+  var here=rows.filter(function(r){ return pdNormAddr(r.addr).indexOf(key)>=0; });
+  _pdStat.hit=here.length;
+  if(!here.length){
+    st.innerHTML='❌ 파일 '+rows.length.toLocaleString()+'행 중 「'+addr+'」 주소가 하나도 없습니다.<br>'
+      +'<span style="color:#888">· 지역이 맞는지(인천광역시) · 주소 표기가 같은지 확인해 주세요.</span>';
+    return;
+  }
+
+  // 폐업은 제외
+  var live=here.filter(function(r){ return !/폐업|말소|취소/.test(r.stat); });
+  _pdStat.closed=here.length-live.length;
+
+  // 업소명 → 호실 색인
+  var idx={};
+  live.forEach(function(r){
+    // '하모니로 158, A동 4층 407호' 에서 도로명 번지(158)를 먼저 떼어낸다.
+    // 안 그러면 158 을 호실로 잘못 읽는다.
+    var tail=String(r.addr||'');
+    var cut=tail.replace(/^.*?[가-힣]+(로|길)\s*[\d\-]+/, '');
+    tail=cut;                                   // 도로명 번지 뒤쪽만 본다 (없으면 빈 문자열 → 호수 없음)
+    var dm=tail.match(/([A-Za-z가-힣])\s*동/);   // 'A동 4층 407호' 처럼 동과 호수가 떨어진 경우
+    var dg=dm?dm[1].toUpperCase():'';
+    var hos=aiExtractHo(tail, dg);
+    if(!hos.length) return;
+    var k=pdNormName(r.name);
+    if(k && !idx[k]) idx[k]={ho:hos[0], raw:r.name, addr:r.addr, kind:r.kind};
+  });
+  var keys=Object.keys(idx);
+
+  var matched=0, already=0;
+  _aiRows.forEach(function(row){
+    if(row.ho) { already++; return; }
+    var k=pdNormName(row.name);
+    if(!k) return;
+    var hit=idx[k];
+    if(!hit){
+      // 완전일치가 없으면 포함관계로 (예: '스타벅스' ↔ '스타벅스송도타임스페이스점')
+      var cand=keys.filter(function(x){ return x.indexOf(k)>=0 || k.indexOf(x)>=0; });
+      // 후보가 여럿이면 잘못 붙을 수 있으니 하나일 때만 인정한다
+      if(cand.length===1) hit=idx[cand[0]];
+    }
+    if(!hit) return;
+    row.ho=hit.ho;
+    row.conf='공공데이터';
+    row.src='인허가 '+(hit.kind?hit.kind+' · ':'')+hit.addr;
+    row.use=true;              // 공공 자료라 신뢰도가 높아 기본 체크
+    matched++;
+  });
+  _pdStat.matched=matched;
+
+  st.innerHTML='✅ 파일 '+rows.length.toLocaleString()+'행 → 이 건물 '+here.length+'건'
+    +(_pdStat.closed?' (폐업 '+_pdStat.closed+'건 제외)':'')
+    +' → <b>'+matched+'곳의 호실을 찾았습니다.</b><br>'
+    +'<span style="color:#888">· 이미 채워져 있던 '+already+'곳은 건드리지 않았습니다.'
+    +' · 아래 표에서 확인 후 [입점 현황에 적용]을 누르세요.</span>';
+  renderAIResult();
+  aiSaveRows(true);
+  if(typeof renderAIInfo==='function') renderAIInfo();
+}
+
 var _aiInfoView='todo';
 var _aiInfoOpen=true;
 
