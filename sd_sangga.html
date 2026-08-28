@@ -167,6 +167,23 @@ body.zoom-mode .zoomable:hover{box-shadow:none !important;}
     <div class="card" style="margin:0"><p class="sec">📊 분양 현황</p><div id="dash-status-chart"></div></div>
     <div class="card" style="margin:0"><p class="sec">🏪 층별 수익률</p><div id="dash-yield-chart"></div></div>
   </div>
+  <!-- 입점현황 인포 — AI 인식으로 모은 층별 업소 목록 -->
+  <div class="card" id="ai-info-card" style="display:none;border:1.5px solid #e3f2fd;background:#f8fbff">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+      <p class="sec" style="margin:0;color:#1565c0">🏢 입점현황 인포 <span id="ai-info-sub" style="font-size:11px;color:#8fa8c0;font-weight:400"></span></p>
+      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+        <button onclick="aiInfoSetView('todo')" id="aiv-todo" class="btn-s" style="font-size:11px">미배정만</button>
+        <button onclick="aiInfoSetView('all')"  id="aiv-all"  class="btn-s" style="font-size:11px">전체</button>
+        <button onclick="aiInfoToggle()" id="ai-info-toggle" class="btn-s" style="font-size:11px">접기</button>
+      </div>
+    </div>
+    <div style="font-size:11px;color:#7a92a8;margin:6px 0 10px;line-height:1.6">
+      호실이 확인되지 않은 업소입니다. 업소명을 누르면 <b>주소를 붙인 검색</b>이 새 창에서 열리고,
+      오른쪽 칸에서 호실을 고르면 <b>바로 입점업종에 반영</b>됩니다.
+    </div>
+    <div id="ai-info-body"></div>
+  </div>
+
   <div class="card">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
       <p class="sec" style="margin:0">🏬 전체 호실 현황</p>
@@ -880,9 +897,27 @@ body.zoom-mode .zoomable:hover{box-shadow:none !important;}
   </div>
 
   <div id="ai-result-card" style="display:none" class="card">
-    <p class="sec">📋 AI 인식 결과 — 적용할 호실 매핑</p>
-    <div style="font-size:11px;color:#888;margin:-4px 0 10px">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+      <p class="sec" style="margin:0">📋 AI 인식 결과 — 적용할 호실 매핑</p>
+      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+        <span id="ai-save-info" style="font-size:11px;color:#888"></span>
+        <button onclick="aiSaveRows(true)" class="btn-s" style="font-size:11px">💾 작업 저장</button>
+        <button onclick="aiLoadRows()" class="btn-s" style="font-size:11px">📂 불러오기</button>
+        <button onclick="aiExportCsv()" class="btn-s" style="font-size:11px">📥 CSV</button>
+      </div>
+    </div>
+    <div style="font-size:11px;color:#888;margin:6px 0 10px">
       체크한 항목만 적용됩니다. 호실번호는 <b>이 건물의 실제 호실 목록과 대조</b>해 존재하는 것만 반영합니다.
+      <b style="color:#1565c0">호실 칸에 직접 입력해도 됩니다 (A305 형식). 입력하면 자동 저장됩니다.</b>
+    </div>
+    <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:8px">
+      <span style="font-size:11px;color:#666">보기</span>
+      <button onclick="aiSetFilter('all')"  id="aif-all"  class="btn-s" style="font-size:11px">전체</button>
+      <button onclick="aiSetFilter('todo')" id="aif-todo" class="btn-s" style="font-size:11px">미완료만</button>
+      <button onclick="aiSetFilter('done')" id="aif-done" class="btn-s" style="font-size:11px">확인완료만</button>
+      <input id="ai-q" placeholder="업소명·층 검색" oninput="renderAIResult()"
+             style="margin-left:6px;font-size:11px;padding:4px 8px;border:1px solid #e0e0e0;border-radius:6px;width:150px">
+      <span id="ai-progress" style="margin-left:auto;font-size:11px;color:#1565c0;font-weight:700"></span>
     </div>
     <div id="ai-result-list"></div>
     <div style="margin-top:12px;display:flex;gap:8px">
@@ -2504,6 +2539,7 @@ function deleteBldg(id, name){
 }
 
 function selectBldg(id){
+  _aiRows=[];        // 건물이 바뀌면 이전 건물의 인식 결과를 비운다 (아래에서 새로 불러온다)
   curBldgId = id;
   renderBldgTabs();
   var bldg = BUILDINGS.find(function(b){return b.id===id;});
@@ -2556,6 +2592,7 @@ function sw(n){
   if(n===7)initBrochureTab();
   if(n===8)initPhotoTab();
   if(n===4)initFloorMap();
+  if(n===5&&!_aiRows.length) aiLoadRows(true);   // 저장해둔 작업을 이어서
   if(n===9)initBlogTab();
 }
 
@@ -4765,6 +4802,12 @@ function calcMonthly(price, depRate, yieldRate){
 
 // ═══ 대시보드
 function renderDash(){
+  // 인포 패널은 대시보드와 같은 데이터를 쓰므로 함께 갱신한다
+  setTimeout(function(){
+    if(typeof _aiRows!=='undefined' && !_aiRows.length && typeof aiLoadRows==='function'){
+      aiLoadRows(true).then(function(){ renderAIInfo(); });
+    } else if(typeof renderAIInfo==='function') renderAIInfo();
+  },0);
   var props = getCurProps();
   if(!props || props.length===0) return;
   var total=props.length;
@@ -6352,6 +6395,7 @@ function runAIRecognize(){
         if(b) document.getElementById('ai-alias').value=b.name;
       }
       renderAIResult();
+      aiSaveRows(true);
       return;
     }
     var im=_aiImgs[idx];
@@ -6438,6 +6482,7 @@ function runAIFindUnits(){
     st.textContent=(_aiStop?'⏹ 중단됨 — ':'✅ ')+found+'/'+targets.length+'곳의 호실번호를 찾았습니다.'
       +(failed?' (실패 '+failed+'회)':'')+' 아래 표에서 확인 후 적용하세요.';
     renderAIResult();
+    aiSaveRows(true);
   };
 
   var step=function(bi){
@@ -6565,6 +6610,240 @@ function aiResolveHo(ho, dong){
   return '';
 }
 function aiHoExists(ho, dong){ return !!aiResolveHo(ho, dong); }
+var _aiInfoView='todo';
+var _aiInfoOpen=true;
+
+/* ── 입점현황 인포 ──
+   AI 인식으로 '몇 층에 어떤 업소'까지는 알아냈지만 호실을 못 찾은 것들을 층별로 모아 보여준다.
+   보기만 하는 표로 두면 결국 손으로 옮겨 적어야 하므로, 이 자리에서 바로 호실을 고를 수 있게 한다. */
+function aiInfoToggle(){
+  _aiInfoOpen=!_aiInfoOpen;
+  document.getElementById('ai-info-body').style.display=_aiInfoOpen?'block':'none';
+  document.getElementById('ai-info-toggle').textContent=_aiInfoOpen?'접기':'펼치기';
+}
+function aiInfoSetView(v){
+  _aiInfoView=v;
+  ['todo','all'].forEach(function(k){
+    var b=document.getElementById('aiv-'+k);
+    if(b){ b.style.background=(k===v)?'#1565c0':''; b.style.color=(k===v)?'#fff':''; }
+  });
+  renderAIInfo();
+}
+// 층 표기를 맞춘다 ('지상4층' / '4층' / 'B1' 등이 섞여 들어온다)
+function aiFloorKey(v){
+  var t=String(v||'').replace(/\s/g,'');
+  var m=t.match(/지하\s*(\d+)/) || (/^B(\d+)/i.test(t)?[0,t.replace(/^B/i,'')]:null);
+  if(m) return 'B'+m[1];
+  var g=t.match(/(\d+)/);
+  return g?('F'+g[1]):'';
+}
+function renderAIInfo(){
+  var card=document.getElementById('ai-info-card');
+  if(!card) return;
+  var b=BUILDINGS.find(function(x){return x.id===curBldgId;});
+  if(!b || !_aiRows.length){ card.style.display='none'; return; }
+
+  // 이미 입점업종이 채워진 업소는 배정 완료로 본다
+  var assigned={};
+  (b.props||[]).forEach(function(p){ if(p.tenant) assigned[String(p.tenant).trim()]=p.ho; });
+
+  var rows=_aiRows.filter(function(r){
+    if(!r.name) return false;
+    if(_aiInfoView==='todo') return !assigned[r.name.trim()];
+    return true;
+  });
+  var todoCnt=_aiRows.filter(function(r){ return r.name && !assigned[r.name.trim()]; }).length;
+  card.style.display='block';
+  document.getElementById('ai-info-sub').textContent=
+    '· 인식 '+_aiRows.length+'곳 · 미배정 '+todoCnt+'곳'+(_aiInfoView==='todo'?' (미배정만 표시)':'');
+
+  if(!rows.length){
+    document.getElementById('ai-info-body').innerHTML=
+      '<div style="font-size:12px;color:#2e7d32;padding:10px">✅ 인식된 업소가 모두 호실에 배정됐습니다.</div>';
+    return;
+  }
+
+  // 동 → 층 순으로 묶는다
+  var grp={};
+  rows.forEach(function(r){
+    var d=r.dong||'-', f=r.floor||'층미상';
+    if(!grp[d]) grp[d]={};
+    if(!grp[d][f]) grp[d][f]=[];
+    grp[d][f].push(r);
+  });
+  var addr=(document.getElementById('ai-addr')||{}).value||'';
+  var bname=b.name||'';
+
+  var floorOrder=function(f){
+    var k=aiFloorKey(f);
+    if(k.charAt(0)==='B') return -parseInt(k.slice(1)||0);
+    return parseInt(k.slice(1)||0);
+  };
+  var html=Object.keys(grp).sort().map(function(d){
+    var floors=Object.keys(grp[d]).sort(function(a,c){ return floorOrder(c)-floorOrder(a); });
+    return '<div style="margin-bottom:12px">'
+      +(d!=='-'?'<div style="font-size:12px;font-weight:800;color:#1565c0;margin-bottom:6px">'+d+'동</div>':'')
+      +floors.map(function(f){
+          var list=grp[d][f];
+          // 이 층에서 아직 입점업종이 비어 있는 호실만 고를 수 있게 한다
+          var free=(b.props||[]).filter(function(p){
+            if(d!=='-' && String(p.ho).toUpperCase().indexOf(d.toUpperCase())!==0) return false;
+            return aiFloorKey(p.floor)===aiFloorKey(f) && !p.tenant;
+          });
+          var opts='<option value="">호실 선택</option>'
+            +free.map(function(p){ return '<option value="'+p.ho+'">'+p.ho+'</option>'; }).join('');
+          return '<div style="display:flex;gap:8px;align-items:flex-start;padding:6px 0;border-top:1px solid #e8f0f8">'
+            +'<div style="min-width:62px;font-size:11px;font-weight:700;color:#455a64;padding-top:4px">'+f+'</div>'
+            +'<div style="flex:1;display:flex;flex-wrap:wrap;gap:5px">'
+            +list.map(function(r){
+                var i=_aiRows.indexOf(r);
+                var done=assigned[r.name.trim()];
+                var q=encodeURIComponent(r.name+' '+(addr||bname));
+                return '<span style="display:inline-flex;align-items:center;gap:3px;background:'+(done?'#e8f5e9':'#fff')
+                  +';border:1px solid '+(done?'#a5d6a7':'#cfe3ff')+';border-radius:14px;padding:2px 4px 2px 9px;font-size:11px">'
+                  +'<a href="https://search.naver.com/search.naver?query='+q+'" target="_blank" rel="noopener" '
+                  +'title="네이버에서 주소와 함께 검색" style="color:'+(done?'#2e7d32':'#1a2035')+';text-decoration:none;font-weight:600">'+r.name+' 🔍</a>'
+                  +(done?'<b style="color:#2e7d32;margin-left:2px">'+done+'</b>'
+                        :'<select onchange="aiInfoAssign('+i+',this.value)" '
+                         +'style="font-size:10px;border:1px solid #cfe3ff;border-radius:10px;padding:2px 4px;background:#f8fbff">'+opts+'</select>')
+                  +'</span>';
+              }).join('')
+            +'</div></div>';
+        }).join('')
+      +'</div>';
+  }).join('');
+  document.getElementById('ai-info-body').innerHTML=html;
+  document.getElementById('ai-info-body').style.display=_aiInfoOpen?'block':'none';
+}
+
+// 인포 패널에서 호실을 고르면 즉시 반영한다
+function aiInfoAssign(i, ho){
+  if(!ho) return;
+  var b=BUILDINGS.find(function(x){return x.id===curBldgId;});
+  var r=_aiRows[i];
+  if(!b||!r) return;
+  var p=(b.props||[]).find(function(x){ return String(x.ho)===ho; });
+  if(!p){ showToast('⚠️ 호실을 찾지 못했습니다.'); return; }
+  if(p.tenant && !confirm(ho+'호에 이미 "'+p.tenant+'"가 있습니다.\n"'+r.name+'"로 바꿀까요?')) { renderAIInfo(); return; }
+  p.tenant=r.name;
+  if(!p.status || p.status==='미분양') p.status='선임대';
+  r.ho=ho; r.conf=r.conf||'직접배정';
+  saveBldgs();
+  if(typeof aiSaveRows==='function') aiSaveRows();
+  renderDash(); renderTable(); renderAIInfo();
+  if(typeof renderAIResult==='function' && document.getElementById('ai-result-card')
+     && document.getElementById('ai-result-card').style.display!=='none') renderAIResult();
+  showToast('✅ '+ho+' → '+r.name);
+}
+
+var _aiFilter='all';
+var _aiSaveTimer=null;
+
+// 입력 중에 표 전체를 다시 그리면 포커스가 날아가 두 번째 글자부터 안 들어간다.
+// (영문이 막힌 게 아니라 첫 글자 입력 직후 input 요소가 통째로 새로 그려져서 생긴 증상)
+// 그래서 해당 행의 '대조'·체크박스 칸만 갱신한다.
+function aiOnHoInput(i, el){
+  var v=String(el.value||'').toUpperCase();
+  if(el.value!==v){                      // 소문자로 쳐도 대문자로 (커서는 유지)
+    var pos=el.selectionStart;
+    el.value=v; el.selectionStart=el.selectionEnd=pos;
+  }
+  _aiRows[i].ho=v;
+  if(v && !_aiRows[i].conf) _aiRows[i].conf='직접입력';
+  if(!v) _aiRows[i].conf='';
+  aiRefreshRow(i);
+  aiSaveRows();                          // 입력할 때마다 자동 저장 (디바운스)
+}
+function aiRefreshRow(i){
+  var r=_aiRows[i];
+  var resolved=aiResolveHo(r.ho, r.dong);
+  var ok=!!resolved;
+  var mk=document.getElementById('aimk-'+i);
+  var cb=document.getElementById('aicb-'+i);
+  var tr=document.getElementById('airow-'+i);
+  if(mk) mk.innerHTML = !r.ho ? '<span style="color:#bbb">—</span>'
+        : (ok?'<span style="color:#2e7d32">✔ '+resolved+'</span>':'<span style="color:#c62828">✖ 없음</span>');
+  if(cb){ cb.disabled=!ok; if(!ok) cb.checked=false; else if(r.use) cb.checked=true; }
+  if(tr) tr.style.background=(r.ho&&!ok)?'#fff5f5':'';
+  aiUpdateProgress();
+}
+function aiUpdateProgress(){
+  var el=document.getElementById('ai-progress');
+  if(!el) return;
+  var done=_aiRows.filter(function(r){ return aiResolveHo(r.ho,r.dong); }).length;
+  el.textContent='확인 '+done+' / 전체 '+_aiRows.length+' (미완료 '+(_aiRows.length-done)+')';
+}
+function aiRowVisible(o){
+  var r=o.r;
+  var q=(document.getElementById('ai-q')||{}).value||'';
+  if(q){
+    var t=(r.name||'')+' '+(r.floor||'')+' '+(r.dong||'');
+    if(t.toLowerCase().indexOf(q.toLowerCase())<0) return false;
+  }
+  var ok=!!aiResolveHo(r.ho,r.dong);
+  if(_aiFilter==='todo') return !ok;
+  if(_aiFilter==='done') return ok;
+  return true;
+}
+function aiSetFilter(f){
+  _aiFilter=f;
+  ['all','todo','done'].forEach(function(k){
+    var b=document.getElementById('aif-'+k);
+    if(b){ b.style.background=(k===f)?'#1565c0':''; b.style.color=(k===f)?'#fff':''; }
+  });
+  renderAIResult();
+}
+
+/* ── 작업 상태 저장 (건물별) ──
+   매번 인식을 다시 돌릴 수 없으므로, 인식 결과와 직접 입력한 호실을 건물 단위로 보관한다. */
+function aiSaveRows(manual){
+  if(_aiSaveTimer) clearTimeout(_aiSaveTimer);
+  var run=function(){
+    if(!window.storage||!_aiRows.length) return;
+    var payload={ saved:new Date().toISOString(), rows:_aiRows };
+    window.storage.set(bldgKey('ai_rows'), JSON.stringify(payload)).then(function(r){
+      var el=document.getElementById('ai-save-info');
+      if(!r){ if(el) el.innerHTML='<span style="color:#c62828">저장 실패</span>'; return; }
+      if(el) el.textContent='💾 '+new Date().toLocaleString('ko-KR',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})+' 저장됨';
+      if(manual) showToast('💾 작업 상태를 저장했습니다 ('+_aiRows.length+'건)');
+    });
+  };
+  if(manual) run(); else _aiSaveTimer=setTimeout(run, 800);   // 타자 중 과도한 저장 방지
+}
+function aiLoadRows(silent){
+  if(!window.storage) return Promise.resolve(false);
+  return window.storage.get(bldgKey('ai_rows')).then(function(r){
+    if(!r||!r.value){ if(!silent) showToast('저장된 작업이 없습니다.'); return false; }
+    var v=JSON.parse(r.value);
+    var rows=(v&&v.rows)?v.rows:(Array.isArray(v)?v:[]);
+    if(!rows.length){ if(!silent) showToast('저장된 작업이 없습니다.'); return false; }
+    _aiRows=rows;
+    var el=document.getElementById('ai-save-info');
+    if(el&&v.saved) el.textContent='💾 '+new Date(v.saved).toLocaleString('ko-KR',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})+' 저장됨';
+    renderAIResult();
+    var noHo=_aiRows.filter(function(x){return !aiResolveHo(x.ho,x.dong);}).length;
+    if(noHo) document.getElementById('ai-loc-card').style.display='block';
+    if(!silent) showToast('📂 저장된 작업 '+_aiRows.length+'건을 불러왔습니다 (미완료 '+noHo+'건)');
+    return true;
+  }).catch(function(){ return false; });
+}
+// 호실을 손으로 채우려면 목록을 밖으로 꺼낼 수 있어야 한다
+function aiExportCsv(){
+  if(!_aiRows.length){ alert('내보낼 내용이 없습니다.'); return; }
+  var b=BUILDINGS.find(function(x){return x.id===curBldgId;});
+  var esc=function(v){ return '"'+String(v==null?'':v).replace(/"/g,'""')+'"'; };
+  var lines=[['동','층','업소명','호실','대조결과','확신도','근거'].map(esc).join(',')];
+  _aiRows.forEach(function(r){
+    lines.push([r.dong||'', r.floor||'', r.name||'', r.ho||'',
+                aiResolveHo(r.ho,r.dong)||'미확인', r.conf||'', r.src||''].map(esc).join(','));
+  });
+  var blob=new Blob(['\ufeff'+lines.join('\n')],{type:'text/csv;charset=utf-8'});
+  var a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download=(b?b.name:'상가')+'_입점현황_'+new Date().toISOString().slice(0,10)+'.csv';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+}
+
 function renderAIResult(){
   var box=document.getElementById('ai-result-list');
   if(!_aiRows.length){ document.getElementById('ai-result-card').style.display='none'; return; }
@@ -6574,28 +6853,33 @@ function renderAIResult(){
     +'<tr style="background:#f5f5f3"><th style="padding:6px 4px;width:34px">적용</th><th style="padding:6px;text-align:left">동</th><th style="padding:6px;text-align:left">층</th>'
     +'<th style="padding:6px;text-align:left">업소명</th><th style="padding:6px;text-align:left">호실</th>'
     +'<th style="padding:6px">확신도</th><th style="padding:6px;text-align:left">근거</th><th style="padding:6px">대조</th></tr>'
-    +_aiRows.map(function(r,i){
+    +_aiRows.map(function(r,i){ return {r:r,i:i}; }).filter(aiRowVisible).map(function(o){
+        var r=o.r, i=o.i;
         var resolved=aiResolveHo(r.ho, r.dong);
         var ok=!!resolved;
         var mark = !r.ho ? '<span style="color:#bbb">—</span>'
                  : (ok?'<span style="color:#2e7d32">✔ '+resolved+'</span>':'<span style="color:#c62828">✖ 없음</span>');
-        return '<tr style="border-bottom:1px solid #f0f0f0'+(r.ho&&!ok?';background:#fff5f5':'')+'">'
-          +'<td style="text-align:center"><input type="checkbox" '+(r.use&&ok?'checked':'')
-            +(r.ho&&ok?'':' disabled')+' onchange="_aiRows['+i+'].use=this.checked"></td>'
+        return '<tr id="airow-'+i+'" style="border-bottom:1px solid #f0f0f0'+(r.ho&&!ok?';background:#fff5f5':'')+'">'
+          +'<td style="text-align:center"><input type="checkbox" id="aicb-'+i+'" '+(r.use&&ok?'checked':'')
+            +(ok?'':' disabled')+' onchange="_aiRows['+i+'].use=this.checked;aiSaveRows()"></td>'
           +'<td style="padding:5px;color:#1565c0;font-weight:700">'+(r.dong||'-')+'</td>'
           +'<td style="padding:5px">'+(r.floor||'-')+'</td>'
           +'<td style="padding:5px;font-weight:600">'+r.name+'</td>'
-          +'<td style="padding:5px"><input value="'+(r.ho||'')+'" oninput="_aiRows['+i+'].ho=this.value;renderAIResult()" '
-            +'style="width:88px;font-size:11px;padding:3px 5px;border:1px solid #e0e0e0;border-radius:4px"></td>'
+          +'<td style="padding:5px"><input value="'+(r.ho||'')+'" '
+            +'oninput="aiOnHoInput('+i+',this)" onchange="aiOnHoInput('+i+',this)" '
+            +'placeholder="예: A305" '
+            +'style="width:96px;font-size:11px;padding:3px 5px;border:1px solid #e0e0e0;border-radius:4px;text-transform:uppercase"></td>'
           +'<td style="padding:5px;text-align:center;color:'+(CONF[r.conf]||'#999')+'">'+(r.conf||'-')+'</td>'
           +'<td style="padding:5px;max-width:190px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+(r.src||'')+'">'
             +(r.src?'<span style="color:#888">'+r.src+'</span>':'-')+'</td>'
-          +'<td style="padding:5px;text-align:center">'+mark+'</td></tr>';
+          +'<td id="aimk-'+i+'" style="padding:5px;text-align:center">'+mark+'</td></tr>';
       }).join('')
     +'</table></div>'
     +'<div style="font-size:11px;color:#888;margin-top:8px;line-height:1.6">'
     +'※ <b>대조</b>는 이 건물에 실제로 있는 호실인지 확인한 결과입니다. 없는 호실은 적용할 수 없습니다.<br>'
-    +'※ 확신도가 <b>높음</b>인 것만 자동 체크됩니다. 나머지는 직접 확인 후 체크하세요.</div>';
+    +'※ 확신도가 <b>높음</b>인 것만 자동 체크됩니다. 나머지는 직접 확인 후 체크하세요.<br>'
+    +'※ 호실을 직접 채우실 때는 <b>미완료만</b> 보기로 좁히면 편합니다. 입력값은 자동 저장되며 다음에 [📂 불러오기]로 이어서 작업할 수 있습니다.</div>';
+  aiUpdateProgress();
 }
 
 /* ── 적용 ── */
@@ -6623,6 +6907,7 @@ function applyAIResult(){
   // 대시보드는 KPI(renderDash)와 호실 표(renderTable)가 별도 함수다. 둘 다 새로 그려야 한다.
   if(typeof renderDash==='function') renderDash();
   if(typeof renderTable==='function') renderTable();
+  if(typeof renderAIInfo==='function') renderAIInfo();
   if(typeof initFloorMap==='function' && document.getElementById('tc4') && document.getElementById('tc4').className.indexOf('on')>=0) initFloorMap();
   document.getElementById('ai-result-card').style.display='none';
   showToast('✅ '+n+'개 호실의 입점업종을 반영했습니다');
