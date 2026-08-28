@@ -861,7 +861,13 @@ body.zoom-mode .zoomable:hover{box-shadow:none !important;}
       <div id="ai-img-list" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px"></div>
     </div>
     <div id="ai-status" style="display:none;margin-top:10px;padding:10px 14px;border-radius:8px;font-size:13px"></div>
-    <div style="margin-top:8px;text-align:right"><button onclick="resetApiKey()" style="background:none;border:none;color:#90a4ae;font-size:11px;cursor:pointer;text-decoration:underline">🔑 API 키 재설정</button></div>
+    <div style="margin-top:8px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px">
+      <span style="font-size:11px;color:#78909c">💳 <span id="sg-usage">오늘 사용 없음</span></span>
+      <span>
+        <button onclick="sgShowUsage()" style="background:none;border:none;color:#90a4ae;font-size:11px;cursor:pointer;text-decoration:underline">📊 사용량 내역</button>
+        <button onclick="resetApiKey()" style="background:none;border:none;color:#90a4ae;font-size:11px;cursor:pointer;text-decoration:underline;margin-left:8px">🔑 API 키 재설정</button>
+      </span>
+    </div>
     <button id="ai-btn" onclick="runAIRecognize()" style="display:none;margin-top:10px;width:100%;padding:11px;background:#1565c0;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer">
       🤖 AI 입점업종 자동 인식
     </button>
@@ -2592,7 +2598,7 @@ function sw(n){
   if(n===7)initBrochureTab();
   if(n===8)initPhotoTab();
   if(n===4)initFloorMap();
-  if(n===5&&!_aiRows.length) aiLoadRows(true);   // 저장해둔 작업을 이어서
+  if(n===5){ if(!_aiRows.length) aiLoadRows(true); if(typeof sgRenderUsage==='function') sgRenderUsage(); }
   if(n===9)initBlogTab();
 }
 
@@ -6271,6 +6277,44 @@ function resetApiKey(){
   localStorage.removeItem('sd_api_key');
   showToast('🔑 저장된 API 키를 지웠습니다. 다음 실행 때 다시 물어봅니다.');
 }
+/* ── API 사용량·비용 집계 ──
+   웹검색은 회당 $0.01 이고, 검색 결과가 입력 토큰으로 다시 과금된다.
+   그래서 검색을 쓰는 호출은 토큰 비용이 검색비의 3배 안팎으로 붙는다.
+   추정이 아니라 응답에 실려 오는 usage 를 그대로 누적한다. */
+var SG_PRICE={in:3/1e6, out:15/1e6, search:0.01};
+function sgUsage(){
+  try{ return JSON.parse(localStorage.getItem('sd_api_usage')||'{}'); }catch(e){ return {}; }
+}
+function sgAddUsage(d){
+  var u=(d&&d.usage)||{};
+  var st=(d&&d.usage&&d.usage.server_tool_use)||{};
+  var day=new Date().toISOString().slice(0,10);
+  var all=sgUsage();
+  var t=all[day]||{in:0,out:0,search:0,calls:0};
+  t.in     += (u.input_tokens||0)+(u.cache_read_input_tokens||0);
+  t.out    += (u.output_tokens||0);
+  t.search += (st.web_search_requests||0);
+  t.calls  += 1;
+  all[day]=t;
+  try{ localStorage.setItem('sd_api_usage', JSON.stringify(all)); }catch(e){}
+  sgRenderUsage();
+  return t;
+}
+function sgCost(t){
+  if(!t) return 0;
+  return t.in*SG_PRICE.in + t.out*SG_PRICE.out + t.search*SG_PRICE.search;
+}
+function sgRenderUsage(){
+  var el=document.getElementById('sg-usage');
+  if(!el) return;
+  var day=new Date().toISOString().slice(0,10);
+  var t=sgUsage()[day];
+  if(!t){ el.textContent='오늘 사용 없음'; return; }
+  el.innerHTML='오늘 <b>'+t.calls+'회 호출</b> · 검색 '+t.search+'회 · '
+    +'입력 '+Math.round(t.in/1000)+'k · 출력 '+Math.round(t.out/1000)+'k → '
+    +'<b style="color:'+(sgCost(t)>5?'#c62828':'#2e7d32')+'">약 $'+sgCost(t).toFixed(2)+'</b>';
+}
+
 function sgCallAPI(body){
   var key=getApiKey();
   if(!key) return Promise.reject(new Error('API 키가 없습니다'));
@@ -6291,13 +6335,28 @@ function sgCallAPI(body){
         throw new Error(msg);
       });
     }
-    return r.json();
+    return r.json().then(function(d){ sgAddUsage(d); return d; });
   });
 }
 
 var _aiImgs = [];       // [{dataUrl, media_type, dong, name}]
 var _aiRows = [];       // [{dong, floor, name, ho, conf, src, use}]
 var AI_MAX_IMGS = 8;
+
+function sgShowUsage(){
+  var all=sgUsage();
+  var days=Object.keys(all).sort().reverse().slice(0,14);
+  if(!days.length){ alert('기록된 사용량이 없습니다.'); return; }
+  var tot=0;
+  var lines=days.map(function(d){
+    var t=all[d], c=sgCost(t); tot+=c;
+    return d+'  호출 '+String(t.calls).padStart(3)+'회 · 검색 '+String(t.search).padStart(4)+'회 → $'+c.toFixed(2);
+  });
+  alert('📊 API 사용량 (최근 '+days.length+'일)\n\n'+lines.join('\n')
+    +'\n──────────────────────────\n합계 약 $'+tot.toFixed(2)
+    +'\n\n※ 웹검색 $0.01/회 + 토큰 요금 기준 추정입니다.\n'
+    +'   정확한 청구액은 console.anthropic.com 에서 확인하세요.');
+}
 
 function aiStatus(msg, kind){
   var el=document.getElementById('ai-status');
@@ -6453,8 +6512,30 @@ function runAIFindUnits(){
   var addr=document.getElementById('ai-addr').value.trim();
   var alias=document.getElementById('ai-alias').value.trim();
   if(!addr){ alert('건물 도로명주소를 입력해 주세요.\n주소가 없으면 다른 지역 지점을 찾아옵니다.'); return; }
-  var targets=_aiRows.filter(function(x){return !x.ho;});
-  if(!targets.length){ alert('호실번호가 비어 있는 업소가 없습니다.'); return; }
+  // 이미 한 번 조회한 곳은 건너뛴다. 이게 없으면 재실행할 때마다 같은 업소를 또 검색해
+  // 비용만 두 배로 나간다(실제로 338곳을 두 번 조회해 약 $12가 청구됨).
+  var targets=_aiRows.filter(function(x){return !x.ho && !x.searched;});
+  var skipped=_aiRows.filter(function(x){return !x.ho && x.searched;}).length;
+  if(!targets.length){
+    if(skipped){
+      if(!confirm('조회하지 않은 업소가 없습니다.\n\n'
+        +'이전에 조회했지만 못 찾은 곳이 '+skipped+'곳 있습니다.\n'
+        +'다시 조회하면 그만큼 비용이 또 발생합니다.\n\n그래도 재조회할까요?')) return;
+      _aiRows.forEach(function(x){ if(!x.ho) x.searched=false; });
+      targets=_aiRows.filter(function(x){return !x.ho;});
+    } else {
+      alert('호실번호가 비어 있는 업소가 없습니다.'); return;
+    }
+  } else if(skipped){
+    showToast('ℹ️ 이전에 조회해 못 찾은 '+skipped+'곳은 건너뜁니다 (중복 과금 방지)', 5000);
+  }
+  // 한 번에 다 돌리기 부담되면 앞에서부터 일부만
+  var lim=prompt('몇 곳까지 조회할까요? (비용 조절용)\n'
+    +'조회 대상 '+targets.length+'곳 · 15곳당 약 $0.26\n\n'
+    +'전부 하려면 그대로 두고 확인을 누르세요.', String(targets.length));
+  if(lim===null) return;
+  var n=parseInt(String(lim).replace(/[^0-9]/g,''))||targets.length;
+  if(n<targets.length) targets=targets.slice(0,n);
 
   // 한 번에 다 보내면 응답 JSON 이 max_tokens 를 넘어 중간에서 잘리고,
   // 잘린 JSON 은 닫는 대괄호가 없어 파싱 결과가 통째로 0건이 된다.
@@ -6463,9 +6544,16 @@ function runAIFindUnits(){
   for(var k=0;k<targets.length;k+=AI_BATCH) batches.push(targets.slice(k,k+AI_BATCH));
 
   var mins=Math.ceil(batches.length*20/60);
-  if(!confirm('업소 '+targets.length+'곳을 '+batches.length+'회로 나눠 조회합니다.\n'
+  // 웹검색은 유료다. 회당 검색 6회·입력 6만 토큰을 기준으로 어림한다.
+  var estCost=batches.length*(6*SG_PRICE.search + 60000*SG_PRICE.in + 1200*SG_PRICE.out);
+  if(!confirm('⚠️ 이 작업은 Anthropic API 유료 호출입니다.\n\n'
+    +'조회 대상: '+targets.length+'곳 → '+batches.length+'회 호출\n'
+    +'예상 비용: 약 $'+estCost.toFixed(2)+' (웹검색 '+(batches.length*6)+'회 + 토큰)\n'
     +'예상 소요: 약 '+mins+'분\n\n'
-    +'진행 중에도 [중단]을 눌러 그때까지 찾은 결과만 쓸 수 있습니다.\n계속할까요?')) return;
+    +'· 이미 호실이 확인된 곳은 제외했습니다.\n'
+    +'· 한 번 조회해 못 찾은 곳은 다시 조회하지 않습니다.\n'
+    +'· 진행 중 [중단]을 누르면 그때까지 결과만 남고 이후 과금은 없습니다.\n\n'
+    +'계속할까요?')) return;
 
   var btn=document.getElementById('ai-loc-btn'), st=document.getElementById('ai-loc-status');
   var stop=document.getElementById('ai-loc-stop'), bar=document.getElementById('ai-loc-bar');
@@ -6538,6 +6626,7 @@ function runAIFindUnits(){
     })
     .catch(function(e){ failed++; console.warn('[AI] '+(bi+1)+'회차 실패',e); })
     .then(function(){
+      batch.forEach(function(x){ x.searched=true; });   // 조회 완료 표시 (재조회 방지)
       done+=batch.length;
       renderAIResult();               // 중간 결과를 바로 보여준다
       setTimeout(function(){ step(bi+1); }, 400);
