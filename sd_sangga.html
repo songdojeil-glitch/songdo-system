@@ -144,6 +144,8 @@ body.zoom-mode .zoomable:hover{box-shadow:none !important;}
 <div style="display:flex;gap:8px;align-items:center;margin-bottom:1rem;flex-wrap:wrap">
   <div id="bldg-tabs" style="display:flex;gap:6px;flex-wrap:wrap;flex:1"></div>
   <button onclick="openAddBldg()" class="btn-s" style="font-size:11px">+ 건물 추가</button>
+  <button onclick="sgDiagStorage()" class="btn-s" style="font-size:11px;color:#78909c" title="어느 저장소에 무엇이 들어 있는지 확인">🔍 저장 점검</button>
+  <button onclick="sgForceSave()" class="btn-s" style="font-size:11px;color:#2e7d32" title="화면 내용을 양쪽 저장소에 강제로 다시 씁니다">💾 강제 저장</button>
 </div>
 
 <!-- 메인 탭 -->
@@ -1761,13 +1763,81 @@ function addBldg(){
   }
 }
 
-function saveBuildingsToStorage(){
-  try{
-    localStorage.setItem('sd_buildings', JSON.stringify(BUILDINGS));
-    if(window.storage && typeof window.storage.set === 'function'){
-      window.storage.set('sd_buildings', JSON.stringify(BUILDINGS));
+/* ══════════════════════════════════════════════════════════
+   건물 데이터 저장 — localStorage 와 Firebase 둘 다에 쓴다.
+   한쪽만 쓰면 읽을 때 옛 사본에 가려 최근 작업이 사라진 것처럼 보인다.
+   건물마다 _ts(갱신시각)를 남겨, 읽을 때 어느 쪽이 최신인지 판단한다.
+   ══════════════════════════════════════════════════════════ */
+function sgStampAll(list){
+  var now=Date.now();
+  (list||[]).forEach(function(b){ if(b) b._ts=now; });
+  return list;
+}
+function sgWriteBoth(list){
+  var json;
+  try{ json=JSON.stringify(list); }
+  catch(e){ console.error('[SD상가] 직렬화 실패', e); return Promise.resolve(false); }
+
+  var lsOk=true;
+  try{ localStorage.setItem('sd_buildings', json); }
+  catch(e){ lsOk=false; console.warn('[SD상가] 로컬 저장 실패', e); }
+
+  if(!window.storage || typeof window.storage.set!=='function'){
+    if(!lsOk) showToast('❌ 저장 실패 — 브라우저 저장소에 쓸 수 없습니다', 9000);
+    return Promise.resolve(lsOk);
+  }
+  return window.storage.set('sd_buildings', json).then(function(r){
+    if(!r){
+      var e=window._sdLastError;
+      showToast('❌ 서버 저장 실패'+(lsOk?' — 이 기기에만 남았습니다':'')
+        +(e?(' · '+(e.code||'')+' '+e.msg):''), 9000);
+      console.error('[SD상가] 서버 저장 실패', e);
+      return false;
     }
-  }catch(e){ console.error('건물 저장 오류', e); }
+    return true;
+  });
+}
+
+function saveBuildingsToStorage(){
+  return sgWriteBoth(sgStampAll(BUILDINGS));
+}
+
+// 저장 상태 점검 — 어느 저장소에 무엇이 들어 있는지 그대로 보여준다
+function sgDiagStorage(){
+  var ls=null, lsErr='';
+  try{ var raw=localStorage.getItem('sd_buildings'); ls=raw?JSON.parse(raw):null; }catch(e){ lsErr=e.message; }
+  var fmt=function(list){
+    if(!list) return '  (없음)';
+    return list.map(function(b){
+      var n=(b.props||b.deltas||[]).length;
+      var t=b._ts?new Date(b._ts).toLocaleString('ko-KR',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}):'시각없음';
+      return '  · '+(b.name||b.id)+'  '+n+'건  ['+t+']';
+    }).join('\n');
+  };
+  var show=function(fb){
+    var sz=0; try{ sz=(localStorage.getItem('sd_buildings')||'').length; }catch(e){}
+    alert('📦 건물 데이터 저장 상태\n\n'
+      +'[이 기기 localStorage] '+(ls?ls.length+'개 건물 · '+Math.round(sz/1024)+'KB':'(비어 있음)')+(lsErr?' · 오류 '+lsErr:'')+'\n'
+      +fmt(ls)+'\n\n'
+      +'[서버 Firebase] '+(fb?fb.length+'개 건물':'(비어 있음)')+'\n'
+      +fmt(fb)+'\n\n'
+      +'화면에 표시 중: '+BUILDINGS.length+'개\n'
+      +BUILDINGS.map(function(b){ return '  · '+b.name+'  '+((b.props||[]).length)+'건'; }).join('\n'));
+  };
+  if(window.storage && typeof window.storage.get==='function'){
+    window.storage.get('sd_buildings').then(function(r){
+      var fb=null; if(r&&r.value){ try{ fb=JSON.parse(r.value); }catch(e){} }
+      show(fb);
+    }).catch(function(){ show(null); });
+  } else show(null);
+}
+// 화면 내용을 두 저장소에 강제로 다시 쓴다 (사본이 어긋났을 때 복구용)
+function sgForceSave(){
+  if(!confirm('지금 화면의 건물 '+BUILDINGS.length+'개를 이 기기와 서버 양쪽에 다시 저장합니다.\n\n'
+    +BUILDINGS.map(function(b){return '· '+b.name+' ('+((b.props||[]).length)+'건)';}).join('\n')
+    +'\n\n계속할까요?')) return;
+  var r=saveBuildingsToStorage();
+  if(r&&r.then) r.then(function(ok){ showToast(ok?'✅ 양쪽에 저장했습니다':'⚠️ 서버 저장 실패 — 이 기기에만 저장됨', 8000); });
 }
 
 function initBuildings(){
@@ -1815,16 +1885,52 @@ function initBuildings(){
     loadAcct();
     loadStaff();
   }
-  // 1) localStorage 우선
-  var lsRaw=null; try{ lsRaw=localStorage.getItem('sd_buildings'); }catch(e){}
-  if(lsRaw){ try{ var lsData=JSON.parse(lsRaw); if(lsData&&lsData.length>0){ doInit(lsData); return; } }catch(e){} }
-  // 2) window.storage (Artifacts 환경)
+  /* 두 사본을 합쳐서 쓴다.
+     한쪽을 우선해 다른 쪽을 무시하면, 그쪽에만 있던 건물이 통째로 사라진다.
+     · 어느 한쪽에만 있는 건물 → 무조건 살린다
+     · 양쪽에 다 있는 건물   → _ts(갱신시각)가 늦은 쪽을 쓴다 */
+  var mergeBldgs=function(a, b){
+    var map={}, order=[];
+    var put=function(list){
+      (list||[]).forEach(function(x){
+        if(!x||!x.id) return;
+        if(!map[x.id]){ map[x.id]=x; order.push(x.id); return; }
+        var cur=map[x.id];
+        var tn=+(x._ts||0), tc=+(cur._ts||0);
+        if(tn>tc) map[x.id]=x;
+        else if(tn===tc){
+          // 시각이 같거나 둘 다 없으면 호실이 더 많은 쪽 (정보를 잃지 않는 방향)
+          var nn=(x.props||x.deltas||[]).length, nc=(cur.props||cur.deltas||[]).length;
+          if(nn>nc) map[x.id]=x;
+        }
+      });
+    };
+    put(a); put(b);
+    return order.map(function(id){ return map[id]; });
+  };
+
+  var lsData=null;
+  try{ var lsRaw=localStorage.getItem('sd_buildings'); if(lsRaw) lsData=JSON.parse(lsRaw); }catch(e){}
+
+  var finish=function(fbData){
+    var merged=mergeBldgs(lsData, fbData);
+    var lsN=(lsData||[]).length, fbN=(fbData||[]).length;
+    if(merged.length>Math.max(lsN,fbN)){
+      console.warn('[SD상가] 사본 불일치 병합: 로컬 '+lsN+' · 서버 '+fbN+' → '+merged.length);
+      setTimeout(function(){
+        sgWriteBoth(merged);
+        showToast('🔄 저장본이 서로 달라 합쳤습니다 (로컬 '+lsN+' · 서버 '+fbN+' → '+merged.length+'개 건물)', 8000);
+      }, 1500);
+    }
+    doInit(merged);
+  };
+
   if(window.storage && typeof window.storage.get==='function'){
     window.storage.get('sd_buildings').then(function(r){
-      var loaded=[]; if(r&&r.value){ try{ loaded=JSON.parse(r.value); }catch(e){} }
-      doInit(loaded);
-    }).catch(function(){ doInit([]); });
-  } else { doInit([]); }
+      var fb=null; if(r&&r.value){ try{ fb=JSON.parse(r.value); }catch(e){} }
+      finish(fb);
+    }).catch(function(){ finish(null); });
+  } else { finish(null); }
 }
 
 
@@ -2542,9 +2648,7 @@ function saveBldgs(){
     }
     return b;
   });
-  window.storage.set('sd_buildings', JSON.stringify(saveData)).catch(function(e){
-    console.warn('[SD상가] 저장 실패:', e);
-  });
+  return sgWriteBoth(sgStampAll(saveData));
 }
 
 function renderBldgTabs(){
