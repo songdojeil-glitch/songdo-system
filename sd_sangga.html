@@ -4983,7 +4983,30 @@ function renderDash(){
   }).join('');
 }
 
-// 호실번호 앞 영문이 동 표기다 (A101 → A동). 없으면 동이 나뉘지 않은 건물.
+/* 동 판별 — 층을 먼저 본다.
+   지하 호실은 'B01호'처럼 번호가 B로 시작해 B동으로 오인된다.
+   실제로는 동 구분 없는 지하층이므로 별도 그룹('B1F')으로 묶는다. */
+function isBasementFloor(f){
+  var t=String(f||'').replace(/\s/g,'');
+  return /지하/.test(t) || /^B\d/i.test(t) || /^BF/i.test(t);
+}
+function dongKeyOf(ho, floor){
+  if(isBasementFloor(floor)) return '_B';          // 지하 — 맨 앞에 오도록 '_' 접두
+  var m=String(ho||'').match(/^([A-Za-z])/);
+  return m?m[1].toUpperCase():'';
+}
+// 정렬 — 지하를 항상 맨 앞에 둔다 ('_' 는 아스키에서 대문자보다 뒤라 그냥 정렬하면 끝으로 밀린다)
+function dongCmp(a, b){
+  if(a===b) return 0;
+  if(a==='_B') return -1;
+  if(b==='_B') return 1;
+  return String(a).localeCompare(String(b));
+}
+function dongLabel(k, floor){
+  if(k==='_B') return (String(floor||'').replace(/\s/g,'')||'B1F');
+  return k+'동';
+}
+// 이전 이름 유지 (호실만으로 판단해야 하는 곳)
 function hoDong(ho){
   var m=String(ho||'').match(/^([A-Za-z])/);
   return m?m[1].toUpperCase():'';
@@ -4994,16 +5017,21 @@ function renderTable(){
   if(!props || props.length===0) return;
 
   // 동이 나뉜 건물에서만 동 필터·묶기를 보여준다
-  var dongs={};
-  props.forEach(function(p){ var d=hoDong(p.ho); if(d) dongs[d]=(dongs[d]||0)+1; });
-  var dongList=Object.keys(dongs).sort();
+  var dongs={}, dongFloor={};
+  props.forEach(function(p){
+    var d=dongKeyOf(p.ho, p.floor);
+    if(!d) return;
+    dongs[d]=(dongs[d]||0)+1;
+    if(d==='_B' && !dongFloor[d]) dongFloor[d]=p.floor;
+  });
+  var dongList=Object.keys(dongs).sort(dongCmp);   // 지하가 맨 앞
   var hasDong=dongList.length>1;
   var dSel=document.getElementById('flt-dong');
   var gWrap=document.getElementById('flt-grp-wrap');
   if(dSel){
     dSel.style.display=hasDong?'':'none';
     var want='<option value="">전체 동</option>'
-      +dongList.map(function(d){ return '<option value="'+d+'">'+d+'동 ('+dongs[d]+')</option>'; }).join('');
+      +dongList.map(function(d){ return '<option value="'+d+'">'+dongLabel(d,dongFloor[d])+' ('+dongs[d]+')</option>'; }).join('');
     if(dSel.getAttribute('data-sig')!==want){    // 목록이 바뀔 때만 다시 그려 선택값을 지키다
       var keep=dSel.value;
       dSel.innerHTML=want; dSel.setAttribute('data-sig',want);
@@ -5017,7 +5045,7 @@ function renderTable(){
   var fs=document.getElementById('flt-status').value;
   var fq=document.getElementById('flt-q').value.toLowerCase();
   var f=props.filter(function(p){
-    if(fd && hoDong(p.ho)!==fd) return false;
+    if(fd && dongKeyOf(p.ho,p.floor)!==fd) return false;
     return(!ff||p.floor===ff)&&(!fs||p.status===fs)&&(!fq||p.ho.toLowerCase().includes(fq)||(p.tenant||'').toLowerCase().includes(fq));
   });
 
@@ -5027,8 +5055,8 @@ function renderTable(){
     // 동 → 원래 순서 로 정렬한다 (층 순서는 원본 배열 순서를 그대로 따른다)
     var ord={}; props.forEach(function(p,i){ ord[p.ho]=i; });
     f=f.slice().sort(function(a,b){
-      var da=hoDong(a.ho), db=hoDong(b.ho);
-      if(da!==db) return da.localeCompare(db);
+      var da=dongKeyOf(a.ho,a.floor), db=dongKeyOf(b.ho,b.floor);
+      if(da!==db) return dongCmp(da,db);   // 지하가 항상 먼저
       return ord[a.ho]-ord[b.ho];
     });
   }
@@ -5037,15 +5065,15 @@ function renderTable(){
   document.getElementById('tbl-body').innerHTML=f.map(function(p){
     var head='';
     if(grouping){
-      var d=hoDong(p.ho)||'기타';
+      var d=dongKeyOf(p.ho,p.floor)||'기타';
       if(d!==lastDong){
         lastDong=d;
-        var mine=f.filter(function(x){ return (hoDong(x.ho)||'기타')===d; });
+        var mine=f.filter(function(x){ return (dongKeyOf(x.ho,x.floor)||'기타')===d; });
         var leased=mine.filter(function(x){ return ['선임대','분양&임대','분양&자영'].indexOf(x.status)>=0; }).length;
         var sold=mine.filter(function(x){ return x.status==='분양'; }).length;
         var un=mine.filter(function(x){ return x.status==='미분양'; }).length;
         head='<tr style="background:#eef4fb"><td colspan="15" style="padding:7px 10px;font-size:12px;font-weight:800;color:#1565c0">'
-          +'🏢 '+d+'동 <span style="font-weight:400;color:#7a92a8;font-size:11px">· '+mine.length+'호실'
+          +(d==='_B'?'🅿️ ':'🏢 ')+dongLabel(d,p.floor)+' <span style="font-weight:400;color:#7a92a8;font-size:11px">· '+mine.length+'호실'
           +(leased?' · 임대 '+leased:'')+(sold?' · 분양 '+sold:'')+(un?' · 미분양 '+un:'')+'</span></td></tr>';
       }
     }
@@ -6839,16 +6867,23 @@ function renderAIInfo(){
   };
   // 이 건물의 호실에서 동·층을 모두 꺼내 빈 층까지 자리를 만들어 둔다
   (b.props||[]).forEach(function(p){
-    var ho=String(p.ho||'');
-    var m=ho.match(/^([A-Za-z])/);
-    var d=m?m[1].toUpperCase():'-';
+    var d=dongKeyOf(p.ho, p.floor) || '-';
     addFloor(d, p.floor||'층미상');
   });
   // 인식 결과의 동·층도 합친다 (호실 데이터에 없는 층이 안내판에 있을 수 있다)
-  rows.forEach(function(r){ addFloor(r.dong||'-', r.floor||'층미상'); });
+  // 지하는 동 구분이 없다. A~D동 안내판에 똑같이 찍혀 있어 그대로 두면 네 번 나온다.
+  var rowKey=function(r){ return isBasementFloor(r.floor) ? '_B' : (r.dong||'-'); };
+  var seenBase={};
+  rows.forEach(function(r){ addFloor(rowKey(r), r.floor||'층미상'); });
   rows.forEach(function(r){
-    var d=r.dong||'-', f=r.floor||'층미상';
+    var d=rowKey(r), f=r.floor||'층미상';
     addFloor(d,f);
+    if(d==='_B'){
+      // 같은 업소가 여러 동 사진에서 중복 인식된 것은 한 번만 남긴다
+      var k=String(r.name||'').replace(/\s/g,'');
+      if(seenBase[k]) return;
+      seenBase[k]=1;
+    }
     grp[d][f].push(r);
   });
   // '미배정만' 보기에서는 남은 업소가 없는 층까지 늘어놓으면 오히려 방해된다
@@ -6866,10 +6901,11 @@ function renderAIInfo(){
     if(k.charAt(0)==='B') return -parseInt(k.slice(1)||0);
     return parseInt(k.slice(1)||0);
   };
-  var html=Object.keys(grp).sort().map(function(d){
+  var html=Object.keys(grp).sort(dongCmp).map(function(d){
     var floors=Object.keys(grp[d]).sort(function(a,c){ return floorOrder(c)-floorOrder(a); });
     return '<div style="margin-bottom:12px">'
-      +(d!=='-'?'<div style="font-size:12px;font-weight:800;color:#1565c0;margin-bottom:6px">'+d+'동</div>':'')
+      +(d!=='-'?'<div style="font-size:12px;font-weight:800;color:'+(d==='_B'?'#e65100':'#1565c0')+';margin-bottom:6px">'
+          +(d==='_B'?'🅿️ 지하 (동 구분 없음)':'🏢 '+d+'동')+'</div>':'')
       +floors.map(function(f){
           var list=grp[d][f].slice().sort(function(x,y){
             var ax=(assigned[String(x.name).trim()]||[])[0]||'', ay=(assigned[String(y.name).trim()]||[])[0]||'';
@@ -6878,7 +6914,7 @@ function renderAIInfo(){
           });
           // 이 층에서 아직 입점업종이 비어 있는 호실만 고를 수 있게 한다
           var free=(b.props||[]).filter(function(p){
-            if(d!=='-' && String(p.ho).toUpperCase().indexOf(d.toUpperCase())!==0) return false;
+            if(dongKeyOf(p.ho,p.floor)!==d && d!=='-') return false;
             return aiFloorKey(p.floor)===aiFloorKey(f) && !p.tenant;
           });
           var opts='<option value="">＋ 호실</option>'
@@ -6946,9 +6982,9 @@ function aiInfoAssign(i, ho){
   // '전체' — 그 업소가 속한 동·층에서 비어 있는 호실을 한 번에 붙인다
   // (한 층을 통째로 쓰는 병원·학원 등에 쓴다)
   if(ho==='__ALL__'){
-    var d=(r.dong||'').toUpperCase();
+    var dk=isBasementFloor(r.floor) ? '_B' : (r.dong||'').toUpperCase();
     var free=(b.props||[]).filter(function(p){
-      if(d && String(p.ho).toUpperCase().indexOf(d)!==0) return false;
+      if(dk && dongKeyOf(p.ho,p.floor)!==dk) return false;
       return aiFloorKey(p.floor)===aiFloorKey(r.floor) && !p.tenant;
     });
     if(!free.length){ showToast('⚠️ 비어 있는 호실이 없습니다.'); renderAIInfo(); return; }
