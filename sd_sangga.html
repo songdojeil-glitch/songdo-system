@@ -190,6 +190,7 @@ body.zoom-mode .zoomable:hover{box-shadow:none !important;}
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
       <p class="sec" style="margin:0">🏬 전체 호실 현황</p>
       <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <select id="flt-dong" class="fi" style="width:auto;font-size:12px;display:none" onchange="renderTable()"><option value="">전체 동</option></select>
         <select id="flt-floor" class="fi" style="width:auto;font-size:12px" onchange="renderTable()"><option value="">전체 층</option></select>
         <select id="flt-status" class="fi" style="width:auto;font-size:12px" onchange="renderTable()">
           <option value="">전체 현황</option>
@@ -197,6 +198,9 @@ body.zoom-mode .zoomable:hover{box-shadow:none !important;}
           <option>분양&자영</option><option>미분양</option><option>해제</option>
         </select>
         <input id="flt-q" type="text" class="fi" style="width:120px;font-size:12px" placeholder="호수/업종 검색" oninput="renderTable()">
+        <label id="flt-grp-wrap" style="display:none;align-items:center;gap:4px;font-size:11px;color:#666;cursor:pointer">
+          <input type="checkbox" id="flt-group-dong" checked onchange="renderTable()"> 동별로 묶기
+        </label>
       </div>
     </div>
     <!-- 상단 스크롤바 -->
@@ -4979,22 +4983,77 @@ function renderDash(){
   }).join('');
 }
 
+// 호실번호 앞 영문이 동 표기다 (A101 → A동). 없으면 동이 나뉘지 않은 건물.
+function hoDong(ho){
+  var m=String(ho||'').match(/^([A-Za-z])/);
+  return m?m[1].toUpperCase():'';
+}
+
 function renderTable(){
   var props = getCurProps();
   if(!props || props.length===0) return;
+
+  // 동이 나뉜 건물에서만 동 필터·묶기를 보여준다
+  var dongs={};
+  props.forEach(function(p){ var d=hoDong(p.ho); if(d) dongs[d]=(dongs[d]||0)+1; });
+  var dongList=Object.keys(dongs).sort();
+  var hasDong=dongList.length>1;
+  var dSel=document.getElementById('flt-dong');
+  var gWrap=document.getElementById('flt-grp-wrap');
+  if(dSel){
+    dSel.style.display=hasDong?'':'none';
+    var want='<option value="">전체 동</option>'
+      +dongList.map(function(d){ return '<option value="'+d+'">'+d+'동 ('+dongs[d]+')</option>'; }).join('');
+    if(dSel.getAttribute('data-sig')!==want){    // 목록이 바뀔 때만 다시 그려 선택값을 지키다
+      var keep=dSel.value;
+      dSel.innerHTML=want; dSel.setAttribute('data-sig',want);
+      if(dongList.indexOf(keep)>=0) dSel.value=keep;
+    }
+  }
+  if(gWrap) gWrap.style.display=hasDong?'inline-flex':'none';
+
+  var fd=(dSel&&hasDong)?dSel.value:'';
   var ff=document.getElementById('flt-floor').value;
   var fs=document.getElementById('flt-status').value;
   var fq=document.getElementById('flt-q').value.toLowerCase();
   var f=props.filter(function(p){
+    if(fd && hoDong(p.ho)!==fd) return false;
     return(!ff||p.floor===ff)&&(!fs||p.status===fs)&&(!fq||p.ho.toLowerCase().includes(fq)||(p.tenant||'').toLowerCase().includes(fq));
   });
+
+  var gEl=document.getElementById('flt-group-dong');
+  var grouping = hasDong && gEl && gEl.checked;
+  if(grouping){
+    // 동 → 원래 순서 로 정렬한다 (층 순서는 원본 배열 순서를 그대로 따른다)
+    var ord={}; props.forEach(function(p,i){ ord[p.ho]=i; });
+    f=f.slice().sort(function(a,b){
+      var da=hoDong(a.ho), db=hoDong(b.ho);
+      if(da!==db) return da.localeCompare(db);
+      return ord[a.ho]-ord[b.ho];
+    });
+  }
   var colors={'선임대':'#c62828','분양&임대':'#1565c0','분양':'#2e7d32','미분양':'#666','분양&자영':'#e65100','해제':'#f9a825'};
+  var lastDong=null;
   document.getElementById('tbl-body').innerHTML=f.map(function(p){
+    var head='';
+    if(grouping){
+      var d=hoDong(p.ho)||'기타';
+      if(d!==lastDong){
+        lastDong=d;
+        var mine=f.filter(function(x){ return (hoDong(x.ho)||'기타')===d; });
+        var leased=mine.filter(function(x){ return ['선임대','분양&임대','분양&자영'].indexOf(x.status)>=0; }).length;
+        var sold=mine.filter(function(x){ return x.status==='분양'; }).length;
+        var un=mine.filter(function(x){ return x.status==='미분양'; }).length;
+        head='<tr style="background:#eef4fb"><td colspan="15" style="padding:7px 10px;font-size:12px;font-weight:800;color:#1565c0">'
+          +'🏢 '+d+'동 <span style="font-weight:400;color:#7a92a8;font-size:11px">· '+mine.length+'호실'
+          +(leased?' · 임대 '+leased:'')+(sold?' · 분양 '+sold:'')+(un?' · 미분양 '+un:'')+'</span></td></tr>';
+      }
+    }
     var trClick='onclick="openHoModal(\''+p.ho+'\')"';
     var sc=statusColor(p.status||'미분양');
     var yc=p.yieldCur>0?(p.yieldCur>=5?'color:#2e7d32':p.yieldCur>=4?'color:#f57f17':'color:#c62828'):'color:#aaa';
     var pyPerM = p.supAreaPy>0 ? fmt(Math.round(p.price/p.supAreaPy)) : '—';
-    return'<tr class="row-click" '+trClick+'><td style="font-weight:500">'+p.ho+'</td><td style="font-size:11px;color:#888">'+p.floor+'</td>'
+    return head+'<tr class="row-click" '+trClick+'><td style="font-weight:500">'+p.ho+'</td><td style="font-size:11px;color:#888">'+p.floor+'</td>'
       +'<td style="font-size:11px">'+p.area+'㎡</td>'
       +'<td style="font-size:11px">'+p.areaPy+'평</td>'
       +'<td style="font-size:11px">'+p.supArea+'㎡</td>'
