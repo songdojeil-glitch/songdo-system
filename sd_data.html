@@ -2119,6 +2119,14 @@ tr.naver-fav>td:first-child{border-left:3px solid #b8860b;}
     </div>
   </div>
 
+  <!-- 필터: 물건구분(오피스텔/생숙) -->
+  <div class="filter-row" id="op-kind-row" style="display:none">
+    <span class="filter-label">물건구분</span>
+    <button class="filter-btn on" onclick="opSet('kind','all',this)">전체 <span id="op-cnt-all"></span></button>
+    <button class="filter-btn" onclick="opSet('kind','오피스텔',this)">오피스텔 <span id="op-cnt-op"></span></button>
+    <button class="filter-btn" onclick="opSet('kind','생숙',this)">생숙 <span id="op-cnt-ss"></span></button>
+  </div>
+
   <!-- 필터: 거래구분 -->
   <div class="filter-row">
     <span class="filter-label">거래구분</span>
@@ -5206,22 +5214,30 @@ function _uploadNaverFiles(input, callback){
     reader.onload=function(e){
       try{
         var wb=XLSX.read(e.target.result,{type:'array'});
-        var sh=wb.Sheets[wb.SheetNames[0]];
-        var allArr=XLSX.utils.sheet_to_json(sh,{header:1,defval:null});
-        var hdr=allArr[0]||[];
-        var dupNmIdx=-1;
-        for(var hi=0;hi<hdr.length;hi++){
-          var hv=hdr[hi]?String(hdr[hi]):'';
-          if(hv.indexOf('중복')>=0&&hv.indexOf('업소명')>=0){dupNmIdx=hi;break;}
-        }
-        var rows=XLSX.utils.sheet_to_json(sh,{header:0,defval:null});
-        if(dupNmIdx>=0){
+        // 시트를 전부 읽는다. 오피스텔·생숙을 한 화면에서 뽑으면 시트가 2개로 나뉠 수 있고,
+        // 첫 시트만 읽으면 나머지 종류가 통째로 빠진다. 시트명도 종류 판정에 쓴다.
+        var rows=[];
+        wb.SheetNames.forEach(function(sn){
+          var sh=wb.Sheets[sn];
+          var allArr=XLSX.utils.sheet_to_json(sh,{header:1,defval:null});
+          if(!allArr.length) return;
+          var hdr=allArr[0]||[];
+          var dupNmIdx=-1;
+          for(var hi=0;hi<hdr.length;hi++){
+            var hv=hdr[hi]?String(hdr[hi]):'';
+            if(hv.indexOf('중복')>=0&&hv.indexOf('업소명')>=0){dupNmIdx=hi;break;}
+          }
+          var srows=XLSX.utils.sheet_to_json(sh,{header:0,defval:null});
           var dataArr=allArr.slice(1);
-          rows.forEach(function(r,ri){
-            var rawVal=dataArr[ri]?dataArr[ri][dupNmIdx]:null;
-            r['__dupNm__']=rawVal?String(rawVal):'';
+          srows.forEach(function(r,ri){
+            if(dupNmIdx>=0){
+              var rawVal=dataArr[ri]?dataArr[ri][dupNmIdx]:null;
+              r['__dupNm__']=rawVal?String(rawVal):'';
+            }
+            r['__sheet__']=sn;
           });
-        }
+          rows=rows.concat(srows);
+        });
         resultBuckets[fileIdx]=rows;
       }catch(err){resultBuckets[fileIdx]=[];}
       remaining--;
@@ -5236,7 +5252,7 @@ function _uploadNaverFiles(input, callback){
 }
 
 // ── OP/생숙 필터 상태
-var G_op = { type:'all', area:'all' };
+var G_op = { type:'all', area:'all', kind:'all' };
 function opSet(key,val,btn){
   G_op[key]=val;
   setFilterBtn(btn.parentElement.querySelectorAll('.filter-btn'),btn);
@@ -5244,17 +5260,40 @@ function opSet(key,val,btn){
 }
 
 // ── OP/생숙 업로드
+/* 오피스텔 / 생숙 판별
+   우선순위: ① 행의 '물건구분' 열 ② 시트명 ③ 단지명에 든 표기
+   한 화면에서 같이 추출해도 매물마다 정확히 갈리도록 행 단위로 본다. */
+function opKindOf(r){
+  var v='';
+  ['물건구분','물건종류','매물종류','유형','물건유형'].forEach(function(k){
+    if(!v && r[k]!=null && String(r[k]).trim()) v=String(r[k]).trim();
+  });
+  var pick=function(t){
+    if(!t) return '';
+    if(t.indexOf('생숙')>=0 || t.indexOf('생활형숙박')>=0) return '생숙';
+    if(t.indexOf('오피스텔')>=0 || t.indexOf('OP')>=0)      return '오피스텔';
+    return '';
+  };
+  return pick(v) || pick(r['__sheet__']) || pick(r['단지명']) || '오피스텔';
+}
+
 function onUploadNaverOp(input){
   _uploadNaverFiles(input, function(allRows, fileCnt){
+    var kindOf={};
+    allRows.forEach(function(r){ if(r&&r.단지명) kindOf[String(r.단지명)+'|'+String(r.전용m2||r['전용m²']||'')+'|'+String(r.가격||'')]=opKindOf(r); });
     var newParsed=parseNaverRows(allRows);
+    // parseNaverRows 는 원본 행 순서를 유지하므로 같은 순서로 종류를 붙인다
+    newParsed.forEach(function(r,i){ r.매물구분 = allRows[i] ? opKindOf(allRows[i]) : '오피스텔'; });
     if(G.naverOpData&&G.naverOpData.length>0){
       var newSet={};
       newParsed.forEach(function(r){if(r.단지명)newSet[r.단지명]=true;});
       var kept=G.naverOpData.filter(function(r){return !newSet[r.단지명];});
       G.naverOpData=kept.concat(newParsed);
     } else { G.naverOpData=newParsed; }
-    document.getElementById('op-status').textContent='✅ '+G.naverOpData.length+'건';
-    showToast('✅ OP/생숙 '+G.naverOpData.length+'건 로드');
+    var opN=G.naverOpData.filter(function(r){return r.매물구분==='오피스텔';}).length;
+    var ssN=G.naverOpData.filter(function(r){return r.매물구분==='생숙';}).length;
+    document.getElementById('op-status').textContent='✅ '+G.naverOpData.length+'건 (OP '+opN+' · 생숙 '+ssN+')';
+    showToast('✅ OP/생숙 '+G.naverOpData.length+'건 로드 — 오피스텔 '+opN+' · 생숙 '+ssN);
     renderTab7();
   });
 }
@@ -5269,9 +5308,18 @@ function renderTab7(){
   document.getElementById('op-empty').style.display='none';
   document.getElementById('op-content').style.display='block';
 
+  // 두 종류가 섞여 있을 때만 물건구분 필터를 보여준다
+  var kAll=G.naverOpData, kOp=0, kSs=0;
+  kAll.forEach(function(r){ if((r.매물구분||'오피스텔')==='생숙') kSs++; else kOp++; });
+  var kRow=document.getElementById('op-kind-row');
+  if(kRow) kRow.style.display=(kOp>0&&kSs>0)?'':'none';
+  var setTxt=function(id,v){ var e=document.getElementById(id); if(e) e.textContent='('+v+')'; };
+  setTxt('op-cnt-all',kAll.length); setTxt('op-cnt-op',kOp); setTxt('op-cnt-ss',kSs);
+
   var favOnly=(document.getElementById('op-fav-only')||{}).checked||false;
   var search=(document.getElementById('op-search-input')||{}).value||'';
   var rows=G.naverOpData.filter(function(r){
+    if(G_op.kind!=='all'&&(r.매물구분||'오피스텔')!==G_op.kind) return false;
     if(G_op.type!=='all'&&r.거래유형!==G_op.type) return false;
     var sqm=parseFloat(r.전용)||0;
     var ac=Math.floor(sqm/3.3/10)*10;
