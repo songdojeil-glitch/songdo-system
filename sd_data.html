@@ -5395,6 +5395,22 @@ function deleteAllSanggaData(){
 }
 
 // ── 상가/사무실 업로드
+/* 상가 / 사무실 판별
+   우선순위: ① 행의 '물건구분' 열 ② 그 밖의 유형 표기 ③ 파일명
+   변환기는 매물마다 '일반상가·복합상가·단지내상가·사무실'을 물건구분 열에 넣어준다.
+   이 열을 쓰면 한 화면에서 상가·사무실을 같이 뽑아도 정확히 갈린다. */
+function sgCatOf(r){
+  var v='';
+  ['물건구분','물건종류','매물종류','유형','물건유형'].forEach(function(k){
+    if(!v && r[k]!=null && String(r[k]).trim()) v=String(r[k]).trim();
+  });
+  if(v){
+    if(v.indexOf('사무실')>=0 || v.indexOf('오피스')>=0) return '사무실';
+    if(v.indexOf('상가')>=0 || v.indexOf('점포')>=0)     return '상가';
+  }
+  return r['__fileCat__']||'';     // 열이 없으면 예전처럼 파일명으로
+}
+
 function onUploadNaverSangga(input){
   if(!input.files||!input.files.length) return;
   var files=Array.from(input.files);
@@ -5564,7 +5580,9 @@ function parseNaverSanggaRows(allRows){
     var isSdj=!!(r['자사 매물 여부']||r['자사매물']||'');
     return {
       단지명:nm, 거래유형:normType, 타입:'-',
-      매물구분: r['__fileCat__']||'',
+      // 매물마다 붙어 있는 '물건구분'(일반상가·복합상가·단지내상가·사무실)을 먼저 본다.
+      // 파일명만 보면 한 화면에서 상가·사무실을 같이 추출했을 때 전부 한 종류로 등록된다.
+      매물구분: sgCatOf(r),
       공구: r['__fileDist__']||'',
       전용:parseNaverSqm(rawSqm), 호가:hoGa,
       층:parseNaverFloor(rawFloor),
