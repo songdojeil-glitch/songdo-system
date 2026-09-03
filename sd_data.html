@@ -2137,12 +2137,13 @@ tr.naver-fav>td:first-child{border-left:3px solid #b8860b;}
     <button class="filter-btn" onclick="opSet('type','매매',this)">매매</button>
     <button class="filter-btn" onclick="opSet('type','전세',this)">전세</button>
     <button class="filter-btn" onclick="opSet('type','월세',this)">월세</button>
-    <span class="filter-label" style="margin-left:12px">면적</span>
+    <span class="filter-label" style="margin-left:12px">전용면적</span>
     <button class="filter-btn on" onclick="opSet('area','all',this)">전체</button>
-    <button class="filter-btn" onclick="opSet('area','20',this)">20평대</button>
-    <button class="filter-btn" onclick="opSet('area','30',this)">30평대</button>
-    <button class="filter-btn" onclick="opSet('area','40',this)">40평대</button>
-    <button class="filter-btn" onclick="opSet('area','50',this)">50평대이상</button>
+    <button class="filter-btn" onclick="opSet('area','u30',this)">30㎡ 미만 <span id="op-a1"></span></button>
+    <button class="filter-btn" onclick="opSet('area','30',this)">30~50㎡ <span id="op-a2"></span></button>
+    <button class="filter-btn" onclick="opSet('area','50',this)">50~70㎡ <span id="op-a3"></span></button>
+    <button class="filter-btn" onclick="opSet('area','70',this)">70~85㎡ <span id="op-a4"></span></button>
+    <button class="filter-btn" onclick="opSet('area','85',this)">85㎡ 이상 <span id="op-a5"></span></button>
   </div>
 
   <!-- 필터: 단지검색 + 관심매물 -->
@@ -5280,6 +5281,23 @@ function _uploadNaverFiles(input, callback){
 
 // ── OP/생숙 필터 상태
 var G_op = { type:'all', area:'all', kind:'all' };
+/* 전용 ㎡ 구간 — 30 미만 / 30~50 / 50~70 / 70~85 / 85 이상
+   경계는 아래를 포함하고 위는 제외한다(30~50 은 30 포함, 50 제외). */
+var OP_AREA_BANDS=[
+  {k:'u30', lo:0,  hi:30,     id:'op-a1'},
+  {k:'30',  lo:30, hi:50,     id:'op-a2'},
+  {k:'50',  lo:50, hi:70,     id:'op-a3'},
+  {k:'70',  lo:70, hi:85,     id:'op-a4'},
+  {k:'85',  lo:85, hi:1e9,    id:'op-a5'}
+];
+function opAreaHit(sqm, key){
+  if(!key||key==='all') return true;
+  for(var i=0;i<OP_AREA_BANDS.length;i++){
+    var b=OP_AREA_BANDS[i];
+    if(b.k===key) return sqm>=b.lo && sqm<b.hi;
+  }
+  return true;
+}
 function opSet(key,val,btn){
   G_op[key]=val;
   setFilterBtn(btn.parentElement.querySelectorAll('.filter-btn'),btn);
@@ -5343,17 +5361,26 @@ function renderTab7(){
   var setTxt=function(id,v){ var e=document.getElementById(id); if(e) e.textContent='('+v+')'; };
   setTxt('op-cnt-all',kAll.length); setTxt('op-cnt-op',kOp); setTxt('op-cnt-ss',kSs);
 
+  // 전용 ㎡ 구간별 건수 — 물건구분·거래구분 필터를 반영한 모집단으로 센다
+  var base=kAll.filter(function(r){
+    if(G_op.kind!=='all'&&(r.매물구분||'오피스텔')!==G_op.kind) return false;
+    if(G_op.type!=='all'&&r.거래유형!==G_op.type) return false;
+    return true;
+  });
+  OP_AREA_BANDS.forEach(function(b){
+    var c=base.filter(function(r){ return opAreaHit(parseFloat(r.전용)||0, b.k); }).length;
+    setTxt(b.id, c);
+  });
+
   var favOnly=(document.getElementById('op-fav-only')||{}).checked||false;
   var search=(document.getElementById('op-search-input')||{}).value||'';
   var rows=G.naverOpData.filter(function(r){
     if(G_op.kind!=='all'&&(r.매물구분||'오피스텔')!==G_op.kind) return false;
     if(G_op.type!=='all'&&r.거래유형!==G_op.type) return false;
+    // 전용면적(㎡) 그대로 비교한다. 평수로 환산하면 경계가 흐려지고
+    // 오피스텔·생숙은 전용 기준으로 이야기하는 게 실무에 맞다.
     var sqm=parseFloat(r.전용)||0;
-    var ac=Math.floor(sqm/3.3/10)*10;
-    if(G_op.area==='20'&&ac!==20) return false;
-    if(G_op.area==='30'&&!(ac>=30&&ac<40)) return false;
-    if(G_op.area==='40'&&!(ac>=40&&ac<50)) return false;
-    if(G_op.area==='50'&&ac<50) return false;
+    if(!opAreaHit(sqm, G_op.area)) return false;
     if(search&&r.단지명.indexOf(search)<0) return false;
     if(favOnly&&!G.naverFav[_naverKey(r)]) return false;
     return true;
