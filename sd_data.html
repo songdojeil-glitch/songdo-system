@@ -413,7 +413,10 @@ body.zoom-mode .chart-wrap canvas {
   padding:10px 14px; border-bottom:1px solid var(--border);
   display:flex; align-items:center; justify-content:space-between;
 }
-.table-scroll { overflow-x:auto; max-height:520px; overflow-y:auto; -webkit-overflow-scrolling:touch; border-radius:0 0 10px 10px; }
+/* 520px 고정이면 큰 화면에서 목록 아래가 잘려 빈 공간처럼 보인다.
+   화면 높이에 맞춰 늘어나되 최소 520px는 확보한다. */
+.table-scroll { overflow-x:auto; max-height:max(520px, calc(100vh - 300px)); overflow-y:auto; -webkit-overflow-scrolling:touch; border-radius:0 0 10px 10px; padding-bottom:2px; }
+.table-scroll table { margin-bottom:0; }
 .table-scroll::-webkit-scrollbar { width:4px; height:6px; }
 .table-scroll::-webkit-scrollbar-track { background:var(--bg); }
 .table-scroll::-webkit-scrollbar-thumb { background:var(--accent); border-radius:3px; opacity:.7; }
@@ -2172,6 +2175,7 @@ tr.naver-fav>td:first-child{border-left:3px solid #b8860b;}
         <thead><tr>
           <th style="width:26px;text-align:center">⭐</th>
           <th>단지명</th><th>거래구분</th><th class="num">전용㎡</th>
+          <th style="width:56px">구분</th>
           <th>타입</th>
           <th class="num" style="color:var(--accent2)">보증금/의뢰가</th>
           <th class="num" style="color:var(--purple)">월세</th>
@@ -5152,6 +5156,7 @@ function parseNaverRows(allRows){
     if(!type||type==='거래구분') return false;
     return true;
   }).map(function(r){
+    var _kind=r.__kind__||'';           // 업로드 시 판정해 둔 오피스텔/생숙
     var nm=r['단지명']||r['아파트명']||r['건물명']||r['상가명']||'-';
     var rawType=r['거래구분']||r['거래유형']||r['유형']||'매매';
     // 새 형식: '분양m²'(타입), '전용m²'(전용), '분양평수' 분리
@@ -5203,6 +5208,7 @@ function parseNaverRows(allRows){
     }
     return {
       단지명: nm,
+      매물구분: _kind,          // 오피스텔 / 생숙 (OP 탭에서만 사용)
       거래유형: rawType,
       타입: typeNm,
       전용: parseNaverSqm(rawSqm),
@@ -5300,11 +5306,11 @@ function opKindOf(r){
 
 function onUploadNaverOp(input){
   _uploadNaverFiles(input, function(allRows, fileCnt){
-    var kindOf={};
-    allRows.forEach(function(r){ if(r&&r.단지명) kindOf[String(r.단지명)+'|'+String(r.전용m2||r['전용m²']||'')+'|'+String(r.가격||'')]=opKindOf(r); });
+    /* parseNaverRows 는 헤더·빈 행을 걸러내므로 인덱스로 짝지으면 어긋난다.
+       (실측: 엑셀에는 생숙으로 정확히 들어 있는데 화면에는 오피스텔로 표시)
+       그래서 원본 행에 __kind__ 를 미리 박아 넣고 파서가 그대로 옮기게 한다. */
+    allRows.forEach(function(r){ if(r) r.__kind__=opKindOf(r); });
     var newParsed=parseNaverRows(allRows);
-    // parseNaverRows 는 원본 행 순서를 유지하므로 같은 순서로 종류를 붙인다
-    newParsed.forEach(function(r,i){ r.매물구분 = allRows[i] ? opKindOf(allRows[i]) : '오피스텔'; });
     if(G.naverOpData&&G.naverOpData.length>0){
       var newSet={};
       newParsed.forEach(function(r){if(r.단지명)newSet[r.단지명]=true;});
@@ -5375,11 +5381,18 @@ function renderTab7(){
     var dupColor=r.중복등록수>5?'var(--red)':r.중복등록수>2?'var(--yellow)':'var(--text3)';
     var typeCls=r.거래유형==='매매'?'badge-gold':r.거래유형==='전세'?'badge-apt':'badge-pre';
     var _pc=priceCells(r);
+    var _k=r.매물구분||'';
+    var _kb=_k==='생숙'
+      ? '<span style="font-size:10px;padding:1px 5px;border-radius:8px;background:#4a2d0e;color:#ffcc80">생숙</span>'
+      : (_k==='오피스텔'
+         ? '<span style="font-size:10px;padding:1px 5px;border-radius:8px;background:#0e2d4a;color:#90caf9">OP</span>'
+         : '<span style="color:var(--text3);font-size:10px">-</span>');
     html+='<tr class="'+trCls+'" style="cursor:pointer" onclick="_nd2('+ridx+',\'op\')">'
       +'<td style="text-align:center"><span class="fav-star '+(fav?'on':'off')+'" onclick="event.stopPropagation();_nf2('+ridx+',\'op\');">'+(fav?'★':'☆')+'</span></td>'
       +'<td style="font-weight:600">'+sanggaDispNm(r.단지명)+'</td>'
       +'<td><span class="badge '+typeCls+'">'+r.거래유형+'</span></td>'
       +'<td class="num">'+(parseFloat(r.전용)||0).toFixed(1)+'㎡</td>'
+      +'<td style="text-align:center">'+_kb+'</td>'
       +'<td style="font-size:11px;color:var(--text2)">'+(r.타입||'-')+'</td>'
       +'<td class="num" style="color:var(--accent2);font-weight:700">'+_pc.dep+'</td>'
       +'<td class="num" style="color:var(--purple);font-weight:700">'+_pc.wol+'</td>'
@@ -5392,7 +5405,7 @@ function renderTab7(){
       +'<td style="font-size:10px;color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+(r.중복업소명||'')+'">'+(r.중복업소명||'-')+'</td>'
       +'</tr>';
   });
-  document.getElementById('op-tbody').innerHTML=html||'<tr><td colspan="14" style="text-align:center;padding:20px;color:var(--text3)">해당 매물 없음</td></tr>';
+  document.getElementById('op-tbody').innerHTML=html||'<tr><td colspan="15" style="text-align:center;padding:20px;color:var(--text3)">해당 매물 없음</td></tr>';
   setTimeout(function(){
     var t=document.getElementById('op-table'); if(t) initColResize(t);
     // 스크롤 동기화
