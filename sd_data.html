@@ -2155,7 +2155,7 @@ tr.naver-fav>td:first-child{border-left:3px solid #b8860b;}
   <!-- 단지 선택 (선택한 공구의 단지만 표시) -->
   <div class="filter-row" id="op-unit-row" style="display:none;align-items:flex-start">
     <span class="filter-label" style="padding-top:4px">단지</span>
-    <div id="op-unit" style="flex:1;max-height:210px;overflow-y:auto;display:flex;flex-wrap:wrap;gap:4px;align-items:flex-start"></div>
+    <div id="op-unit" style="flex:1;max-height:260px;overflow-y:auto;display:flex;flex-direction:column;gap:2px;align-items:stretch"></div>
   </div>
 
   <!-- 필터: 단지검색 + 관심매물 -->
@@ -5446,16 +5446,37 @@ function renderTab7(){
       return true;
     });
     var umap={};
-    ubase.forEach(function(r){ var k=r.단지명||'-'; if(!umap[k]) umap[k]={n:0,g:r.공구||''}; umap[k].n++; });
+    ubase.forEach(function(r){ var k=r.단지명||'-'; if(!umap[k]) umap[k]={n:0,g:String(r.공구||'')}; umap[k].n++; });
     var unames=Object.keys(umap).sort();
     var ue=document.getElementById('op-unit');
     if(ue){
-      ue.innerHTML = unames.length
-        ? unames.map(function(u){
-            return '<button class="filter-btn'+(G_op.unit===u?' on':'')+'" style="font-size:11px" onclick="opSetUnit(\''
-              +u.replace(/'/g,"\\'")+'\')" title="'+u+'">'+u+' ('+umap[u].n+')</button>';
-          }).join('')
-        : '<span style="font-size:11px;color:var(--text3)">해당 매물 없음</span>';
+      if(!unames.length){
+        ue.innerHTML='<span style="font-size:11px;color:var(--text3)">해당 매물 없음</span>';
+      } else {
+        /* 매물(APT)·매물 시황판과 같은 방식으로 공구별로 묶어 보여준다.
+           단지가 40개를 넘으면 평면 나열로는 원하는 단지를 찾기 어렵다. */
+        var DCU={'1':'#4fc3f7','2':'#81c784','3':'#ffb74d','4':'#f06292','5':'#ce93d8',
+                 '6':'#4dd0e1','7':'#fff176','8':'#ff8a65','11':'#a5d6a7','':'#90a4ae'};
+        var grp={};
+        unames.forEach(function(u){ var g=umap[u].g||''; (grp[g]=grp[g]||[]).push(u); });
+        var gkeys=Object.keys(grp).sort(function(a,b){
+          if(a===''||b===''){ return a===''?1:-1; }   // 공구 없는 묶음은 맨 뒤
+          return (+a)-(+b);
+        });
+        ue.innerHTML=gkeys.map(function(g){
+          var c=DCU[g]||'#90a4ae';
+          var tot=grp[g].reduce(function(s2,u){ return s2+umap[u].n; },0);
+          return '<div style="width:100%;display:flex;align-items:flex-start;gap:6px;margin:2px 0">'
+            +'<span style="flex:0 0 auto;background:'+c+'22;color:'+c+';border-radius:8px;padding:2px 7px;'
+              +'font-size:10px;font-weight:700;white-space:nowrap">'+(g?g+'공구':'기타')+' '+tot+'</span>'
+            +'<span style="flex:1;display:flex;flex-wrap:wrap;gap:4px">'
+            + grp[g].map(function(u){
+                return '<button class="filter-btn'+(G_op.unit===u?' on':'')+'" style="font-size:11px" onclick="opSetUnit(\''
+                  +u.replace(/'/g,"\\'")+'\')" title="'+u+'">'+u+' ('+umap[u].n+')</button>';
+              }).join('')
+            +'</span></div>';
+        }).join('');
+      }
     }
   }
 
