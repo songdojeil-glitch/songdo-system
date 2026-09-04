@@ -5376,6 +5376,8 @@ function onUploadNaverOp(input){
     var ssN=G.naverOpData.filter(function(r){return r.매물구분==='생숙';}).length;
     document.getElementById('op-status').textContent='✅ '+G.naverOpData.length+'건 (OP '+opN+' · 생숙 '+ssN+')';
     showToast('✅ OP/생숙 '+G.naverOpData.length+'건 로드 — 오피스텔 '+opN+' · 생숙 '+ssN);
+    // 업로드만 하고 다른 탭으로 옮기면 사라지므로 곧바로 서버에 저장한다
+    if(typeof fbSaveNaverOp==='function') setTimeout(function(){ fbRetry(fbSaveNaverOp); }, 400);
     renderTab7();
   });
 }
@@ -5701,6 +5703,7 @@ function onUploadNaverSangga(input){
         } else { G.naverSanggaData=newParsed; }
         document.getElementById('sangga-status').textContent='✅ '+G.naverSanggaData.length+'건';
         showToast('✅ 상가/사무실 '+G.naverSanggaData.length+'건 로드');
+    if(typeof fbSaveNaverSangga==='function') setTimeout(function(){ fbRetry(fbSaveNaverSangga); }, 400);
         renderTab8();
       }
     };
@@ -8646,13 +8649,32 @@ function initDomesticTab(){
 
 
 // ── Firebase 저장/로드 (OP/생숙, 상가)
+/* APT 매물 저장 — 기존에는 저장 함수가 없어 업로드 후 탭을 옮기면 사라졌다.
+   (fbSaveData 는 실거래 전용) */
+/* 업로드 직후엔 Firebase 연결이 아직 안 됐을 수 있다.
+   그때 그냥 넘기면 저장이 조용히 빠지므로 연결될 때까지 재시도한다. */
+function fbRetry(fn, tries){
+  tries=tries||0;
+  if(window._fbSet&&window._fbDb&&window._fbRef){ fn(); return; }
+  if(tries>=20){ showToast('⚠️ 서버 연결이 안 돼 자동 저장하지 못했습니다 — [🔥 Firebase 저장]을 눌러주세요', 9000); return; }
+  setTimeout(function(){ fbRetry(fn, tries+1); }, 700);
+}
+
+async function fbSaveNaverApt(){
+  if(!window._fbSet||!window._fbDb||!window._fbRef) return;
+  try{
+    await window._fbSet(window._fbRef(window._fbDb,'sd_naver_apt'),
+      {data:G.naverData||[],updated:new Date().toISOString().slice(0,10)});
+    showToast('☁️ 매물(APT) '+((G.naverData||[]).length)+'건 서버 저장');
+  }catch(e){ showToast('❌ 매물(APT) 저장 오류: '+e.message, 8000); }
+}
 async function fbSaveNaverOp(){
   if(!window._fbSet||!window._fbDb||!window._fbRef){showToast('⚠️ Firebase 연결 대기 중');return;}
   showToast('⏳ OP/생숙 저장 중...');
   try{
     await window._fbSet(window._fbRef(window._fbDb,'sd_naver_op'),{data:G.naverOpData||[],updated:new Date().toISOString().slice(0,10)});
     showToast('✅ OP/생숙 '+( G.naverOpData||[]).length+'건 저장 완료');
-  }catch(e){showToast('❌ 저장 오류: '+e.message);}
+  }catch(e){showToast('❌ OP/생숙 저장 오류: '+e.message, 8000);}
 }
 async function fbSaveNaverSangga(){
   if(!window._fbSet||!window._fbDb||!window._fbRef){showToast('⚠️ Firebase 연결 대기 중');return;}
@@ -16183,6 +16205,8 @@ function processNaverRows(rows, fileCnt){
       }
       $set('naver-status', '✅ '+G.naverData.length+'건');
       renderTab6();
+      // 업로드만 하고 다른 탭으로 옮기면 사라지므로 곧바로 서버에 저장한다
+      if(typeof fbSaveNaverApt==='function') setTimeout(function(){ fbRetry(fbSaveNaverApt); }, 400);
     } catch(err){
       showToast('❌ 파싱 오류: '+err.message);
     }
