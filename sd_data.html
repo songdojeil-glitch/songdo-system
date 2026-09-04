@@ -2172,17 +2172,19 @@ tr.naver-fav>td:first-child{border-left:3px solid #b8860b;}
     </div>
     <div class="table-scroll-top" id="op-scroll-top"><div id="op-scroll-top-inner" style="height:1px"></div></div>
     <div class="table-scroll" id="op-scroll-body">
-      <table class="data-table" id="op-table" style="min-width:900px">
+      <table class="data-table" id="op-table" style="min-width:1180px;table-layout:fixed">
         <thead><tr>
           <th style="width:26px;text-align:center">⭐</th>
-          <th>단지명</th><th>거래구분</th><th class="num">전용㎡</th>
-          <th class="num" style="width:64px">전용평수</th>
-          <th style="width:56px">구분</th>
-          <th>타입</th>
+          <th style="width:170px">단지명</th>
+          <th style="width:62px;text-align:center">거래구분</th>
+          <th class="num" style="width:62px">전용㎡</th>
+          <th class="num" style="width:62px">전용평수</th>
+          <th style="width:50px;text-align:center">구분</th>
+          <th style="width:74px">타입</th>
           <th class="num" style="color:var(--accent2)">보증금/의뢰가</th>
           <th class="num" style="color:var(--purple)">월세</th>
-          <th>층</th><th>방향</th>
-          <th>입력일</th><th>중개사</th>
+          <th style="width:56px">층</th><th style="width:56px">방향</th>
+          <th style="width:70px">입력일</th><th style="width:96px">중개사</th>
           <th class="num" style="color:var(--text3)">중복등록수</th>
           <th>특이사항</th><th id="op-th-dupnm" style="color:var(--text3)">중복업소명</th>
         </tr></thead>
@@ -5031,8 +5033,9 @@ function ndToggleFav(){
 function ndSave(){
   if(_ndIdx<0) return;
   // APT(_ndIdx>=0) 또는 OP/상가(_ndCurrentData)
-  var r = (_ndIdx>=0) ? G.naverData[_ndIdx]
-         : (_ndCurrentData ? _ndCurrentData.r : null);
+  var isApt = (_ndIdx>=0);
+  var r = isApt ? G.naverData[_ndIdx]
+                : (_ndCurrentData ? _ndCurrentData.r : null);
   if(!r) return;
   r.특이사항 = document.getElementById('nd-memo').value;
   var priceEl=document.getElementById('nd-price');
@@ -5053,13 +5056,16 @@ function ndSave(){
   if(hosuEl2) r.호수 = hosuEl2.value||r.호수;
   if(dirEl && dirEl.value) r.방향 = dirEl.value||r.방향;
   closeNaverDetail();
-  renderTab6();
+  // 어느 탭에서 열었는지에 따라 그 목록을 다시 그린다
+  if(isApt) renderTab6();
+  else if(_ndCurrentData&&_ndCurrentData.type==='op') renderTab7();
+  else renderTab8();
 
   // Firebase 자동 저장
   if(window._fbSet && window._fbRef && window._fbDb){
     (function(){
-      var fbKey = _ndIdx>=0 ? 'sd_naver_apt' : (_ndCurrentData&&_ndCurrentData.type==='op' ? 'sd_naver_op' : 'sd_naver_sangga');
-      var fbData = _ndIdx>=0 ? G.naverData : (_ndCurrentData&&_ndCurrentData.type==='op' ? G.naverOpData : G.naverSanggaData);
+      var fbKey = isApt ? 'sd_naver_apt' : (_ndCurrentData&&_ndCurrentData.type==='op' ? 'sd_naver_op' : 'sd_naver_sangga');
+      var fbData = isApt ? G.naverData : (_ndCurrentData&&_ndCurrentData.type==='op' ? G.naverOpData : G.naverSanggaData);
       window._fbSet(window._fbRef(window._fbDb, fbKey), {
         data: fbData,
         updated: new Date().toISOString().slice(0,10)
@@ -5132,6 +5138,7 @@ function parseNaverSqm(v){
 function parseNaverPrice(v){
   if(!v) return 0;
   var s=String(v).replace(/,/g,'').replace(/ /g,'');
+  if(s.indexOf('~')>-1) s=s.split('~')[0];   // 범위는 하한값 사용
   if(s.indexOf('/')>-1) s=s.split('/')[0];
   var uk=0, man=0;
   var mU=s.match(/(\d+(?:\.\d+)?)억/);
@@ -5159,6 +5166,7 @@ function parseNaverRows(allRows){
     return true;
   }).map(function(r){
     var _kind=r.__kind__||'';           // 업로드 시 판정해 둔 오피스텔/생숙
+    var _gong=r['공구']||r.__gong__||'';  // 엑셀에 공구 열이 있으면 우선, 없으면 파일명
     var nm=r['단지명']||r['아파트명']||r['건물명']||r['상가명']||'-';
     var rawType=r['거래구분']||r['거래유형']||r['유형']||'매매';
     // 새 형식: '분양m²'(타입), '전용m²'(전용), '분양평수' 분리
@@ -5210,6 +5218,7 @@ function parseNaverRows(allRows){
     }
     return {
       단지명: nm,
+      공구: _gong,
       매물구분: _kind,          // 오피스텔 / 생숙 (OP 탭에서만 사용)
       거래유형: rawType,
       타입: typeNm,
@@ -5225,8 +5234,14 @@ function parseNaverRows(allRows){
       중복등록수: parseInt(r['중복등록수']||r['중복등록업소수']||r['중복 등록업소의 수']||0)||0,
       특이사항: r['특이사항']||r['주요정보']||r['메모']||'',
       중복업소명: dupNm,
-      월세: (rawType==='월세'&&String(r['가격']||'').indexOf('/')>-1)?
-              parseInt(String(r['가격']).split('/')[1].replace(/[^0-9]/g,''))||0:0,
+      // 월세는 '1,000/90 ~ 1,000/95' 처럼 범위로 오는 경우가 있다.
+      // '~' 앞부분만 보지 않으면 '90 ~ 1,000' 이 붙어 901000 같은 값이 된다.
+      월세: (rawType==='월세'||rawType==='단기')
+              ? (function(){
+                  var t=String(r['가격']||'').split('~')[0];
+                  if(t.indexOf('/')<0) return 0;
+                  return parseInt(t.split('/')[1].replace(/[^0-9]/g,''))||0;
+                })() : 0,
     };
   });
 }
@@ -5258,7 +5273,14 @@ function _uploadNaverFiles(input, callback){
           }
           var srows=XLSX.utils.sheet_to_json(sh,{header:0,defval:null});
           var dataArr=allArr.slice(1);
+          // 파일명 앞의 '3공구_' 같은 접두어에서 공구를 읽는다.
+          // OP/생숙은 단지별 공구 자료가 따로 없어 파일명으로만 알 수 있다.
+          var _fg=(function(){
+            var m=String(file.name||'').match(/(?:^|[^\d])(\d{1,2})\s*공구/);
+            return m?m[1]:'';
+          })();
           srows.forEach(function(r,ri){
+            if(_fg) r.__gong__=_fg;
             if(dupNmIdx>=0){
               var rawVal=dataArr[ri]?dataArr[ri][dupNmIdx]:null;
               r['__dupNm__']=rawVal?String(rawVal):'';
@@ -5281,7 +5303,9 @@ function _uploadNaverFiles(input, callback){
 }
 
 // ── OP/생숙 필터 상태
-var G_op = { type:'all', area:'all', kind:'all' };
+var G_op = { type:'all', area:'all', kind:'all', gong:'all', unit:'' };
+function opSetGong(v){ G_op.gong=v; G_op.unit=''; renderTab7(); }
+function opSetUnit(v){ G_op.unit=(G_op.unit===v?'':v); renderTab7(); }
 /* 전용 ㎡ 구간 — 30 미만 / 30~50 / 50~70 / 70~90 / 90 이상
    경계는 아래를 포함하고 위는 제외한다(30~50 은 30 포함, 50 제외). */
 var OP_AREA_BANDS=[
@@ -5373,9 +5397,56 @@ function renderTab7(){
     setTxt(b.id, c);
   });
 
+  /* 공구·단지 필터 — OP/생숙은 단지별 공구 자료가 없어 업로드 파일명의 '3공구_' 접두어로 채운다.
+     공구가 하나도 없으면 두 줄 모두 감춘다(파일명에 공구를 안 붙였을 때). */
+  var gset={}; kAll.forEach(function(r){ if(r.공구) gset[r.공구]=1; });
+  var glist=Object.keys(gset).sort(function(a,b){ return (+a)-(+b); });
+  var gRow=document.getElementById('op-gong-row');
+  var uRow=document.getElementById('op-unit-row');
+  if(gRow) gRow.style.display=glist.length?'':'none';
+  if(uRow) uRow.style.display=glist.length?'':'none';
+  if(glist.length){
+    var gb=document.getElementById('op-gong-btns');
+    if(gb){
+      var cntOf=function(g){
+        return kAll.filter(function(r){
+          if(g!=='all'&&String(r.공구||'')!==g) return false;
+          if(G_op.kind!=='all'&&(r.매물구분||'오피스텔')!==G_op.kind) return false;
+          if(G_op.type!=='all'&&r.거래유형!==G_op.type) return false;
+          return true;
+        }).length;
+      };
+      gb.innerHTML='<button class="filter-btn'+(G_op.gong==='all'?' on':'')+'" onclick="opSetGong(\'all\')">전체 ('+cntOf('all')+')</button>'
+        +glist.map(function(g){
+            return '<button class="filter-btn'+(G_op.gong===g?' on':'')+'" onclick="opSetGong(\''+g+'\')">'+g+'공구 ('+cntOf(g)+')</button>';
+          }).join('');
+    }
+    // 단지 칩 — 현재 공구·구분·거래구분 필터 기준 건수
+    var ubase=kAll.filter(function(r){
+      if(G_op.gong!=='all'&&String(r.공구||'')!==G_op.gong) return false;
+      if(G_op.kind!=='all'&&(r.매물구분||'오피스텔')!==G_op.kind) return false;
+      if(G_op.type!=='all'&&r.거래유형!==G_op.type) return false;
+      return true;
+    });
+    var umap={};
+    ubase.forEach(function(r){ var k=r.단지명||'-'; if(!umap[k]) umap[k]={n:0,g:r.공구||''}; umap[k].n++; });
+    var unames=Object.keys(umap).sort();
+    var ue=document.getElementById('op-unit');
+    if(ue){
+      ue.innerHTML = unames.length
+        ? unames.map(function(u){
+            return '<button class="filter-btn'+(G_op.unit===u?' on':'')+'" style="font-size:11px" onclick="opSetUnit(\''
+              +u.replace(/'/g,"\\'")+'\')" title="'+u+'">'+u+' ('+umap[u].n+')</button>';
+          }).join('')
+        : '<span style="font-size:11px;color:var(--text3)">해당 매물 없음</span>';
+    }
+  }
+
   var favOnly=(document.getElementById('op-fav-only')||{}).checked||false;
   var search=(document.getElementById('op-search-input')||{}).value||'';
   var rows=G.naverOpData.filter(function(r){
+    if(G_op.gong!=='all'&&String(r.공구||'')!==G_op.gong) return false;
+    if(G_op.unit&&r.단지명!==G_op.unit) return false;
     if(G_op.kind!=='all'&&(r.매물구분||'오피스텔')!==G_op.kind) return false;
     if(G_op.type!=='all'&&r.거래유형!==G_op.type) return false;
     // 전용면적(㎡) 그대로 비교한다. 평수로 환산하면 경계가 흐려지고
@@ -5960,6 +6031,7 @@ function priceCells(r){
 
 function openNaverDetail2(r, idx, dataType){
   _ndCurrentData={r:r, idx:idx, type:dataType};
+  _ndIdx=-99;   // APT 모달과 구분 — 이 값이 남아 있으면 저장이 APT 배열로 잘못 간다
   var isFav=!!G.naverFav[_naverKey(r)];
   var isSdj=(r.중개사||'').indexOf('송도제일')>=0;
   var typeCls=r.거래유형==='매매'?'badge-gold':r.거래유형==='전세'?'badge-apt':'badge-pre';
