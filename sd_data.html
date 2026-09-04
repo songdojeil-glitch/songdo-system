@@ -9944,12 +9944,15 @@ function parseSaleXlsx(wb){
   if(allRows.length===0){ showToast('❌ 매매 시트를 찾을 수 없습니다'); return; }
 
   G.saleData = allRows;
+  G._manualSale = true;          // 자동로드가 이 값을 덮어쓰지 못하게 표시
   // 통계 계산
   buildSaleStats();
   $set('sale-status', '✅ '+allRows.length+'건 로드');
   $set('upload-progress', '');
   showToast('✅ 매매 데이터 '+allRows.length+'건 로드 완료');
   renderAll();
+  // 업로드만 하고 탭을 옮기면 서버 값으로 되돌아가므로 곧바로 저장한다
+  if(typeof fbRetry==='function'&&typeof fbSaveData==='function') setTimeout(function(){ fbRetry(fbSaveData); }, 600);
 }
 
 function parseRentXlsx(wb){
@@ -9973,10 +9976,12 @@ function parseRentXlsx(wb){
     });
   });
   G.rentData = allRows;
+  G._manualRent = true;          // 자동로드가 이 값을 덮어쓰지 못하게 표시
   buildRentStats();
   $set('rent-status', '✅ '+allRows.length+'건 로드');
   showToast('✅ 전월세 데이터 '+allRows.length+'건 로드 완료');
   renderTab4();
+  if(typeof fbRetry==='function'&&typeof fbSaveData==='function') setTimeout(function(){ fbRetry(fbSaveData); }, 600);
 }
 
 function buildSaleStats(){
@@ -17683,8 +17688,12 @@ window.fbAutoLoad = function(){
   get(child(dbRef(db), 'sd_data')).then(function(snap){
     if(snap.exists()){
       var d = snap.val();
+      window._fbLastSnap = d;   // 저장 시 빈 쪽을 되살리는 데 쓴다
       var hasSale = d.sale_data && d.sale_data.length > 0;
       var hasRent = d.rent_data && d.rent_data.length > 0;
+      // 방금 엑셀을 올렸다면 서버 값으로 되돌리지 않는다
+      if(G._manualSale) hasSale=false;
+      if(G._manualRent) hasRent=false;
       if(hasSale || hasRent){
         if(hasSale){
           var slim = d.meta && d.meta.slim;
@@ -17904,6 +17913,17 @@ function fbSaveData(){
   var slimSale = (G.saleData||[]).map(slimSaleRow);
   var slimRent = (G.rentData||[]).map(slimRentRow);
   var today = new Date().toISOString().slice(0,10);
+  /* 매매·전월세를 한 덩어리로 저장하므로, 한쪽이 아직 안 불러와진 상태에서
+     저장이 돌면 반대쪽이 빈 배열로 지워진다. 비어 있으면 서버 값을 그대로 살린다. */
+  var keep = (window._fbLastSnap||{});
+  if(!slimSale.length && keep.sale_data && keep.sale_data.length){
+    slimSale = keep.sale_data;
+    showToast('🛡️ 매매는 화면이 비어 있어 서버 '+slimSale.length+'건을 유지합니다', 7000);
+  }
+  if(!slimRent.length && keep.rent_data && keep.rent_data.length){
+    slimRent = keep.rent_data;
+    showToast('🛡️ 전월세는 화면이 비어 있어 서버 '+slimRent.length+'건을 유지합니다', 7000);
+  }
   var payload = {
     sale_data: slimSale,
     rent_data: slimRent,
@@ -17912,6 +17932,8 @@ function fbSaveData(){
   var kb = Math.round(JSON.stringify(payload).length/1024);
   set(dbRef(db,'sd_data'), payload).then(function(){
     showToast('✅ Firebase 저장 완료! ('+kb+'KB)', 4000);
+    // 서버에 반영됐으니 '수동 업로드 보호' 표시를 해제한다
+    G._manualSale=false; G._manualRent=false;
     // 네이버 APT 데이터 별도 저장 (독립 경로)
     if(G.naverData && G.naverData.length > 0){
       var naverPayload = {data: fixNaverDist(G.naverData), updated: today, cnt: G.naverData.length};
