@@ -2002,6 +2002,7 @@ tr.naver-fav>td:first-child{border-left:3px solid #b8860b;}
       <button class="filter-btn" onclick="setNaverArea('50',this)">50평대</button>
       <button class="filter-btn" onclick="setNaverArea('o60',this)">60평이상</button>
     </div>
+    <span id="ag-apt-bar"></span>
     <div class="filter-sep"></div>
     <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:11px;color:var(--text2);white-space:nowrap">
       <input type="checkbox" id="t6-hide-agent" onchange="renderTab6()"
@@ -2146,6 +2147,7 @@ tr.naver-fav>td:first-child{border-left:3px solid #b8860b;}
     <button class="filter-btn" onclick="opSet('area','50',this)">50~70㎡ <span id="op-a3"></span></button>
     <button class="filter-btn" onclick="opSet('area','70',this)">70~90㎡ <span id="op-a4"></span></button>
     <button class="filter-btn" onclick="opSet('area','90',this)">90㎡ 이상 <span id="op-a5"></span></button>
+    <span id="ag-op-bar"></span>
   </div>
 
   <!-- 필터: 공구 (파일명 '3공구_' 접두어가 있을 때만 표시) -->
@@ -2248,6 +2250,7 @@ tr.naver-fav>td:first-child{border-left:3px solid #b8860b;}
     <button class="filter-btn" onclick="sanggaSet('area','60',this)">60평대</button>
     <button class="filter-btn" onclick="sanggaSet('area','70',this)">70평대</button>
     <button class="filter-btn" onclick="sanggaSet('area','80',this)">80평이상</button>
+    <span id="ag-sg-bar"></span>
   </div>
 
   <!-- 필터 2행: 공구 -->
@@ -5391,6 +5394,7 @@ function onUploadNaverOp(input){
 
 // ── OP/생숙 렌더
 function renderTab7(){
+  agMount('op');
   if(!G.naverOpData||!G.naverOpData.length){
     document.getElementById('op-empty').style.display='block';
     document.getElementById('op-content').style.display='none';
@@ -5840,6 +5844,7 @@ function sanggaDispNm(nm){
 
 // ── 상가/사무실 렌더
 function renderTab8(){
+  agMount('sg');
   var clearBtn=document.getElementById('sangga-clear-btn');
   if(clearBtn) clearBtn.style.display=G.naverSanggaData&&G.naverSanggaData.length?'inline-block':'none';
 
@@ -5858,6 +5863,7 @@ function renderTab8(){
 
   // ── 필터 적용
   var rows=G.naverSanggaData.filter(function(r){
+    if(!agHit(r, G_ag.sg)) return false;
     if(G_sangga.cat&&G_sangga.cat!=='all'&&(r.매물구분||'')!==G_sangga.cat) return false;
     if(G_sangga.dist&&G_sangga.dist!=='all'&&(r.공구||'')!==G_sangga.dist) return false;
     if(G_sangga.bldg&&r.단지명!==G_sangga.bldg) return false;
@@ -5882,6 +5888,7 @@ function renderTab8(){
 
   // ── 건물명 칩 생성 (현재 공구/매물구분 필터 기준으로)
   var baseRows=G.naverSanggaData.filter(function(r){
+    if(!agHit(r, G_ag.sg)) return false;
     if(G_sangga.cat&&G_sangga.cat!=='all'&&(r.매물구분||'')!==G_sangga.cat) return false;
     if(G_sangga.dist&&G_sangga.dist!=='all'&&(r.공구||'')!==G_sangga.dist) return false;
     return true;
@@ -17010,10 +17017,53 @@ function setNaverType(v,btn){
   renderTab6();
 }
 function setNaverSaleType(v,btn){ G.naverSaleType=v; setFilterBtn(btn.parentElement.querySelectorAll('.filter-btn'),btn); renderTab6(); }
+/* ── 중개업소 필터 (매물 APT·OP생숙·상가사무실 공통) ──
+   전체 / 자사(송도제일) / 직접입력. 직접입력은 중개사와 중복업소명을 모두 훑어
+   그 업소가 등록에 참여한 매물을 전부 보여준다. */
+var G_ag = { apt:{mode:'all', q:''}, op:{mode:'all', q:''}, sg:{mode:'all', q:''} };
+function agHit(r, st){
+  if(!st || st.mode==='all') return true;
+  var names = String(r.중개사||'') + ' ' + String(r.중복업소명||'');
+  if(st.mode==='own') return names.indexOf('송도제일')>=0;
+  var q=(st.q||'').trim();
+  if(!q) return true;
+  return names.replace(/\s/g,'').indexOf(q.replace(/\s/g,''))>=0;
+}
+function agSet(tab, mode, btn){
+  G_ag[tab].mode=mode;
+  if(btn) setFilterBtn(btn.parentElement.querySelectorAll('.filter-btn'), btn);
+  var box=document.getElementById('ag-'+tab+'-box');
+  if(box) box.style.display=(mode==='q')?'':'none';
+  if(mode==='q'){ var el=document.getElementById('ag-'+tab+'-q'); if(el) setTimeout(function(){el.focus();},0); }
+  agRender(tab);
+}
+function agQ(tab, v){ G_ag[tab].q=v; agRender(tab); }
+function agRender(tab){
+  if(tab==='apt') renderTab6(); else if(tab==='op') renderTab7(); else renderTab8();
+}
+function agMount(tab){
+  var el=document.getElementById('ag-'+tab+'-bar');
+  if(el&&!el.getAttribute('data-on')){ el.innerHTML=agBar(tab); el.setAttribute('data-on','1'); }
+  var st=G_ag[tab]; var box=document.getElementById('ag-'+tab+'-box');
+  if(box) box.style.display=(st.mode==='q')?'':'none';
+}
+function agBar(tab){
+  return '<span class="filter-label" style="margin-left:12px">중개업소</span>'
+    +'<span class="filter-group">'
+    +'<button class="filter-btn on" onclick="agSet(\''+tab+'\',\'all\',this)">전체</button>'
+    +'<button class="filter-btn" onclick="agSet(\''+tab+'\',\'own\',this)">자사</button>'
+    +'<button class="filter-btn" onclick="agSet(\''+tab+'\',\'q\',this)">직접입력</button>'
+    +'</span>'
+    +'<span id="ag-'+tab+'-box" style="display:none;margin-left:6px">'
+    +'<input id="ag-'+tab+'-q" type="text" placeholder="예: 예원" oninput="agQ(\''+tab+'\',this.value)" '
+    +'style="width:110px;background:var(--bg3);border:1px solid var(--accent);border-radius:6px;color:var(--text);font-size:12px;padding:3px 8px">'
+    +'<span id="ag-'+tab+'-cnt" style="font-size:11px;color:var(--text3);margin-left:6px"></span></span>';
+}
 function setNaverArea(v,btn){ G.naverArea=v; setFilterBtn(btn.parentElement.querySelectorAll('.filter-btn'),btn); renderTab6(); }
 
 // ── TAB6 렌더
 function renderTab6(){
+  agMount('apt');
   if(!G.naverData){
     document.getElementById('t6-empty').style.display='block';
     document.getElementById('t6-content').style.display='none';
@@ -17117,6 +17167,7 @@ function renderTab6(){
   var t6unit   = G.t6unit||'all';
 
   function naverBaseFilter(r){
+    if(!agHit(r, G_ag.apt)) return false;
     if(G.naverDist!=='all'&&parseInt(r.공구)!==parseInt(G.naverDist)) return false;
     if(G.naverType!=='all'&&r.거래유형!==G.naverType) return false;
     if(G.naverSaleType!=='all'&&r.거래유형==='매매'){
