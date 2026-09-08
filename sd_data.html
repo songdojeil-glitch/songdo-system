@@ -9952,7 +9952,7 @@ function parseSaleXlsx(wb){
   showToast('✅ 매매 데이터 '+allRows.length+'건 로드 완료');
   renderAll();
   // 업로드만 하고 탭을 옮기면 서버 값으로 되돌아가므로 곧바로 저장한다
-  if(typeof fbRetry==='function'&&typeof fbSaveData==='function') setTimeout(function(){ fbRetry(fbSaveData); }, 600);
+  if(typeof fbRetry==='function'&&typeof fbSaveDataSoon==='function') fbRetry(fbSaveDataSoon);
 }
 
 function parseRentXlsx(wb){
@@ -9981,7 +9981,7 @@ function parseRentXlsx(wb){
   $set('rent-status', '✅ '+allRows.length+'건 로드');
   showToast('✅ 전월세 데이터 '+allRows.length+'건 로드 완료');
   renderTab4();
-  if(typeof fbRetry==='function'&&typeof fbSaveData==='function') setTimeout(function(){ fbRetry(fbSaveData); }, 600);
+  if(typeof fbRetry==='function'&&typeof fbSaveDataSoon==='function') fbRetry(fbSaveDataSoon);
 }
 
 function buildSaleStats(){
@@ -17685,15 +17685,32 @@ window.fbAutoLoad = function(){
   var dbRef = window._fbRef;
   var get = window._fbGet;
   var child = window._fbChild;
-  get(child(dbRef(db), 'sd_data')).then(function(snap){
+  get(child(dbRef(db), 'sd_data')).then(async function(snap){
     if(snap.exists()){
       var d = snap.val();
+      /* gzip 저장분(fmt:'gz1')이면 먼저 풀어서 예전 구조로 되돌린다.
+         이렇게 해야 아래 로직 전체를 그대로 쓸 수 있다. */
+      if(d && (d.sale_gz || d.rent_gz)){
+        try{
+          $set('fb-status','⏳ 압축 해제 중...');
+          if(d.sale_gz) d.sale_data = await fbGunzipJson(d.sale_gz);
+          if(d.rent_gz) d.rent_data = await fbGunzipJson(d.rent_gz);
+          delete d.sale_gz; delete d.rent_gz;
+        }catch(e){
+          console.error('압축 해제 실패', e);
+          showToast('❌ 서버 데이터 압축 해제 실패: '+e.message, 9000);
+          $set('fb-status','❌ 압축 해제 실패');
+          loadDemo(); return;
+        }
+      }
       window._fbLastSnap = d;   // 저장 시 빈 쪽을 되살리는 데 쓴다
       var hasSale = d.sale_data && d.sale_data.length > 0;
       var hasRent = d.rent_data && d.rent_data.length > 0;
-      // 방금 엑셀을 올렸다면 서버 값으로 되돌리지 않는다
-      if(G._manualSale) hasSale=false;
-      if(G._manualRent) hasRent=false;
+      /* 방금 엑셀을 올렸다면 서버 값으로 되돌리지 않는다.
+         단 '메모리에 실제로 자료가 있을 때'만 막는다 —
+         플래그만 보고 막으면 화면이 빈 채로 아무것도 못 불러오는 상태가 된다. */
+      if(G._manualSale && G.saleData && G.saleData.length) hasSale=false;
+      if(G._manualRent && G.rentData && G.rentData.length) hasRent=false;
       if(hasSale || hasRent){
         if(hasSale){
           var slim = d.meta && d.meta.slim;
@@ -17900,60 +17917,163 @@ function slimRentRow(r){
   };
 }
 
-function fbSaveData(){
+/* ══ gzip 압축 저장 ═══════════════════════════════════════════════
+   Firebase 실시간 DB는 SDK 1회 쓰기 상한이 16MB다. 경량화(slim)를 거쳐도
+   매매+전월세가 26MB를 넘어 서버가 "Write too large"로 거부했고,
+   그 오류는 콜백으로 돌아오지 않아 버튼이 '저장 중'에 갇혔다.
+   → JSON을 gzip으로 눌러 base64 문자열로 저장한다(약 15배 축소).      */
+var FB_GZ_CHUNK = 4000000;      // base64 한 조각 최대 길이(문자열 상한 대비)
+
+function _fbU8ToB64(u8){
+  var CH=0x8000, out=[];
+  for(var i=0;i<u8.length;i+=CH) out.push(String.fromCharCode.apply(null, u8.subarray(i,i+CH)));
+  return btoa(out.join(''));
+}
+function _fbB64ToU8(b64){
+  var bin=atob(b64), u8=new Uint8Array(bin.length);
+  for(var i=0;i<bin.length;i++) u8[i]=bin.charCodeAt(i);
+  return u8;
+}
+async function fbGzipChunks(str){
+  if(typeof CompressionStream==='undefined')
+    throw new Error('이 브라우저는 압축 저장을 지원하지 않습니다 (Chrome/Edge 최신판 필요)');
+  var cs=new CompressionStream('gzip');
+  var w=cs.writable.getWriter();
+  w.write(new TextEncoder().encode(str)); w.close();
+  var buf=await new Response(cs.readable).arrayBuffer();
+  var b64=_fbU8ToB64(new Uint8Array(buf));
+  var parts=[];
+  for(var i=0;i<b64.length;i+=FB_GZ_CHUNK) parts.push(b64.slice(i,i+FB_GZ_CHUNK));
+  return parts.length?parts:[''];
+}
+async function fbGunzipJson(v){
+  // RTDB는 배열을 객체로 돌려주기도 하므로 키 순서로 다시 이어 붙인다
+  var b64;
+  if(Array.isArray(v)) b64=v.join('');
+  else if(v && typeof v==='object')
+    b64=Object.keys(v).sort(function(a,b){return a-b;}).map(function(k){return v[k]||'';}).join('');
+  else b64=v||'';
+  if(!b64) return [];
+  if(typeof DecompressionStream==='undefined')
+    throw new Error('이 브라우저는 압축 해제를 지원하지 않습니다 (Chrome/Edge 최신판 필요)');
+  var ds=new DecompressionStream('gzip');
+  var w=ds.writable.getWriter();
+  w.write(_fbB64ToU8(b64)); w.close();
+  var buf=await new Response(ds.readable).arrayBuffer();
+  return JSON.parse(new TextDecoder().decode(buf));
+}
+function _fbSizeTxt(bytes){
+  return bytes>=1048576 ? (bytes/1048576).toFixed(1)+'MB' : Math.round(bytes/1024)+'KB';
+}
+
+/* 매매·전월세를 잇달아 올리면 저장이 두 번 겹친다 → 2.5초 디바운스로 한 번만 */
+var _fbSaveTimer=null;
+function fbSaveDataSoon(delay){
+  if(_fbSaveTimer) clearTimeout(_fbSaveTimer);
+  $set('fb-save-btn','⏳ 저장 대기...');
+  _fbSaveTimer=setTimeout(function(){ _fbSaveTimer=null; fbSaveData(); }, delay||2500);
+}
+
+var _fbSaving=false, _fbSaveQueued=false;
+
+async function fbSaveData(){
   if(!window._fbSet || !window._fbDb || !window._fbRef){
     showToast('⚠️ Firebase 연결 대기 중...'); return;
   }
   if(!G.saleData && !G.rentData){
     showToast('⚠️ 저장할 데이터가 없습니다. 먼저 엑셀을 업로드해 주세요.'); return;
   }
+  if(_fbSaving){            // 진행 중이면 끝난 뒤 한 번 더 돌린다
+    _fbSaveQueued=true;
+    showToast('⏳ 저장이 진행 중입니다 — 끝나면 이어서 한 번 더 저장합니다', 5000);
+    return;
+  }
+  _fbSaving=true;
   var db=window._fbDb, dbRef=window._fbRef, set=window._fbSet;
-  showToast('⏳ Firebase 저장 중... 잠시 기다려 주세요');
-  $set('fb-save-btn','⏳ 저장 중...');
-  var slimSale = (G.saleData||[]).map(slimSaleRow);
-  var slimRent = (G.rentData||[]).map(slimRentRow);
-  var today = new Date().toISOString().slice(0,10);
-  /* 매매·전월세를 한 덩어리로 저장하므로, 한쪽이 아직 안 불러와진 상태에서
-     저장이 돌면 반대쪽이 빈 배열로 지워진다. 비어 있으면 서버 값을 그대로 살린다. */
-  var keep = (window._fbLastSnap||{});
-  if(!slimSale.length && keep.sale_data && keep.sale_data.length){
-    slimSale = keep.sale_data;
-    showToast('🛡️ 매매는 화면이 비어 있어 서버 '+slimSale.length+'건을 유지합니다', 7000);
+  var done=false, watchdog=null;
+  function finish(msg, ok){
+    if(done) return; done=true; _fbSaving=false;
+    if(watchdog) clearTimeout(watchdog);
+    $set('fb-save-btn','🔥 Firebase 저장');
+    if(msg) showToast(msg, ok?4000:9000);
+    if(ok && _fbSaveQueued){ _fbSaveQueued=false; fbSaveDataSoon(1200); }
   }
-  if(!slimRent.length && keep.rent_data && keep.rent_data.length){
-    slimRent = keep.rent_data;
-    showToast('🛡️ 전월세는 화면이 비어 있어 서버 '+slimRent.length+'건을 유지합니다', 7000);
-  }
-  var payload = {
-    sale_data: slimSale,
-    rent_data: slimRent,
-    meta: { updated:today, sale_cnt:slimSale.length, rent_cnt:slimRent.length, naver_cnt:(G.naverData||[]).length, slim:true }
-  };
-  var kb = Math.round(JSON.stringify(payload).length/1024);
-  set(dbRef(db,'sd_data'), payload).then(function(){
-    showToast('✅ Firebase 저장 완료! ('+kb+'KB)', 4000);
-    // 서버에 반영됐으니 '수동 업로드 보호' 표시를 해제한다
-    G._manualSale=false; G._manualRent=false;
-    // 네이버 APT 데이터 별도 저장 (독립 경로)
-    if(G.naverData && G.naverData.length > 0){
-      var naverPayload = {data: fixNaverDist(G.naverData), updated: today, cnt: G.naverData.length};
-      set(dbRef(db,'sd_naver_apt'), naverPayload).then(function(){
-        $set('naver-status','✅ 네이버 '+G.naverData.length+'건 저장완료');
-        // 현재값 저장에 성공했을 때만 이력 스냅샷을 남긴다
-        saveNaverSnapshot(G.naverData).then(function(res){
-          $set('naver-snap-status','📸 '+res.ymd+' 스냅샷 ('+res.meta.cnt_uniq+'건)');
-          showToast('📸 매물 스냅샷 저장 — 실제 물건 '+res.meta.cnt_uniq+'건 / 등록 '+res.meta.cnt_raw+'건 ('+res.kb+'KB)', 4000);
-        }).catch(function(e){ console.warn('스냅샷 저장 오류',e); showToast('⚠️ 스냅샷 저장 실패: '+e.message); });
-      }).catch(function(e){ console.warn('naver_apt 저장 오류',e); });
+  /* 서버가 쓰기를 거부하면 SDK가 콜백을 주지 않는 경우가 있다.
+     그때 버튼이 영원히 '저장 중'에 갇히지 않도록 안전 타이머를 둔다. */
+  watchdog=setTimeout(function(){
+    $set('fb-status','⚠️ 저장 응답 없음');
+    $style('fb-status','color','#c92a2a');
+    finish('⚠️ 저장 응답이 2분간 없어 중단했습니다. 네트워크를 확인하고 다시 시도해 주세요.', false);
+  }, 120000);
+
+  try{
+    $set('fb-save-btn','⏳ 압축 중...');
+    showToast('⏳ Firebase 저장 준비 중... (데이터 압축)');
+    await new Promise(function(r){ setTimeout(r, 30); });   // 버튼 라벨이 먼저 그려지도록
+
+    var slimSale=(G.saleData||[]).map(slimSaleRow);
+    var slimRent=(G.rentData||[]).map(slimRentRow);
+    var today=new Date().toISOString().slice(0,10);
+    /* 매매·전월세를 한 덩어리로 저장하므로, 한쪽이 아직 안 불러와진 상태에서
+       저장이 돌면 반대쪽이 빈 배열로 지워진다. 비어 있으면 서버 값을 살린다. */
+    var keep=(window._fbLastSnap||{});
+    if(!slimSale.length && keep.sale_data && keep.sale_data.length){
+      slimSale=keep.sale_data;
+      showToast('🛡️ 매매는 화면이 비어 있어 서버 '+slimSale.length+'건을 유지합니다', 7000);
     }
-    $set('fb-save-btn','🔥 Firebase 저장');
-    $set('fb-status','🔥 저장완료 '+today+' ('+kb+'KB)');
+    if(!slimRent.length && keep.rent_data && keep.rent_data.length){
+      slimRent=keep.rent_data;
+      showToast('🛡️ 전월세는 화면이 비어 있어 서버 '+slimRent.length+'건을 유지합니다', 7000);
+    }
+
+    var jsonSale=JSON.stringify(slimSale), jsonRent=JSON.stringify(slimRent);
+    var rawBytes=new TextEncoder().encode(jsonSale).length+new TextEncoder().encode(jsonRent).length;
+    var saleGz=await fbGzipChunks(jsonSale);
+    var rentGz=await fbGzipChunks(jsonRent);
+    var payload={
+      fmt:'gz1',
+      sale_gz:saleGz,
+      rent_gz:rentGz,
+      meta:{ updated:today, sale_cnt:slimSale.length, rent_cnt:slimRent.length,
+             naver_cnt:(G.naverData||[]).length, slim:true, gz:true,
+             raw_bytes:rawBytes }
+    };
+    var gzBytes=new TextEncoder().encode(JSON.stringify(payload)).length;
+    if(gzBytes > 12*1048576){
+      $set('fb-status','❌ 용량 초과 '+_fbSizeTxt(gzBytes));
+      $style('fb-status','color','#c92a2a');
+      finish('❌ 압축해도 '+_fbSizeTxt(gzBytes)+'라 Firebase 한도(16MB)에 근접합니다. 저장을 중단했습니다.', false);
+      return;
+    }
+
+    $set('fb-save-btn','⏳ 전송 중...');
+    showToast('⏳ 전송 중 — '+_fbSizeTxt(rawBytes)+' → '+_fbSizeTxt(gzBytes)+'로 압축됨', 6000);
+    await set(dbRef(db,'sd_data'), payload);
+    if(done) return;        // 안전 타이머가 이미 끊은 뒤 늦게 도착한 응답
+
+    G._manualSale=false; G._manualRent=false;   // 서버에 반영됨
+    $set('fb-status','🔥 저장완료 '+today+' ('+_fbSizeTxt(gzBytes)+' · 원본 '+_fbSizeTxt(rawBytes)+')');
     $style('fb-status','color','#087f5b');
-  }).catch(function(err){
-    showToast('❌ 저장 오류: '+err.message);
-    $set('fb-save-btn','🔥 Firebase 저장');
+    finish('✅ Firebase 저장 완료! 매매 '+slimSale.length+'건 · 전월세 '+slimRent.length+'건 ('+_fbSizeTxt(gzBytes)+')', true);
+
+    // 네이버 APT 매물은 별도 경로에 저장 (실거래 저장이 끝난 뒤)
+    if(G.naverData && G.naverData.length>0){
+      try{
+        await set(dbRef(db,'sd_naver_apt'), {data:fixNaverDist(G.naverData), updated:today, cnt:G.naverData.length});
+        $set('naver-status','✅ 네이버 '+G.naverData.length+'건 저장완료');
+        var res=await saveNaverSnapshot(G.naverData);
+        $set('naver-snap-status','📸 '+res.ymd+' 스냅샷 ('+res.meta.cnt_uniq+'건)');
+        showToast('📸 매물 스냅샷 저장 — 실제 물건 '+res.meta.cnt_uniq+'건 / 등록 '+res.meta.cnt_raw+'건 ('+res.kb+'KB)', 4000);
+      }catch(e){ console.warn('naver_apt/스냅샷 저장 오류', e); }
+    }
+  }catch(err){
     console.error(err);
-  });
+    var m=(err&&err.message)||String(err);
+    if(/too large|MAX_SIZE/i.test(m)) m='데이터가 Firebase 1회 쓰기 한도(16MB)를 넘었습니다';
+    $set('fb-status','❌ 저장 실패');
+    $style('fb-status','color','#c92a2a');
+    finish('❌ 저장 오류: '+m+' — [🔥 Firebase 저장]을 다시 눌러주세요', false);
+  }
 }
 
 function fbLoadData(){
