@@ -17020,47 +17020,143 @@ function setNaverType(v,btn){
 }
 function setNaverSaleType(v,btn){ G.naverSaleType=v; setFilterBtn(btn.parentElement.querySelectorAll('.filter-btn'),btn); renderTab6(); }
 /* ── 중개업소 필터 (매물 APT·OP생숙·상가사무실 공통) ──
-   전체 / 자사(송도제일) / 직접입력. 직접입력은 중개사와 중복업소명을 모두 훑어
-   그 업소가 등록에 참여한 매물을 전부 보여준다.
-   ※ 상가 목록은 7천 행이 넘어 한 번 다시 그리는 데 0.5초가 걸린다.
-      글자마다 즉시 다시 그리면(특히 한글 조합 중) 화면이 멈춘 것처럼 보이므로
-      ① 250ms 디바운스 ② 조합 중 렌더 생략 ③ 결과가 같으면 렌더 자체를 건너뛴다. */
-var G_ag = { apt:{mode:'all', q:'', applied:'all'},
-             op :{mode:'all', q:'', applied:'all'},
-             sg :{mode:'all', q:'', applied:'all'} };
-var AG_MIN = 2;                    // 이 글자 수 미만이면 필터를 걸지 않는다
-var _agTimer={}, _agComposing={};
+   전체 / 자사(송도제일) / 직접입력.
+   직접입력은 두 단계로 동작한다.
+     ① 글자를 넣으면 그 글자가 든 '상호 후보'를 건수와 함께 목록으로 띄우고
+     ② 후보를 고르면 그 상호만 완전일치로 걸린다 (여러 개 선택 가능)
+   '타임'과 '송도타임'·'타임탑'·'타임두꺼비'를 갈라 보려면 부분일치로는 안 되고
+   상호 단위로 쪼개 정확히 비교해야 한다. 중복업소명은 쉼표로 구분돼 있다.
+   후보를 고르지 않고 글자만 넣으면 종전처럼 부분일치로 동작한다.
+   ※ 상가 목록은 7천 행이 넘어 한 번 다시 그리는 데 몇 초가 걸린다.
+      글자마다 즉시 다시 그리면 화면이 멈춘 것처럼 보이므로
+      ① 250ms 디바운스 ② 한글 조합 중 렌더 생략 ③ 결과가 같으면 렌더 자체를 건너뛴다. */
+var G_ag = { apt:{mode:'all', q:'', picks:[], applied:'all'},
+             op :{mode:'all', q:'', picks:[], applied:'all'},
+             sg :{mode:'all', q:'', picks:[], applied:'all'} };
+var AG_MIN = 2;                    // 이 글자 수 미만이면 후보도 필터도 걸지 않는다
+var AG_SUG_MAX = 15;               // 후보 목록에 한 번에 보여줄 개수
+var _agTimer={}, _agComposing={}, _agIndex={};
+var _agNameCache = (typeof WeakMap!=='undefined') ? new WeakMap() : null;
 
 function agNorm(q){ return String(q||'').replace(/\s/g,''); }
+function agEsc(s){ return String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'&quot;').replace(/</g,'&lt;'); }
+
+/* 한 매물에 얽힌 중개업소 상호를 배열로 쪼갠다 (중개사 + 중복업소명, 쉼표 구분).
+   행 객체에 값을 심으면 Firebase 저장분까지 오염되므로 WeakMap에 따로 캐시한다. */
+function agNames(r){
+  var raw = String(r.중개사||'') + ',' + String(r.중복업소명||'');
+  if(_agNameCache){ var c=_agNameCache.get(r); if(c && c.raw===raw) return c.arr; }
+  var arr=[], seen={};
+  raw.split(',').forEach(function(s){
+    s=agNorm(s);
+    if(!s || s==='-' || seen[s]) return;
+    seen[s]=1; arr.push(s);
+  });
+  if(_agNameCache) _agNameCache.set(r,{raw:raw,arr:arr});
+  return arr;
+}
+function agData(tab){
+  return tab==='apt' ? (G.naverData||[]) : tab==='op' ? (G.naverOpData||[]) : (G.naverSanggaData||[]);
+}
+/* 상호별 매물 건수 색인 — 자료가 바뀌지 않는 한 한 번만 만든다 */
+function agIndex(tab){
+  var arr=agData(tab), c=_agIndex[tab];
+  if(c && c.src===arr) return c.map;
+  var m={};
+  arr.forEach(function(r){ agNames(r).forEach(function(n){ m[n]=(m[n]||0)+1; }); });
+  _agIndex[tab]={src:arr, map:m};
+  return m;
+}
 /* 화면에 실제로 반영돼야 할 상태를 문자열 하나로 나타낸다.
-   '전체'와 '직접입력(1글자 이하)'은 결과가 같으므로 둘 다 'all'이 된다. */
+   이 값이 그대로면 목록을 다시 그릴 필요가 없다.
+   '전체'와 '직접입력(2글자 미만·미선택)'은 결과가 같으므로 둘 다 'all'이다. */
 function agKey(st){
   if(!st) return 'all';
   if(st.mode==='own') return 'own';
-  if(st.mode==='q'){ var q=agNorm(st.q); if(q.length>=AG_MIN) return 'q:'+q; }
+  if(st.mode==='q'){
+    if(st.picks && st.picks.length) return 'p:'+st.picks.slice().sort().join('|');
+    var q=agNorm(st.q); if(q.length>=AG_MIN) return 'q:'+q;
+  }
   return 'all';
 }
 function agHit(r, st){
   var key=agKey(st);
   if(key==='all') return true;
-  var names = String(r.중개사||'') + ' ' + String(r.중복업소명||'');
-  if(key==='own') return names.indexOf('송도제일')>=0;
-  return names.replace(/\s/g,'').indexOf(key.slice(2))>=0;
-}
-function agData(tab){
-  return tab==='apt' ? (G.naverData||[]) : tab==='op' ? (G.naverOpData||[]) : (G.naverSanggaData||[]);
+  var names=agNames(r);
+  if(key==='own') return names.some(function(n){ return n.indexOf('송도제일')>=0; });
+  if(key.charAt(0)==='p'){                       // 선택한 상호 — 완전일치
+    var picks=st.picks;
+    return names.some(function(n){ return picks.indexOf(n)>=0; });
+  }
+  var q=key.slice(2);                            // 글자만 입력 — 부분일치(종전 동작)
+  return names.some(function(n){ return n.indexOf(q)>=0; });
 }
 function agCount(tab){
   var el=document.getElementById('ag-'+tab+'-cnt'); if(!el) return;
   var st=G_ag[tab];
   if(st.mode==='all'){ el.textContent=''; return; }
-  if(st.mode==='q' && agNorm(st.q).length<AG_MIN){
-    el.textContent = agNorm(st.q) ? '2글자 이상 입력' : '';
-    el.style.color='var(--text3)'; return;
+  if(st.mode==='q' && !st.picks.length && agNorm(st.q).length<AG_MIN){
+    el.textContent='상호 2글자 이상'; el.style.color='var(--text3)'; return;
   }
   var n=agData(tab).filter(function(r){ return agHit(r,st); }).length;
   el.textContent = n ? n+'건' : '해당 업소 없음';
   el.style.color = n ? 'var(--accent)' : '#c92a2a';
+}
+/* ── 상호 후보 목록 ── */
+function agSug(tab){
+  var box=document.getElementById('ag-'+tab+'-sug'); if(!box) return;
+  var st=G_ag[tab], q=agNorm(st.q);
+  if(st.mode!=='q' || q.length<AG_MIN){ box.style.display='none'; box.innerHTML=''; return; }
+  var map=agIndex(tab), list=[];
+  Object.keys(map).forEach(function(n){
+    if(n.indexOf(q)>=0 && st.picks.indexOf(n)<0) list.push([n, map[n]]);
+  });
+  // 검색어와 똑같은 상호를 맨 위로, 그 다음 건수 많은 순
+  list.sort(function(a,b){
+    if((a[0]===q)!==(b[0]===q)) return a[0]===q ? -1 : 1;
+    return b[1]-a[1];
+  });
+  if(!list.length){
+    box.innerHTML='<div style="padding:7px 10px;font-size:11px;color:var(--text3)">\'' +agEsc(q)+ '\' 이 든 상호가 없습니다</div>';
+    box.style.display='block'; return;
+  }
+  var head='<div style="padding:5px 10px;font-size:10px;color:var(--text3);border-bottom:1px solid var(--border)">상호를 고르면 그 업소만 정확히 걸립니다</div>';
+  box.innerHTML = head + list.slice(0,AG_SUG_MAX).map(function(x){
+    var exact = (x[0]===q);
+    return '<div data-nm="'+agEsc(x[0])+'" onmousedown="event.preventDefault();agPick(\''+tab+'\',this.getAttribute(\'data-nm\'))"'
+      +' style="padding:5px 10px;font-size:12px;cursor:pointer;display:flex;justify-content:space-between;gap:14px;white-space:nowrap"'
+      +' onmouseover="this.style.background=\'var(--bg3)\'" onmouseout="this.style.background=\'\'">'
+      +'<span style="color:var(--text)">'+x[0]+(exact?' <span style="color:var(--accent);font-size:10px">정확히 일치</span>':'')+'</span>'
+      +'<span style="color:var(--text3)">'+x[1]+'건</span></div>';
+  }).join('')
+  + (list.length>AG_SUG_MAX ? '<div style="padding:4px 10px;font-size:10px;color:var(--text3)">…외 '+(list.length-AG_SUG_MAX)+'개 (글자를 더 넣어 좁혀 주세요)</div>' : '');
+  box.style.display='block';
+}
+function agSugClose(tab){
+  var box=document.getElementById('ag-'+tab+'-sug');
+  if(box){ box.style.display='none'; }
+}
+function agRenderPicks(tab){
+  var el=document.getElementById('ag-'+tab+'-pick'); if(!el) return;
+  var st=G_ag[tab];
+  el.innerHTML = st.picks.map(function(n){
+    return '<span style="display:inline-flex;align-items:center;gap:4px;background:var(--accent);color:#fff;border-radius:10px;padding:1px 4px 1px 8px;font-size:11px;white-space:nowrap">'
+      +n+'<span data-nm="'+agEsc(n)+'" onclick="agUnpick(\''+tab+'\',this.getAttribute(\'data-nm\'))" title="이 업소 빼기" style="cursor:pointer;font-weight:700;padding:0 3px">✕</span></span>';
+  }).join('');
+}
+function agPick(tab, name){
+  var st=G_ag[tab];
+  if(st.picks.indexOf(name)<0) st.picks.push(name);
+  st.q='';
+  var el=document.getElementById('ag-'+tab+'-q');
+  if(el){ el.value=''; el.focus(); }
+  agSugClose(tab); agRenderPicks(tab); agApply(tab);
+}
+function agUnpick(tab, name){
+  var st=G_ag[tab];
+  var i=st.picks.indexOf(name);
+  if(i>=0) st.picks.splice(i,1);
+  agRenderPicks(tab); agApply(tab);
 }
 function agRender(tab){
   if(tab==='apt') renderTab6(); else if(tab==='op') renderTab7(); else renderTab8();
@@ -17079,37 +17175,56 @@ function agQ(tab, v){
   G_ag[tab].q=v;
   if(_agComposing[tab]) return;
   if(_agTimer[tab]) clearTimeout(_agTimer[tab]);
-  _agTimer[tab]=setTimeout(function(){ _agTimer[tab]=null; agApply(tab); }, 250);
+  _agTimer[tab]=setTimeout(function(){ _agTimer[tab]=null; agSug(tab); agApply(tab); }, 250);
 }
 function agCompose(tab, on){
   _agComposing[tab]=!!on;
   if(!on){ var el=document.getElementById('ag-'+tab+'-q'); agQ(tab, el?el.value:G_ag[tab].q); }
 }
-function agFlush(tab){             // Enter — 기다리지 않고 즉시 반영
+function agKeydown(tab, e){
+  if(e.key==='Escape'){ agSugClose(tab); return; }
+  if(e.key!=='Enter') return;
+  e.preventDefault();
   if(_agTimer[tab]){ clearTimeout(_agTimer[tab]); _agTimer[tab]=null; }
   _agComposing[tab]=false;
   var el=document.getElementById('ag-'+tab+'-q');
   if(el) G_ag[tab].q=el.value;
+  agSug(tab);
+  var box=document.getElementById('ag-'+tab+'-sug');
+  var first=(box && box.style.display!=='none') ? box.querySelector('[data-nm]') : null;
+  if(first){ agPick(tab, first.getAttribute('data-nm')); return; }   // Enter = 첫 후보 선택
   agApply(tab);
 }
 function agSet(tab, mode, btn){
-  G_ag[tab].mode=mode;
-  if(mode!=='q') G_ag[tab].q='';
+  var st=G_ag[tab];
+  st.mode=mode;
+  if(mode!=='q'){ st.q=''; st.picks=[]; }
   if(btn) setFilterBtn(btn.parentElement.querySelectorAll('.filter-btn'), btn);
   var box=document.getElementById('ag-'+tab+'-box');
   if(box) box.style.display=(mode==='q')?'inline-flex':'none';
   if(mode==='q'){
+    st.q='';
     var el=document.getElementById('ag-'+tab+'-q');
-    if(el){ el.value=''; setTimeout(function(){el.focus();},0); }
+    if(el){ el.value=''; setTimeout(function(){ el.focus(); },0); }
   }
-  agApply(tab);
+  agSugClose(tab); agRenderPicks(tab); agApply(tab);
 }
 function agMount(tab){
   var el=document.getElementById('ag-'+tab+'-bar');
   if(el&&!el.getAttribute('data-on')){ el.innerHTML=agBar(tab); el.setAttribute('data-on','1'); }
-  var st=G_ag[tab]; var box=document.getElementById('ag-'+tab+'-box');
+  var st=G_ag[tab], box=document.getElementById('ag-'+tab+'-box');
   if(box) box.style.display=(st.mode==='q')?'inline-flex':'none';
-  agCount(tab);
+  agRenderPicks(tab); agCount(tab);
+  // 후보 목록 바깥을 누르면 닫는다 (한 번만 등록)
+  if(!window._agDocBound){
+    window._agDocBound=true;
+    document.addEventListener('mousedown', function(e){
+      ['apt','op','sg'].forEach(function(t){
+        var b=document.getElementById('ag-'+t+'-box');
+        if(b && !b.contains(e.target)) agSugClose(t);
+      });
+    });
+  }
 }
 function agBar(tab){
   return '<span class="filter-label" style="margin-left:8px;min-width:auto;white-space:nowrap">중개업소</span>'
@@ -17118,14 +17233,19 @@ function agBar(tab){
     +'<button class="filter-btn" onclick="agSet(\''+tab+'\',\'own\',this)">자사</button>'
     +'<button class="filter-btn" onclick="agSet(\''+tab+'\',\'q\',this)">직접입력</button>'
     +'</span>'
-    +'<span id="ag-'+tab+'-box" style="display:none;align-items:center;gap:4px">'
-    +'<input id="ag-'+tab+'-q" type="text" placeholder="예: 예원 (2글자 이상)" '
-    +'oninput="agQ(\''+tab+'\',this.value)" '
-    +'oncompositionstart="agCompose(\''+tab+'\',true)" '
-    +'oncompositionend="agCompose(\''+tab+'\',false)" '
-    +'onkeydown="if(event.key===\'Enter\'){event.preventDefault();agFlush(\''+tab+'\');}" '
-    +'style="width:130px;background:var(--bg3);border:1px solid var(--accent);border-radius:6px;color:var(--text);font-size:12px;padding:3px 8px">'
-    +'<span id="ag-'+tab+'-cnt" style="font-size:11px;color:var(--text3);margin-left:6px;white-space:nowrap"></span></span>';
+    +'<span id="ag-'+tab+'-box" style="display:none;position:relative;align-items:center;gap:5px">'
+    +'<input id="ag-'+tab+'-q" type="text" placeholder="상호 2글자 → 목록에서 선택" autocomplete="off"'
+    +' oninput="agQ(\''+tab+'\',this.value)"'
+    +' oncompositionstart="agCompose(\''+tab+'\',true)"'
+    +' oncompositionend="agCompose(\''+tab+'\',false)"'
+    +' onkeydown="agKeydown(\''+tab+'\',event)"'
+    +' onfocus="agSug(\''+tab+'\')"'
+    +' style="width:170px;background:var(--bg3);border:1px solid var(--accent);border-radius:6px;color:var(--text);font-size:12px;padding:3px 8px">'
+    +'<span id="ag-'+tab+'-pick" style="display:inline-flex;align-items:center;gap:3px;flex-wrap:wrap"></span>'
+    +'<span id="ag-'+tab+'-cnt" style="font-size:11px;color:var(--text3);white-space:nowrap"></span>'
+    +'<div id="ag-'+tab+'-sug" style="display:none;position:absolute;top:calc(100% + 3px);left:0;min-width:230px;max-height:260px;overflow-y:auto;'
+    +'background:var(--bg2);border:1px solid var(--accent);border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,.25);z-index:2000"></div>'
+    +'</span>';
 }
 function setNaverArea(v,btn){ G.naverArea=v; setFilterBtn(btn.parentElement.querySelectorAll('.filter-btn'),btn); renderTab6(); }
 
