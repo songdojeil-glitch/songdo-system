@@ -17030,9 +17030,9 @@ function setNaverSaleType(v,btn){ G.naverSaleType=v; setFilterBtn(btn.parentElem
    ※ 상가 목록은 7천 행이 넘어 한 번 다시 그리는 데 몇 초가 걸린다.
       글자마다 즉시 다시 그리면 화면이 멈춘 것처럼 보이므로
       ① 250ms 디바운스 ② 한글 조합 중 렌더 생략 ③ 결과가 같으면 렌더 자체를 건너뛴다. */
-var G_ag = { apt:{mode:'all', q:'', picks:[], applied:'all'},
-             op :{mode:'all', q:'', picks:[], applied:'all'},
-             sg :{mode:'all', q:'', picks:[], applied:'all'} };
+var G_ag = { apt:{mode:'all', q:'', picks:[], qOk:'', applied:'all'},
+             op :{mode:'all', q:'', picks:[], qOk:'', applied:'all'},
+             sg :{mode:'all', q:'', picks:[], qOk:'', applied:'all'} };
 var AG_MIN = 2;                    // 이 글자 수 미만이면 후보도 필터도 걸지 않는다
 var AG_SUG_MAX = 15;               // 후보 목록에 한 번에 보여줄 개수
 var _agTimer={}, _agComposing={}, _agIndex={};
@@ -17075,7 +17075,11 @@ function agKey(st){
   if(st.mode==='own') return 'own';
   if(st.mode==='q'){
     if(st.picks && st.picks.length) return 'p:'+st.picks.slice().sort().join('|');
-    var q=agNorm(st.q); if(q.length>=AG_MIN) return 'q:'+q;
+    /* 입력한 글자가 어느 상호에도 없으면(한/영 오타 등) 아예 거르지 않는다.
+       0건으로 걸렀다가 글자를 지우면 7천 행을 통째로 다시 그리느라 몇 초씩 멈추기 때문이다.
+       후보 목록과 건수 표시가 '해당 상호 없음'을 알려 주므로 화면이 그대로여도 헷갈리지 않는다.
+       st.qOk는 후보를 실제로 찾아본 agSug가 채운다. */
+    var q=agNorm(st.q); if(q.length>=AG_MIN && st.qOk===q) return 'q:'+q;
   }
   return 'all';
 }
@@ -17095,8 +17099,10 @@ function agCount(tab){
   var el=document.getElementById('ag-'+tab+'-cnt'); if(!el) return;
   var st=G_ag[tab];
   if(st.mode==='all'){ el.textContent=''; return; }
-  if(st.mode==='q' && !st.picks.length && agNorm(st.q).length<AG_MIN){
-    el.textContent='상호 2글자 이상'; el.style.color='var(--text3)'; return;
+  if(st.mode==='q' && !st.picks.length){
+    var q=agNorm(st.q);
+    if(q.length<AG_MIN){ el.textContent='상호 2글자 이상'; el.style.color='var(--text3)'; return; }
+    if(st.qOk!==q){ el.textContent='해당 상호 없음'; el.style.color='#c92a2a'; return; }
   }
   var n=agData(tab).filter(function(r){ return agHit(r,st); }).length;
   el.textContent = n ? n+'건' : '해당 업소 없음';
@@ -17106,7 +17112,7 @@ function agCount(tab){
 function agSug(tab){
   var box=document.getElementById('ag-'+tab+'-sug'); if(!box) return;
   var st=G_ag[tab], q=agNorm(st.q);
-  if(st.mode!=='q' || q.length<AG_MIN){ box.style.display='none'; box.innerHTML=''; return; }
+  if(st.mode!=='q' || q.length<AG_MIN){ st.qOk=''; box.style.display='none'; box.innerHTML=''; return; }
   var map=agIndex(tab), list=[];
   Object.keys(map).forEach(function(n){
     if(n.indexOf(q)>=0 && st.picks.indexOf(n)<0) list.push([n, map[n]]);
@@ -17117,9 +17123,15 @@ function agSug(tab){
     return b[1]-a[1];
   });
   if(!list.length){
-    box.innerHTML='<div style="padding:7px 10px;font-size:11px;color:var(--text3)">\'' +agEsc(q)+ '\' 이 든 상호가 없습니다</div>';
+    st.qOk='';                       // 후보가 없으면 목록은 건드리지 않는다
+    var eng=/^[A-Za-z]+$/.test(q);
+    box.innerHTML='<div style="padding:7px 10px;font-size:11px;color:var(--text3);white-space:nowrap">'
+      +'\''+agEsc(q)+'\' 이(가) 든 상호가 없습니다'
+      +(eng?'<br><span style="color:#c92a2a">⌨ 한/영 전환을 확인해 주세요</span>':'')
+      +'</div>';
     box.style.display='block'; return;
   }
+  st.qOk=q;                          // 후보가 있으니 이 글자로 걸러도 된다
   var head='<div style="padding:5px 10px;font-size:10px;color:var(--text3);border-bottom:1px solid var(--border)">상호를 고르면 그 업소만 정확히 걸립니다</div>';
   box.innerHTML = head + list.slice(0,AG_SUG_MAX).map(function(x){
     var exact = (x[0]===q);
@@ -17198,12 +17210,12 @@ function agKeydown(tab, e){
 function agSet(tab, mode, btn){
   var st=G_ag[tab];
   st.mode=mode;
-  if(mode!=='q'){ st.q=''; st.picks=[]; }
+  if(mode!=='q'){ st.q=''; st.picks=[]; st.qOk=''; }
   if(btn) setFilterBtn(btn.parentElement.querySelectorAll('.filter-btn'), btn);
   var box=document.getElementById('ag-'+tab+'-box');
   if(box) box.style.display=(mode==='q')?'inline-flex':'none';
   if(mode==='q'){
-    st.q='';
+    st.q=''; st.qOk='';
     var el=document.getElementById('ag-'+tab+'-q');
     if(el){ el.value=''; setTimeout(function(){ el.focus(); },0); }
   }
