@@ -5404,7 +5404,8 @@ function renderTab7(){
   document.getElementById('op-content').style.display='block';
 
   // 두 종류가 섞여 있을 때만 물건구분 필터를 보여준다
-  var kAll=G.naverOpData, kOp=0, kSs=0;
+  // 중개업소 필터를 모집단에 먼저 적용한다(구분·면적·공구·단지 건수가 모두 따라간다)
+  var kAll=G.naverOpData.filter(function(r){ return agHit(r, G_ag.op); }), kOp=0, kSs=0;
   kAll.forEach(function(r){ if((r.매물구분||'오피스텔')==='생숙') kSs++; else kOp++; });
   var kRow=document.getElementById('op-kind-row');
   if(kRow) kRow.style.display=(kOp>0&&kSs>0)?'':'none';
@@ -5494,6 +5495,7 @@ function renderTab7(){
   var favOnly=(document.getElementById('op-fav-only')||{}).checked||false;
   var search=(document.getElementById('op-search-input')||{}).value||'';
   var rows=G.naverOpData.filter(function(r){
+    if(!agHit(r, G_ag.op)) return false;
     if(G_op.gong!=='all'&&String(r.공구||'')!==G_op.gong) return false;
     if(G_op.unit&&r.단지명!==G_op.unit) return false;
     if(G_op.kind!=='all'&&(r.매물구분||'오피스텔')!==G_op.kind) return false;
@@ -17019,33 +17021,95 @@ function setNaverType(v,btn){
 function setNaverSaleType(v,btn){ G.naverSaleType=v; setFilterBtn(btn.parentElement.querySelectorAll('.filter-btn'),btn); renderTab6(); }
 /* ── 중개업소 필터 (매물 APT·OP생숙·상가사무실 공통) ──
    전체 / 자사(송도제일) / 직접입력. 직접입력은 중개사와 중복업소명을 모두 훑어
-   그 업소가 등록에 참여한 매물을 전부 보여준다. */
-var G_ag = { apt:{mode:'all', q:''}, op:{mode:'all', q:''}, sg:{mode:'all', q:''} };
+   그 업소가 등록에 참여한 매물을 전부 보여준다.
+   ※ 상가 목록은 7천 행이 넘어 한 번 다시 그리는 데 0.5초가 걸린다.
+      글자마다 즉시 다시 그리면(특히 한글 조합 중) 화면이 멈춘 것처럼 보이므로
+      ① 250ms 디바운스 ② 조합 중 렌더 생략 ③ 결과가 같으면 렌더 자체를 건너뛴다. */
+var G_ag = { apt:{mode:'all', q:'', applied:'all'},
+             op :{mode:'all', q:'', applied:'all'},
+             sg :{mode:'all', q:'', applied:'all'} };
+var AG_MIN = 2;                    // 이 글자 수 미만이면 필터를 걸지 않는다
+var _agTimer={}, _agComposing={};
+
+function agNorm(q){ return String(q||'').replace(/\s/g,''); }
+/* 화면에 실제로 반영돼야 할 상태를 문자열 하나로 나타낸다.
+   '전체'와 '직접입력(1글자 이하)'은 결과가 같으므로 둘 다 'all'이 된다. */
+function agKey(st){
+  if(!st) return 'all';
+  if(st.mode==='own') return 'own';
+  if(st.mode==='q'){ var q=agNorm(st.q); if(q.length>=AG_MIN) return 'q:'+q; }
+  return 'all';
+}
 function agHit(r, st){
-  if(!st || st.mode==='all') return true;
+  var key=agKey(st);
+  if(key==='all') return true;
   var names = String(r.중개사||'') + ' ' + String(r.중복업소명||'');
-  if(st.mode==='own') return names.indexOf('송도제일')>=0;
-  var q=(st.q||'').trim();
-  if(!q) return true;
-  return names.replace(/\s/g,'').indexOf(q.replace(/\s/g,''))>=0;
+  if(key==='own') return names.indexOf('송도제일')>=0;
+  return names.replace(/\s/g,'').indexOf(key.slice(2))>=0;
+}
+function agData(tab){
+  return tab==='apt' ? (G.naverData||[]) : tab==='op' ? (G.naverOpData||[]) : (G.naverSanggaData||[]);
+}
+function agCount(tab){
+  var el=document.getElementById('ag-'+tab+'-cnt'); if(!el) return;
+  var st=G_ag[tab];
+  if(st.mode==='all'){ el.textContent=''; return; }
+  if(st.mode==='q' && agNorm(st.q).length<AG_MIN){
+    el.textContent = agNorm(st.q) ? '2글자 이상 입력' : '';
+    el.style.color='var(--text3)'; return;
+  }
+  var n=agData(tab).filter(function(r){ return agHit(r,st); }).length;
+  el.textContent = n ? n+'건' : '해당 업소 없음';
+  el.style.color = n ? 'var(--accent)' : '#c92a2a';
+}
+function agRender(tab){
+  if(tab==='apt') renderTab6(); else if(tab==='op') renderTab7(); else renderTab8();
+  agCount(tab);
+}
+/* 결과가 달라지지 않으면 목록을 다시 그리지 않는다 */
+function agApply(tab){
+  var st=G_ag[tab], key=agKey(st);
+  if(key===st.applied){ agCount(tab); return; }
+  st.applied=key;
+  agRender(tab);
+}
+/* 입력은 250ms 모아 한 번만 반영한다.
+   한글 조합 중(compositionstart~end)에는 자모마다 input 이벤트가 나므로 아예 건너뛴다. */
+function agQ(tab, v){
+  G_ag[tab].q=v;
+  if(_agComposing[tab]) return;
+  if(_agTimer[tab]) clearTimeout(_agTimer[tab]);
+  _agTimer[tab]=setTimeout(function(){ _agTimer[tab]=null; agApply(tab); }, 250);
+}
+function agCompose(tab, on){
+  _agComposing[tab]=!!on;
+  if(!on){ var el=document.getElementById('ag-'+tab+'-q'); agQ(tab, el?el.value:G_ag[tab].q); }
+}
+function agFlush(tab){             // Enter — 기다리지 않고 즉시 반영
+  if(_agTimer[tab]){ clearTimeout(_agTimer[tab]); _agTimer[tab]=null; }
+  _agComposing[tab]=false;
+  var el=document.getElementById('ag-'+tab+'-q');
+  if(el) G_ag[tab].q=el.value;
+  agApply(tab);
 }
 function agSet(tab, mode, btn){
   G_ag[tab].mode=mode;
+  if(mode!=='q') G_ag[tab].q='';
   if(btn) setFilterBtn(btn.parentElement.querySelectorAll('.filter-btn'), btn);
   var box=document.getElementById('ag-'+tab+'-box');
   if(box) box.style.display=(mode==='q')?'inline-flex':'none';
-  if(mode==='q'){ var el=document.getElementById('ag-'+tab+'-q'); if(el) setTimeout(function(){el.focus();},0); }
-  agRender(tab);
-}
-function agQ(tab, v){ G_ag[tab].q=v; agRender(tab); }
-function agRender(tab){
-  if(tab==='apt') renderTab6(); else if(tab==='op') renderTab7(); else renderTab8();
+  if(mode==='q'){
+    var el=document.getElementById('ag-'+tab+'-q');
+    if(el){ el.value=''; setTimeout(function(){el.focus();},0); }
+  }
+  agApply(tab);
 }
 function agMount(tab){
   var el=document.getElementById('ag-'+tab+'-bar');
   if(el&&!el.getAttribute('data-on')){ el.innerHTML=agBar(tab); el.setAttribute('data-on','1'); }
   var st=G_ag[tab]; var box=document.getElementById('ag-'+tab+'-box');
   if(box) box.style.display=(st.mode==='q')?'inline-flex':'none';
+  agCount(tab);
 }
 function agBar(tab){
   return '<span class="filter-label" style="margin-left:8px;min-width:auto;white-space:nowrap">중개업소</span>'
@@ -17055,9 +17119,13 @@ function agBar(tab){
     +'<button class="filter-btn" onclick="agSet(\''+tab+'\',\'q\',this)">직접입력</button>'
     +'</span>'
     +'<span id="ag-'+tab+'-box" style="display:none;align-items:center;gap:4px">'
-    +'<input id="ag-'+tab+'-q" type="text" placeholder="예: 예원" oninput="agQ(\''+tab+'\',this.value)" '
-    +'style="width:110px;background:var(--bg3);border:1px solid var(--accent);border-radius:6px;color:var(--text);font-size:12px;padding:3px 8px">'
-    +'<span id="ag-'+tab+'-cnt" style="font-size:11px;color:var(--text3);margin-left:6px"></span></span>';
+    +'<input id="ag-'+tab+'-q" type="text" placeholder="예: 예원 (2글자 이상)" '
+    +'oninput="agQ(\''+tab+'\',this.value)" '
+    +'oncompositionstart="agCompose(\''+tab+'\',true)" '
+    +'oncompositionend="agCompose(\''+tab+'\',false)" '
+    +'onkeydown="if(event.key===\'Enter\'){event.preventDefault();agFlush(\''+tab+'\');}" '
+    +'style="width:130px;background:var(--bg3);border:1px solid var(--accent);border-radius:6px;color:var(--text);font-size:12px;padding:3px 8px">'
+    +'<span id="ag-'+tab+'-cnt" style="font-size:11px;color:var(--text3);margin-left:6px;white-space:nowrap"></span></span>';
 }
 function setNaverArea(v,btn){ G.naverArea=v; setFilterBtn(btn.parentElement.querySelectorAll('.filter-btn'),btn); renderTab6(); }
 
@@ -17714,6 +17782,15 @@ function printReport(){
 }
 
 // ══ Firebase 연동 함수
+/* 자동 로드를 부르는 곳이 둘이다 — initFirebase의 대기 타이머와 module 스크립트.
+   둘 다 실행되면 같은 데이터를 두 번 내려받으므로 첫 호출만 통과시킨다.
+   (수동 [☁️ Firebase 불러오기]는 fbAutoLoad를 직접 부르므로 영향 없다) */
+window._fbAutoOnce=false;
+window.fbAutoLoadOnce=function(){
+  if(window._fbAutoOnce) return;
+  window._fbAutoOnce=true;
+  window.fbAutoLoad();
+};
 function initFirebase(){
   // Firebase 모듈 로드 대기 후 자동 로드
   var tries = 0;
@@ -17721,7 +17798,7 @@ function initFirebase(){
     tries++;
     if(window._fbGet && window._fbChild && window._fbDb && window._fbRef){
       clearInterval(timer);
-      fbAutoLoad();
+      fbAutoLoadOnce();
     } else if(tries > 60){
       clearInterval(timer);
       console.log('Firebase 모듈 대기 시간 초과 → 샘플 로드');
@@ -18193,8 +18270,8 @@ if(typeof $set === 'function'){
   $style('fb-status','color','#ff6600');
 }
 // Firebase 준비 완료 → 자동 로드 트리거
-if(typeof window.fbAutoLoad === 'function'){
-  window.fbAutoLoad();
+if(typeof window.fbAutoLoadOnce === 'function'){
+  window.fbAutoLoadOnce();
 }
 </script>
 
