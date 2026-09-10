@@ -7007,6 +7007,8 @@ function renderAIInfo(){
                   +';border:1px solid '+(done?'#a5d6a7':'#cfe3ff')+';border-radius:14px;padding:2px 4px 2px 9px;font-size:11px">'
                   +'<a href="https://search.naver.com/search.naver?query='+q+'" target="_blank" rel="noopener" '
                   +'title="네이버에서 주소와 함께 검색" style="color:'+(done?'#2e7d32':'#1a2035')+';text-decoration:none;font-weight:600">'+r.name+' 🔍</a>'
+                  +'<button onclick="aiInfoRename('+i+')" title="업소명 수정" '
+                  +'style="background:none;border:none;color:#7a8aa0;cursor:pointer;font-size:10px;padding:0 2px;line-height:1">✏️</button>'
                   // 배정된 호실은 각각 칩으로 — ✕ 를 누르면 그 호실만 해제된다
                   +hos.map(function(h){
                       return '<b style="display:inline-flex;align-items:center;gap:2px;color:#2e7d32;background:#fff;border:1px solid #a5d6a7;border-radius:9px;padding:0 3px 0 5px;margin-left:2px">'
@@ -7088,6 +7090,35 @@ function aiInfoAssign(i, ho){
 }
 
 // 호실 하나만 해제 — 업소는 목록에 남는다
+/* 업소명을 그 자리에서 고친다.
+   AI 인식 오타나 지나치게 긴 상호를 지우고 다시 만들 필요 없이 바로 다듬기 위한 것.
+   이미 호실에 배정돼 있으면 그 호실들의 입점업종도 같이 바꿔야 이름이 갈라지지 않는다. */
+function aiInfoRename(i){
+  var r=_aiRows[i]; if(!r) return;
+  var old=String(r.name||'').trim();
+  var nv=prompt('업소명을 수정합니다.\n(배정된 호실의 입점업종도 함께 바뀝니다)', old);
+  if(nv===null) return;
+  nv=String(nv).trim();
+  if(!nv){ showToast('업소명은 비울 수 없습니다'); return; }
+  if(nv===old) return;
+
+  var b=BUILDINGS.find(function(x){return x.id===curBldgId;});
+  var moved=0;
+  if(b){
+    (b.props||[]).forEach(function(p){
+      if(String(p.tenant||'').trim()===old){ p.tenant=nv; moved++; }
+    });
+    if(moved && typeof saveBldgs==='function') saveBldgs();
+  }
+  // 같은 이름의 다른 줄이 있으면 함께 바꾼다(동·층이 달라 나뉜 경우)
+  _aiRows.forEach(function(x){ if(String(x.name||'').trim()===old) x.name=nv; });
+
+  if(typeof aiSaveRows==='function') aiSaveRows(true);
+  if(typeof renderAIInfo==='function') renderAIInfo();
+  if(typeof renderTable==='function') renderTable();
+  showToast('✏️ "'+old+'" → "'+nv+'"'+(moved?' · 호실 '+moved+'곳 반영':''));
+}
+
 function aiInfoUnassign(ho){
   var b=BUILDINGS.find(function(x){return x.id===curBldgId;});
   if(!b) return;
