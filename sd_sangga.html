@@ -6806,11 +6806,20 @@ function hoInfoOpen(){
   if(el){ el.value=ad; if(typeof aiSaveAddr==='function') aiSaveAddr(); }
   if(nm && nm!==b.name){ b.name=nm; if(typeof saveBldgs==='function') saveBldgs(); }
 
-  _aiRows = withTenant.map(function(p){
-    return { dong:p.dong||'', floor:String(p.floor||'').trim(),
-             name:String(p.tenant).trim(), ho:String(p.ho||'').trim(),
-             conf:'호실', src:'호실현황', use:true };
+  /* 한 업소가 여러 호실을 쓰면 호실 수만큼 줄이 생긴다(스타벅스 B107~B111 → 5줄).
+     같은 동·층·업소는 한 줄로 묶고, 호실은 대표 하나만 넣는다.
+     인포 화면은 배정된 호실을 b.props 에서 다시 읽어 표시하므로 나머지도 그대로 보인다. */
+  var _seen={}, _rows=[];
+  withTenant.forEach(function(p){
+    var nm2=String(p.tenant).trim();
+    var fl=String(p.floor||'').trim();
+    var key=(p.dong||'')+'|'+(typeof aiFloorKey==='function'?aiFloorKey(fl):fl)+'|'+nm2.replace(/\s/g,'');
+    if(_seen[key]) return;
+    _seen[key]=1;
+    _rows.push({ dong:p.dong||'', floor:fl, name:nm2, ho:String(p.ho||'').trim(),
+                 conf:'호실', src:'호실현황', use:true });
   });
+  _aiRows = _rows;
   if(typeof aiSaveRows==='function') aiSaveRows(true);
   if(typeof renderAIInfo==='function') renderAIInfo();
   _aiInfoOpen=true;
