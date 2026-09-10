@@ -191,6 +191,7 @@ body.zoom-mode .zoomable:hover{box-shadow:none !important;}
       <p class="sec" style="margin:0">🏬 전체 호실 현황</p>
       <div style="display:flex;gap:6px;flex-wrap:wrap">
         <button onclick="hoInfoOpen()" style="padding:6px 12px;background:#00695c;color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap">📋 입점현황 인포 만들기</button>
+        <button onclick="hoInfoClear()" style="padding:6px 10px;background:#fff;color:#c62828;border:1px solid #ef9a9a;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap">🗑️ 인포 삭제</button>
         <select id="flt-dong" class="fi" style="width:auto;font-size:12px;display:none" onchange="renderTable()"><option value="">전체 동</option></select>
         <select id="flt-floor" class="fi" style="width:auto;font-size:12px" onchange="renderTable()"><option value="">전체 층</option></select>
         <select id="flt-status" class="fi" style="width:auto;font-size:12px" onchange="renderTable()">
@@ -6788,6 +6789,25 @@ var _aiInfoOpen=true;
    AI 사진 인식이 부실해도 '전체 호실 현황'을 손수 채워둔 건물이 있다.
    그때는 이미 있는 호실 자료가 더 정확하므로, 같은 형식(_aiRows)으로 바꿔
    기존 인포 화면을 그대로 재사용한다. 출력이 갈라지지 않는다. */
+/* 만들어둔 입점현황 인포를 지운다. 저장본까지 비워 다음에 탭을 열 때 되살아나지 않게 한다. */
+function hoInfoClear(){
+  if(!confirm('만들어진 입점현황 인포를 지웁니다.\n(호실 현황 자료는 그대로입니다)\n\n계속할까요?')) return;
+  _aiRows=[];
+  if(typeof _aiInfoOpen!=='undefined') _aiInfoOpen=false;
+  /* delete 가 없거나 실패하는 환경이 있어 빈 값 저장도 함께 한다.
+     aiLoadRows 는 rows 가 비면 불러오지 않으므로 어느 쪽이든 되살아나지 않는다. */
+  try{
+    if(window.storage){
+      if(typeof window.storage.delete==='function') window.storage.delete(bldgKey('ai_rows'));
+      window.storage.set(bldgKey('ai_rows'), JSON.stringify({saved:new Date().toISOString(), rows:[]}));
+    }
+  }catch(e){}
+  var si=document.getElementById('ai-save-info'); if(si) si.textContent='';
+  ['ai-info-card','ai-info-card2'].forEach(function(id){ var e=document.getElementById(id); if(e) e.style.display='none'; });
+  if(typeof renderAIInfo==='function') renderAIInfo();
+  showToast('🗑️ 입점현황 인포를 지웠습니다');
+}
+
 function hoInfoOpen(){
   var b=BUILDINGS.find(function(x){return x.id===curBldgId;});
   if(!b){ showToast('건물을 먼저 선택해 주세요'); return; }
@@ -6809,6 +6829,7 @@ function hoInfoOpen(){
   /* 한 업소가 여러 호실을 쓰면 호실 수만큼 줄이 생긴다(스타벅스 B107~B111 → 5줄).
      같은 동·층·업소는 한 줄로 묶고, 호실은 대표 하나만 넣는다.
      인포 화면은 배정된 호실을 b.props 에서 다시 읽어 표시하므로 나머지도 그대로 보인다. */
+  _aiRows=[];   // 이전 결과를 먼저 비운다. 안 비우면 다시 만들 때 아래에 덧붙어 보인다
   var _seen={}, _rows=[];
   withTenant.forEach(function(p){
     var nm2=String(p.tenant).trim();
