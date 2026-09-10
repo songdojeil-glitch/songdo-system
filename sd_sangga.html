@@ -6781,7 +6781,40 @@ function aiResolveHo(ho, dong){
   }
   return '';
 }
-function aiHoExists(ho, dong){ return !!aiResolveHo(ho, dong); }
+function aiHoExists(ho, dong){ return aiResolveHoAll(ho, dong).length>0; }
+
+/* '101,102호'·'101-103호'처럼 여러 호실이 적힌 경우 전부 돌려준다.
+   기존 aiResolveHo 는 첫 번째 하나만 반환해 102·103이 통째로 빠졌다. */
+function aiResolveHoAll(ho, dong){
+  var b=BUILDINGS.find(function(x){return x.id===curBldgId;});
+  if(!b||!ho) return [];
+  if(aiIsFloorOnly(ho)) return [];
+  var props=b.props||[];
+  var cands=aiExtractHo(ho, dong).slice();
+
+  /* '101-103' 같은 범위를 펼친다. 앞뒤 동 글자가 같고 자릿수가 같을 때만.
+     '801-1'(분할 호실)과 구별하려면 뒷숫자가 앞숫자보다 크고 자릿수가 같아야 한다. */
+  var rng=String(ho).match(/([A-Da-d]?)\s*(\d{3,4})\s*[-~]\s*(\d{3,4})/);
+  if(rng){
+    var pre=(rng[1]||dong||'').toUpperCase();
+    var a=parseInt(rng[2],10), z=parseInt(rng[3],10);
+    if(z>a && String(rng[2]).length===String(rng[3]).length && z-a<=30){
+      for(var v=a; v<=z; v++){ cands.push(pre+v); }
+    }
+  }
+
+  var out=[], seen={};
+  cands.forEach(function(c){
+    var key=aiNormKey(c);
+    var hit=props.find(function(p){ return aiNormKey(p.ho)===key; });
+    if(!hit && dong && !/^[A-D]/.test(c)){
+      var k2=aiNormKey(String(dong).toUpperCase()+c);
+      hit=props.find(function(p){ return aiNormKey(p.ho)===k2; });
+    }
+    if(hit && !seen[hit.ho]){ seen[hit.ho]=1; out.push(hit.ho); }
+  });
+  return out;
+}
 var _aiInfoView='all';   // 호실을 찾았든 못 찾았든 층별 목록은 항상 보여준다
 var _aiInfoOpen=true;
 
@@ -6891,16 +6924,20 @@ function renderAIInfo(){
 
   // 이미 입점업종이 채워진 업소는 배정 완료로 본다
   // 한 업소가 여러 호실을 쓸 수 있으므로 배열로 모은다
+  /* 배정은 '층+업소명'으로 맞춘다. 이름만으로 맞추면 같은 상호가 여러 층에 있을 때
+     다른 층 호실까지 한 줄에 딸려 붙어(줄리킴영어 5층·7층 등) 층별로 볼 수 없다.
+     인포는 층별 현황을 보는 화면이므로 층이 다르면 별개로 다룬다. */
+  var akey=function(floor, name){ return aiFloorKey(floor)+'|'+String(name||'').trim(); };
   var assigned={};
   (b.props||[]).forEach(function(p){
     if(!p.tenant) return;
-    var k=String(p.tenant).trim();
+    var k=akey(p.floor, p.tenant);
     if(!assigned[k]) assigned[k]=[];
     assigned[k].push(p.ho);
   });
   Object.keys(assigned).forEach(function(k){ assigned[k].sort(); });
 
-  var isDone=function(r){ return (assigned[String(r.name||'').trim()]||[]).length>0; };
+  var isDone=function(r){ return (assigned[akey(r.floor, r.name)]||[]).length>0; };
   var rows=_aiRows.filter(function(r){
     if(!r.name) return false;
     if(_aiInfoView==='todo') return !isDone(r);
@@ -6978,7 +7015,7 @@ function renderAIInfo(){
           +(d==='_B'?'🅿️ 지하 (동 구분 없음)':'🏢 '+d+'동')+'</div>':'')
       +floors.map(function(f){
           var list=grp[d][f].slice().sort(function(x,y){
-            var ax=(assigned[String(x.name).trim()]||[])[0]||'', ay=(assigned[String(y.name).trim()]||[])[0]||'';
+            var ax=(assigned[akey(x.floor,x.name)]||[])[0]||'', ay=(assigned[akey(y.floor,y.name)]||[])[0]||'';
             if(!!ax!==!!ay) return ax?-1:1;          // 호실 확인된 것 먼저
             return String(ax).localeCompare(String(ay)) || String(x.name).localeCompare(String(y.name));
           });
@@ -6989,18 +7026,19 @@ function renderAIInfo(){
           });
           var opts='<option value="">＋ 호실</option>'
             +(free.length>1?'<option value="__ALL__">▣ 전체 '+free.length+'개 ('+free[0].ho+'~'+free[free.length-1].ho+')</option>':'')
-            +free.map(function(p){ return '<option value="'+p.ho+'">'+p.ho+'</option>'; }).join('');
+            +free.map(function(p){ return '<option value="'+p.ho+'">'+p.ho+'</option>'; }).join('')
+            +'<option value="__SPLIT__">✂️ 호실 나누기 (801 → 801-2)</option>';
           return '<div style="display:flex;gap:8px;align-items:flex-start;padding:6px 0;border-top:1px solid #e8f0f8">'
             +'<div style="min-width:74px;padding-top:4px">'
               +'<div style="font-size:11px;font-weight:700;color:#455a64">'+f+'</div>'
               +'<div style="font-size:9px;color:#90a4ae">'
-                +list.filter(function(x){return (assigned[String(x.name).trim()]||[]).length;}).length+'/'+list.length+'</div>'
+                +list.filter(function(x){return (assigned[akey(x.floor,x.name)]||[]).length;}).length+'/'+list.length+'</div>'
             +'</div>'
             +'<div style="flex:1;display:flex;flex-wrap:wrap;gap:5px">'
             +(list.length?'':'<span style="font-size:11px;color:#b0bec5;align-self:center">등록된 업소 없음</span>')
             +list.map(function(r){
                 var i=_aiRows.indexOf(r);
-                var hos=assigned[String(r.name).trim()]||[];
+                var hos=assigned[akey(r.floor,r.name)]||[];
                 var done=hos.length>0;
                 var q=encodeURIComponent(r.name+' '+(addr||bname));
                 return '<span style="display:inline-flex;align-items:center;gap:3px;background:'+(done?'#e8f5e9':'#fff')
@@ -7074,6 +7112,34 @@ function aiInfoAssign(i, ho){
     return;
   }
 
+  /* 한 호실을 여러 업체가 나눠 쓰는 경우(801 → 801-1·801-2·801-3).
+     호실 자체를 나눠 실제 칸을 만들어 준다. 한 칸에 한 업소라는 원칙이 유지돼
+     현황 집계·색상·필터가 그대로 동작한다(입점업종을 두 개 넣는 방식은 그걸 깨뜨린다). */
+  if(ho==='__SPLIT__'){
+    var base=prompt('나눌 원래 호실 번호를 입력하세요.\n예: 801 → 801-2 가 새로 만들어집니다.', '');
+    if(base===null) return;
+    base=String(base).trim().replace(/호$/,'');
+    if(!base){ renderAIInfo(); return; }
+    var src=(b.props||[]).find(function(x){ return String(x.ho).replace(/호$/,'')===base; });
+    if(!src){ showToast('⚠️ "'+base+'" 호실을 찾지 못했습니다.'); renderAIInfo(); return; }
+    // 다음 번호를 찾는다: 801-2, 801-3 …
+    var k=2;
+    while((b.props||[]).some(function(x){ return String(x.ho)===base+'-'+k; })) k++;
+    var nho=base+'-'+k;
+    var np={};
+    Object.keys(src).forEach(function(key){ np[key]=src[key]; });
+    np.ho=nho; np.tenant=r.name; np.split=true;
+    if(!np.status || np.status==='미분양') np.status='분양&임대';
+    b.props.push(np);
+    if(typeof saveBldgs==='function') saveBldgs();
+    var cur0=String(r.ho||'').split(',').map(function(x){return x.trim();}).filter(Boolean);
+    if(cur0.indexOf(nho)<0) cur0.push(nho);
+    r.ho=cur0.sort().join(','); r.conf=r.conf||'직접배정';
+    aiInfoRefreshAll();
+    showToast('✂️ '+nho+' 호실을 만들고 "'+r.name+'"를 넣었습니다');
+    return;
+  }
+
   var p=(b.props||[]).find(function(x){ return String(x.ho)===ho; });
   if(!p){ showToast('⚠️ 호실을 찾지 못했습니다.'); return; }
   if(p.tenant && p.tenant!==r.name
@@ -7102,16 +7168,20 @@ function aiInfoRename(i){
   if(!nv){ showToast('업소명은 비울 수 없습니다'); return; }
   if(nv===old) return;
 
+  /* 같은 층만 바꾼다. 다른 층에 같은 상호가 있어도 그쪽은 건드리지 않는다.
+     (줄리킴영어 5층·7층처럼 층별로 따로 관리하려는 것이 목적) */
+  var fk=aiFloorKey(r.floor);
   var b=BUILDINGS.find(function(x){return x.id===curBldgId;});
   var moved=0;
   if(b){
     (b.props||[]).forEach(function(p){
-      if(String(p.tenant||'').trim()===old){ p.tenant=nv; moved++; }
+      if(String(p.tenant||'').trim()===old && aiFloorKey(p.floor)===fk){ p.tenant=nv; moved++; }
     });
     if(moved && typeof saveBldgs==='function') saveBldgs();
   }
-  // 같은 이름의 다른 줄이 있으면 함께 바꾼다(동·층이 달라 나뉜 경우)
-  _aiRows.forEach(function(x){ if(String(x.name||'').trim()===old) x.name=nv; });
+  _aiRows.forEach(function(x){
+    if(String(x.name||'').trim()===old && aiFloorKey(x.floor)===fk) x.name=nv;
+  });
 
   if(typeof aiSaveRows==='function') aiSaveRows(true);
   if(typeof renderAIInfo==='function') renderAIInfo();
@@ -7324,12 +7394,12 @@ function applyAIResult(){
   var picks=_aiRows.filter(function(r){ return r.use && r.ho && aiHoExists(r.ho, r.dong); });
   if(!picks.length){ alert('적용할 항목이 없습니다. 체크박스를 확인해 주세요.'); return; }
   if(!confirm(picks.length+'개 호실의 입점업종을 갱신합니다.\n\n'
-    +picks.slice(0,8).map(function(r){return '· '+aiResolveHo(r.ho,r.dong)+' → '+r.name;}).join('\n')
+    +picks.slice(0,8).map(function(r){return '· '+aiResolveHoAll(r.ho,r.dong).join(', ')+' → '+r.name;}).join('\n')
     +(picks.length>8?'\n… 외 '+(picks.length-8)+'건':'')+'\n\n계속할까요?')) return;
 
   var n=0;
   picks.forEach(function(r){
-    var key=aiResolveHo(r.ho, r.dong);
+    aiResolveHoAll(r.ho, r.dong).forEach(function(key){
     var p=(b.props||[]).find(function(x){ return String(x.ho)===key; });
     if(!p) return;
     p.tenant=r.name;
@@ -7337,6 +7407,7 @@ function applyAIResult(){
     // '임대완료' 같은 없는 값을 넣으면 대시보드 집계·색상·필터에서 통째로 누락된다.
     if(!p.status || p.status==='미분양') p.status='분양&임대';
     n++;
+    });
   });
   saveBldgs();
   // 대시보드는 KPI(renderDash)와 호실 표(renderTable)가 별도 함수다. 둘 다 새로 그려야 한다.
