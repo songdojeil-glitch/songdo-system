@@ -190,6 +190,7 @@ body.zoom-mode .zoomable:hover{box-shadow:none !important;}
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
       <p class="sec" style="margin:0">🏬 전체 호실 현황</p>
       <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <button onclick="hoInfoOpen()" style="padding:6px 12px;background:#00695c;color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap">📋 입점현황 인포 만들기</button>
         <select id="flt-dong" class="fi" style="width:auto;font-size:12px;display:none" onchange="renderTable()"><option value="">전체 동</option></select>
         <select id="flt-floor" class="fi" style="width:auto;font-size:12px" onchange="renderTable()"><option value="">전체 층</option></select>
         <select id="flt-status" class="fi" style="width:auto;font-size:12px" onchange="renderTable()">
@@ -6783,6 +6784,41 @@ function aiHoExists(ho, dong){ return !!aiResolveHo(ho, dong); }
 var _aiInfoView='all';   // 호실을 찾았든 못 찾았든 층별 목록은 항상 보여준다
 var _aiInfoOpen=true;
 
+/* ── 호실 현황으로 입점현황 인포 만들기 ──
+   AI 사진 인식이 부실해도 '전체 호실 현황'을 손수 채워둔 건물이 있다.
+   그때는 이미 있는 호실 자료가 더 정확하므로, 같은 형식(_aiRows)으로 바꿔
+   기존 인포 화면을 그대로 재사용한다. 출력이 갈라지지 않는다. */
+function hoInfoOpen(){
+  var b=BUILDINGS.find(function(x){return x.id===curBldgId;});
+  if(!b){ showToast('건물을 먼저 선택해 주세요'); return; }
+  var withTenant=(b.props||[]).filter(function(p){ return p.tenant && String(p.tenant).trim(); });
+  if(!withTenant.length){ showToast('입점업종이 입력된 호실이 없습니다'); return; }
+
+  var curAddr='';
+  try{ curAddr=(document.getElementById('ai-addr')||{}).value||''; }catch(e){}
+  var nm=prompt('상가명을 입력하세요 (업소명 검색에 함께 쓰입니다)', b.name||'');
+  if(nm===null) return;
+  var ad=prompt('도로명 주소를 입력하세요\n예: 인천광역시 연수구 하모니로 158', curAddr);
+  if(ad===null) return;
+
+  // 주소는 기존 검색 기능이 쓰는 칸에 그대로 넣어 두 방식이 같은 값을 보게 한다
+  var el=document.getElementById('ai-addr');
+  if(el){ el.value=ad; if(typeof aiSaveAddr==='function') aiSaveAddr(); }
+  if(nm && nm!==b.name){ b.name=nm; if(typeof saveBldgs==='function') saveBldgs(); }
+
+  _aiRows = withTenant.map(function(p){
+    return { dong:p.dong||'', floor:String(p.floor||'').trim(),
+             name:String(p.tenant).trim(), ho:String(p.ho||'').trim(),
+             conf:'호실', src:'호실현황', use:true };
+  });
+  if(typeof aiSaveRows==='function') aiSaveRows(true);
+  if(typeof renderAIInfo==='function') renderAIInfo();
+  _aiInfoOpen=true;
+  ['ai-info-body','ai-info-body2'].forEach(function(id){ var e=document.getElementById(id); if(e) e.style.display='block'; });
+  ['ai-info-toggle','ai-info-toggle2'].forEach(function(id){ var e=document.getElementById(id); if(e) e.textContent='접기'; });
+  showToast('📋 호실 현황 '+_aiRows.length+'곳으로 입점현황 인포를 만들었습니다');
+}
+
 /* ── 입점현황 인포 ──
    AI 인식으로 '몇 층에 어떤 업소'까지는 알아냈지만 호실을 못 찾은 것들을 층별로 모아 보여준다.
    보기만 하는 표로 두면 결국 손으로 옮겨 적어야 하므로, 이 자리에서 바로 호실을 고를 수 있게 한다. */
@@ -6808,8 +6844,10 @@ function aiInfoSetView(v){
 // 층 표기를 맞춘다 ('지상4층' / '4층' / 'B1' 등이 섞여 들어온다)
 function aiFloorKey(v){
   var t=String(v||'').replace(/\s/g,'');
-  var m=t.match(/지하\s*(\d+)/) || (/^B(\d+)/i.test(t)?[0,t.replace(/^B/i,'')]:null);
-  if(m) return 'B'+m[1];
+  /* 'B1F'·'B01' 같은 표기도 지하로 묶는다. 뒤에 붙은 F나 앞자리 0을 떼지 않으면
+     같은 지하 1층이 'B1F'·'B01'·'B1'로 흩어져 층별로 모이지 않는다. */
+  var m=t.match(/지하\s*(\d+)/) || (/^B0*(\d+)/i.test(t)?[0,t.match(/^B0*(\d+)/i)[1]]:null);
+  if(m) return 'B'+parseInt(m[1],10);
   var g=t.match(/(\d+)/);
   return g?('F'+g[1]):'';
 }
