@@ -1663,7 +1663,17 @@ function addBldg(){
 
           // 호수 확인
           var ho = String(row[COL.ho]||'').trim();
-          if(!ho || (!ho.includes('호') && !/^[A-Za-z]\d/.test(ho))) continue;
+          /* 견적서마다 호수 표기가 다르다. '101호'·'A101' 만 인정하면
+             숫자만 적힌 양식(101·102 …)이 통째로 걸러져 '호실 0개'가 된다.
+             숫자 3~4자리, 앞에 동 글자가 붙은 형태, '801-2' 같은 분할 호실까지 받는다.
+             다만 '㎡'·'평' 같은 보조 헤더 줄과 합계 줄은 제외한다. */
+          if(!ho) continue;
+          if(/㎡|평|합계|소계|계$/.test(ho)) continue;
+          var _isHo = ho.includes('호')
+                   || /^[A-Za-z]\s*-?\s*\d{2,4}(-\d+)?$/.test(ho)
+                   || /^\d{3,4}(-\d+)?$/.test(ho);
+          if(!_isHo) continue;
+          ho = ho.replace(/\s/g,'');
 
           var toNum = function(v){ return parseFloat(String(v||0).replace(/[^0-9.]/g,''))||0; };
           // 소수점을 지우면 1232790.3 → 12327903 (10배) 이 되고,
