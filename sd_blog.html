@@ -605,10 +605,28 @@ const DEF_AUTHOR = {
 };
 const DEF_SETTINGS = {
   engine:'gemini',
-  geminiKeys:'', geminiModel:'gemini-2.5-flash', geminiImageModel:'gemini-2.5-flash-image',
+  geminiKeys:'', geminiModel:'gemini-3.6-flash', geminiImageModel:'gemini-3.6-flash-image',
   claudeKeys:'', claudeModel:'claude-sonnet-4-5',
   naverCategory:'', visibility:'public', withMap:true,
 };
+
+/* 구글이 닫아 버린 옛 모델 이름 — 저장된 설정에 남아 있으면 새 이름으로 바꿔 준다 */
+const RETIRED_GEMINI = {
+  'gemini-2.5-flash':'gemini-3.6-flash',
+  'gemini-2.0-flash':'gemini-3.6-flash',
+  'gemini-1.5-flash':'gemini-3.6-flash',
+  'gemini-1.5-pro':'gemini-3.6-flash',
+  'gemini-2.5-flash-image':'gemini-3.6-flash-image',
+  'gemini-2.0-flash-image':'gemini-3.6-flash-image',
+};
+function migrateModels(st){
+  let moved = [];
+  ['geminiModel','geminiImageModel'].forEach(k=>{
+    const cur = st[k];
+    if(cur && RETIRED_GEMINI[cur]){ moved.push(cur + ' → ' + RETIRED_GEMINI[cur]); st[k] = RETIRED_GEMINI[cur]; }
+  });
+  return moved;
+}
 
 const state = {
   author: Object.assign({}, DEF_AUTHOR, LS.get('author', {})),
@@ -625,6 +643,8 @@ const state = {
   busy: false,
   helper: { on:false, loggedIn:false, ver:'' },
 };
+const MODELS_MOVED = migrateModels(state.settings);
+if(MODELS_MOVED.length) LS.set('settings', state.settings);
 
 /* ---------- 공통 ---------- */
 const $ = s => document.querySelector(s);
@@ -762,8 +782,28 @@ async function callAI(prompt, { json = false, maxTokens = 8192 } = {}){
   }
   throw lastErr;
 }
+function geminiModelHint(status, msg){
+  if(status !== 404 && !/not found|no longer available|not supported/i.test(msg||'')) return '';
+  const m = /models\/([\w.-]+)/.exec(msg||'');
+  return '\n\n지정한 모델 이름을 구글이 더 이상 받지 않습니다.'
+    + (m ? ' (지금 설정값: ' + m[1] + ')' : '')
+    + '\n[엔진 설정]을 열어 「사용 가능한 모델 불러오기」를 누르면 지금 쓸 수 있는 이름이 나옵니다.';
+}
+async function fetchGeminiModels(key){
+  const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=200&key=' + encodeURIComponent(key));
+  const d = await r.json().catch(()=>({}));
+  if(!r.ok) throw new Error('모델 목록을 받지 못했습니다 ' + r.status + ': ' + ((d.error && d.error.message)||'').slice(0,160));
+  const all = (d.models||[]).map(m => ({
+    id: String(m.name||'').replace(/^models\//,''),
+    methods: m.supportedGenerationMethods || [],
+  })).filter(m => m.id && m.methods.indexOf('generateContent') >= 0);
+  return {
+    text: all.filter(m => !/image|vision|embedding|aqa|tts/i.test(m.id)).map(m=>m.id),
+    image: all.filter(m => /image/i.test(m.id)).map(m=>m.id),
+  };
+}
 async function callGemini(key, prompt, json, maxTokens){
-  const model = state.settings.geminiModel || 'gemini-2.5-flash';
+  const model = state.settings.geminiModel || DEF_SETTINGS.geminiModel;
   const body = {
     contents: [{ role:'user', parts:[{ text: prompt }] }],
     generationConfig: { temperature: 0.85, maxOutputTokens: maxTokens },
@@ -772,7 +812,10 @@ async function callGemini(key, prompt, json, maxTokens){
   const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(key)}`,
     { method:'POST', headers:{ 'content-type':'application/json' }, body: JSON.stringify(body) });
   const d = await r.json().catch(()=>({}));
-  if(!r.ok) throw new Error('제미나이 오류 ' + r.status + ': ' + ((d.error && d.error.message) || '').slice(0, 200));
+  if(!r.ok){
+    const em = (d.error && d.error.message) || '';
+    throw new Error('제미나이 오류 ' + r.status + ': ' + em.slice(0, 200) + geminiModelHint(r.status, em));
+  }
   const parts = (((d.candidates||[])[0]||{}).content||{}).parts || [];
   const txt = parts.map(p => p.text || '').join('').trim();
   if(!txt) throw new Error('제미나이가 빈 응답을 보냈습니다. 잠시 후 다시 해 주세요.');
@@ -805,7 +848,7 @@ function parseJSON(txt){
 async function genImage(prompt){
   const keys = keysOf('gemini');
   if(!keys.length) throw new Error('AI 사진은 제미나이 키가 필요합니다. [엔진 설정]에서 제미나이 키를 넣어 주세요.');
-  const model = state.settings.geminiImageModel || 'gemini-2.5-flash-image';
+  const model = state.settings.geminiImageModel || DEF_SETTINGS.geminiImageModel;
   const full = prompt + ', photorealistic, natural daylight, clean composition, korean urban residential context, no text, no watermark, no people faces';
   let lastErr;
   for(const key of keys){
@@ -814,7 +857,10 @@ async function genImage(prompt){
         { method:'POST', headers:{ 'content-type':'application/json' },
           body: JSON.stringify({ contents:[{ role:'user', parts:[{ text: full }] }] }) });
       const d = await r.json().catch(()=>({}));
-      if(!r.ok) throw new Error('이미지 오류 ' + r.status + ': ' + ((d.error && d.error.message)||'').slice(0,180));
+      if(!r.ok){
+        const em = (d.error && d.error.message) || '';
+        throw new Error('이미지 오류 ' + r.status + ': ' + em.slice(0,180) + geminiModelHint(r.status, em));
+      }
       const parts = (((d.candidates||[])[0]||{}).content||{}).parts || [];
       const img = parts.find(p => p.inlineData || p.inline_data);
       if(!img) throw new Error('이미지가 오지 않았습니다. 모델 이름을 확인해 주세요.');
@@ -1442,6 +1488,12 @@ function openSettings(){
       <div class="field"><label>제미나이 글 모델</label><input data-k="geminiModel" value="${esc(s.geminiModel)}"></div>
       <div class="field"><label>제미나이 사진 모델</label><input data-k="geminiImageModel" value="${esc(s.geminiImageModel)}"></div>
     </div>
+    <div class="field">
+      <button class="btn" data-models style="width:100%">🔄 사용 가능한 모델 불러오기</button>
+      <div class="hint" id="modelHint">구글이 모델 이름을 바꾸면 글 생성이 404 오류로 멈춥니다.
+        이 버튼을 누르면 <b>지금 내 키로 쓸 수 있는 모델</b>을 구글에 직접 물어봅니다. 목록에서 누르면 위 칸에 채워집니다.</div>
+      <div id="modelList" style="display:none;margin-top:8px"></div>
+    </div>
     <div class="field"><label>클로드 API 키</label>
       <textarea data-k="claudeKeys" placeholder="sk-ant-...">${esc(s.claudeKeys)}</textarea>
       <div class="hint">console.anthropic.com 에서 발급. 클로드는 사진 생성은 하지 않습니다.</div></div>
@@ -1461,6 +1513,33 @@ function openSettings(){
     </div>
   `, `<button class="btn" data-cancel>취소</button><button class="btn primary" data-save>저장</button>`);
   $('#modalHost').querySelector('[data-cancel]').onclick = close;
+  $('#modalHost').querySelector('[data-models]').onclick = async (ev)=>{
+    const btn = ev.currentTarget, box = $('#modalHost').querySelector('#modelList');
+    const keyBox = $('#modalHost').querySelector('[data-k="geminiKeys"]');
+    const key = String(keyBox ? keyBox.value : '').split(/[\n,]/).map(x=>x.trim()).filter(Boolean)[0];
+    if(!key){ box.style.display='block'; box.innerHTML = '<div class="emptynote">먼저 위에 제미나이 API 키를 넣어 주세요.</div>'; return; }
+    btn.disabled = true; const t0 = btn.textContent; btn.textContent = '⏳ 물어보는 중...';
+    box.style.display = 'block'; box.innerHTML = '';
+    try{
+      const m = await fetchGeminiModels(key);
+      const row = (label, list, target) => !list.length ? '' :
+        '<div style="margin-bottom:9px"><div style="font-size:12px;color:var(--muted);margin-bottom:5px">' + label + '</div>'
+        + list.map(id => '<button class="btn sm" data-fill="' + target + '" data-val="' + id + '" style="margin:0 5px 5px 0">' + id + '</button>').join('')
+        + '</div>';
+      box.innerHTML = (row('글 생성용 — 누르면 「제미나이 글 모델」에 채워집니다', m.text, 'geminiModel')
+                     + row('사진 생성용 — 누르면 「제미나이 사진 모델」에 채워집니다', m.image, 'geminiImageModel'))
+                     || '<div class="emptynote">쓸 수 있는 모델이 없습니다. 키를 확인해 주세요.</div>';
+      box.querySelectorAll('[data-fill]').forEach(b => b.onclick = () => {
+        const inp = $('#modalHost').querySelector('[data-k="' + b.dataset.fill + '"]');
+        if(inp){ inp.value = b.dataset.val; inp.style.background = '#fffde7';
+                 setTimeout(()=>{ inp.style.background=''; }, 900); }
+        toast(b.dataset.val + ' 로 바꿨습니다. [저장]을 눌러 주세요.');
+      });
+    }catch(e){
+      box.innerHTML = '<div class="emptynote" style="color:#c0392b">' + esc(e.message) + '</div>';
+    }
+    btn.disabled = false; btn.textContent = t0;
+  };
   $('#modalHost').querySelector('[data-export]').onclick = ()=>{
     $('#modalHost').querySelectorAll('[data-k]').forEach(i => s[i.dataset.k] = i.value.trim());
     const r0 = $('#modalHost').querySelector('input[name=eng]:checked'); if(r0) s.engine = r0.value;
@@ -1532,6 +1611,9 @@ function openArchive(){
    7) 시작
    ============================================================ */
 function init(){
+  if(typeof MODELS_MOVED !== 'undefined' && MODELS_MOVED.length){
+    setTimeout(()=>toast('구글이 닫은 옛 모델이라 바꿨습니다 — ' + MODELS_MOVED.join(', ')), 600);
+  }
   renderCats(); renderTopics(); renderPicked(); renderPost();
   refreshEngineChip();
   $('#authorTxt').textContent = state.author.name || '작성자 정보';
