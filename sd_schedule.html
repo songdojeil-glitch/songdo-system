@@ -1916,6 +1916,12 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
 
   var NOTES=[], nmSort='new', nmEditId=null, nmSel='';   // nmSel = 달력에서 고른 날짜
 
+  // ── 기존 파일의 결함 하나를 먼저 막는다 ────────────────
+  // renderAllTodos() 안에서 kindFilter 를 읽는데 어디에도 선언이 없어
+  // 「구분」 단추를 한 번도 누르지 않은 상태에서는 ReferenceError 로 함수가 멈춘다.
+  // 그래서 일정을 고쳐 저장해도 목록이 다시 그려지지 않고 옛 화면이 남아 있었다.
+  if(typeof window.kindFilter==='undefined') window.kindFilter='all';
+
   function uid(){ return (window._authProfile||{}).uid||'anon'; }
   function uname(){ return (window._authProfile||{}).name||''; }
   function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
@@ -2249,6 +2255,54 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
     nmRender();
   };
 
+  // ── 메모 ↔ 일정·할일 연결 상태 ──────────────────────────
+  var nmDirty=false;                      // 없어진 연결을 정리했으면 저장이 필요하다
+
+  function findTodo(id){
+    if(!Array.isArray(window.todos)) return null;
+    return window.todos.find(function(x){return String(x.id)===String(id);})||null;
+  }
+  function nmTodosReady(){
+    return Array.isArray(window.todos) && (window.todos.length>0 || window._nmTodosReady===true);
+  }
+
+  function tagHtml(noteId, todoId, kind, when, state, dim){
+    var isS=kind==='schedule';
+    var bg = dim ? '#f0f0f0' : (isS?'#e3f2fd':'#e8f5e9');
+    var fg = dim ? '#999'    : (isS?'#1565c0':'#2e7d32');
+    return '<span style="display:inline-flex;align-items:center;gap:5px;font-size:10px;padding:2px 4px 2px 7px;'
+      +'border-radius:8px;background:'+bg+';color:'+fg+(dim?';text-decoration:line-through':'')+'">'
+      + (isS?'📅 일정':'✅ 할일') + ' · ' + esc(when)
+      + (state?' · '+esc(state):'')
+      + '<button onclick="event.stopPropagation();nmUnlink('+noteId+','+todoId+')" title="이 일정·할일 삭제" '
+      +   'style="border:none;background:transparent;color:inherit;cursor:pointer;font-size:11px;'
+      +   'line-height:1;padding:1px 3px;opacity:.65">✕</button>'
+      + '</span>';
+  }
+
+  // 메모 화면에서 바로 일정·할일 지우기
+  window.nmUnlink=function(noteId, todoId){
+    var n=NOTES.find(function(x){return String(x.id)===String(noteId);});
+    if(!n) return;
+    var t=findTodo(todoId);
+    var msg = t
+      ? ((t.kind==='schedule'?'📅 일정':'✅ 할일')+'을 삭제하시겠습니까?\n\n'
+         + (t.title||'') + '\n\n메모 자체는 그대로 남습니다.')
+      : '이미 없는 항목입니다. 메모의 꼬리표만 지울까요?';
+    if(!confirm(msg)) return;
+
+    if(t && Array.isArray(window.todos)){
+      window.todos = window.todos.filter(function(x){return String(x.id)!==String(todoId);});
+      try{ saveTodos(); }catch(e){}
+    }
+    n.linked=(n.linked||[]).filter(function(L){return String(L.id)!==String(todoId);});
+    nmSave();
+    try{ nmRender(); }catch(e){}
+    try{ renderToday(); }catch(e){}
+    try{ renderAllTodos(); }catch(e){}
+    try{ renderCal(); }catch(e){}
+  };
+
   // ── 그리기 ──────────────────────────────────────────────
   function noteRow(n){
     var d=new Date(n.ts);
@@ -2259,17 +2313,30 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
     if(!n.isPublic) tail.push('🔒');
     else if(n.author) tail.push(n.author);
 
-    // 이 메모에서 만든 일정·할일 꼬리표
-    var lk='';
+    // 이 메모에서 만든 일정·할일 꼬리표 — 늘 실제 일정을 다시 읽어서 그린다
+    var lk='', tags=[];
     if(n.linked && n.linked.length){
-      lk='<div style="margin-top:5px;display:flex;gap:4px;flex-wrap:wrap">'
-        + n.linked.map(function(L){
-            var isS=L.kind==='schedule';
-            return '<span style="font-size:10px;padding:2px 7px;border-radius:8px;background:'
-              +(isS?'#e3f2fd;color:#1565c0':'#e8f5e9;color:#2e7d32')+'">'
-              +(isS?'📅 일정':'✅ 할일')+' · '+esc(L.when||'')+'</span>';
-          }).join('')
-        + '</div>';
+      var keep=[];
+      n.linked.forEach(function(L){
+        var t=findTodo(L.id);
+        if(!t){
+          // 달력 등 다른 화면에서 지워진 항목 — 꼬리표도 같이 없앤다
+          if(nmTodosReady()) { nmDirty=true; return; }
+          keep.push(L);
+          tags.push(tagHtml(n.id, L.id, L.kind, L.when||'', '', false));
+          return;
+        }
+        keep.push(L);
+        var ds=(t.date||'').slice(0,10), hm=(t.date||'').slice(11,16);
+        var when=ds.slice(5).replace('-','/')
+          + (t.timemode==='allday' ? ' 종일'
+            : t.timemode==='unknown' ? ' 시간미정'
+            : (hm && hm!=='00:00' ? ' '+hm : ''));
+        var state = t.cancelled ? '취소됨' : (t.done ? '완료' : '');
+        tags.push(tagHtml(n.id, t.id, t.kind, when, state, !!t.cancelled));
+      });
+      if(keep.length!==n.linked.length) n.linked=keep;
+      if(tags.length) lk='<div style="margin-top:5px;display:flex;gap:4px;flex-wrap:wrap">'+tags.join('')+'</div>';
     }
 
     return '<div class="nm-row">'
@@ -2344,6 +2411,7 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
 
     list.innerHTML=H;
     try{ nmCalDots(); }catch(e){}
+    if(nmDirty){ nmDirty=false; nmSave(); }   // 없어진 연결을 정리했으면 한 번만 저장
   };
 
   window.nmClearSel=function(){ nmSel=''; nmRender(); };
@@ -2438,11 +2506,24 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
     };
   }
 
+  // 일정 목록이 다 실려야 '없어진 연결'을 판단할 수 있다
+  var _loadAll=window.loadAll;
+  if(typeof _loadAll==='function'){
+    window.loadAll=function(){
+      var r=_loadAll.apply(this, arguments);
+      if(r && typeof r.then==='function'){
+        r.then(function(){ window._nmTodosReady=true; try{ nmRender(); }catch(e){} });
+      } else { window._nmTodosReady=true; }
+      return r;
+    };
+  }
+
   // ── 시동 ────────────────────────────────────────────────
   async function boot(){
     mount();
     if(!NOTES.length){ await nmLoad(); nmRender(); }
   }
+  setTimeout(function(){ window._nmTodosReady=true; try{ nmRender(); }catch(e){} }, 3000);
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',function(){ setTimeout(boot,400); });
   else setTimeout(boot,400);
   setTimeout(boot,1500);
