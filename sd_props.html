@@ -7496,6 +7496,668 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
 })();
 </script>
 
+<!-- ═══════════════════════════════════════════════════════════
+     매물 상세정보 · 수익률 · 위험점검 모듈  v1.0
+     - 주거/상업 자동 구분 후 분야별 입력칸만 노출
+     - 상업용 수익률 자동계산 + 계산식 화면 표기
+     - 권리·공법 위험 점검표(분야별) + 목록 배지
+     - 활성 매물 진행단계(광고중 / 협의중) + 거르개
+     기존 코드를 고치지 않고 덧붙이는 방식
+     ═══════════════════════════════════════════════════════ -->
+<script>
+(function(){
+  'use strict';
+
+  // ── 1. 분야 판정 ────────────────────────────────────────
+  function pxSector(t){
+    t=String(t||'');
+    if(/상가|사무실|공장|토지|단독|생활형숙박/.test(t)) return '상업';
+    if(/아파트|오피스텔/.test(t)) return '주거';
+    return '주거';
+  }
+  window.pxSector = pxSector;
+
+  // 금액 문자열 → 만원 단위 숫자 ("9억 5,000만원" → 95000)
+  function pxMan(s){
+    if(s==null) return 0;
+    s=String(s).replace(/[\s,원]/g,'');
+    if(!s) return 0;
+    var tot=0,m;
+    m=s.match(/([\d.]+)억/);
+    if(m){ tot+=parseFloat(m[1])*10000; s=s.replace(/[\d.]+억/,''); }
+    m=s.match(/([\d.]+)만/);
+    if(m){ tot+=parseFloat(m[1]); s=s.replace(/[\d.]+만/,''); }
+    if(!tot){
+      var n=parseFloat(s.replace(/[^\d.]/g,''));
+      if(!isNaN(n)) tot=n;                 // 숫자만 적으면 만원 단위로 봄
+    }
+    return tot||0;
+  }
+  function pxFmt(v){
+    v=Math.round(Number(v)||0);
+    if(!v) return '0';
+    var u=Math.floor(v/10000), r=v%10000;
+    if(u>0&&r>0) return u+'억 '+r.toLocaleString()+'만';
+    if(u>0) return u+'억';
+    return v.toLocaleString()+'만';
+  }
+
+  // ── 2. 위험 점검 항목 ───────────────────────────────────
+  var PX_RISK = {
+    '주거':[
+      '등기부 근저당·선순위 채권 확인',
+      '선순위 임차보증금 확인 (전입세대 확인서)',
+      '건축물대장 위반건축물 여부',
+      '신탁등기·압류·가압류 여부',
+      '임대인 본인 또는 대리권 확인',
+      '누수·결로 등 시설 하자 확인'
+    ],
+    '상업':[
+      '등기부 근저당·선순위 채권 확인',
+      '건축물대장 위반건축물·불법 증축',
+      '용도지역·건축물 용도상 희망 업종 가능 여부',
+      '정화조 용량 / 오수 부담금',
+      '소방·비상구·피난 설비',
+      '기존 임차인 대항력·계약 승계 여부',
+      '관리비·미납 공과금 정산'
+    ]
+  };
+
+  function pxRiskList(p){ return PX_RISK[pxSector(p&&p.propertyType)]||PX_RISK['주거']; }
+  function pxRiskScore(p){
+    if(!p||!p.pxRisk) return null;
+    var list=pxRiskList(p), n=0;
+    list.forEach(function(_,i){ if(p.pxRisk['r'+i]) n++; });
+    return { done:n, total:list.length };
+  }
+
+  // ── 3. 입력 화면에 칸 심기 ──────────────────────────────
+  function css(){
+    if(document.getElementById('px-css')) return;
+    var st=document.createElement('style'); st.id='px-css';
+    st.textContent='.px-g{display:grid;gap:12px;margin-bottom:12px}'
+      +'.px-g2{grid-template-columns:1fr 1fr}.px-g3{grid-template-columns:1fr 1fr 1fr}'
+      +'@media(max-width:560px){.px-g2,.px-g3{grid-template-columns:1fr}}'
+      +'.px-chk{display:flex;align-items:flex-start;gap:8px;padding:7px 0;border-bottom:0.5px solid #f2f2f2;font-size:13px;line-height:1.45;cursor:pointer}'
+      +'.px-chk input{width:17px;height:17px;margin-top:1px;flex-shrink:0;cursor:pointer}'
+      +'.px-note{font-size:11px;color:#888;margin-top:6px;line-height:1.5}';
+    document.head.appendChild(st);
+  }
+
+  function mountForm(){
+    if(document.getElementById('px-card')) return;
+    var gw=document.getElementById('fp-gw');
+    if(!gw) return;
+    var priceCard=gw.closest('.card');
+    if(!priceCard) return;
+    css();
+
+    priceCard.insertAdjacentHTML('afterend',
+      '<div class="card" id="px-card">'
+      + '<p class="sec">상세 정보 <span id="px-sec-badge" style="font-size:11px;font-weight:400"></span></p>'
+
+      // 공통
+      + '<div class="px-g px-g3">'
+      +   '<div><label class="fl">공급면적(㎡)</label>'
+      +     '<input id="px-gross" type="text" class="fi" placeholder="예: 112.5" oninput="pxCalc()"></div>'
+      +   '<div><label class="fl">전용률</label>'
+      +     '<div id="px-rate-view" style="padding:8px 0;font-size:14px;font-weight:500;color:#aaa">—</div></div>'
+      +   '<div><label class="fl">월 관리비</label>'
+      +     '<input id="px-mgmt" type="text" class="fi" placeholder="예: 18만원"></div>'
+      + '</div>'
+
+      // 주거 전용
+      + '<div id="px-ju" class="px-g px-g2" style="display:none">'
+      +   '<div><label class="fl">방 / 욕실 수</label>'
+      +     '<input id="px-rooms" type="text" class="fi" placeholder="예: 3 / 2"></div>'
+      +   '<div><label class="fl">난방 방식</label>'
+      +     '<select id="px-heat" class="fi"><option value="">선택 안 함</option><option>개별난방</option><option>중앙난방</option><option>지역난방</option></select></div>'
+      + '</div>'
+
+      // 상업 전용
+      + '<div id="px-sa" style="display:none">'
+      +   '<div class="px-g px-g2">'
+      +     '<div><label class="fl">현 업종</label>'
+      +       '<input id="px-bizname" type="text" class="fi" placeholder="예: 카페 / 공실"></div>'
+      +     '<div><label class="fl">영업 상태</label>'
+      +       '<select id="px-bizst" class="fi"><option value="">선택 안 함</option><option>영업중</option><option>공실</option><option>폐업 예정</option><option>신축 미입주</option></select></div>'
+      +   '</div>'
+      +   '<div style="border:0.5px solid #ffcc80;background:#fffdf8;border-radius:12px;padding:14px;margin-top:4px">'
+      +     '<p style="font-size:13px;font-weight:600;color:#e65100;margin:0 0 10px">📈 예상 수익률</p>'
+      +     '<div id="px-yin" class="px-g px-g2" style="margin-bottom:8px">'
+      +       '<div><label class="fl">임대 보증금</label>'
+      +         '<input id="px-depo" type="text" class="fi" placeholder="예: 5,000만원" oninput="pxCalc()"></div>'
+      +       '<div><label class="fl">월세 <span style="font-size:11px;color:#aaa">(현재 또는 예상)</span></label>'
+      +         '<input id="px-rent" type="text" class="fi" placeholder="예: 250만원" oninput="pxCalc()"></div>'
+      +     '</div>'
+      +     '<div class="px-g px-g2" style="margin-bottom:8px">'
+      +       '<div><label class="fl">대출금 <span style="font-size:11px;color:#aaa">(선택)</span></label>'
+      +         '<input id="px-loan" type="text" class="fi" placeholder="예: 3억" oninput="pxCalc()"></div>'
+      +       '<div><label class="fl">대출 금리 (%) <span style="font-size:11px;color:#aaa">(선택)</span></label>'
+      +         '<input id="px-irate" type="text" class="fi" placeholder="예: 4.5" oninput="pxCalc()"></div>'
+      +     '</div>'
+      +     '<div id="px-yield-box" style="background:#fff;border-radius:10px;padding:12px 14px;font-size:12px;line-height:1.9;color:#444">'
+      +       '<span style="color:#aaa">매매가와 월세를 입력하면 수익률이 계산됩니다.</span></div>'
+      +     '<p class="px-note">입력한 값으로 계산한 참고 수치입니다. 실제 수익률은 세금·중개보수·공실 기간·대출 조건에 따라 달라집니다.</p>'
+      +   '</div>'
+      + '</div>'
+      + '</div>'
+
+      // 위험 점검표
+      + '<div class="card" id="px-risk-card">'
+      +   '<p class="sec">⚠️ 권리 · 공법 위험 점검 <span id="px-risk-cnt" style="font-size:11px;font-weight:400;color:#888"></span></p>'
+      +   '<div id="px-risk-list"></div>'
+      +   '<div class="px-g px-g2" style="margin-top:12px">'
+      +     '<div><label class="fl">점검일</label><input id="px-risk-date" type="date" class="fi"></div>'
+      +     '<div><label class="fl">점검 메모</label>'
+      +       '<input id="px-risk-memo" type="text" class="fi" placeholder="예: 근저당 3.6억 (국민은행), 잔금 시 말소 조건"></div>'
+      +   '</div>'
+      +   '<p class="px-note">확인한 항목만 체크하세요. 체크하지 않은 항목은 <b>미확인</b>으로 남습니다 — 자동으로 안전하다고 판단하지 않습니다.</p>'
+      + '</div>');
+
+    var t=document.getElementById('f-type');
+    if(t) t.addEventListener('change', function(){ pxSync(); });
+    ['fp-ma','fp-su','f-ar'].forEach(function(id){
+      var el=document.getElementById(id);
+      if(el) el.addEventListener('input', pxCalc);
+    });
+    pxSync();
+  }
+
+  function curType(){ return (document.getElementById('f-type')||{}).value||''; }
+
+  function pxSync(){
+    var s=pxSector(curType());
+    var ju=document.getElementById('px-ju'), sa=document.getElementById('px-sa');
+    if(ju) ju.style.display = s==='주거' ? 'grid' : 'none';
+    if(sa) sa.style.display = s==='상업' ? 'block' : 'none';
+    var bd=document.getElementById('px-sec-badge');
+    if(bd) bd.innerHTML = s==='상업'
+      ? '<span style="background:#fff3e0;color:#e65100;border-radius:9px;padding:1px 8px">🏢 상업용</span>'
+      : '<span style="background:#e8f5e9;color:#2e7d32;border-radius:9px;padding:1px 8px">🏠 주거용</span>';
+
+    // 위험 점검 항목 교체 (체크 상태는 지움 — 분야가 달라지면 항목 자체가 다름)
+    var list=PX_RISK[s]||[], box=document.getElementById('px-risk-list');
+    if(box){
+      box.innerHTML=list.map(function(txt,i){
+        return '<label class="px-chk"><input type="checkbox" id="px-r'+i+'" onchange="pxRiskCnt()">'
+          + '<span>'+txt+'</span></label>';
+      }).join('');
+      pxRiskCnt();
+    }
+    pxCalc();
+  }
+
+  window.pxRiskCnt = function(){
+    var n=0, tot=0;
+    for(var i=0;i<12;i++){
+      var el=document.getElementById('px-r'+i);
+      if(!el) continue;
+      tot++; if(el.checked) n++;
+    }
+    var c=document.getElementById('px-risk-cnt');
+    if(c) c.textContent = tot ? ('확인 '+n+' / '+tot+'항목') : '';
+  };
+
+  // ── 4. 수익률 계산 ──────────────────────────────────────
+  window.pxCalc = function(){
+    // 전용률
+    var gross=parseFloat(((document.getElementById('px-gross')||{}).value||'').replace(/[^\d.]/g,''))||0;
+    var net=parseFloat(((document.getElementById('f-ar')||{}).value||'').replace(/[^\d.]/g,''))||0;
+    var rv=document.getElementById('px-rate-view');
+    if(rv){
+      if(gross>0&&net>0){
+        rv.textContent=(net/gross*100).toFixed(1)+'%';
+        rv.style.color='#1a1a1a';
+      }else{ rv.textContent='—'; rv.style.color='#aaa'; }
+    }
+
+    var box=document.getElementById('px-yield-box');
+    if(!box) return;
+    if(pxSector(curType())!=='상업') return;
+
+    var t=curType();
+    var isRent=/임대|월세|전세|권리/.test(t);
+
+    // 매매가 — 종류에 따라 읽는 칸이 다르다
+    var price=0;
+    if(t==='상가 분양권 매매')
+      price=pxMan((document.getElementById('fp-sb1')||{}).value)+pxMan((document.getElementById('fp-sb2')||{}).value);
+    else if(t==='분양상가 매매')
+      price=pxMan((document.getElementById('fp-db1')||{}).value);
+    else if(!isRent)
+      price=pxMan((document.getElementById('fp-ma')||{}).value);
+
+    // 임대 조건 — 임대 매물이면 위 가격칸에서, 매매 매물이면 수익률 칸에서
+    var depo, rent;
+    if(isRent){
+      depo=pxMan((document.getElementById('fp-su')||{}).value);
+      rent=pxMan((document.getElementById('fp-ma')||{}).value);
+    }else{
+      depo=pxMan((document.getElementById('px-depo')||{}).value);
+      rent=pxMan((document.getElementById('px-rent')||{}).value);
+    }
+
+    var yin=document.getElementById('px-yin');
+    if(yin) yin.style.display = isRent ? 'none' : 'grid';
+
+    var loan=pxMan((document.getElementById('px-loan')||{}).value);
+    var irate=parseFloat(((document.getElementById('px-irate')||{}).value||'').replace(/[^\d.]/g,''))||0;
+
+    if(isRent){
+      box.innerHTML='<span style="color:#888">임대 매물이라 <b>매매가가 없어</b> 수익률을 계산할 수 없습니다.<br>'
+        +'보증금 '+pxFmt(depo)+'원 · 월세 '+pxFmt(rent)+'원으로 저장됩니다.</span>';
+      window._pxYield=null; return;
+    }
+    if(!price||!rent){
+      box.innerHTML='<span style="color:#aaa">매매가와 <b>월세</b>를 입력하면 수익률이 계산됩니다.'
+        +(price&&!rent?'<br>월세 칸이 비어 있습니다.':'')
+        +(!price?'<br>매매가 칸이 비어 있습니다.':'')+'</span>';
+      window._pxYield=null; return;
+    }
+    pxYieldRender(box, price, depo, rent, loan, irate);
+  };
+
+  function pxYieldRender(box, price, depo, rent, loan, irate){
+    var invest = price - depo - loan;
+    var income = rent*12;
+    var interest = loan*(irate/100);
+    var net = income - interest;
+    if(invest<=0){
+      box.innerHTML='<span style="color:#c62828">실투자금이 0 이하입니다 — 보증금·대출금이 매매가보다 큽니다. 입력값을 확인해 주세요.</span>';
+      window._pxYield=null; return;
+    }
+    var y = net/invest*100;
+    var L=[];
+    L.push('연 임대수입 = 월세 '+pxFmt(rent)+'원 × 12 = <b>'+pxFmt(income)+'원</b>');
+    if(loan>0) L.push('연 대출이자 = 대출 '+pxFmt(loan)+'원 × '+irate+'% = <b>'+pxFmt(interest)+'원</b>');
+    L.push('실투자금 = 매매가 '+pxFmt(price)+'원 − 보증금 '+pxFmt(depo)+'원'
+      +(loan>0?' − 대출 '+pxFmt(loan)+'원':'')+' = <b>'+pxFmt(invest)+'원</b>');
+    var numer = loan>0 ? '('+pxFmt(income)+' − '+pxFmt(interest)+')' : pxFmt(income);
+    L.push('<span style="color:#e65100;font-weight:700;font-size:14px">수익률 = '+numer
+      +' ÷ '+pxFmt(invest)+' × 100 = '+y.toFixed(2)+'%</span>');
+    box.innerHTML=L.join('<br>');
+    window._pxYield={ price:price, depo:depo, rent:rent, loan:loan, irate:irate, pct:Number(y.toFixed(2)) };
+  }
+
+  // ── 5. 저장 · 수정 · 비우기 ─────────────────────────────
+  function grab(){
+    function v(id){ var e=document.getElementById(id); return e?(e.value||'').trim():''; }
+    var risk={}, list=PX_RISK[pxSector(curType())]||[];
+    list.forEach(function(_,i){
+      var el=document.getElementById('px-r'+i);
+      if(el&&el.checked) risk['r'+i]=true;
+    });
+    return {
+      pxGross:v('px-gross'), pxMgmt:v('px-mgmt'),
+      pxRooms:v('px-rooms'), pxHeat:v('px-heat'),
+      pxBizName:v('px-bizname'), pxBizSt:v('px-bizst'),
+      pxLoan:v('px-loan'), pxIRate:v('px-irate'),
+      pxRent:v('px-rent'), pxDepo:v('px-depo'),
+      pxYield:(window._pxYield?window._pxYield.pct:''),
+      pxRisk:risk, pxRiskDate:v('px-risk-date'), pxRiskMemo:v('px-risk-memo')
+    };
+  }
+
+  var _save=window.saveProp;
+  if(typeof _save==='function'){
+    window.saveProp=function(){
+      var extra=grab();
+      var wasEdit=window.editId;
+      var before=(window.props||[]).length;
+      _save.apply(this, arguments);
+      var list=window.props||[];
+      if(wasEdit){ if(String(window.editId||'')===String(wasEdit)) return; }
+      else if(list.length===before) return;
+      var t=wasEdit ? list.find(function(x){return String(x.id)===String(wasEdit);}) : list[0];
+      if(!t) return;
+      Object.keys(extra).forEach(function(k){ t[k]=extra[k]; });
+      try{ if(typeof toStore==='function') toStore(); }catch(e){}
+      try{ if(typeof rtbl==='function') rtbl(); }catch(e){}
+    };
+  }
+
+  var _edit=window.editP;
+  if(typeof _edit==='function'){
+    window.editP=function(id){
+      _edit.apply(this, arguments);
+      var p=(window.props||[]).find(function(x){return String(x.id)===String(id);});
+      if(!p) return;
+      pxSync();
+      var map={'px-gross':'pxGross','px-mgmt':'pxMgmt','px-rooms':'pxRooms','px-heat':'pxHeat',
+               'px-bizname':'pxBizName','px-bizst':'pxBizSt','px-loan':'pxLoan','px-irate':'pxIRate',
+               'px-rent':'pxRent','px-depo':'pxDepo',
+               'px-risk-date':'pxRiskDate','px-risk-memo':'pxRiskMemo'};
+      Object.keys(map).forEach(function(k){
+        var el=document.getElementById(k); if(el) el.value=p[map[k]]||'';
+      });
+      var r=p.pxRisk||{};
+      Object.keys(r).forEach(function(k){
+        var el=document.getElementById('px-'+k); if(el) el.checked=!!r[k];
+      });
+      pxRiskCnt(); pxCalc();
+    };
+  }
+
+  var _clear=window.clearF;
+  if(typeof _clear==='function'){
+    window.clearF=function(){
+      _clear.apply(this, arguments);
+      ['px-gross','px-mgmt','px-rooms','px-heat','px-bizname','px-bizst',
+       'px-loan','px-irate','px-rent','px-depo','px-risk-date','px-risk-memo'].forEach(function(id){
+        var el=document.getElementById(id); if(el) el.value='';
+      });
+      for(var i=0;i<12;i++){ var c=document.getElementById('px-r'+i); if(c) c.checked=false; }
+      window._pxYield=null;
+      pxSync();
+    };
+  }
+
+  // ── 6. 목록: 진행단계 거르개 + 배지 ─────────────────────
+  function mountFilter(){
+    var st=document.getElementById('ft-stat');
+    if(st && !st.dataset.pxDone){
+      st.insertAdjacentHTML('beforeend',
+        '<option value="stage:광고중">— 광고중만</option>'
+        +'<option value="stage:협의중">— 협의중만</option>');
+      st.dataset.pxDone='1';
+    }
+  }
+
+  function paint(){
+    var tb=document.getElementById('tbdy'); if(!tb) return;
+    Array.prototype.forEach.call(tb.rows, function(tr){
+      if(tr.dataset.pxDone==='1') return;
+      var m=(tr.getAttribute('onclick')||'').match(/openDetail\((\d+)\)/);
+      if(!m) return;
+      var p=(window.props||[]).find(function(x){return String(x.id)===m[1];});
+      tr.dataset.pxDone='1';
+      if(!p) return;
+      // 상태 칸 찾기 — 고정 위치(12)를 먼저 보고, 어긋나면 뒤에서부터 훑는다
+      var cells=tr.cells, td=null, RE=/^(활성|자사계약완료|타사계약완료|의뢰인확인보류|미확인보류|만기보류|거래완료)/;
+      if(cells[12]&&RE.test((cells[12].textContent||'').trim())) td=cells[12];
+      if(!td){
+        for(var i=cells.length-1;i>=0;i--){
+          if(RE.test((cells[i].textContent||'').trim())){ td=cells[i]; break; }
+        }
+      }
+      if(!td) return;
+      var add='';
+      if(p.status==='활성'){
+        var stg=p.pxStage||'광고중';
+        var c = stg==='협의중' ? ['#fff3e0','#e65100'] : ['#e3f2fd','#1565c0'];
+        add+='<div style="margin-top:3px"><span style="font-size:9px;background:'+c[0]+';color:'+c[1]
+          +';padding:1px 6px;border-radius:8px;white-space:nowrap">'+stg+'</span></div>';
+      }
+      var sc=pxRiskScore(p);
+      if(sc){
+        var ok=sc.done>=sc.total;
+        add+='<div style="margin-top:2px"><span style="font-size:9px;background:'+(ok?'#e8f5e9':'#fff8e1')
+          +';color:'+(ok?'#1a7f3c':'#f57f17')+';padding:1px 6px;border-radius:8px;white-space:nowrap">점검 '
+          +sc.done+'/'+sc.total+'</span></div>';
+      }
+      if(add) td.insertAdjacentHTML('beforeend', add);
+    });
+  }
+
+  var _rtbl=window.rtbl;
+  if(typeof _rtbl==='function'){
+    window.rtbl=function(){
+      var sf=((document.getElementById('ft-stat')||{}).value||'');
+      if(sf.indexOf('stage:')!==0){ _rtbl.apply(this,arguments); paint(); return; }
+      var want=sf.slice(6);
+      var all=window.props||[];
+      window.props=all.filter(function(p){
+        if(p.naverImport) return true;               // 네이버 뷰는 그대로
+        if(p.status!=='활성') return false;
+        return (p.pxStage||'광고중')===want;
+      });
+      try{ _rtbl.apply(this,arguments); }
+      finally{ window.props=all; }
+      paint();
+    };
+  }
+
+  // ── 7. 상세 보기 ────────────────────────────────────────
+  function mountDetail(){
+    if(document.getElementById('px-dtl')) return;
+    var ph=document.getElementById('dtl-photos-box');
+    if(!ph) return;
+    ph.insertAdjacentHTML('beforebegin','<div id="px-dtl" style="padding:0 20px;margin-bottom:14px"></div>');
+  }
+
+  window.pxSetStage=function(st){
+    var id=window.detailPropId;
+    var p=(window.props||[]).find(function(x){return String(x.id)===String(id);});
+    if(!p) return;
+    p.pxStage=st;
+    try{ toStore(); }catch(e){}
+    try{ rtbl(); }catch(e){}
+    if(typeof openDetail==='function') openDetail(p.id);
+  };
+
+  var _detail=window.openDetail;
+  if(typeof _detail==='function'){
+    window.openDetail=function(id){
+      _detail.apply(this, arguments);
+      mountDetail();
+      var host=document.getElementById('px-dtl');
+      var p=(window.props||[]).find(function(x){return String(x.id)===String(id);});
+      if(!host||!p) return;
+      var sec=pxSector(p.propertyType);
+      var H=[];
+
+      // 진행단계
+      if(p.status==='활성'){
+        var stg=p.pxStage||'광고중';
+        H.push('<div style="background:#f8f8f6;border-radius:10px;padding:10px 14px;margin-bottom:8px">'
+          +'<div style="font-size:10px;color:#aaa;margin-bottom:6px">🚦 진행단계</div>'
+          +['광고중','협의중'].map(function(s){
+              var on=s===stg;
+              return '<button onclick="event.stopPropagation();pxSetStage(\''+s+'\')" style="margin-right:6px;padding:5px 14px;'
+                +'border-radius:8px;font-size:12px;cursor:pointer;border:0.5px solid '
+                +(on?'#1565c0;background:#1565c0;color:#fff':'#ddd;background:#fff;color:#666')+'">'+s+'</button>';
+            }).join('')
+          +'</div>');
+      }
+
+      // 상세 정보
+      var rows=[];
+      function r(l,v){ if(v) rows.push('<div style="display:flex;gap:8px;padding:4px 0"><span style="font-size:11px;color:#888;min-width:72px;flex-shrink:0">'+l+'</span><span style="font-size:12px;color:#1a1a1a">'+v+'</span></div>'); }
+      var gr=parseFloat(String(p.pxGross||'').replace(/[^\d.]/g,''))||0;
+      var nt=parseFloat(String(p.areaInfo||'').replace(/[^\d.]/g,''))||0;
+      r('공급면적', p.pxGross?p.pxGross+'㎡':'');
+      r('전용률', (gr>0&&nt>0)?(nt/gr*100).toFixed(1)+'%':'');
+      r('관리비', p.pxMgmt);
+      if(sec==='주거'){ r('방/욕실', p.pxRooms); r('난방', p.pxHeat); }
+      else { r('현 업종', p.pxBizName); r('영업상태', p.pxBizSt);
+             if(p.pxYield) r('예상 수익률','<b style="color:#e65100">'+p.pxYield+'%</b> <span style="font-size:10px;color:#aaa">(입력값 기준 참고 수치)</span>'); }
+      if(rows.length){
+        H.push('<div style="background:#f8f8f6;border-radius:10px;padding:12px 14px;margin-bottom:8px">'
+          +'<div style="font-size:10px;color:#aaa;margin-bottom:6px">📐 상세 정보</div>'+rows.join('')+'</div>');
+      }
+
+      // 위험 점검
+      var sc=pxRiskScore(p);
+      var list=pxRiskList(p);
+      if(sc){
+        var items=list.map(function(txt,i){
+          var on=p.pxRisk&&p.pxRisk['r'+i];
+          return '<div style="display:flex;gap:7px;padding:3px 0;font-size:12px;color:'+(on?'#1a7f3c':'#c62828')+'">'
+            +'<span>'+(on?'✔':'✕')+'</span><span style="color:'+(on?'#444':'#c62828')+'">'+txt+'</span></div>';
+        }).join('');
+        var full=sc.done>=sc.total;
+        H.push('<div style="background:'+(full?'#f0faf0':'#fff8e1')+';border-radius:10px;padding:12px 14px">'
+          +'<div style="font-size:10px;color:#aaa;margin-bottom:6px">⚠️ 권리·공법 점검 '
+          +'<b style="color:'+(full?'#1a7f3c':'#f57f17')+'">'+sc.done+'/'+sc.total+'</b>'
+          +(p.pxRiskDate?' <span style="color:#aaa">· '+p.pxRiskDate+'</span>':'')+'</div>'
+          +items
+          +(p.pxRiskMemo?'<div style="margin-top:8px;font-size:12px;color:#5a4000;white-space:pre-wrap">'+p.pxRiskMemo+'</div>':'')
+          +'</div>');
+      }
+
+      host.innerHTML=H.join('');
+    };
+  }
+
+  // ── 8. 시동 ────────────────────────────────────────────
+  function boot(){ mountForm(); mountFilter(); mountDetail(); paint(); }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',function(){ setTimeout(boot,300); });
+  else setTimeout(boot,300);
+  setTimeout(boot,1200);
+})();
+</script>
+
+<!-- ═══════════════════════════════════════════════════════════
+     버전 표시 모듈  v1.0
+     - 화면 왼쪽 아래에 이 파일의 버전을 작게 띄운다
+     - 눌러 보면 9개 프로그램 전체의 버전을 한 번에 확인할 수 있다
+       (각 프로그램이 열릴 때 자기 버전을 Firebase 에 적어 둔다)
+     기존 코드를 고치지 않고 덧붙이는 방식
+     ═══════════════════════════════════════════════════════ -->
+<script>
+(function(){
+  'use strict';
+
+  var SD_VER  = '2026.09.14-1';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_FILE = 'sd_props.html';      // 이 파일 이름
+  var SD_NAME = '매물관리';      // 사람이 부르는 이름
+
+  // 전체 프로그램 목록 — 버전 비교용
+  var SD_ALL = [
+    ['sd_hub.html','허브'], ['sd_props.html','매물관리'], ['sd_custs.html','고객관리'],
+    ['sd_contracts.html','계약관리'], ['sd_schedule.html','일정관리'], ['sd_field.html','현장업무실'],
+    ['sd_marketing.html','마케팅'], ['sd_blog.html','블로그 스튜디오'],
+    ['sd_sangga.html','상가관리'], ['sd_data.html','실거래가']
+  ];
+
+  window.SD_VERSION = SD_VER;
+  window.SD_FILENAME = SD_FILE;
+
+  function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+  function stamp(){
+    var d=new Date();
+    return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')
+      +' '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+  }
+
+  // 버전 문자열 비교 — '2026.09.21-2' > '2026.09.14-1'
+  function verKey(v){
+    var m=String(v||'').match(/(\d{4})\.(\d{2})\.(\d{2})-(\d+)/);
+    return m ? (m[1]+m[2]+m[3]+String(m[4]).padStart(3,'0')) : '0';
+  }
+
+  // ── 내 버전을 기록해 둔다 ───────────────────────────────
+  var REG={};
+  async function report(){
+    try{
+      var r=await window.storage.get('sd_versions');
+      REG = (r&&r.value) ? (JSON.parse(r.value)||{}) : {};
+    }catch(e){ REG={}; }
+    var mine=REG[SD_FILE];
+    // 버전이 그대로면 굳이 다시 쓰지 않는다 (불필요한 저장 줄이기)
+    if(!mine || mine.ver!==SD_VER){
+      REG[SD_FILE]={ ver:SD_VER, name:SD_NAME, at:stamp(),
+                     by:(window._authProfile||{}).name||'' };
+      try{ await window.storage.set('sd_versions', JSON.stringify(REG)); }catch(e){}
+    }
+    paint();
+  }
+
+  // ── 왼쪽 아래 표시 ──────────────────────────────────────
+  function mount(){
+    if(document.getElementById('sd-ver-badge')) return;
+    var st=document.createElement('style'); st.id='sd-ver-css';
+    st.textContent='body{padding-bottom:34px}'
+      +'#sd-ver-badge{position:fixed;left:10px;bottom:8px;z-index:9000;'
+      +'background:rgba(26,39,68,.62);color:#fff;border:none;border-radius:8px;padding:3px 8px;'
+      +'font-size:10px;letter-spacing:.2px;cursor:pointer;opacity:.38;transition:opacity .15s;'
+      +'font-family:inherit;line-height:1.3;white-space:nowrap}'
+      +'#sd-ver-badge:hover{opacity:1}'
+      +'#sd-ver-ov{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:10090;display:flex;'
+      +'align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto}'
+      +'#sd-ver-ov .vbox{background:#fff;border-radius:14px;max-width:460px;width:100%;margin:auto;'
+      +'overflow:hidden;box-shadow:0 8px 40px rgba(0,0,0,.25)}'
+      +'#sd-ver-ov table{width:100%;border-collapse:collapse;font-size:12.5px}'
+      +'#sd-ver-ov td{padding:7px 6px;border-bottom:0.5px solid #f0f0f0}'
+      +'@media(max-width:560px){#sd-ver-badge{font-size:10px;padding:3px 7px;left:6px;bottom:6px}}';
+    document.head.appendChild(st);
+
+    var b=document.createElement('button');
+    b.id='sd-ver-badge';
+    b.textContent='v'+SD_VER;
+    b.title=SD_NAME+' · '+SD_FILE+'\n전체 프로그램 버전 보기';
+    b.onclick=function(e){ e.stopPropagation(); openPanel(); };
+    document.body.appendChild(b);
+  }
+
+  function paint(){
+    var b=document.getElementById('sd-ver-badge');
+    if(!b) return;
+    // 나보다 높은 버전이 하나라도 있으면 알려 준다
+    var top=SD_VER;
+    Object.keys(REG).forEach(function(k){
+      if(verKey(REG[k].ver)>verKey(top)) top=REG[k].ver;
+    });
+    if(verKey(top)>verKey(SD_VER)){
+      b.textContent='v'+SD_VER+' ⚠';
+      b.style.background='rgba(198,40,40,.78)';
+      b.title=SD_NAME+' · '+SD_FILE+'\n더 높은 버전('+top+')이 다른 프로그램에 올라가 있습니다.\n이 파일도 최신본으로 올렸는지 확인하세요.';
+    }
+  }
+
+  window.sdVerPanel=function(){ openPanel(); };
+
+  function openPanel(){
+    var old=document.getElementById('sd-ver-ov'); if(old) old.remove();
+
+    var top='';
+    SD_ALL.forEach(function(p){ var e=REG[p[0]]; if(e&&verKey(e.ver)>verKey(top)) top=e.ver; });
+
+    var rows=SD_ALL.map(function(p){
+      var file=p[0], name=p[1], e=REG[file];
+      var isMe = file===SD_FILE;
+      if(!e){
+        return '<tr><td style="color:#1a1a1a">'+esc(name)+(isMe?' <span style="font-size:10px;color:#1565c0">◀ 지금 화면</span>':'')+'</td>'
+          +'<td style="color:#bbb;text-align:right;white-space:nowrap">확인 안 됨</td></tr>';
+      }
+      var old2 = top && verKey(e.ver)<verKey(top);
+      return '<tr><td style="color:#1a1a1a">'+esc(name)+(isMe?' <span style="font-size:10px;color:#1565c0">◀ 지금 화면</span>':'')
+        +'<div style="font-size:10px;color:#bbb">'+esc(file)+' · '+esc(e.at||'')+'</div></td>'
+        +'<td style="text-align:right;white-space:nowrap;color:'+(old2?'#c62828':'#2e7d32')+';font-weight:'+(old2?'700':'500')+'">'
+        +'v'+esc(e.ver)+(old2?'<div style="font-size:10px;font-weight:400">구버전일 수 있음</div>':'')+'</td></tr>';
+    }).join('');
+
+    var unseen=SD_ALL.filter(function(p){return !REG[p[0]];}).length;
+
+    var ov=document.createElement('div');
+    ov.id='sd-ver-ov';
+    ov.innerHTML='<div class="vbox">'
+      + '<div style="background:#1a2744;color:#fff;padding:13px 18px;display:flex;justify-content:space-between;align-items:center">'
+      +   '<span style="font-size:14px;font-weight:700">🏷️ 프로그램 버전</span>'
+      +   '<button onclick="document.getElementById(\'sd-ver-ov\').remove()" '
+      +     'style="background:transparent;color:#fff;border:1px solid rgba(255,255,255,.4);border-radius:6px;'
+      +     'padding:4px 10px;font-size:12px;cursor:pointer">✕ 닫기</button>'
+      + '</div>'
+      + '<div style="padding:14px 16px">'
+      +   '<table>'+rows+'</table>'
+      +   '<p style="font-size:11px;color:#888;line-height:1.7;margin:12px 0 0">'
+      +     '각 프로그램을 한 번 열어야 그 버전이 여기에 기록됩니다. '
+      +     (unseen? '아직 '+unseen+'개는 이 브라우저에서 연 적이 없어 «확인 안 됨»으로 나옵니다. ':'')
+      +     '버전이 서로 다르면 올리다 빠뜨린 파일이 있는지 확인해 보세요.'
+      +   '</p>'
+      + '</div></div>';
+    document.body.appendChild(ov);
+    ov.onclick=function(e){ if(e.target===ov) ov.remove(); };
+  }
+
+  function boot(){ mount(); report(); }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',function(){ setTimeout(boot,600); });
+  else setTimeout(boot,600);
+})();
+</script>
+
 </body>
 </html>
 

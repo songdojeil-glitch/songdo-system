@@ -518,7 +518,7 @@ body.zoom-mode .zoomable:hover{box-shadow:none !important;}
     </div>
   </div>
 
-  <div style="text-align:center;font-size:11px;color:var(--text3);padding-bottom:2rem">
+  <div id="hb-footer" style="text-align:center;font-size:11px;color:var(--text3);padding-bottom:2rem">
     송도제일공인중개사사무소 · 인천 연수구 해돋이로 168 · ☎ 010-6401-9345
   </div>
 
@@ -1474,6 +1474,564 @@ function toggleZoom(){
     };
     document.body.appendChild(b);
   });
+})();
+</script>
+
+<!-- ===== 허브 리뉴얼 모듈 (2026-09) =====
+     달력 · 전체검색 · 위험확인 · 바로가기 · 화면설정 · 사무소정보 · 백업
+     기존 코드는 건드리지 않고 render() 뒤에 얹는다 -->
+<style>
+:root{ --hb-font:'Noto Sans KR','Apple SD Gothic Neo',sans-serif; --hb-scale:1; }
+body{ font-family:var(--hb-font)!important; }
+body.hb-big{ font-size:calc(13px * var(--hb-scale)); }
+.hb-bar{display:flex;gap:9px;align-items:center;flex-wrap:wrap;margin:14px 0 16px}
+.hb-hello{font-size:17px;font-weight:600}
+.hb-hello small{display:block;font-size:12px;font-weight:400;color:var(--text3);margin-top:2px}
+.hb-search{flex:1;min-width:200px;position:relative}
+.hb-search input{width:100%;padding:10px 14px;border:1px solid var(--border);border-radius:11px;background:var(--bg2);
+  color:var(--text);font-size:14px;font-family:inherit;outline:none}
+.hb-search input:focus{border-color:var(--accent)}
+.hb-res{position:absolute;left:0;right:0;top:46px;z-index:60;background:var(--bg2);border:1px solid var(--border);
+  border-radius:12px;box-shadow:0 8px 28px rgba(0,0,0,.25);max-height:420px;overflow:auto;display:none}
+.hb-res.on{display:block}
+.hb-res .g{font-size:11px;color:var(--text3);padding:8px 13px 4px;font-weight:600}
+.hb-res a{display:block;padding:8px 13px;font-size:13px;color:var(--text);text-decoration:none;border-top:1px solid var(--border)}
+.hb-res a:hover{background:var(--bg3)}
+.hb-res a small{display:block;color:var(--text3);font-size:11px;margin-top:1px}
+.hb-btn{padding:8px 13px;background:var(--bg2);border:1px solid var(--border);border-radius:10px;color:var(--text);
+  font-size:12.5px;cursor:pointer;font-family:inherit;white-space:nowrap}
+.hb-btn:hover{background:var(--bg3)}
+.hb-btn.on{border-color:var(--accent);color:var(--accent)}
+/* 달력 */
+.hb-cal{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+.hb-cal .dw{font-size:11px;color:var(--text3);text-align:center;padding:4px 0}
+.hb-cal .dc{min-height:62px;border:1px solid var(--border);border-radius:9px;padding:5px 5px 4px;cursor:pointer;
+  background:var(--bg2);overflow:hidden}
+.hb-cal .dc:hover{border-color:var(--accent)}
+.hb-cal .dc.off{opacity:.32}
+.hb-cal .dc.today{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+.hb-cal .dc.sel{background:var(--bg3);border-color:var(--accent)}
+.hb-cal .dc .n{font-size:11.5px;font-weight:600;margin-bottom:2px}
+.hb-cal .dc .n.sun{color:#e8736a}.hb-cal .dc .n.sat{color:#6aa8e8}
+.hb-cal .ev{font-size:10px;line-height:1.35;border-radius:4px;padding:1px 4px;margin-bottom:2px;white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis}
+.hb-cal .ev.s{background:rgba(155,127,232,.22);color:#b9a6f0}
+.hb-cal .ev.c{background:rgba(232,92,92,.2);color:#f09a9a}
+.hb-cal .ev.f{background:rgba(0,150,136,.22);color:#6fd0c4}
+.hb-day{margin-top:12px;border-top:1px solid var(--border);padding-top:11px}
+.hb-day .it{display:flex;gap:9px;align-items:flex-start;padding:6px 0;border-bottom:1px solid var(--border);font-size:13px}
+.hb-day .it:last-child{border-bottom:none}
+.hb-day .it .tg{font-size:10px;padding:1px 6px;border-radius:5px;white-space:nowrap;flex-shrink:0;margin-top:2px}
+/* 목록형 */
+.hb-li{display:flex;justify-content:space-between;gap:9px;align-items:center;padding:7px 0;border-bottom:1px solid var(--border);font-size:13px}
+.hb-li:last-child{border-bottom:none}
+.hb-li a{color:var(--accent);text-decoration:none;font-size:12px}
+.hb-note{font-size:11.5px;color:var(--text3);line-height:1.65;background:var(--bg3);border-radius:9px;padding:9px 12px}
+.hb-warn{font-size:11.5px;color:#e8c46a;line-height:1.65;background:rgba(232,196,106,.1);border:1px solid rgba(232,196,106,.3);border-radius:9px;padding:9px 12px}
+.hb-f{display:grid;gap:9px;margin-bottom:10px}
+.hb-f input,.hb-f select{width:100%;padding:8px 11px;border:1px solid var(--border);border-radius:9px;background:var(--bg2);
+  color:var(--text);font-size:13px;font-family:inherit;outline:none}
+.hb-f label{font-size:11.5px;color:var(--text3);display:block;margin-bottom:4px}
+.hb-g2{grid-template-columns:1fr 1fr}.hb-g3{grid-template-columns:repeat(3,1fr)}
+@media(max-width:760px){.hb-g2,.hb-g3{grid-template-columns:1fr}.hb-cal .dc{min-height:48px}.hb-cal .ev{display:none}
+  .hb-cal .dc .n{font-size:12.5px}}
+</style>
+<script>
+/* ============ 저장 ============ */
+var HB = { links:[], office:null, cal:new Date(), sel:null, day:{}, risk:{field:0,rev:0} };
+var HB_UI_DEF = { theme:'dark', font:'noto', size:'normal', sector:'all' };
+function hbUI(){ try{ return Object.assign({}, HB_UI_DEF, JSON.parse(localStorage.getItem('sd_hub_ui')||'{}')); }catch(e){ return Object.assign({},HB_UI_DEF); } }
+function hbUISet(k,v){ var u=hbUI(); u[k]=v; try{ localStorage.setItem('sd_hub_ui', JSON.stringify(u)); }catch(e){} hbApplyUI(); }
+var HB_FONTS = {
+  pretendard:{ n:'프리텐다드', css:'https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard-dynamic-subset.css',
+               fam:"'Pretendard Variable',Pretendard,'Noto Sans KR',sans-serif" },
+  noto:{ n:'노토산스', fam:"'Noto Sans KR','Apple SD Gothic Neo',sans-serif" },
+  system:{ n:'기기 추천', fam:"-apple-system,'Apple SD Gothic Neo','Malgun Gothic',sans-serif" }
+};
+var HB_SIZE = { small:0.92, normal:1, large:1.12 };
+function hbApplyUI(){
+  var u=hbUI(), f=HB_FONTS[u.font]||HB_FONTS.noto;
+  if(f.css && !document.getElementById('hb-font-css')){
+    var l=document.createElement('link'); l.id='hb-font-css'; l.rel='stylesheet'; l.href=f.css; document.head.appendChild(l);
+  }
+  document.documentElement.style.setProperty('--hb-font', f.fam);
+  document.documentElement.style.setProperty('--hb-scale', HB_SIZE[u.size]||1);
+  document.documentElement.style.setProperty('--ui-scale', (HB_SIZE[u.size]||1)*1.05);
+}
+async function hbLoad(){
+  try{ var r=await window.storage.get('sd_hub_links'); HB.links=r&&r.value?JSON.parse(r.value):[]; }catch(e){ HB.links=[]; }
+  if(!Array.isArray(HB.links)||!HB.links.length) HB.links=[
+    {n:'네이버 부동산', u:'https://land.naver.com'},
+    {n:'인터넷등기소', u:'https://www.iros.go.kr'},
+    {n:'정부24 건축물대장', u:'https://www.gov.kr'},
+    {n:'국토부 실거래가', u:'https://rt.molit.go.kr'}
+  ];
+  try{ var o=await window.storage.get('sd_office'); HB.office=o&&o.value?JSON.parse(o.value):null; }catch(e){}
+  if(!HB.office) HB.office={ name:'송도제일공인중개사사무소', owner:'문형은', tel:'032-851-6688',
+    addr:'인천 연수구 해돋이로 168 혜인프라자 1층 103호', regno:'28185-2016-00161' };
+  /* 달력·검색용 곁자료 */
+  try{ var s=await window.storage.get('sd_todos_public'); HB.sch=s&&s.value?JSON.parse(s.value):[]; }catch(e){ HB.sch=[]; }
+  if(!Array.isArray(HB.sch)) HB.sch=[];
+  try{ var f=await window.storage.get('sd_field'); HB.field=f&&f.value?JSON.parse(f.value):[]; }catch(e){ HB.field=[]; }
+  if(!Array.isArray(HB.field)) HB.field=[];
+  try{ var v=await window.storage.get('sd_reviews'); HB.rev=v&&v.value?JSON.parse(v.value):[]; }catch(e){ HB.rev=[]; }
+  if(!Array.isArray(HB.rev)) HB.rev=[];
+}
+async function hbSaveLinks(){ try{ await window.storage.set('sd_hub_links', JSON.stringify(HB.links)); }catch(e){} }
+async function hbSaveOffice(){ try{ await window.storage.set('sd_office', JSON.stringify(HB.office)); }catch(e){} }
+/* ============ 달력 ============ */
+function hbDS(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function hbEvents(){
+  var m={};
+  var push=function(ds,o){ if(!ds)return; (m[ds]=m[ds]||[]).push(o); };
+  (HB.sch||[]).forEach(function(t){ push(String(t.date||'').slice(0,10), {k:'s', t:t.title||'(제목 없음)', sub:t.kind||t.type||'일정', done:!!t.done}); });
+  (D.contracts||[]).forEach(function(c){
+    if(!c.expiry || ['매매','분양권매매','권리'].indexOf(c.deal)>=0) return;
+    push(String(c.expiry).slice(0,10), {k:'c', t:(c.bldg||'')+' '+(c.ho||'')+' 만기', sub:c.deal||'계약'});
+  });
+  (HB.field||[]).forEach(function(f){ push(String(f.visitDate||'').slice(0,10), {k:'f', t:(f.bldg||'(이름 없음)')+' 임장', sub:f.visitor||'현장'}); });
+  return m;
+}
+function hbCal(){
+  var box=document.getElementById('hb-cal-box'); if(!box) return;
+  var ev=hbEvents(), cur=HB.cal, y=cur.getFullYear(), mo=cur.getMonth();
+  var first=new Date(y,mo,1), start=new Date(first); start.setDate(1-first.getDay());
+  var tds=hbDS(new Date()), html='';
+  ['일','월','화','수','목','금','토'].forEach(function(w){ html+='<div class="dw">'+w+'</div>'; });
+  for(var i=0;i<42;i++){
+    var d=new Date(start); d.setDate(start.getDate()+i);
+    var ds=hbDS(d), off=d.getMonth()!==mo, list=ev[ds]||[];
+    html+='<div class="dc'+(off?' off':'')+(ds===tds?' today':'')+(ds===HB.sel?' sel':'')+'" onclick="hbPickDay(\''+ds+'\')">'
+      +'<div class="n'+(d.getDay()===0?' sun':d.getDay()===6?' sat':'')+'">'+d.getDate()+'</div>'
+      +list.slice(0,3).map(function(o){ return '<div class="ev '+o.k+'">'+(o.t||'').slice(0,9)+'</div>'; }).join('')
+      +(list.length>3?'<div class="ev" style="background:none;color:var(--text3)">+'+(list.length-3)+'</div>':'')
+      +'</div>';
+  }
+  box.innerHTML=html;
+  var t=document.getElementById('hb-cal-title'); if(t) t.textContent=y+'년 '+(mo+1)+'월';
+  hbDayList();
+}
+function hbMove(n){ HB.cal=new Date(HB.cal.getFullYear(), HB.cal.getMonth()+n, 1); hbCal(); }
+function hbToday(){ HB.cal=new Date(); HB.sel=hbDS(new Date()); hbCal(); }
+function hbPickDay(ds){ HB.sel=ds; hbCal(); }
+function hbDayList(){
+  var box=document.getElementById('hb-day'); if(!box) return;
+  if(!HB.sel){ box.innerHTML='<div style="font-size:12.5px;color:var(--text3)">날짜를 누르면 그날 일정이 여기 나옵니다.</div>'; return; }
+  var list=(hbEvents()[HB.sel]||[]);
+  var TG={ s:{n:'일정',c:'rgba(155,127,232,.22)',f:'#b9a6f0'}, c:{n:'계약만기',c:'rgba(232,92,92,.2)',f:'#f09a9a'},
+           f:{n:'임장',c:'rgba(0,150,136,.22)',f:'#6fd0c4'} };
+  box.innerHTML='<div style="font-size:12.5px;color:var(--text3);margin-bottom:7px">'+HB.sel+' · '+list.length+'건</div>'
+   +(list.length?list.map(function(o){ var g=TG[o.k];
+      return '<div class="it"><span class="tg" style="background:'+g.c+';color:'+g.f+'">'+g.n+'</span>'
+       +'<span style="flex:1'+(o.done?';text-decoration:line-through;color:var(--text3)':'')+'">'+o.t
+       +'<br><span style="font-size:11px;color:var(--text3)">'+(o.sub||'')+'</span></span></div>';
+     }).join('')
+    :'<div style="font-size:12.5px;color:var(--text3)">이 날은 잡힌 일이 없습니다.</div>');
+}
+/* ============ 전체 검색 ============ */
+function hbSearch(q){
+  var box=document.getElementById('hb-res'); if(!box) return;
+  q=String(q||'').trim();
+  if(q.length<2){ box.classList.remove('on'); return; }
+  var lq=q.toLowerCase(), has=function(v){ return String(v||'').toLowerCase().indexOf(lq)>=0; };
+  var G=[];
+  var props=(D.props||[]).filter(function(p){ return has(p.complexName)||has(p.unitInfo)||has(p.c1name)||has(p.c1tel); }).slice(0,6);
+  if(props.length) G.push(['🏢 매물', props.map(function(p){
+    return { t:(p.complexName||'')+' '+(p.unitInfo||''), s:(p.propertyType||'')+' · '+(p.c1name||''), u:'sd_props.html' }; })]);
+  var cs=(D.custs||[]).filter(function(c){ return has(c.name)||has(c.tel1)||has(c.cx); }).slice(0,6);
+  if(cs.length) G.push(['👥 고객', cs.map(function(c){
+    return { t:c.name||'(이름 없음)', s:(c.tel1||'')+' · '+(c.cx||''), u:'sd_custs.html' }; })]);
+  var ct=(D.contracts||[]).filter(function(c){ return has(c.bldg)||has(c.seller)||has(c.buyer)||has(c.ctNo); }).slice(0,6);
+  if(ct.length) G.push(['📑 계약', ct.map(function(c){
+    return { t:(c.ctNo?c.ctNo+' · ':'')+(c.bldg||'')+' '+(c.ho||''), s:(c.deal||'')+' · '+(c.seller||'')+' / '+(c.buyer||''), u:'sd_contracts.html' }; })]);
+  var fd=(HB.field||[]).filter(function(f){ return has(f.bldg)||has(f.ownerName)||has(f.addr); }).slice(0,6);
+  if(fd.length) G.push(['🥾 임장', fd.map(function(f){
+    return { t:(f.bldg||'')+' '+(f.ho||''), s:(f.visitDate||'')+' · '+(f.visitor||''), u:'sd_field.html' }; })]);
+  box.innerHTML = G.length
+    ? G.map(function(g){ return '<div class="g">'+g[0]+' '+g[1].length+'건</div>'
+        + g[1].map(function(r){ return '<a href="'+r.u+'">'+r.t+'<small>'+r.s+'</small></a>'; }).join(''); }).join('')
+    : '<div class="g">「'+q+'」으로 찾은 것이 없습니다</div>';
+  box.classList.add('on');
+}
+/* ============ 바로가기 ============ */
+function hbLinks(){
+  var box=document.getElementById('hb-links'); if(!box) return;
+  box.innerHTML=(HB.links.length?HB.links.map(function(l,i){
+    return '<div class="hb-li"><a href="'+l.u+'" target="_blank" rel="noopener" style="flex:1;color:var(--text)">🔗 '+l.n+'</a>'
+     +'<span><button class="hb-btn" style="padding:3px 8px;font-size:11px" onclick="hbEditLink('+i+')">이름</button> '
+     +'<button class="hb-btn" style="padding:3px 8px;font-size:11px" onclick="hbDelLink('+i+')">지우기</button></span></div>';
+  }).join(''):'<div style="font-size:12.5px;color:var(--text3)">등록한 바로가기가 없습니다.</div>');
+}
+function hbAddLink(){
+  var u=prompt('바로가기 주소를 넣으세요.\n(예: https://land.naver.com)','https://');
+  if(!u) return; u=u.trim(); if(!/^https?:\/\//.test(u)) u='https://'+u.replace(/^\/+/,'');
+  var n=prompt('이 바로가기를 뭐라고 부를까요?','');
+  if(n===null) return;
+  HB.links.push({ n:(n.trim()||u.replace(/^https?:\/\//,'').slice(0,20)), u:u });
+  hbSaveLinks(); hbLinks();
+}
+function hbEditLink(i){
+  var n=prompt('이름을 고치세요.', HB.links[i].n); if(n===null) return;
+  HB.links[i].n=n.trim()||HB.links[i].n; hbSaveLinks(); hbLinks();
+}
+function hbDelLink(i){
+  if(!confirm('바로가기 「'+HB.links[i].n+'」을 목록에서 지웁니다.\n\n지워지는 것은 이 바로가기 링크뿐이며, 매물·고객·계약 자료는 그대로입니다.\n\n진행할까요?')) return;
+  HB.links.splice(i,1); hbSaveLinks(); hbLinks();
+}
+/* ============ 사무소 정보 ============ */
+function hbOfficeSave(){
+  ['name','owner','tel','addr','regno'].forEach(function(k){
+    var el=document.getElementById('hb-o-'+k); if(el) HB.office[k]=el.value.trim();
+  });
+  hbSaveOffice();
+  var f=document.getElementById('hb-footer'); if(f) f.innerHTML=hbFooter();
+  var n=document.getElementById('hb-o-msg'); if(n){ n.textContent='저장했습니다.'; setTimeout(function(){n.textContent='';},2200); }
+}
+function hbFooter(){
+  var o=HB.office||{};
+  return (o.name||'') + ' · ' + (o.addr||'') + ' · ☎ ' + (o.tel||'')
+    + (o.regno?' · 등록번호 '+o.regno:'');
+}
+/* ============ 백업 ============ */
+var HB_KEYS=['sd_props','sd_contracts','sd_custs','sd_todos','sd_todos_public','sd_field','sd_reviews',
+             'sd_mktg_posts','sd_mktg_news','sd_hub_links','sd_office','sd_buildings'];
+async function hbExport(){
+  var btn=document.getElementById('hb-exp'); var old=btn.textContent; btn.disabled=true; btn.textContent='⏳ 모으는 중...';
+  var pack={ _:'송도제일 통합업무시스템 백업', at:new Date().toISOString(), data:{} };
+  for(var i=0;i<HB_KEYS.length;i++){
+    try{ var r=await window.storage.get(HB_KEYS[i]); if(r&&r.value) pack.data[HB_KEYS[i]]=r.value; }catch(e){}
+  }
+  var blob=new Blob([JSON.stringify(pack)],{type:'application/json'});
+  var a=document.createElement('a');
+  a.download='송도제일_백업_'+hbDS(new Date()).replace(/-/g,'')+'.json';
+  a.href=URL.createObjectURL(blob); a.click();
+  setTimeout(function(){ URL.revokeObjectURL(a.href); },2000);
+  btn.disabled=false; btn.textContent=old;
+  var n=document.getElementById('hb-bk-msg');
+  if(n) n.textContent='자료 '+Object.keys(pack.data).length+'종을 파일로 저장했습니다.';
+}
+function hbImport(input){
+  var f=input.files&&input.files[0]; if(!f) return;
+  var fr=new FileReader();
+  fr.onload=async function(){
+    try{
+      var pack=JSON.parse(String(fr.result));
+      if(!pack || !pack.data) throw new Error('백업 파일 형식이 아닙니다.');
+      var keys=Object.keys(pack.data);
+      if(!confirm('백업을 되돌립니다.\n\n· 만든 날짜 : '+(pack.at||'').slice(0,10)
+        +'\n· 들어 있는 자료 : '+keys.length+'종\n\n⚠️ 지금 시스템에 있는 같은 종류의 자료는 이 백업 내용으로 '
+        +'덮어써집니다. 되돌릴 수 없습니다.\n\n정말 진행할까요?')) { input.value=''; return; }
+      var n=0;
+      for(var i=0;i<keys.length;i++){
+        try{ await window.storage.set(keys[i], pack.data[keys[i]]); n++; }catch(e){}
+      }
+      alert('자료 '+n+'종을 되돌렸습니다. 화면을 새로고침합니다.');
+      location.reload();
+    }catch(e){ alert('불러오지 못했습니다: '+e.message); }
+    input.value='';
+  };
+  fr.readAsText(f);
+}
+/* ============ 화면 설정 ============ */
+function hbToggleSet(){
+  var p=document.getElementById('hb-setpanel'); if(!p) return;
+  p.style.display = p.style.display==='none' ? '' : 'none';
+}
+function hbSetHTML(){
+  var u=hbUI();
+  var row=function(label, key, opts){
+    return '<div><label>'+label+'</label><div style="display:flex;gap:5px;flex-wrap:wrap">'
+      + opts.map(function(o){ return '<button class="hb-btn'+(u[key]===o[0]?' on':'')+'" onclick="hbUISet(\''+key+'\',\''+o[0]+'\');hbRenderSet()">'+o[1]+'</button>'; }).join('')
+      + '</div></div>';
+  };
+  return '<div class="hb-f hb-g2">'
+   + row('글씨체','font',[['pretendard','프리텐다드'],['noto','노토산스'],['system','기기 추천']])
+   + row('글씨 크기','size',[['small','작게'],['normal','보통'],['large','크게']])
+   + '</div>'
+   + '<div class="hb-note">글씨체와 크기는 <b>이 컴퓨터에만</b> 저장됩니다. 집 PC와 사무소 PC를 따로 맞추실 수 있습니다.<br>'
+   + '프리텐다드는 처음 고르실 때 인터넷에서 글꼴을 받아옵니다.</div>';
+}
+function hbRenderSet(){ var p=document.getElementById('hb-setbody'); if(p) p.innerHTML=hbSetHTML(); }
+/* ============ 위험 확인 ============ */
+function hbRisk(){
+  var box=document.getElementById('hb-risk'); if(!box) return;
+  var fieldBad=0, fieldList=[];
+  (HB.field||[]).forEach(function(f){
+    var n=Object.keys(f.checks||{}).filter(function(k){ return f.checks[k] && f.checks[k].v==='bad'; }).length;
+    if(n){ fieldBad+=n; fieldList.push({ t:(f.bldg||'(이름 없음)')+' '+(f.ho||''), n:n, u:'sd_field.html' }); }
+  });
+  var revOpen=(HB.rev||[]).filter(function(r){ return r.status!=='검토완료'; });
+  var noCheck=(D.contracts||[]).filter(function(c){ return c.expiry && !c.ctNo; }).length;
+  box.innerHTML =
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">'
+    +'<div onclick="location.href=\'sd_field.html\'" style="background:var(--bg3);border-radius:10px;padding:11px;text-align:center;cursor:pointer">'
+    +'<div style="font-size:22px;font-weight:700;color:'+(fieldBad?'#e8736a':'var(--text3)')+'">'+fieldBad+'</div>'
+    +'<div style="font-size:11px;color:var(--text3);margin-top:2px">현장 확인필요</div></div>'
+    +'<div onclick="location.href=\'sd_contracts.html\'" style="background:var(--bg3);border-radius:10px;padding:11px;text-align:center;cursor:pointer">'
+    +'<div style="font-size:22px;font-weight:700;color:'+(revOpen.length?'#e8c46a':'var(--text3)')+'">'+revOpen.length+'</div>'
+    +'<div style="font-size:11px;color:var(--text3);margin-top:2px">진행 중 계약 검토</div></div>'
+    +'</div>'
+    +(fieldList.length
+      ? fieldList.slice(0,4).map(function(f){
+          return '<div class="hb-li"><span>'+f.t+'</span><span style="color:#e8736a;font-size:12px">확인필요 '+f.n+'</span></div>'; }).join('')
+      : '<div style="font-size:12.5px;color:var(--text3)">임장에서 「확인필요」로 표시한 것이 없습니다.</div>');
+}
+/* ============ 화면 붙이기 ============ */
+function hbMount(){
+  var wrap=document.querySelector('.wrap'); if(!wrap || document.getElementById('hb-bar')) return;
+  var nav=wrap.firstElementChild;
+  var h=new Date().getHours();
+  var greet=h<11?'☀️ 좋은 아침입니다':h<18?'🌤 오후도 힘내세요':'🌆 오늘도 수고하셨습니다';
+  var d=new Date(), days=['일','월','화','수','목','금','토'];
+
+  /* ① 인사말 + 검색 + 도구 */
+  var bar=document.createElement('div');
+  bar.id='hb-bar'; bar.className='hb-bar';
+  bar.innerHTML='<div class="hb-hello">'+greet+', '+(HB.office.owner||'')+'님'
+    +'<small>'+d.getFullYear()+'년 '+(d.getMonth()+1)+'월 '+d.getDate()+'일 ('+days[d.getDay()]+')</small></div>'
+    +'<div class="hb-search"><input id="hb-q" placeholder="매물·고객·계약·임장 통합 검색 (두 글자 이상)" '
+    +'oninput="hbSearch(this.value)" onblur="setTimeout(function(){var b=document.getElementById(\'hb-res\');if(b)b.classList.remove(\'on\')},200)">'
+    +'<div class="hb-res" id="hb-res"></div></div>'
+    +'<button class="hb-btn" onclick="location.href=\'sd_props.html\'">+ 매물 등록</button>'
+    +'<button class="hb-btn" onclick="hbToggleSet()">⚙️ 화면 설정</button>';
+  nav.insertAdjacentElement('afterend', bar);
+
+  /* ② 화면 설정 패널 */
+  var sp=document.createElement('div');
+  sp.className='card'; sp.id='hb-setpanel'; sp.style.display='none'; sp.style.marginBottom='1.25rem';
+  sp.innerHTML='<div class="section-title" style="margin-bottom:12px">⚙️ 화면 설정</div><div id="hb-setbody"></div>';
+  bar.insertAdjacentElement('afterend', sp);
+
+  /* ③ 달력 + 위험확인 */
+  var cal=document.createElement('div');
+  cal.className='two-col'; cal.style.marginBottom='1.25rem';
+  cal.innerHTML=
+    '<div class="card"><div class="section-title" style="margin-bottom:12px;display:flex;align-items:center;gap:8px">'
+    +'📅 <span id="hb-cal-title"></span>'
+    +'<span style="margin-left:auto;display:flex;gap:5px">'
+    +'<button class="hb-btn" style="padding:4px 10px" onclick="hbMove(-1)">‹</button>'
+    +'<button class="hb-btn" style="padding:4px 10px" onclick="hbToday()">오늘</button>'
+    +'<button class="hb-btn" style="padding:4px 10px" onclick="hbMove(1)">›</button></span></div>'
+    +'<div class="hb-cal" id="hb-cal-box"></div>'
+    +'<div style="display:flex;gap:11px;margin-top:9px;font-size:11px;color:var(--text3);flex-wrap:wrap">'
+    +'<span><i style="display:inline-block;width:9px;height:9px;border-radius:2px;background:rgba(155,127,232,.6)"></i> 일정·할일</span>'
+    +'<span><i style="display:inline-block;width:9px;height:9px;border-radius:2px;background:rgba(232,92,92,.6)"></i> 계약 만기</span>'
+    +'<span><i style="display:inline-block;width:9px;height:9px;border-radius:2px;background:rgba(0,150,136,.6)"></i> 임장</span></div>'
+    +'<div class="hb-day" id="hb-day"></div></div>'
+    +'<div class="card"><div class="section-title" style="margin-bottom:12px">⚠️ 위험 확인</div><div id="hb-risk"></div></div>';
+  sp.insertAdjacentElement('afterend', cal);
+
+  /* ④ 바로가기 + 내 업무실 (맨 아래 시스템 그리드 앞) */
+  var grid=document.querySelector('.sys-grid');
+  var box=document.createElement('div');
+  box.className='two-col'; box.style.marginBottom='1.25rem';
+  box.innerHTML=
+    '<div class="card"><div class="section-title" style="margin-bottom:12px;display:flex;align-items:center">🔗 자주 쓰는 업무 사이트'
+    +'<button class="hb-btn" style="margin-left:auto;padding:4px 10px" onclick="hbAddLink()">+ 추가</button></div>'
+    +'<div id="hb-links"></div></div>'
+    +'<div class="card"><div class="section-title" style="margin-bottom:12px">🏢 사무소 정보</div>'
+    +'<div class="hb-f hb-g2">'
+    +'<div><label>사무소명</label><input id="hb-o-name"></div>'
+    +'<div><label>대표</label><input id="hb-o-owner"></div>'
+    +'<div><label>연락처</label><input id="hb-o-tel"></div>'
+    +'<div><label>등록번호</label><input id="hb-o-regno"></div>'
+    +'</div><div class="hb-f"><div><label>주소</label><input id="hb-o-addr"></div></div>'
+    +'<button class="hb-btn" onclick="hbOfficeSave()">저장</button> '
+    +'<span id="hb-o-msg" style="font-size:12px;color:var(--green)"></span></div>';
+  if(grid) grid.insertAdjacentElement('beforebegin', box);
+
+  /* ⑤ 자료 보관 안내 + 백업 */
+  var bk=document.createElement('div');
+  bk.className='card'; bk.style.marginBottom='1.5rem';
+  bk.innerHTML='<div class="section-title" style="margin-bottom:12px">💾 자료 보관과 안전</div>'
+    +'<div class="hb-note" style="margin-bottom:10px">입력하신 매물·고객·계약·임장 자료는 <b>회사 Firebase 저장소</b>에 있습니다. '
+    +'집 PC와 사무소 PC에서 같은 자료가 보이고, 브라우저를 지워도 남습니다.<br>'
+    +'화면 설정(글씨체·크기)만 이 컴퓨터에 따로 저장됩니다.</div>'
+    +'<div class="hb-warn" style="margin-bottom:11px">실제 고객의 <b>주민등록번호·계좌번호</b>는 넣지 마세요. '
+    +'꼭 필요하면 종이 서류로 따로 보관하시는 편이 안전합니다.</div>'
+    +'<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">'
+    +'<button class="hb-btn" id="hb-exp" onclick="hbExport()">📥 전체 백업 내려받기</button>'
+    +'<label class="hb-btn" style="cursor:pointer">📤 백업 되돌리기<input type="file" accept="application/json" onchange="hbImport(this)" style="display:none"></label>'
+    +'<span id="hb-bk-msg" style="font-size:12px;color:var(--text3)"></span></div>';
+  if(grid) grid.insertAdjacentElement('beforebegin', bk);
+
+  /* ⑥ 바닥글을 사무소 정보로 */
+  var f=document.getElementById('hb-footer'); if(f) f.innerHTML=hbFooter();
+
+  /* ⑦ 구글 캘린더 '연결됨' 거짓 표시 바로잡기 */
+  document.querySelectorAll('div').forEach(function(el){
+    if(el.children.length===0 && /MCP 연결됨/.test(el.textContent)){
+      el.textContent='● 연결 필요'; el.style.color='var(--text3)';
+    }
+  });
+
+  /* 값 채우기 */
+  ['name','owner','tel','addr','regno'].forEach(function(k){
+    var el=document.getElementById('hb-o-'+k); if(el) el.value=HB.office[k]||'';
+  });
+  hbRenderSet(); hbLinks(); hbRisk();
+  HB.sel=hbDS(new Date()); hbCal();
+}
+/* render() 뒤에 얹기 */
+(function(){
+  hbApplyUI();
+  var _r=window.render;
+  window.render=function(){
+    _r.apply(this, arguments);
+    try{ hbMount(); hbRisk(); hbCal(); }catch(e){ console.warn('[허브모듈]', e); }
+  };
+  function boot(){ hbLoad().then(function(){ try{ hbMount(); }catch(e){ console.warn('[허브모듈]', e); } }); }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', boot); else boot();
+})();
+</script>
+
+<!-- ═══════════════════════════════════════════════════════════
+     버전 표시 모듈  v1.0
+     - 화면 왼쪽 아래에 이 파일의 버전을 작게 띄운다
+     - 눌러 보면 9개 프로그램 전체의 버전을 한 번에 확인할 수 있다
+       (각 프로그램이 열릴 때 자기 버전을 Firebase 에 적어 둔다)
+     기존 코드를 고치지 않고 덧붙이는 방식
+     ═══════════════════════════════════════════════════════ -->
+<script>
+(function(){
+  'use strict';
+
+  var SD_VER  = '2026.09.14-1';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_FILE = 'sd_hub.html';      // 이 파일 이름
+  var SD_NAME = '허브';      // 사람이 부르는 이름
+
+  // 전체 프로그램 목록 — 버전 비교용
+  var SD_ALL = [
+    ['sd_hub.html','허브'], ['sd_props.html','매물관리'], ['sd_custs.html','고객관리'],
+    ['sd_contracts.html','계약관리'], ['sd_schedule.html','일정관리'], ['sd_field.html','현장업무실'],
+    ['sd_marketing.html','마케팅'], ['sd_blog.html','블로그 스튜디오'],
+    ['sd_sangga.html','상가관리'], ['sd_data.html','실거래가']
+  ];
+
+  window.SD_VERSION = SD_VER;
+  window.SD_FILENAME = SD_FILE;
+
+  function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+  function stamp(){
+    var d=new Date();
+    return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')
+      +' '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+  }
+
+  // 버전 문자열 비교 — '2026.09.21-2' > '2026.09.14-1'
+  function verKey(v){
+    var m=String(v||'').match(/(\d{4})\.(\d{2})\.(\d{2})-(\d+)/);
+    return m ? (m[1]+m[2]+m[3]+String(m[4]).padStart(3,'0')) : '0';
+  }
+
+  // ── 내 버전을 기록해 둔다 ───────────────────────────────
+  var REG={};
+  async function report(){
+    try{
+      var r=await window.storage.get('sd_versions');
+      REG = (r&&r.value) ? (JSON.parse(r.value)||{}) : {};
+    }catch(e){ REG={}; }
+    var mine=REG[SD_FILE];
+    // 버전이 그대로면 굳이 다시 쓰지 않는다 (불필요한 저장 줄이기)
+    if(!mine || mine.ver!==SD_VER){
+      REG[SD_FILE]={ ver:SD_VER, name:SD_NAME, at:stamp(),
+                     by:(window._authProfile||{}).name||'' };
+      try{ await window.storage.set('sd_versions', JSON.stringify(REG)); }catch(e){}
+    }
+    paint();
+  }
+
+  // ── 왼쪽 아래 표시 ──────────────────────────────────────
+  function mount(){
+    if(document.getElementById('sd-ver-badge')) return;
+    var st=document.createElement('style'); st.id='sd-ver-css';
+    st.textContent='body{padding-bottom:34px}'
+      +'#sd-ver-badge{position:fixed;left:10px;bottom:8px;z-index:9000;'
+      +'background:rgba(26,39,68,.62);color:#fff;border:none;border-radius:8px;padding:3px 8px;'
+      +'font-size:10px;letter-spacing:.2px;cursor:pointer;opacity:.38;transition:opacity .15s;'
+      +'font-family:inherit;line-height:1.3;white-space:nowrap}'
+      +'#sd-ver-badge:hover{opacity:1}'
+      +'#sd-ver-ov{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:10090;display:flex;'
+      +'align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto}'
+      +'#sd-ver-ov .vbox{background:#fff;border-radius:14px;max-width:460px;width:100%;margin:auto;'
+      +'overflow:hidden;box-shadow:0 8px 40px rgba(0,0,0,.25)}'
+      +'#sd-ver-ov table{width:100%;border-collapse:collapse;font-size:12.5px}'
+      +'#sd-ver-ov td{padding:7px 6px;border-bottom:0.5px solid #f0f0f0}'
+      +'@media(max-width:560px){#sd-ver-badge{font-size:10px;padding:3px 7px;left:6px;bottom:6px}}';
+    document.head.appendChild(st);
+
+    var b=document.createElement('button');
+    b.id='sd-ver-badge';
+    b.textContent='v'+SD_VER;
+    b.title=SD_NAME+' · '+SD_FILE+'\n전체 프로그램 버전 보기';
+    b.onclick=function(e){ e.stopPropagation(); openPanel(); };
+    document.body.appendChild(b);
+  }
+
+  function paint(){
+    var b=document.getElementById('sd-ver-badge');
+    if(!b) return;
+    // 나보다 높은 버전이 하나라도 있으면 알려 준다
+    var top=SD_VER;
+    Object.keys(REG).forEach(function(k){
+      if(verKey(REG[k].ver)>verKey(top)) top=REG[k].ver;
+    });
+    if(verKey(top)>verKey(SD_VER)){
+      b.textContent='v'+SD_VER+' ⚠';
+      b.style.background='rgba(198,40,40,.78)';
+      b.title=SD_NAME+' · '+SD_FILE+'\n더 높은 버전('+top+')이 다른 프로그램에 올라가 있습니다.\n이 파일도 최신본으로 올렸는지 확인하세요.';
+    }
+  }
+
+  window.sdVerPanel=function(){ openPanel(); };
+
+  function openPanel(){
+    var old=document.getElementById('sd-ver-ov'); if(old) old.remove();
+
+    var top='';
+    SD_ALL.forEach(function(p){ var e=REG[p[0]]; if(e&&verKey(e.ver)>verKey(top)) top=e.ver; });
+
+    var rows=SD_ALL.map(function(p){
+      var file=p[0], name=p[1], e=REG[file];
+      var isMe = file===SD_FILE;
+      if(!e){
+        return '<tr><td style="color:#1a1a1a">'+esc(name)+(isMe?' <span style="font-size:10px;color:#1565c0">◀ 지금 화면</span>':'')+'</td>'
+          +'<td style="color:#bbb;text-align:right;white-space:nowrap">확인 안 됨</td></tr>';
+      }
+      var old2 = top && verKey(e.ver)<verKey(top);
+      return '<tr><td style="color:#1a1a1a">'+esc(name)+(isMe?' <span style="font-size:10px;color:#1565c0">◀ 지금 화면</span>':'')
+        +'<div style="font-size:10px;color:#bbb">'+esc(file)+' · '+esc(e.at||'')+'</div></td>'
+        +'<td style="text-align:right;white-space:nowrap;color:'+(old2?'#c62828':'#2e7d32')+';font-weight:'+(old2?'700':'500')+'">'
+        +'v'+esc(e.ver)+(old2?'<div style="font-size:10px;font-weight:400">구버전일 수 있음</div>':'')+'</td></tr>';
+    }).join('');
+
+    var unseen=SD_ALL.filter(function(p){return !REG[p[0]];}).length;
+
+    var ov=document.createElement('div');
+    ov.id='sd-ver-ov';
+    ov.innerHTML='<div class="vbox">'
+      + '<div style="background:#1a2744;color:#fff;padding:13px 18px;display:flex;justify-content:space-between;align-items:center">'
+      +   '<span style="font-size:14px;font-weight:700">🏷️ 프로그램 버전</span>'
+      +   '<button onclick="document.getElementById(\'sd-ver-ov\').remove()" '
+      +     'style="background:transparent;color:#fff;border:1px solid rgba(255,255,255,.4);border-radius:6px;'
+      +     'padding:4px 10px;font-size:12px;cursor:pointer">✕ 닫기</button>'
+      + '</div>'
+      + '<div style="padding:14px 16px">'
+      +   '<table>'+rows+'</table>'
+      +   '<p style="font-size:11px;color:#888;line-height:1.7;margin:12px 0 0">'
+      +     '각 프로그램을 한 번 열어야 그 버전이 여기에 기록됩니다. '
+      +     (unseen? '아직 '+unseen+'개는 이 브라우저에서 연 적이 없어 «확인 안 됨»으로 나옵니다. ':'')
+      +     '버전이 서로 다르면 올리다 빠뜨린 파일이 있는지 확인해 보세요.'
+      +   '</p>'
+      + '</div></div>';
+    document.body.appendChild(ov);
+    ov.onclick=function(e){ if(e.target===ov) ov.remove(); };
+  }
+
+  function boot(){ mount(); report(); }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',function(){ setTimeout(boot,600); });
+  else setTimeout(boot,600);
 })();
 </script>
 

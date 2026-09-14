@@ -2530,5 +2530,155 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
 })();
 </script>
 
+<!-- ═══════════════════════════════════════════════════════════
+     버전 표시 모듈  v1.0
+     - 화면 왼쪽 아래에 이 파일의 버전을 작게 띄운다
+     - 눌러 보면 9개 프로그램 전체의 버전을 한 번에 확인할 수 있다
+       (각 프로그램이 열릴 때 자기 버전을 Firebase 에 적어 둔다)
+     기존 코드를 고치지 않고 덧붙이는 방식
+     ═══════════════════════════════════════════════════════ -->
+<script>
+(function(){
+  'use strict';
+
+  var SD_VER  = '2026.09.14-1';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_FILE = 'sd_schedule.html';      // 이 파일 이름
+  var SD_NAME = '일정관리';      // 사람이 부르는 이름
+
+  // 전체 프로그램 목록 — 버전 비교용
+  var SD_ALL = [
+    ['sd_hub.html','허브'], ['sd_props.html','매물관리'], ['sd_custs.html','고객관리'],
+    ['sd_contracts.html','계약관리'], ['sd_schedule.html','일정관리'], ['sd_field.html','현장업무실'],
+    ['sd_marketing.html','마케팅'], ['sd_blog.html','블로그 스튜디오'],
+    ['sd_sangga.html','상가관리'], ['sd_data.html','실거래가']
+  ];
+
+  window.SD_VERSION = SD_VER;
+  window.SD_FILENAME = SD_FILE;
+
+  function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+  function stamp(){
+    var d=new Date();
+    return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')
+      +' '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+  }
+
+  // 버전 문자열 비교 — '2026.09.21-2' > '2026.09.14-1'
+  function verKey(v){
+    var m=String(v||'').match(/(\d{4})\.(\d{2})\.(\d{2})-(\d+)/);
+    return m ? (m[1]+m[2]+m[3]+String(m[4]).padStart(3,'0')) : '0';
+  }
+
+  // ── 내 버전을 기록해 둔다 ───────────────────────────────
+  var REG={};
+  async function report(){
+    try{
+      var r=await window.storage.get('sd_versions');
+      REG = (r&&r.value) ? (JSON.parse(r.value)||{}) : {};
+    }catch(e){ REG={}; }
+    var mine=REG[SD_FILE];
+    // 버전이 그대로면 굳이 다시 쓰지 않는다 (불필요한 저장 줄이기)
+    if(!mine || mine.ver!==SD_VER){
+      REG[SD_FILE]={ ver:SD_VER, name:SD_NAME, at:stamp(),
+                     by:(window._authProfile||{}).name||'' };
+      try{ await window.storage.set('sd_versions', JSON.stringify(REG)); }catch(e){}
+    }
+    paint();
+  }
+
+  // ── 왼쪽 아래 표시 ──────────────────────────────────────
+  function mount(){
+    if(document.getElementById('sd-ver-badge')) return;
+    var st=document.createElement('style'); st.id='sd-ver-css';
+    st.textContent='body{padding-bottom:34px}'
+      +'#sd-ver-badge{position:fixed;left:10px;bottom:8px;z-index:9000;'
+      +'background:rgba(26,39,68,.62);color:#fff;border:none;border-radius:8px;padding:3px 8px;'
+      +'font-size:10px;letter-spacing:.2px;cursor:pointer;opacity:.38;transition:opacity .15s;'
+      +'font-family:inherit;line-height:1.3;white-space:nowrap}'
+      +'#sd-ver-badge:hover{opacity:1}'
+      +'#sd-ver-ov{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:10090;display:flex;'
+      +'align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto}'
+      +'#sd-ver-ov .vbox{background:#fff;border-radius:14px;max-width:460px;width:100%;margin:auto;'
+      +'overflow:hidden;box-shadow:0 8px 40px rgba(0,0,0,.25)}'
+      +'#sd-ver-ov table{width:100%;border-collapse:collapse;font-size:12.5px}'
+      +'#sd-ver-ov td{padding:7px 6px;border-bottom:0.5px solid #f0f0f0}'
+      +'@media(max-width:560px){#sd-ver-badge{font-size:10px;padding:3px 7px;left:6px;bottom:6px}}';
+    document.head.appendChild(st);
+
+    var b=document.createElement('button');
+    b.id='sd-ver-badge';
+    b.textContent='v'+SD_VER;
+    b.title=SD_NAME+' · '+SD_FILE+'\n전체 프로그램 버전 보기';
+    b.onclick=function(e){ e.stopPropagation(); openPanel(); };
+    document.body.appendChild(b);
+  }
+
+  function paint(){
+    var b=document.getElementById('sd-ver-badge');
+    if(!b) return;
+    // 나보다 높은 버전이 하나라도 있으면 알려 준다
+    var top=SD_VER;
+    Object.keys(REG).forEach(function(k){
+      if(verKey(REG[k].ver)>verKey(top)) top=REG[k].ver;
+    });
+    if(verKey(top)>verKey(SD_VER)){
+      b.textContent='v'+SD_VER+' ⚠';
+      b.style.background='rgba(198,40,40,.78)';
+      b.title=SD_NAME+' · '+SD_FILE+'\n더 높은 버전('+top+')이 다른 프로그램에 올라가 있습니다.\n이 파일도 최신본으로 올렸는지 확인하세요.';
+    }
+  }
+
+  window.sdVerPanel=function(){ openPanel(); };
+
+  function openPanel(){
+    var old=document.getElementById('sd-ver-ov'); if(old) old.remove();
+
+    var top='';
+    SD_ALL.forEach(function(p){ var e=REG[p[0]]; if(e&&verKey(e.ver)>verKey(top)) top=e.ver; });
+
+    var rows=SD_ALL.map(function(p){
+      var file=p[0], name=p[1], e=REG[file];
+      var isMe = file===SD_FILE;
+      if(!e){
+        return '<tr><td style="color:#1a1a1a">'+esc(name)+(isMe?' <span style="font-size:10px;color:#1565c0">◀ 지금 화면</span>':'')+'</td>'
+          +'<td style="color:#bbb;text-align:right;white-space:nowrap">확인 안 됨</td></tr>';
+      }
+      var old2 = top && verKey(e.ver)<verKey(top);
+      return '<tr><td style="color:#1a1a1a">'+esc(name)+(isMe?' <span style="font-size:10px;color:#1565c0">◀ 지금 화면</span>':'')
+        +'<div style="font-size:10px;color:#bbb">'+esc(file)+' · '+esc(e.at||'')+'</div></td>'
+        +'<td style="text-align:right;white-space:nowrap;color:'+(old2?'#c62828':'#2e7d32')+';font-weight:'+(old2?'700':'500')+'">'
+        +'v'+esc(e.ver)+(old2?'<div style="font-size:10px;font-weight:400">구버전일 수 있음</div>':'')+'</td></tr>';
+    }).join('');
+
+    var unseen=SD_ALL.filter(function(p){return !REG[p[0]];}).length;
+
+    var ov=document.createElement('div');
+    ov.id='sd-ver-ov';
+    ov.innerHTML='<div class="vbox">'
+      + '<div style="background:#1a2744;color:#fff;padding:13px 18px;display:flex;justify-content:space-between;align-items:center">'
+      +   '<span style="font-size:14px;font-weight:700">🏷️ 프로그램 버전</span>'
+      +   '<button onclick="document.getElementById(\'sd-ver-ov\').remove()" '
+      +     'style="background:transparent;color:#fff;border:1px solid rgba(255,255,255,.4);border-radius:6px;'
+      +     'padding:4px 10px;font-size:12px;cursor:pointer">✕ 닫기</button>'
+      + '</div>'
+      + '<div style="padding:14px 16px">'
+      +   '<table>'+rows+'</table>'
+      +   '<p style="font-size:11px;color:#888;line-height:1.7;margin:12px 0 0">'
+      +     '각 프로그램을 한 번 열어야 그 버전이 여기에 기록됩니다. '
+      +     (unseen? '아직 '+unseen+'개는 이 브라우저에서 연 적이 없어 «확인 안 됨»으로 나옵니다. ':'')
+      +     '버전이 서로 다르면 올리다 빠뜨린 파일이 있는지 확인해 보세요.'
+      +   '</p>'
+      + '</div></div>';
+    document.body.appendChild(ov);
+    ov.onclick=function(e){ if(e.target===ov) ov.remove(); };
+  }
+
+  function boot(){ mount(); report(); }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',function(){ setTimeout(boot,600); });
+  else setTimeout(boot,600);
+})();
+</script>
+
 </body>
 </html>
