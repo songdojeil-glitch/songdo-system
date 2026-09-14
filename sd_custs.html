@@ -3143,5 +3143,317 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
 })();
 </script>
 
+<!-- ═══════════════════════════════════════════════════════════
+     고객 분야 구분 모듈 (주거용 / 상업용)  v1.0
+     - 물건 종류로 분야 자동 판정 (수동 지정 가능)
+     - 분야별 희망조건 입력칸 분리 노출
+     - 분야별 고객 구분(매수인·임차인 / 투자자·창업희망자·건물주 …)
+     - 목록 분야 거르개 + 줄마다 분야 배지
+     기존 코드를 고치지 않고 덧붙이는 방식
+     ═══════════════════════════════════════════════════════ -->
+<script>
+(function(){
+  'use strict';
+
+  // ── 1. 분야 판정 ────────────────────────────────────────
+  var SC_COM = ['상가','상가 분양권','분양상가','사무실','토지','생활형숙박시설'];
+
+  function scOf(t){ return !t ? '' : (SC_COM.indexOf(t)>=0 ? '상업' : '주거'); }
+
+  function scSector(c){
+    if(!c) return '';
+    if(c.sector) return c.sector;                 // 수동 지정 우선
+    return scOf(c.ptype) || scOf(c.propPtype) || '';
+  }
+  window.scSector = scSector;
+
+  var SC_ROLE = {
+    '주거':['매수인','매도인','임차인','임대인'],
+    '상업':['투자자','창업 희망자','임차인','임대인','건물주']
+  };
+
+  function scBadge(s, small){
+    if(!s) return '';
+    var bg = s==='상업' ? '#fff3e0' : '#e8f5e9';
+    var fg = s==='상업' ? '#e65100' : '#2e7d32';
+    var ic = s==='상업' ? '🏢' : '🏠';
+    return '<span style="display:inline-block;background:'+bg+';color:'+fg+';border-radius:9px;'
+      + 'padding:1px 7px;font-size:'+(small?'10px':'11px')+';font-weight:600;white-space:nowrap">'
+      + ic+' '+s+'용</span>';
+  }
+  window.scBadge = scBadge;
+
+  // ── 2. 입력 화면에 분야 칸 심기 ─────────────────────────
+  var FS = ['f-sector','f-role','f-movein','f-infra','f-biz','f-needarea','f-yield','f-keymoney'];
+
+  function css(){
+    if(document.getElementById('sc-css')) return;
+    var st=document.createElement('style'); st.id='sc-css';
+    st.textContent='.sc-g{display:grid;gap:12px;margin-bottom:12px}'
+      +'.sc-g2{grid-template-columns:1fr 1fr}.sc-g3{grid-template-columns:1fr 1fr 1fr}'
+      +'@media(max-width:560px){.sc-g2,.sc-g3{grid-template-columns:1fr}}';
+    document.head.appendChild(st);
+  }
+
+  function mount(){
+    if(document.getElementById('f-sector')) return;
+    var ptype = document.getElementById('f-ptype');
+    var cond  = document.getElementById('f-cond');
+    if(!ptype || !cond) return;
+    css();
+
+    // (1) 분야 · 고객 구분 — 물건 종류 줄 위에
+    var gridTop = ptype.closest('div[style*="grid"]');
+    if(gridTop){
+      gridTop.insertAdjacentHTML('beforebegin',
+        '<div class="sc-g sc-g2">'
+        + '<div><label class="fl">분야</label>'
+        +   '<select id="f-sector" class="fi">'
+        +     '<option value="">자동 판정 (물건 종류 기준)</option>'
+        +     '<option value="주거">🏠 주거용</option>'
+        +     '<option value="상업">🏢 상업용</option>'
+        +   '</select>'
+        +   '<div id="sc-auto" style="font-size:11px;color:#888;margin-top:4px"></div></div>'
+        + '<div><label class="fl">고객 구분</label>'
+        +   '<select id="f-role" class="fi"><option value="">선택</option></select></div>'
+        + '</div>');
+    }
+
+    // (2) 분야별 희망조건 — 기타 조건 줄 아래
+    var condRow = cond.closest('div[style*="margin-bottom"]') || cond.parentNode;
+    condRow.insertAdjacentHTML('afterend',
+      // 주거용 전용
+      '<div id="sc-ju" class="sc-g sc-g2" style="display:none">'
+      + '<div><label class="fl">입주 희망 시기</label>'
+      +   '<input id="f-movein" type="text" class="fi" placeholder="예: 2026년 3월 / 즉시 / 전세 만기 후"></div>'
+      + '<div><label class="fl">학군·교통 우선순위</label>'
+      +   '<input id="f-infra" type="text" class="fi" placeholder="예: 신정초 배정 필수, 인천1호선 도보 10분"></div>'
+      + '</div>'
+      // 상업용 전용
+      + '<div id="sc-sa" style="display:none">'
+      +   '<div class="sc-g sc-g2">'
+      +     '<div><label class="fl">희망 업종</label>'
+      +       '<input id="f-biz" type="text" class="fi" placeholder="예: 카페, 학원, 병·의원, 무관"></div>'
+      +     '<div><label class="fl">필요 면적</label>'
+      +       '<input id="f-needarea" type="text" class="fi" placeholder="예: 전용 20평 이상, 1층 필수"></div>'
+      +   '</div>'
+      +   '<div class="sc-g sc-g2">'
+      +     '<div><label class="fl">목표 수익률 (%)</label>'
+      +       '<input id="f-yield" type="text" class="fi" placeholder="예: 4.5"></div>'
+      +     '<div><label class="fl">권리금 예산</label>'
+      +       '<input id="f-keymoney" type="text" class="fi" placeholder="예: 5천만원 이내 / 무권리 희망"></div>'
+      +   '</div>'
+      + '</div>');
+
+    ptype.addEventListener('change', sync);
+    var sel=document.getElementById('f-sector');
+    if(sel) sel.addEventListener('change', sync);
+    sync();
+  }
+
+  // 현재 입력 화면의 분야
+  function curSector(){
+    var m=(document.getElementById('f-sector')||{}).value||'';
+    if(m) return m;
+    return scOf((document.getElementById('f-ptype')||{}).value||'');
+  }
+
+  function sync(){
+    var s=curSector();
+    var ju=document.getElementById('sc-ju'), sa=document.getElementById('sc-sa');
+    if(ju) ju.style.display = (s==='주거') ? 'grid' : 'none';
+    if(sa) sa.style.display = (s==='상업') ? 'block' : 'none';
+
+    var hint=document.getElementById('sc-auto');
+    if(hint){
+      var man=(document.getElementById('f-sector')||{}).value||'';
+      hint.innerHTML = man ? '직접 지정한 분야입니다.'
+        : (s ? ('물건 종류로 <b>'+s+'용</b>으로 판정했습니다.')
+             : '물건 종류를 고르면 분야가 자동으로 정해집니다.');
+    }
+
+    // 고객 구분 선택지 교체 (고른 값은 최대한 유지)
+    var rl=document.getElementById('f-role');
+    if(rl){
+      var keep=rl.value;
+      var list=SC_ROLE[s]||[];
+      rl.innerHTML='<option value="">선택</option>'
+        + list.map(function(v){return '<option>'+v+'</option>';}).join('');
+      if(list.indexOf(keep)>=0) rl.value=keep;
+      rl.disabled = !s;
+    }
+  }
+
+  // ── 3. 저장 · 수정 · 비우기 이어붙이기 ──────────────────
+  function grab(){
+    var o={};
+    FS.forEach(function(id){
+      var el=document.getElementById(id);
+      o[id.slice(2)] = el ? (el.value||'').trim() : '';
+    });
+    // f-sector → sector, f-role → role …
+    return {
+      sector:o.sector, role:o.role, movein:o.movein, infra:o.infra,
+      biz:o.biz, needarea:o.needarea, yieldPct:o.yield, keymoney:o.keymoney
+    };
+  }
+
+  var _save = window.saveCust;
+  if(typeof _save==='function'){
+    window.saveCust = function(){
+      var extra = grab();
+      var wasEdit = window.editId;          // 원본 실행 중 null 이 되므로 미리 보관
+      var before  = (window.custs||[]).length;
+      _save.apply(this, arguments);
+      var list = window.custs||[];
+      // 저장이 막힌 경우(이름 미입력·유형 미선택 등)는 건드리지 않는다
+      if(wasEdit){ if(String(window.editId||'')===String(wasEdit)) return; }
+      else if(list.length===before) return;
+      var t = wasEdit
+        ? list.find(function(x){return String(x.id)===String(wasEdit);})
+        : list[0];
+      if(!t) return;
+      Object.keys(extra).forEach(function(k){ t[k]=extra[k]; });
+      try{ if(typeof toStore==='function') toStore(); }catch(e){}
+      try{ if(typeof rtbl==='function') rtbl(); }catch(e){}
+    };
+  }
+
+  var _edit = window.editC;
+  if(typeof _edit==='function'){
+    window.editC = function(id){
+      _edit.apply(this, arguments);
+      var c=(window.custs||[]).find(function(x){return String(x.id)===String(id);});
+      if(!c) return;
+      var sel=document.getElementById('f-sector'); if(sel) sel.value=c.sector||'';
+      sync();
+      var map={'f-role':'role','f-movein':'movein','f-infra':'infra','f-biz':'biz',
+               'f-needarea':'needarea','f-yield':'yieldPct','f-keymoney':'keymoney'};
+      Object.keys(map).forEach(function(id2){
+        var el=document.getElementById(id2); if(el) el.value=c[map[id2]]||'';
+      });
+    };
+  }
+
+  var _clear = window.clearF;
+  if(typeof _clear==='function'){
+    window.clearF = function(){
+      _clear.apply(this, arguments);
+      FS.forEach(function(id){var el=document.getElementById(id); if(el) el.value='';});
+      sync();
+    };
+  }
+
+  // ── 4. 목록: 분야 거르개 + 배지 + 건수 ──────────────────
+  function mountFilter(){
+    if(document.getElementById('ft-sector')) return;
+    var anchor=document.getElementById('ft-name') || document.getElementById('ft-deal');
+    if(!anchor) return;
+    anchor.insertAdjacentHTML('beforebegin',
+      '<select id="ft-sector" class="fi" style="width:auto;font-size:12px" onchange="rtbl()">'
+      + '<option value="">전체 분야</option>'
+      + '<option value="주거">🏠 주거용</option>'
+      + '<option value="상업">🏢 상업용</option>'
+      + '<option value="미분류">· 미분류</option></select>');
+    var cnt=document.getElementById('tbl-cnt');
+    if(cnt) cnt.insertAdjacentHTML('beforebegin',
+      '<span id="sc-sum" style="font-size:12px;color:#666"></span>');
+  }
+
+  function paint(){
+    // 건수 요약
+    var sum=document.getElementById('sc-sum');
+    if(sum){
+      var j=0,s=0,n=0;
+      (window.custs||[]).forEach(function(c){
+        var v=scSector(c); if(v==='주거')j++; else if(v==='상업')s++; else n++;
+      });
+      sum.innerHTML='🏠 주거 '+j+' · 🏢 상업 '+s+(n?' · 미분류 '+n:'')+' &nbsp;|&nbsp;';
+    }
+    // 줄마다 배지 (유형 칸)
+    var tb=document.getElementById('tbdy'); if(!tb) return;
+    Array.prototype.forEach.call(tb.rows, function(tr){
+      if(tr.dataset.scDone==='1') return;
+      var m=(tr.getAttribute('onclick')||'').match(/showDetail\((\d+)\)/);
+      if(!m) return;
+      var c=(window.custs||[]).find(function(x){return String(x.id)===m[1];});
+      var v=c?scSector(c):'';
+      var td=tr.cells[1];
+      if(td && v) td.insertAdjacentHTML('beforeend','<div style="margin-top:3px">'+scBadge(v,true)+'</div>');
+      tr.dataset.scDone='1';
+    });
+  }
+
+  var _rtbl = window.rtbl;
+  if(typeof _rtbl==='function'){
+    window.rtbl = function(){
+      var f=(document.getElementById('ft-sector')||{}).value||'';
+      if(!f){ _rtbl.apply(this,arguments); paint(); return; }
+      var all=window.custs||[];
+      window.custs = all.filter(function(c){
+        var v=scSector(c);
+        return f==='미분류' ? !v : v===f;
+      });
+      try{ _rtbl.apply(this,arguments); }
+      finally{ window.custs = all; }
+      paint();
+    };
+  }
+
+  // ── 5. 상세 보기에 분야 정보 덧붙이기 ───────────────────
+  var _detail = window.showDetail;
+  if(typeof _detail==='function'){
+    window.showDetail = function(id){
+      _detail.apply(this, arguments);
+      var c=(window.custs||[]).find(function(x){return String(x.id)===String(id);});
+      var ov=document.getElementById('cust-detail-ov');
+      if(!c||!ov) return;
+      var sec=scSector(c); if(!sec) return;
+
+      function row(l,v){
+        return v?'<div style="display:flex;gap:8px;padding:6px 0;border-bottom:0.5px solid #f0f0f0">'
+          +'<span style="font-size:11px;color:#888;min-width:90px;flex-shrink:0">'+l+'</span>'
+          +'<span style="font-size:13px;color:#1a1a1a;line-height:1.5;white-space:pre-wrap">'+v+'</span></div>':'';
+      }
+
+      function findHost(re){
+        var h=null;
+        Array.prototype.forEach.call(ov.querySelectorAll('div'), function(d){
+          if(!h && d.children.length===0 && re.test(d.textContent||'')) h=d.parentNode;
+        });
+        return h;
+      }
+
+      var sBadge = scBadge(sec)
+        + (c.sector?' <span style="font-size:10px;color:#888">(직접 지정)</span>':'');
+
+      var host = findHost(/🎯\s*가망고객/);
+      if(!host){
+        // 가망고객이 아닌 고객 — 기본 정보에 분야만 덧붙인다
+        var base = findHost(/👤\s*기본 정보/);
+        if(base) base.insertAdjacentHTML('beforeend', row('분야', sBadge));
+        return;
+      }
+
+      var add = row('분야', sBadge) + row('고객 구분', c.role||'');
+      if(sec==='주거'){
+        add += row('입주 희망시기', c.movein||'') + row('학군·교통', c.infra||'');
+      }else{
+        add += row('희망 업종', c.biz||'') + row('필요 면적', c.needarea||'')
+            + row('목표 수익률', c.yieldPct ? c.yieldPct+'%' : '')
+            + row('권리금 예산', c.keymoney||'');
+      }
+      host.insertAdjacentHTML('beforeend', add);
+    };
+  }
+
+  // ── 6. 시동 ────────────────────────────────────────────
+  function boot(){ mount(); mountFilter(); paint(); }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', function(){ setTimeout(boot,300); });
+  else setTimeout(boot,300);
+  setTimeout(boot,1200);
+})();
+</script>
+
 </body>
 </html>
