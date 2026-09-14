@@ -1903,5 +1903,407 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
 })();
 </script>
 
+<!-- ═══════════════════════════════════════════════════════════
+     메모 & 노트 모듈 (일정관리 TAB6)  v1.0
+     - 날짜별로 묶어 위에서 아래로 이어 보여주는 업무 노트
+     - 적은 시각이 자동으로 앞에 박힘 (2026/09/15(화) PM 11:35)
+     - 사무소 공유 / 나만 보기 선택
+     기존 코드를 고치지 않고 덧붙이는 방식
+     ═══════════════════════════════════════════════════════ -->
+<script>
+(function(){
+  'use strict';
+
+  var NOTES=[], nmSort='new', nmEditId=null, nmSel='';   // nmSel = 달력에서 고른 날짜
+
+  function uid(){ return (window._authProfile||{}).uid||'anon'; }
+  function uname(){ return (window._authProfile||{}).name||''; }
+  function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+  var DOW=['일','월','화','수','목','금','토'];
+  function dstr(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+  function dview(ds){                                   // '2026-09-15' → '2026/09/15 (화)'
+    var p=String(ds||'').split('-');
+    if(p.length<3) return ds||'';
+    var d=new Date(+p[0], +p[1]-1, +p[2]);
+    return p[0]+'/'+p[1]+'/'+p[2]+' ('+DOW[d.getDay()]+')';
+  }
+  function tlabel(d){                                   // 23:35 → 'PM 11:35'
+    var h=d.getHours(), ap=h<12?'AM':'PM', hh=h%12; if(hh===0) hh=12;
+    return ap+' '+String(hh).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+  }
+  function shortStamp(iso){                             // 수정 꼬리표용
+    var d=new Date(iso); if(isNaN(d)) return '';
+    return String(d.getMonth()+1).padStart(2,'0')+'/'+String(d.getDate()).padStart(2,'0')+' '+tlabel(d);
+  }
+
+  // ── 저장 ────────────────────────────────────────────────
+  async function nmLoad(){
+    var pub=[], per=[];
+    try{ var r=await window.storage.get('sd_notes_public'); if(r&&r.value) pub=JSON.parse(r.value); }catch(e){}
+    try{ var r2=await window.storage.get('sd_notes_personal_'+uid()); if(r2&&r2.value) per=JSON.parse(r2.value); }catch(e){}
+    NOTES=(Array.isArray(pub)?pub:[]).concat(Array.isArray(per)?per:[]);
+  }
+  async function nmSave(){
+    try{ await window.storage.set('sd_notes_public',
+      JSON.stringify(NOTES.filter(function(n){return n.isPublic;}))); }catch(e){}
+    try{ await window.storage.set('sd_notes_personal_'+uid(),
+      JSON.stringify(NOTES.filter(function(n){return !n.isPublic && n.owner===uid();}))); }catch(e){}
+  }
+
+  // ── 화면 만들기 ─────────────────────────────────────────
+  function mount(){
+    if(document.getElementById('tc6')) return;
+    var tc5=document.getElementById('tc5'), tn3=document.getElementById('tn3');
+    if(!tc5||!tn3) return;
+
+    tn3.insertAdjacentHTML('afterend',
+      '<button onclick="sw(6)" id="tn6" class="tnb">📝 메모&amp;노트</button>');
+
+    var st=document.createElement('style');
+    st.textContent='#tc6 .nm-day{font-size:13px;font-weight:700;color:#1a1a1a;padding:4px 0 6px;'
+      +'border-bottom:1.5px solid #1a1a1a;margin-bottom:8px;display:flex;justify-content:space-between;align-items:baseline}'
+      +'#tc6 .nm-grp{margin-bottom:26px}'
+      +'#tc6 .nm-row{display:flex;gap:10px;padding:8px 0;border-bottom:0.5px solid #f0f0f0}'
+      +'#tc6 .nm-t{font-size:11px;color:#888;white-space:nowrap;min-width:64px;padding-top:2px;font-variant-numeric:tabular-nums}'
+      +'#tc6 .nm-x{flex:1;font-size:13.5px;line-height:1.7;color:#1a1a1a;white-space:pre-wrap;word-break:break-word}'
+      +'#tc6 .nm-a{display:flex;gap:4px;align-items:flex-start;flex-shrink:0}'
+      +'#tc6 .nm-a button{border:0.5px solid #e0e0e0;background:#fff;border-radius:6px;font-size:10px;'
+      +'padding:3px 7px;cursor:pointer;color:#666;white-space:nowrap}'
+      +'#tc6 .nm-a button:hover{background:#f5f5f3}'
+      // 달력에서 고른 날 — 색상 반전
+      +'#tc6 .nm-on{background:#1a2744;border-radius:12px;padding:14px 16px 4px;margin-bottom:26px}'
+      +'#tc6 .nm-on .nm-day{color:#fff;border-bottom-color:rgba(255,255,255,.45)}'
+      +'#tc6 .nm-on .nm-day span{color:#fff}'
+      +'#tc6 .nm-on .nm-x{color:#fff}'
+      +'#tc6 .nm-on .nm-x div{color:rgba(255,255,255,.55)}'
+      +'#tc6 .nm-on .nm-t{color:#9fc0f0}'
+      +'#tc6 .nm-on .nm-row{border-bottom-color:rgba(255,255,255,.15)}'
+      +'#tc6 .nm-on .nm-a button{background:transparent;color:#cfe0f5;border-color:rgba(255,255,255,.3)}'
+      +'#tc6 .nm-on .nm-a button:hover{background:rgba(255,255,255,.12)}'
+      +'.cal-memo-dot{display:inline-block;margin-left:3px;font-size:9px;line-height:1}'
+      +'@media(max-width:560px){#tc6 .nm-row{flex-wrap:wrap}#tc6 .nm-x{flex:1 1 100%;order:3}}';
+    document.head.appendChild(st);
+
+    tc5.insertAdjacentHTML('afterend',
+      '<div id="tc6" class="tc">'
+
+      // 쓰는 칸
+      + '<div class="card" style="border-color:#90caf9;background:#fafcff">'
+      +   '<p class="sec" style="color:#1565c0">📝 메모 적기 <span id="nm-now" style="font-size:11px;font-weight:400;color:#888"></span></p>'
+      +   '<textarea id="nm-text" rows="3" class="fi" style="resize:vertical;font-size:14px;line-height:1.7"'
+      +     ' placeholder="예: 더샵퍼스트파크 1502호 집주인 통화 — 9.3억까지 조정 의사 있음. 목요일 재연락."></textarea>'
+      +   '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px">'
+      +     '<label style="font-size:12px;color:#666">날짜</label>'
+      +     '<input id="nm-date" type="date" class="fi" style="width:auto;font-size:12px">'
+      +     '<label style="display:flex;align-items:center;gap:5px;font-size:12px;cursor:pointer">'
+      +       '<input type="checkbox" id="nm-priv" style="width:15px;height:15px;cursor:pointer">🔒 나만 보기</label>'
+      +     '<span style="flex:1"></span>'
+      +     '<span style="font-size:11px;color:#aaa">Ctrl + Enter 로도 저장</span>'
+      +     '<button onclick="nmCancel()" id="nm-cancel" class="btn-s" style="display:none;font-size:12px">취소</button>'
+      +     '<button onclick="nmAdd()" id="nm-save" class="btn-p" style="font-size:13px;padding:7px 20px">저장</button>'
+      +   '</div>'
+      + '</div>'
+
+      // 목록
+      + '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:14px">'
+      +   '<input id="nm-q" type="text" class="fi" style="width:180px;font-size:12px" placeholder="메모 검색" oninput="nmRender()">'
+      +   '<select id="nm-scope" class="fi" style="width:auto;font-size:12px" onchange="nmRender()">'
+      +     '<option value="">전체</option><option value="pub">사무소 공유만</option><option value="me">나만 보기만</option></select>'
+      +   '<button onclick="nmToggleSort()" id="nm-sortb" class="btn-s" style="font-size:12px">↓ 최신순</button>'
+      +   '<span style="flex:1"></span>'
+      +   '<span id="nm-cnt" style="font-size:12px;color:#666"></span>'
+      + '</div>'
+      + '<div id="nm-list"></div>'
+      + '<div id="nm-empty" style="display:none;text-align:center;padding:3rem;color:#aaa;font-size:14px">'
+      +   '아직 적은 메모가 없습니다.</div>'
+      + '</div>');
+
+    var ta=document.getElementById('nm-text');
+    if(ta) ta.addEventListener('keydown', function(e){
+      if((e.ctrlKey||e.metaKey) && e.key==='Enter'){ e.preventDefault(); nmAdd(); }
+    });
+    nmResetForm();
+    setInterval(nmClock, 20000); nmClock();
+  }
+
+  function nmClock(){
+    var el=document.getElementById('nm-now'); if(!el) return;
+    var d=new Date();
+    el.textContent='— 지금 '+dview(dstr(d))+' '+tlabel(d)+' 로 기록됩니다';
+  }
+
+  function nmResetForm(){
+    var dt=document.getElementById('nm-date'); if(dt) dt.value=dstr(new Date());
+    var ta=document.getElementById('nm-text'); if(ta) ta.value='';
+    var pv=document.getElementById('nm-priv'); if(pv) pv.checked=false;
+    nmEditId=null;
+    var sb=document.getElementById('nm-save'); if(sb) sb.textContent='저장';
+    var cb=document.getElementById('nm-cancel'); if(cb) cb.style.display='none';
+  }
+
+  // ── 쓰기 / 고치기 / 지우기 ──────────────────────────────
+  window.nmAdd=function(){
+    var ta=document.getElementById('nm-text');
+    var txt=(ta.value||'').trim();
+    if(!txt){ ta.focus(); return; }
+    var now=new Date();
+    var ds=(document.getElementById('nm-date')||{}).value || dstr(now);
+    var priv=(document.getElementById('nm-priv')||{}).checked;
+
+    if(nmEditId){
+      var n=NOTES.find(function(x){return String(x.id)===String(nmEditId);});
+      if(n){ n.text=txt; n.date=ds; n.isPublic=!priv; n.edited=now.toISOString(); }
+    }else{
+      NOTES.unshift({
+        id:Date.now(), date:ds, ts:now.toISOString(),
+        wroteOn:dstr(now),                       // 실제로 적은 날 (날짜를 바꿔 적었을 때 대비)
+        text:txt, author:uname(), owner:uid(),
+        isPublic:!priv, pin:false
+      });
+    }
+    nmSave(); nmResetForm(); nmRender();
+    var ta2=document.getElementById('nm-text'); if(ta2) ta2.focus();
+  };
+
+  window.nmCancel=function(){ nmResetForm(); };
+
+  window.nmEdit=function(id){
+    var n=NOTES.find(function(x){return String(x.id)===String(id);});
+    if(!n) return;
+    nmEditId=n.id;
+    document.getElementById('nm-text').value=n.text||'';
+    document.getElementById('nm-date').value=n.date||dstr(new Date());
+    document.getElementById('nm-priv').checked=!n.isPublic;
+    document.getElementById('nm-save').textContent='수정 저장';
+    document.getElementById('nm-cancel').style.display='';
+    document.getElementById('nm-text').focus();
+    window.scrollTo({top:0,behavior:'smooth'});
+  };
+
+  window.nmDel=function(id){
+    var n=NOTES.find(function(x){return String(x.id)===String(id);});
+    if(!n) return;
+    if(!confirm('이 메모를 삭제하시겠습니까?\n\n'+(n.text||'').slice(0,60))) return;
+    NOTES=NOTES.filter(function(x){return String(x.id)!==String(id);});
+    if(String(nmEditId)===String(id)) nmResetForm();
+    nmSave(); nmRender();
+  };
+
+  window.nmPin=function(id){
+    var n=NOTES.find(function(x){return String(x.id)===String(id);});
+    if(!n) return;
+    n.pin=!n.pin; nmSave(); nmRender();
+  };
+
+  window.nmToTodo=function(id){
+    var n=NOTES.find(function(x){return String(x.id)===String(id);});
+    if(!n) return;
+    if(typeof window.todos==='undefined'||!Array.isArray(window.todos)){ alert('할 일 목록을 불러오지 못했습니다.'); return; }
+    var title=(n.text||'').split('\n')[0].slice(0,60);
+    window.todos.unshift({
+      id:Date.now(), type:'✅ 기타 할일', title:title,
+      date:(n.date||dstr(new Date()))+'T00:00', priority:'mid',
+      custId:'', custName:'', memo:n.text||'', done:false,
+      createdAt:new Date().toISOString(), isPublic:!!n.isPublic, owner:uid(), ownerName:uname()
+    });
+    try{ saveTodos(); }catch(e){}
+    try{ renderToday(); }catch(e){}
+    try{ renderAllTodos(); }catch(e){}
+    alert('할 일로 옮겼습니다.\n\n'+title);
+  };
+
+  window.nmToggleSort=function(){
+    nmSort = nmSort==='new' ? 'old' : 'new';
+    var b=document.getElementById('nm-sortb');
+    if(b) b.textContent = nmSort==='new' ? '↓ 최신순' : '↑ 오래된순';
+    nmRender();
+  };
+
+  // ── 그리기 ──────────────────────────────────────────────
+  function noteRow(n){
+    var d=new Date(n.ts);
+    var t=isNaN(d)?'':tlabel(d);
+    var tail=[];
+    if(n.wroteOn && n.date && n.wroteOn!==n.date) tail.push(n.wroteOn.slice(5).replace('-','/')+' 작성');
+    if(n.edited) tail.push('수정 '+shortStamp(n.edited));
+    if(!n.isPublic) tail.push('🔒');
+    else if(n.author) tail.push(n.author);
+
+    return '<div class="nm-row">'
+      + '<div class="nm-t">'+(n.pin?'📌 ':'')+esc(t)+'</div>'
+      + '<div class="nm-x">'+esc(n.text)
+      +   (tail.length?'<div style="font-size:10px;color:#bbb;margin-top:3px">'+esc(tail.join(' · '))+'</div>':'')
+      + '</div>'
+      + '<div class="nm-a">'
+      +   '<button onclick="nmPin('+n.id+')" title="고정">'+(n.pin?'📌':'📍')+'</button>'
+      +   '<button onclick="nmToTodo('+n.id+')" title="할 일로">할일</button>'
+      +   '<button onclick="nmEdit('+n.id+')">수정</button>'
+      +   '<button onclick="nmDel('+n.id+')" style="color:#cc3333">삭제</button>'
+      + '</div></div>';
+  }
+
+  window.nmRender=function(){
+    var list=document.getElementById('nm-list');
+    if(!list) return;
+    var q=((document.getElementById('nm-q')||{}).value||'').trim();
+    var sc=((document.getElementById('nm-scope')||{}).value||'');
+
+    var f=NOTES.filter(function(n){
+      if(q && String(n.text||'').indexOf(q)<0) return false;
+      if(sc==='pub' && !n.isPublic) return false;
+      if(sc==='me' && n.isPublic) return false;
+      return true;
+    });
+
+    document.getElementById('nm-cnt').textContent=f.length+'건'
+      + (NOTES.length!==f.length ? ' / 전체 '+NOTES.length+'건' : '');
+
+    var empty=document.getElementById('nm-empty');
+    if(!f.length){ list.innerHTML=''; empty.style.display='block'; return; }
+    empty.style.display='none';
+
+    var H='';
+
+    // 고정 메모 먼저
+    var pins=f.filter(function(n){return n.pin;});
+    if(pins.length){
+      pins.sort(function(a,b){return (b.ts||'').localeCompare(a.ts||'');});
+      H+='<div class="nm-grp"><div class="nm-day" style="border-bottom-color:#f9a825">'
+        +'<span style="color:#f57f17">📌 고정한 메모</span>'
+        +'<span style="font-size:11px;font-weight:400;color:#aaa">'+pins.length+'건</span></div>'
+        + pins.map(noteRow).join('') + '</div>';
+    }
+
+    // 날짜별 묶기 — 메모가 있는 날만
+    var byDay={};
+    f.forEach(function(n){ (byDay[n.date]=byDay[n.date]||[]).push(n); });
+    var days=Object.keys(byDay).sort();
+    if(nmSort==='new') days.reverse();
+
+    days.forEach(function(ds){
+      var arr=byDay[ds];
+      arr.sort(function(a,b){
+        var r=(a.ts||'').localeCompare(b.ts||'');
+        return nmSort==='new' ? -r : r;
+      });
+      var on = ds===nmSel;
+      H+='<div class="nm-grp'+(on?' nm-on':'')+'" id="nmg-'+ds+'"><div class="nm-day">'
+        +'<span>'+esc(dview(ds))
+        +(on?' <button onclick="nmClearSel()" title="선택 해제" style="font-size:10px;font-weight:600;'
+            +'background:rgba(255,255,255,.2);color:#fff;border:none;padding:3px 9px;border-radius:9px;cursor:pointer">'
+            +'달력에서 고른 날 ✕</button>':'')
+        +'</span>'
+        +'<span style="font-size:11px;font-weight:400;color:'+(on?'rgba(255,255,255,.7)':'#aaa')+'">'+arr.length+'건</span></div>'
+        + arr.map(noteRow).join('') + '</div>';
+    });
+
+    list.innerHTML=H;
+    try{ nmCalDots(); }catch(e){}
+  };
+
+  window.nmClearSel=function(){ nmSel=''; nmRender(); };
+
+  // ── 달력 연동 ───────────────────────────────────────────
+  // 달력에서 날짜를 고르면 그 날 메모 묶음이 색상 반전된다
+  function nmCount(ds){
+    return NOTES.filter(function(n){return n.date===ds;}).length;
+  }
+
+  window.nmGoto=function(ds){
+    nmSel=ds||'';
+    if(typeof sw==='function') sw(6);
+    setTimeout(function(){
+      var el=document.getElementById('nmg-'+ds);
+      if(el) el.scrollIntoView({behavior:'smooth',block:'center'});
+    },200);
+  };
+
+  var _showDay=window.showDay;
+  if(typeof _showDay==='function'){
+    window.showDay=function(ds){
+      _showDay.apply(this, arguments);
+      nmSel=ds||'';
+      try{ nmRender(); }catch(e){}
+      // 날짜 상세 칸 아래에 그 날 메모를 붙여 준다
+      var box=document.getElementById('day-detail-list');
+      if(!box) return;
+      var mine=NOTES.filter(function(n){return n.date===ds;})
+                    .sort(function(a,b){return (a.ts||'').localeCompare(b.ts||'');});
+      var old=document.getElementById('nm-dayblock');
+      if(old) old.remove();
+      var h='<div id="nm-dayblock" style="margin-top:12px;padding-top:10px;border-top:0.5px solid #e0e0e0">'
+        + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'
+        +   '<span style="font-size:11px;color:#888">📝 이 날 메모 '+mine.length+'건</span>'
+        +   '<button onclick="event.stopPropagation();nmGoto(\''+ds+'\')" style="font-size:11px;padding:3px 10px;'
+        +     'border:0.5px solid #90caf9;background:#e3f2fd;color:#1565c0;border-radius:6px;cursor:pointer">메모&노트에서 보기 →</button>'
+        + '</div>';
+      h += mine.length
+        ? mine.map(function(n){
+            var d=new Date(n.ts);
+            return '<div style="display:flex;gap:8px;padding:5px 0;border-bottom:0.5px solid #f5f5f3">'
+              +'<span style="font-size:11px;color:#888;min-width:58px;white-space:nowrap">'+(isNaN(d)?'':tlabel(d))+'</span>'
+              +'<span style="font-size:12px;color:#1a1a1a;white-space:pre-wrap;flex:1">'+esc(n.text)+'</span></div>';
+          }).join('')
+        : '<p style="font-size:12px;color:#aaa;padding:4px 0;margin:0">이 날 적은 메모 없음</p>';
+      h+='</div>';
+      box.insertAdjacentHTML('afterend', h);
+    };
+  }
+
+  // 달력 칸에 메모 표시 — 메모가 있는 날만 📝
+  var _renderCal=window.renderCal;
+  if(typeof _renderCal==='function'){
+    window.renderCal=function(){
+      _renderCal.apply(this, arguments);
+      try{ nmCalDots(); }catch(e){}
+    };
+  }
+  function nmCalDots(){
+    var body=document.getElementById('cal-body'); if(!body) return;
+    var has={};
+    NOTES.forEach(function(n){ has[n.date]=(has[n.date]||0)+1; });
+    Array.prototype.forEach.call(body.querySelectorAll('.cal-cell'), function(el){
+      if(el.classList.contains('other-month')) return;
+      var m=(el.getAttribute('onclick')||'').match(/showDay\('([\d-]+)'\)/);
+      if(!m) return;
+      var c=has[m[1]]; if(!c) return;
+      var dateEl=el.querySelector('.cal-date'); if(!dateEl) return;
+      if(dateEl.querySelector('.cal-memo-dot')) return;
+      var btn=dateEl.querySelector('button');
+      var tag='<span class="cal-memo-dot" title="메모 '+c+'건">📝</span>';
+      if(btn) btn.insertAdjacentHTML('beforebegin', tag);
+      else dateEl.insertAdjacentHTML('beforeend', tag);
+    });
+  }
+
+  // ── 탭 붙이기 ───────────────────────────────────────────
+  var _sw=window.sw;
+  if(typeof _sw==='function'){
+    window.sw=function(n){
+      if(n!==6){ try{ _sw.apply(this, arguments); }catch(e){} }
+      else{ try{ _sw.call(this, 99); }catch(e){} }   // 기존 탭 전부 끄기
+      var tc6=document.getElementById('tc6'), tn6=document.getElementById('tn6');
+      if(tc6) tc6.className='tc'+(n===6?' on':'');
+      if(tn6){
+        tn6.style.borderBottomColor = n===6?'#1a1a1a':'transparent';
+        tn6.style.color = n===6?'#1a1a1a':'#666';
+        tn6.style.fontWeight = n===6?'500':'400';
+      }
+      if(n===6){ nmClock(); nmRender(); var ta=document.getElementById('nm-text'); if(ta) ta.focus(); }
+    };
+  }
+
+  // ── 시동 ────────────────────────────────────────────────
+  async function boot(){
+    mount();
+    if(!NOTES.length){ await nmLoad(); nmRender(); }
+  }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',function(){ setTimeout(boot,400); });
+  else setTimeout(boot,400);
+  setTimeout(boot,1500);
+})();
+</script>
+
 </body>
 </html>
