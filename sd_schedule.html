@@ -2096,21 +2096,150 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
     n.pin=!n.pin; nmSave(); nmRender();
   };
 
-  window.nmToTodo=function(id){
+  // ── 메모 → 일정 / 할일 등록 ─────────────────────────────
+  var nmLinkId=null, nmLinkKind='schedule';
+
+  function typeOpts(kind){
+    var L=(window.SCH_TYPES&&window.SCH_TYPES[kind])||[];
+    if(!L.length) L=(kind==='schedule')?['👤 고객상담']:['📞 고객연락'];
+    return L.map(function(t){return '<option>'+esc(t)+'</option>';}).join('');
+  }
+  function priOpts(kind){
+    var L=(window.PRI_OPTS&&window.PRI_OPTS[kind])||[];
+    if(!L.length) L=(kind==='schedule')?[{v:'normal',label:'🟢 일반'}]:[{v:'mid',label:'🟡 보통'}];
+    return L.map(function(p,i){
+      return '<option value="'+p.v+'"'+(i===L.length-1?' selected':'')+'>'+esc(p.label)+'</option>';
+    }).join('');
+  }
+
+  window.nmLinkOpen=function(id){
     var n=NOTES.find(function(x){return String(x.id)===String(id);});
     if(!n) return;
-    if(typeof window.todos==='undefined'||!Array.isArray(window.todos)){ alert('할 일 목록을 불러오지 못했습니다.'); return; }
-    var title=(n.text||'').split('\n')[0].slice(0,60);
-    window.todos.unshift({
-      id:Date.now(), type:'✅ 기타 할일', title:title,
-      date:(n.date||dstr(new Date()))+'T00:00', priority:'mid',
-      custId:'', custName:'', memo:n.text||'', done:false,
-      createdAt:new Date().toISOString(), isPublic:!!n.isPublic, owner:uid(), ownerName:uname()
+    nmLinkId=n.id; nmLinkKind='schedule';
+
+    var old=document.getElementById('nm-link-ov'); if(old) old.remove();
+    var firstLine=(n.text||'').split('\n')[0].slice(0,60);
+
+    var ov=document.createElement('div');
+    ov.id='nm-link-ov';
+    ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:10050;display:flex;'
+      +'align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto';
+    ov.innerHTML=
+      '<div style="background:#fff;border-radius:14px;max-width:440px;width:100%;margin:auto;overflow:hidden;box-shadow:0 8px 40px rgba(0,0,0,.25)">'
+      + '<div style="background:#1a2744;color:#fff;padding:13px 18px;display:flex;justify-content:space-between;align-items:center">'
+      +   '<span style="font-size:14px;font-weight:700">📅 메모를 일정·할일로 등록</span>'
+      +   '<button onclick="nmLinkClose()" style="background:transparent;color:#fff;border:1px solid rgba(255,255,255,.4);'
+      +     'border-radius:6px;padding:4px 10px;font-size:12px;cursor:pointer">✕ 닫기</button>'
+      + '</div>'
+      + '<div style="padding:16px">'
+
+      +   '<div style="background:#f8f8f6;border-radius:9px;padding:10px 12px;font-size:12px;color:#555;'
+      +     'white-space:pre-wrap;max-height:90px;overflow-y:auto;margin-bottom:14px">'+esc(n.text)+'</div>'
+
+      +   '<label class="fl">구분</label>'
+      +   '<div style="display:flex;gap:8px;margin-bottom:12px">'
+      +     '<button id="nmk-schedule" onclick="nmLinkKindSet(\'schedule\')" style="flex:1;padding:9px;border-radius:9px;'
+      +       'border:0.5px solid #ddd;font-size:13px;cursor:pointer">📅 일정</button>'
+      +     '<button id="nmk-todo" onclick="nmLinkKindSet(\'todo\')" style="flex:1;padding:9px;border-radius:9px;'
+      +       'border:0.5px solid #ddd;font-size:13px;cursor:pointer">✅ 할일</button>'
+      +   '</div>'
+
+      +   '<div style="margin-bottom:12px"><label class="fl">제목</label>'
+      +     '<input id="nml-title" type="text" class="fi" value="'+esc(firstLine).replace(/"/g,'&quot;')+'"></div>'
+
+      +   '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">'
+      +     '<div><label class="fl">유형</label><select id="nml-type" class="fi"></select></div>'
+      +     '<div><label class="fl">중요도</label><select id="nml-pri" class="fi"></select></div>'
+      +   '</div>'
+
+      +   '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:6px">'
+      +     '<div><label class="fl">날짜</label>'
+      +       '<input id="nml-date" type="date" class="fi" value="'+(n.date||dstr(new Date()))+'"></div>'
+      +     '<div><label class="fl">시각</label>'
+      +       '<input id="nml-time" type="time" class="fi" value="10:00"></div>'
+      +   '</div>'
+      +   '<label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;margin-bottom:14px">'
+      +     '<input type="checkbox" id="nml-allday" style="width:15px;height:15px;cursor:pointer" '
+      +     'onchange="document.getElementById(\'nml-time\').disabled=this.checked">시각 없이 종일로</label>'
+
+      +   '<label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;margin-bottom:16px">'
+      +     '<input type="checkbox" id="nml-pub" style="width:15px;height:15px;cursor:pointer"'
+      +     (n.isPublic?' checked':'')+'>사무소 공유</label>'
+
+      +   '<div style="display:flex;gap:8px;justify-content:flex-end">'
+      +     '<button onclick="nmLinkClose()" class="btn-s" style="font-size:13px">취소</button>'
+      +     '<button onclick="nmLinkSave()" class="btn-p" style="font-size:13px;padding:8px 22px">등록</button>'
+      +   '</div>'
+      + '</div></div>';
+    document.body.appendChild(ov);
+    ov.onclick=function(e){ if(e.target===ov) nmLinkClose(); };
+    nmLinkKindSet('schedule');
+  };
+
+  window.nmLinkKindSet=function(kind){
+    nmLinkKind=kind;
+    ['schedule','todo'].forEach(function(k){
+      var b=document.getElementById('nmk-'+k); if(!b) return;
+      var on=k===kind;
+      b.style.background = on?'#1a1a1a':'#fff';
+      b.style.color      = on?'#fff':'#888';
+      b.style.borderColor= on?'#1a1a1a':'#ddd';
+      b.style.fontWeight = on?'600':'400';
     });
+    var t=document.getElementById('nml-type'); if(t) t.innerHTML=typeOpts(kind);
+    var p=document.getElementById('nml-pri');  if(p) p.innerHTML=priOpts(kind);
+    // 할일은 보통 시각이 없다 — 기본을 종일로
+    var ad=document.getElementById('nml-allday'), tm=document.getElementById('nml-time');
+    if(ad&&tm){ ad.checked=(kind==='todo'); tm.disabled=ad.checked; }
+  };
+
+  window.nmLinkClose=function(){
+    var ov=document.getElementById('nm-link-ov'); if(ov) ov.remove();
+    nmLinkId=null;
+  };
+
+  window.nmLinkSave=function(){
+    var n=NOTES.find(function(x){return String(x.id)===String(nmLinkId);});
+    if(!n){ nmLinkClose(); return; }
+    if(typeof window.todos==='undefined'||!Array.isArray(window.todos)){
+      alert('일정 목록을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.'); return;
+    }
+    var title=(document.getElementById('nml-title').value||'').trim();
+    if(!title){ alert('제목을 입력해 주세요.'); return; }
+    var ds=(document.getElementById('nml-date')||{}).value || dstr(new Date());
+    var allday=(document.getElementById('nml-allday')||{}).checked;
+    var hm=allday ? '00:00' : ((document.getElementById('nml-time')||{}).value || '10:00');
+    var kind=nmLinkKind;
+
+    var item={
+      id:Date.now(), kind:kind,
+      type:(document.getElementById('nml-type')||{}).value||'',
+      priority:(document.getElementById('nml-pri')||{}).value||(kind==='schedule'?'normal':'mid'),
+      title:title, date:ds+'T'+hm, endDate:'',
+      withName:'', withTel:'',
+      timemode: allday ? 'allday' : 'time',
+      location:'', memo:n.text||'', done:false,
+      createdAt:new Date().toISOString(),
+      isPublic:!!(document.getElementById('nml-pub')||{}).checked,
+      owner:uid(), ownerName:uname(),
+      fromNote:n.id
+    };
+    window.todos.unshift(item);
     try{ saveTodos(); }catch(e){}
+
+    // 메모에 이력 남기기
+    n.linked=(n.linked||[]);
+    n.linked.push({ id:item.id, kind:kind, title:title,
+      when: ds.slice(5).replace('-','/')+(allday?' 종일':' '+hm) });
+    nmSave();
+
+    nmLinkClose();
+    try{ nmRender(); }catch(e){}
     try{ renderToday(); }catch(e){}
     try{ renderAllTodos(); }catch(e){}
-    alert('할 일로 옮겼습니다.\n\n'+title);
+    try{ renderCal(); }catch(e){}
+    alert((kind==='schedule'?'📅 일정':'✅ 할일')+'으로 등록했습니다.\n\n'
+      + title + '\n' + dview(ds) + (allday?' 종일':' '+hm));
   };
 
   window.nmToggleSort=function(){
@@ -2130,14 +2259,29 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
     if(!n.isPublic) tail.push('🔒');
     else if(n.author) tail.push(n.author);
 
+    // 이 메모에서 만든 일정·할일 꼬리표
+    var lk='';
+    if(n.linked && n.linked.length){
+      lk='<div style="margin-top:5px;display:flex;gap:4px;flex-wrap:wrap">'
+        + n.linked.map(function(L){
+            var isS=L.kind==='schedule';
+            return '<span style="font-size:10px;padding:2px 7px;border-radius:8px;background:'
+              +(isS?'#e3f2fd;color:#1565c0':'#e8f5e9;color:#2e7d32')+'">'
+              +(isS?'📅 일정':'✅ 할일')+' · '+esc(L.when||'')+'</span>';
+          }).join('')
+        + '</div>';
+    }
+
     return '<div class="nm-row">'
       + '<div class="nm-t">'+(n.pin?'📌 ':'')+esc(t)+'</div>'
       + '<div class="nm-x">'+esc(n.text)
+      +   lk
       +   (tail.length?'<div style="font-size:10px;color:#bbb;margin-top:3px">'+esc(tail.join(' · '))+'</div>':'')
       + '</div>'
       + '<div class="nm-a">'
       +   '<button onclick="nmPin('+n.id+')" title="고정">'+(n.pin?'📌':'📍')+'</button>'
-      +   '<button onclick="nmToTodo('+n.id+')" title="할 일로">할일</button>'
+      +   '<button onclick="nmLinkOpen('+n.id+')" title="일정 또는 할일로 등록" '
+      +     'style="background:#e3f2fd;border-color:#90caf9;color:#1565c0">📅 등록</button>'
       +   '<button onclick="nmEdit('+n.id+')">수정</button>'
       +   '<button onclick="nmDel('+n.id+')" style="color:#cc3333">삭제</button>'
       + '</div></div>';
