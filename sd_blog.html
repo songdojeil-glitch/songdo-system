@@ -242,7 +242,7 @@ header.top{display:flex;align-items:center;gap:14px;padding:0 18px;height:52px;f
 
 <div class="sjd-head">
   <p class="bnd"><b>SJDWS</b> <span>SongdoJeil Data &amp; Work System</span></p>
-  <h1>블로그 스튜디오 <small>부동산 주제 160개 · AI 글 생성 · 네이버 바로 발행</small></h1>
+  <h1>블로그 스튜디오 <small>부동산 주제 <span data-topiccount>160</span>개 · AI 글 생성 · 네이버 바로 발행</small></h1>
 </div>
 <div class="sjd-nav">
   <a href="sd_hub.html" style="background:#1a1a1a;color:#fff">🏠 허브</a>
@@ -258,7 +258,7 @@ header.top{display:flex;align-items:center;gap:14px;padding:0 18px;height:52px;f
 </div>
 <div class="app">
   <header class="top">
-    <div class="brand">✍️ 블로그 스튜디오 <small>주제 160개 · AI 작성 · 사진 · 발행</small></div>
+    <div class="brand">✍️ 블로그 스튜디오 <small>주제 <span data-topiccount>160</span>개 · AI 작성 · 사진 · 발행</small></div>
     <div class="spacer"></div>
     <button class="chip" id="chipFb"><span class="dot"></span><span id="fbTxt">Firebase 확인 중</span></button>
     <button class="chip" id="chipHelper"><span class="dot"></span><span id="helperTxt">도우미 확인 중</span></button>
@@ -278,7 +278,7 @@ header.top{display:flex;align-items:center;gap:14px;padding:0 18px;height:52px;f
     <div class="col" id="colTopic">
       <div class="colhead">
         <div class="searchbox"><span class="mag">🔍</span>
-          <input id="search" placeholder="키워드로 160개 주제 검색 (예: 전세, DSR, 학군)">
+          <input id="search" placeholder="키워드로 주제 검색 (예: 전세, DSR, 학군)">
         </div>
       </div>
       <div class="addbox">
@@ -607,6 +607,7 @@ const DEF_SETTINGS = {
   engine:'gemini',
   geminiKeys:'', geminiModel:'gemini-3.6-flash', geminiImageModel:'gemini-3.6-flash-image',
   claudeKeys:'', claudeModel:'claude-sonnet-4-5',
+  openaiKeys:'', openaiModel:'gpt-4.1-mini',
   naverCategory:'', visibility:'public', withMap:true,
 };
 
@@ -750,13 +751,15 @@ function renderPicked(){
    2) AI 호출 — 제미나이 / 클로드
    ============================================================ */
 function keysOf(engine){
-  const raw = engine === 'claude' ? state.settings.claudeKeys : state.settings.geminiKeys;
+  const raw = engine === 'claude' ? state.settings.claudeKeys
+            : engine === 'openai' ? state.settings.openaiKeys
+            : state.settings.geminiKeys;
   return String(raw || '').split(/[\n,]/).map(s => s.trim()).filter(Boolean);
 }
 function engineLabel(){
   const e = state.settings.engine;
   const n = keysOf(e).length;
-  return (e === 'claude' ? '클로드로 씀' : '제미나이로 씀') + ' · 키 ' + n + '개';
+  return (e === 'claude' ? '클로드로 씀' : e === 'openai' ? '챗GPT로 씀' : '제미나이로 씀') + ' · 키 ' + n + '개';
 }
 function refreshEngineChip(){
   const n = keysOf(state.settings.engine).length;
@@ -767,13 +770,13 @@ function refreshEngineChip(){
 async function callAI(prompt, { json = false, maxTokens = 8192 } = {}){
   const engine = state.settings.engine;
   const keys = keysOf(engine);
-  if(!keys.length) throw new Error((engine==='claude'?'클로드':'제미나이') + ' API 키가 없습니다. 오른쪽 위 [엔진 설정]에서 키를 넣어 주세요.');
+  if(!keys.length) throw new Error((engine==='claude'?'클로드':engine==='openai'?'챗GPT':'제미나이') + ' API 키가 없습니다. 오른쪽 위 [엔진 설정]에서 키를 넣어 주세요.');
   let lastErr;
   for(const key of keys){
     try{
-      return engine === 'claude'
-        ? await callClaude(key, prompt, json, maxTokens)
-        : await callGemini(key, prompt, json, maxTokens);
+      return engine === 'claude' ? await callClaude(key, prompt, json, maxTokens)
+           : engine === 'openai' ? await callOpenAI(key, prompt, json, maxTokens)
+           : await callGemini(key, prompt, json, maxTokens);
     }catch(e){
       lastErr = e;
       /* 키 문제·한도 초과면 다음 키로 넘어간다 */
@@ -781,6 +784,14 @@ async function callAI(prompt, { json = false, maxTokens = 8192 } = {}){
     }
   }
   throw lastErr;
+}
+function geminiBillHint(status, msg){
+  if(status !== 429 && !/quota|credit|billing|exceeded/i.test(msg||'')) return '';
+  if(/credit|prepay|billing/i.test(msg||''))
+    return '\n\n구글 제미나이의 선불 크레딧이 다 떨어졌습니다. 프로그램 문제가 아닙니다.'
+      + '\n· ai.studio/projects 에서 결제 수단을 등록하거나 크레딧을 채우면 다시 됩니다.'
+      + '\n· 당장 글을 써야 하면 [엔진 설정]에서 엔진을 「클로드」나 「챗GPT」로 바꿔 주세요.';
+  return '\n\n잠시 요청이 몰렸습니다. 1~2분 뒤에 다시 [생성하기]를 눌러 주세요.';
 }
 function geminiModelHint(status, msg){
   if(status !== 404 && !/not found|no longer available|not supported/i.test(msg||'')) return '';
@@ -802,6 +813,41 @@ async function fetchGeminiModels(key){
     image: all.filter(m => /image/i.test(m.id)).map(m=>m.id),
   };
 }
+async function callOpenAI(key, prompt, json, maxTokens){
+  const model = state.settings.openaiModel || DEF_SETTINGS.openaiModel;
+  async function ask(tokenField){
+    const body = { model, messages:[{ role:'user', content: prompt }] };
+    body[tokenField] = Math.min(maxTokens, 16000);
+    if(json) body.response_format = { type:'json_object' };
+    const r = await fetch('https://api.openai.com/v1/chat/completions', {
+      method:'POST', headers:{ 'content-type':'application/json', 'authorization':'Bearer ' + key },
+      body: JSON.stringify(body) });
+    const d = await r.json().catch(()=>({}));
+    return { ok:r.ok, status:r.status, d };
+  }
+  /* 신형 모델은 max_completion_tokens, 구형은 max_tokens 를 쓴다 — 거부되면 바꿔서 한 번 더 */
+  let res = await ask('max_completion_tokens');
+  if(!res.ok && /max_completion_tokens|max_tokens|Unsupported parameter/i.test(((res.d.error||{}).message)||''))
+    res = await ask('max_tokens');
+  if(!res.ok){
+    const em = ((res.d.error||{}).message) || '';
+    let hint = '';
+    if(res.status === 404 || /does not exist|model/i.test(em))
+      hint = '\n\n모델 이름을 확인해 주세요. [엔진 설정]의 「사용 가능한 챗GPT 모델 불러오기」를 누르면 목록이 나옵니다.';
+    if(res.status === 429 || /quota|billing/i.test(em))
+      hint = '\n\n챗GPT 사용 한도이거나 결제가 필요합니다. platform.openai.com 에서 확인해 주세요.';
+    throw new Error('챗GPT 오류 ' + res.status + ': ' + em.slice(0,200) + hint);
+  }
+  const txt = (((res.d.choices||[])[0]||{}).message||{}).content || '';
+  if(!txt.trim()) throw new Error('챗GPT가 빈 응답을 보냈습니다. 잠시 후 다시 해 주세요.');
+  return txt.trim();
+}
+async function fetchOpenAIModels(key){
+  const r = await fetch('https://api.openai.com/v1/models', { headers:{ 'authorization':'Bearer ' + key } });
+  const d = await r.json().catch(()=>({}));
+  if(!r.ok) throw new Error('모델 목록을 받지 못했습니다 ' + r.status + ': ' + (((d.error||{}).message)||'').slice(0,160));
+  return (d.data||[]).map(m=>m.id).filter(id=>/^(gpt|o\d|chatgpt)/i.test(id) && !/audio|realtime|image|tts|whisper|embedding|moderation/i.test(id)).sort();
+}
 async function callGemini(key, prompt, json, maxTokens){
   const model = state.settings.geminiModel || DEF_SETTINGS.geminiModel;
   const body = {
@@ -814,7 +860,7 @@ async function callGemini(key, prompt, json, maxTokens){
   const d = await r.json().catch(()=>({}));
   if(!r.ok){
     const em = (d.error && d.error.message) || '';
-    throw new Error('제미나이 오류 ' + r.status + ': ' + em.slice(0, 200) + geminiModelHint(r.status, em));
+    throw new Error('제미나이 오류 ' + r.status + ': ' + em.slice(0, 200) + geminiModelHint(r.status, em) + geminiBillHint(r.status, em));
   }
   const parts = (((d.candidates||[])[0]||{}).content||{}).parts || [];
   const txt = parts.map(p => p.text || '').join('').trim();
@@ -859,7 +905,7 @@ async function genImage(prompt){
       const d = await r.json().catch(()=>({}));
       if(!r.ok){
         const em = (d.error && d.error.message) || '';
-        throw new Error('이미지 오류 ' + r.status + ': ' + em.slice(0,180) + geminiModelHint(r.status, em));
+        throw new Error('이미지 오류 ' + r.status + ': ' + em.slice(0,180) + geminiModelHint(r.status, em) + geminiBillHint(r.status, em));
       }
       const parts = (((d.candidates||[])[0]||{}).content||{}).parts || [];
       const img = parts.find(p => p.inlineData || p.inline_data);
@@ -945,6 +991,10 @@ ${PLATFORM_NOTE[$('#optPlatform').value]}
     {"t":"image","prompt":"이미지 생성용 영어 프롬프트 한 줄","caption":"사진 아래 넣을 한글 설명 한 줄"}
   ],
   "tags": ["네이버 태그 15개. # 없이. 지역명과 핵심어 섞어서"],
+  "titleKinds": ["위 titles 8개 각각의 유형을 같은 순서로. SEO형|후킹형|손해회피형|숫자형 중 하나씩"],
+  "coreKeywords": ["이 글의 핵심 키워드 3개"],
+  "longTail": ["롱테일 키워드 4개. 실제로 검색창에 칠 법한 긴 문장형"],
+  "nextPosts": [{"t":"이 글 다음에 이어 쓰면 좋을 글 제목 3개","k":"그 글의 키워드 2개를 쉼표로"}],
   "checkFacts": ["발행 전에 작성자가 직접 확인해야 할 사실 3~5개. 왜 확인해야 하는지 한 줄씩"]
 }
 
@@ -970,6 +1020,10 @@ async function generate(){
       blocks: d.blocks,
       tags: (d.tags||[]).map(t => String(t).replace(/^#/, '').trim()).filter(Boolean).slice(0, 25),
       checkFacts: d.checkFacts || [],
+      titleKinds: (d.titleKinds||[]).map(x=>String(x)),
+      coreKeywords: (d.coreKeywords||[]).map(x=>String(x)).filter(Boolean).slice(0,5),
+      longTail: (d.longTail||[]).map(x=>String(x)).filter(Boolean).slice(0,6),
+      nextPosts: (d.nextPosts||[]).filter(x=>x&&x.t).slice(0,3),
       at: Date.now(),
     };
     state.images = {}; state.imgSrc = {};
@@ -1098,7 +1152,7 @@ function renderPost(){
     $('#work').innerHTML = `<div class="card"><div class="blank">
       <div class="ic">🏠</div>
       <div class="t1">주제를 고르고 [생성하기]를 눌러 주세요</div>
-      <div class="t2">왼쪽에 부동산 주제 <b>160개</b>가 준비되어 있습니다.<br>
+      <div class="t2">왼쪽에 부동산 주제 <b>${CATS.reduce((a,c)=>a+c.topics.length,0)}개</b>가 준비되어 있습니다.<br>
       원하는 주제가 없으면 직접 입력하거나 <b>AI로 관련 주제 10개</b>를 받아 보세요.<br>
       처음이시면 오른쪽 위 <b>[엔진 설정]</b>에서 API 키부터 넣어 주세요.</div></div></div>`;
     $('#pubbar').style.display = 'none';
@@ -1479,6 +1533,7 @@ function openSettings(){
       <div class="radios">
         <label><input type="radio" name="eng" value="gemini" ${s.engine==='gemini'?'checked':''}><span>제미나이</span></label>
         <label><input type="radio" name="eng" value="claude" ${s.engine==='claude'?'checked':''}><span>클로드</span></label>
+        <label><input type="radio" name="eng" value="openai" ${s.engine==='openai'?'checked':''}><span>챗GPT</span></label>
       </div>
     </div>
     <div class="field"><label>제미나이 API 키</label>
@@ -1499,6 +1554,12 @@ function openSettings(){
       <div class="hint">console.anthropic.com 에서 발급. 클로드는 사진 생성은 하지 않습니다.</div></div>
     <div class="field"><label>클로드 모델</label><input data-k="claudeModel" value="${esc(s.claudeModel)}">
       <div class="hint">모델 이름이 바뀌면 여기만 고치면 됩니다.</div></div>
+    <div class="field"><label>챗GPT API 키</label>
+      <textarea data-k="openaiKeys" placeholder="sk-...">${esc(s.openaiKeys)}</textarea>
+      <div class="hint">platform.openai.com 에서 발급. 챗GPT도 사진 생성은 이 스튜디오에서 쓰지 않습니다.</div></div>
+    <div class="field"><label>챗GPT 모델</label><input data-k="openaiModel" value="${esc(s.openaiModel)}">
+      <button class="btn" data-gptmodels style="width:100%;margin-top:7px">🔄 사용 가능한 챗GPT 모델 불러오기</button>
+      <div id="gptModelList" style="display:none;margin-top:8px"></div></div>
 
     <div style="border-top:1px solid var(--line2);margin:16px 0 13px"></div>
     <div class="field" style="margin-bottom:0">
@@ -1610,7 +1671,12 @@ function openArchive(){
 /* ============================================================
    7) 시작
    ============================================================ */
+function paintTopicCount(){
+  const n = CATS.reduce((a,c)=>a + c.topics.length, 0);
+  document.querySelectorAll('[data-topiccount]').forEach(el => el.textContent = n);
+}
 function init(){
+  paintTopicCount();
   if(typeof MODELS_MOVED !== 'undefined' && MODELS_MOVED.length){
     setTimeout(()=>toast('구글이 닫은 옛 모델이라 바꿨습니다 — ' + MODELS_MOVED.join(', ')), 600);
   }
@@ -1694,5 +1760,514 @@ try{
   if(t){ t.textContent = 'Firebase 오프라인'; document.getElementById('chipFb').className = 'chip off'; }
 }
 </script>
+<!-- ===== 블로그 스튜디오 보강 모듈 (2026-09) =====
+     점검(SEO·AEO·GEO / 발행 전) · 대표이미지 카드 · 사무소 로고 ·
+     쇼츠 대본 · 키워드 분류 · 마크다운 — 기존 코드는 건드리지 않고 renderPost 뒤에 얹는다 -->
+<style>
+.bx-chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
+.bx-chip{font-size:11.5px;padding:4px 10px;border-radius:20px;background:#f1f2ef;color:#5b6169;border:1px solid #e4e6e1;white-space:nowrap}
+.bx-chip.ok{background:#e8f5e9;color:#256b40;border-color:#a9d6ba}
+.bx-chip.warn{background:#fdf0e6;color:#9a5a24;border-color:#efcaa8}
+.bx-row{display:flex;gap:10px;align-items:flex-start;padding:9px 0;border-bottom:1px solid #f2f3f0;font-size:13px;line-height:1.55}
+.bx-row:last-child{border-bottom:none}
+.bx-st{flex-shrink:0;font-size:11px;font-weight:600;padding:2px 8px;border-radius:6px;white-space:nowrap;min-width:42px;text-align:center}
+.bx-st.p{background:#e8f5e9;color:#256b40}
+.bx-st.w{background:#fdf0e6;color:#9a5a24}
+.bx-nm{flex:1;min-width:120px}
+.bx-vl{color:#7b858f;font-size:12.5px;text-align:right;flex:1;min-width:110px}
+.bx-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.bx-score{font-size:12px;font-weight:600;padding:3px 10px;border-radius:20px;margin-left:auto}
+.bx-styles{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin:10px 0}
+.bx-sty{border:2px solid transparent;border-radius:9px;overflow:hidden;cursor:pointer;background:none;padding:0;font-family:inherit}
+.bx-sty.on{border-color:#c1622f}
+.bx-sty canvas{width:100%;display:block;border-radius:7px;border:1px solid #e4e6e1}
+.bx-sty span{display:block;font-size:10.5px;color:#7b858f;padding:4px 0 2px;text-align:center}
+.bx-cardwrap{display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap}
+.bx-cardwrap canvas{border:1px solid #e4e6e1;border-radius:10px;width:260px;height:260px}
+.bx-scene{border:1px solid #eceee9;border-radius:10px;padding:10px 12px;margin-bottom:7px;font-size:13px;line-height:1.6}
+.bx-scene b{color:#c1622f;font-size:11.5px;display:block;margin-bottom:3px}
+.bx-scene .v{color:#7b858f;font-size:12px;margin-top:4px}
+.bx-kw{display:flex;gap:6px;flex-wrap:wrap;margin-top:5px}
+.bx-kw span{font-size:12px;background:#f4f5f2;border:1px solid #e8eae6;border-radius:7px;padding:3px 9px}
+.bx-next{display:block;width:100%;text-align:left;border:1px solid #e8eae6;border-radius:9px;padding:9px 12px;margin-bottom:6px;background:#fff;cursor:pointer;font-family:inherit;font-size:13px}
+.bx-next:hover{border-color:#efc9ae;background:#fdf9f6}
+.bx-next small{display:block;color:#98a0a8;font-size:11.5px;margin-top:2px}
+@media(max-width:760px){.bx-styles{grid-template-columns:repeat(3,1fr)}.bx-cardwrap canvas{width:100%;height:auto;aspect-ratio:1}}
+</style>
+<script>
+/* ============ 본문에서 글자 뽑기 ============ */
+function bxText(p){
+  return (p.blocks||[]).map(function(b){
+    if(b.t==='ul'||b.t==='ol') return (b.items||[]).join('\n');
+    if(b.t==='table') return [(b.head||[]).join(' ')].concat((b.rows||[]).map(function(r){return r.join(' ');})).join('\n');
+    if(b.t==='image') return '';
+    return b.text||'';
+  }).join('\n');
+}
+function bxPlain(p){ return bxText(p).replace(/\*\*/g,''); }
+function bxH2(p){ return (p.blocks||[]).filter(function(b){return b.t==='h2';}); }
+function bxCount(hay, needle){
+  if(!needle) return 0;
+  return (String(hay).match(new RegExp(needle.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),'g'))||[]).length;
+}
+/* ============ SEO · AEO · GEO 점검 ============ */
+var BX_ORGS=['인터넷등기소','정부24','홈택스','위택스','국토교통부','국세청','대법원','한국부동산원','HUG','주택도시보증공사','LH','청약홈','부동산거래관리시스템'];
+function bxSeoChecks(p){
+  var txt=bxPlain(p), title=p.title||'', h2=bxH2(p), meta=p.meta||'';
+  var core=(p.coreKeywords&&p.coreKeywords.length?p.coreKeywords:[ (state.picked&&state.picked.k||'').split(',')[0]||'' ]).filter(Boolean);
+  var k0=core[0]||'';
+  var firstP=((p.blocks||[]).find(function(b){return b.t==='p';})||{}).text||'';
+  firstP=firstP.replace(/\*\*/g,'');
+  var qH2=h2.filter(function(b){return /[?？]\s*$/.test(b.text||'');}).length;
+  var faqIdx=(p.blocks||[]).findIndex(function(b){return b.t==='h2'&&/자주\s*묻는|FAQ/i.test(b.text||'');});
+  var faqQ=faqIdx<0?0:(p.blocks||[]).slice(faqIdx+1).filter(function(b){return b.t==='h3';}).length;
+  var defOk=/(란|이란|은)\s+[^.\n]{5,}(를)?\s*(말합니다|뜻합니다|의미합니다|입니다)/.test(txt);
+  var timeOk=/(20\d\d년\s*\d{0,2}월?\s*기준|20\d\d년\s*기준|현행\s*기준)/.test(txt);
+  var org=BX_ORGS.filter(function(o){return txt.indexOf(o)>=0;});
+  var dens=k0?bxCount(txt,k0):0;
+  var lt=(p.longTail||[]); var ltHit=lt.filter(function(x){return txt.indexOf(x)>=0;}).length;
+  var quotes=(p.blocks||[]).filter(function(b){return b.t==='quote';}).length;
+  var kPos=k0?title.indexOf(k0):-1;
+  return [
+    {k:'title', n:'제목 SEO', ok:title.length>=15&&title.length<=32&&(kPos>=0&&kPos<=12),
+     v:title.length+'자'+(kPos>=0?' · 키워드 '+(kPos+1)+'번째 글자부터':' · 제목에 핵심 키워드 없음'),
+     fix:'제목을 25~32자로 하고 핵심 키워드를 앞쪽에 두기'},
+    {k:'lead', n:'첫 문단 결론 선행(AEO)', ok:firstP.length>=50&&firstP.length<=180,
+     v:firstP.length+'자', fix:'첫 문단에서 결론을 60~150자로 먼저 말하기'},
+    {k:'qh2', n:'질문형 소제목(AEO)', ok:h2.length>=4&&qH2>=2,
+     v:'H2 '+h2.length+'개 · 질문형 '+qH2+'개', fix:'소제목 중 2개 이상을 손님이 묻는 질문 형태로 바꾸기'},
+    {k:'faq', n:'FAQ 섹션(AEO)', ok:faqQ>=3, v:faqQ?('질문 '+faqQ+'개'):'없음',
+     fix:'글 끝에 "자주 묻는 질문" 소제목과 질문 3개 넣기'},
+    {k:'def', n:'핵심 용어 정의문(GEO)', ok:defOk, v:defOk?'있음':'없음',
+     fix:'핵심 용어를 "○○이란 ~를 말합니다" 형태로 한 번 정의하기'},
+    {k:'time', n:'기준 시점 표기', ok:timeOk, v:timeOk?'있음':'없음',
+     fix:'수치·기한 옆에 "2026년 9월 기준"처럼 시점 밝히기'},
+    {k:'org', n:'확인처·기관명(GEO)', ok:org.length>0, v:org.length?('있음: '+org.slice(0,2).join(', ')):'없음',
+     fix:'확인할 수 있는 기관(인터넷등기소·홈택스 등)을 본문에 언급하기'},
+    {k:'dens', n:'키워드 밀도', ok:dens>=3&&dens<=12, v:k0?(k0+' '+dens+'회 (3~10회 적정)'):'핵심 키워드 없음',
+     fix:'핵심 키워드를 본문에 3~10회 자연스럽게 넣기'},
+    {k:'lt', n:'롱테일 키워드', ok:lt.length>0&&ltHit>=Math.ceil(lt.length/2),
+     v:lt.length?(ltHit+'/'+lt.length+'개 본문에 포함'):'없음',
+     fix:'롱테일 키워드를 본문 문장 안에 그대로 넣기'},
+    {k:'meta', n:'검색 미리보기 설명', ok:meta.length>=60&&meta.length<=155, v:meta.length+'자',
+     fix:'메타설명을 70~150자로 맞추기'},
+    {k:'quote', n:'AI 인용 문장 표시(GEO)', ok:quotes>=2&&quotes<=6, v:quotes+'개 (2~5개 적정)',
+     fix:'핵심 문장 2~4개를 인용 블록으로 강조하기'},
+  ];
+}
+/* ============ 발행 전 점검 ============ */
+var BX_AD=['무조건','100%','절대','확정 수익','수익률 보장','최저가','반드시 오릅','무조건 오릅','원금 보장','완벽','최고의 투자'];
+var BX_AITIC=['뿐만 아니라','또한,','살펴보겠습니다','알아보겠습니다','결론적으로','중요한 점은','~에 대해 알아','마치 ','다시 말해서','요약하자면'];
+function bxPubChecks(p, targetLen){
+  var txt=bxPlain(p), raw=bxText(p), title=p.title||'';
+  var core=(p.coreKeywords||[]).filter(Boolean);
+  var ad=BX_AD.filter(function(w){return txt.indexOf(w)>=0;});
+  var ai=BX_AITIC.filter(function(w){return txt.indexOf(w)>=0;});
+  var pii=[];
+  if(/\d{6}\s*[-–]\s*[1-4]\d{6}/.test(txt)) pii.push('주민등록번호 형태');
+  if(/\d{2,3}\s*[-–]\s*\d{2,6}\s*[-–]\s*\d{2,7}/.test(txt.replace(/01[016-9][-–]\d{3,4}[-–]\d{4}/g,''))) pii.push('계좌번호 형태');
+  var star=(raw.match(/\*\*/g)||[]).length;
+  var faq=/자주\s*묻는|FAQ/i.test(txt);
+  var kw=core.map(function(k){return k+' '+bxCount(txt,k)+'회';}).join(' · ');
+  var tInTitle=core.some(function(k){return title.indexOf(k)>=0;});
+  return [
+    {k:'len', n:'글자 수', ok:txt.length>=targetLen*0.95, v:txt.length.toLocaleString()+'자 (목표 '+targetLen.toLocaleString()+'자)',
+     fix:'본문을 목표 글자 수까지 늘리기'},
+    {k:'kw', n:'키워드 노출', ok:core.length>0, v:kw||'핵심 키워드 없음', fix:'핵심 키워드를 본문에 고르게 넣기'},
+    {k:'tkw', n:'제목에 키워드', ok:tInTitle, v:tInTitle?'핵심 키워드가 제목에 있습니다':'제목에 핵심 키워드 없음',
+     fix:'제목에 핵심 키워드 넣기'},
+    {k:'ad', n:'광고 표현', ok:ad.length===0, v:ad.length?('발견: '+ad.join(', ')):'과장·확정 수익 표현 없음',
+     fix:'단정적·과장 표현을 사실 서술로 바꾸기'},
+    {k:'pii', n:'개인정보', ok:pii.length===0, v:pii.length?('의심: '+pii.join(', ')):'없음',
+     fix:'주민등록번호·계좌번호로 보이는 숫자 빼기'},
+    {k:'star', n:'별표 강조', ok:star===0, v:star?(Math.floor(star/2)+'곳 남아 있음'):'없음',
+     fix:'네이버에서 깨지는 ** 표시 없애기'},
+    {k:'ai', n:'사람 글 느낌', ok:ai.length===0, v:ai.length?('AI 티 표현: '+ai.slice(0,3).join(', ')):'어색한 표현 없음',
+     fix:'AI가 자주 쓰는 상투적 표현을 사람 말투로 바꾸기'},
+    {k:'faq', n:'AEO(FAQ)', ok:faq, v:faq?'자주 묻는 질문 섹션 있음':'없음', fix:'자주 묻는 질문 섹션 넣기'},
+  ];
+}
+function bxRows(list){
+  return list.map(function(c){
+    return '<div class="bx-row"><span class="bx-st '+(c.ok?'p':'w')+'">'+(c.ok?'통과':'주의')+'</span>'
+      +'<span class="bx-nm">'+c.n+'</span><span class="bx-vl">'+c.v+'</span></div>';
+  }).join('');
+}
+/* ============ 빠진 항목 자동 보강 ============ */
+async function bxAutoFix(btn){
+  var p=state.post; if(!p) return;
+  var miss=bxSeoChecks(p).concat(bxPubChecks(p, bxTargetLen())).filter(function(c){return !c.ok;});
+  if(!miss.length) return toast('보강할 항목이 없습니다. 모두 통과입니다.');
+  var old=btn.textContent; btn.disabled=true; btn.textContent='⏳ 보강하는 중...';
+  try{
+    var prompt='아래는 이미 쓴 블로그 글의 JSON 블록입니다. 점검에서 걸린 항목만 고쳐 주세요.\n\n'
+      +'[걸린 항목과 할 일]\n'+miss.map(function(m,i){return (i+1)+'. '+m.n+' — 현재: '+m.v+' → '+m.fix;}).join('\n')
+      +'\n\n[지킬 것]\n- 글의 주제·사실관계·말투는 그대로 둔다\n- image 블록의 개수와 순서는 절대 바꾸지 않는다\n'
+      +'- 과장 광고 표현과 ** 별표는 쓰지 않는다\n- 없는 사실을 지어내지 않는다\n\n'
+      +'[현재 제목] '+(p.title||'')+'\n[현재 메타설명] '+(p.meta||'')+'\n'
+      +'[현재 블록]\n'+JSON.stringify(p.blocks)+'\n\n'
+      +'아래 JSON 구조로만 출력하세요.\n{"title":"고친 제목","meta":"고친 메타설명","blocks":[블록 배열 전체]}';
+    var raw=await callAI(prompt,{json:true,maxTokens:16000});
+    var d=parseJSON(raw);
+    if(!d.blocks||!d.blocks.length) throw new Error('보강 결과가 비어 있습니다.');
+    var before=(p.blocks||[]).filter(function(b){return b.t==='image';}).length;
+    var after=d.blocks.filter(function(b){return b.t==='image';}).length;
+    if(before!==after) throw new Error('사진 자리 수가 달라져서('+before+'→'+after+') 적용하지 않았습니다. 한 번 더 눌러 주세요.');
+    p.blocks=d.blocks; if(d.title)p.title=d.title; if(d.meta)p.meta=d.meta;
+    p.autoFix=(p.autoFix||0)+1;
+    renderPost();
+    toast('걸린 항목 '+miss.length+'개를 보강했습니다. 내용을 한 번 확인해 주세요.');
+  }catch(e){
+    toast('보강하지 못했습니다: '+e.message, true);
+  }
+  btn.disabled=false; btn.textContent=old;
+}
+function bxTargetLen(){
+  var el=document.getElementById('optLength');
+  var n=el?parseInt(String(el.value).replace(/[^0-9]/g,''),10):2000;
+  return n||2000;
+}
+/* ============ 대표이미지 카드 ============ */
+var BX_STYLES=[
+ {k:'black',  n:'블랙 임팩트', bg:'#111418', fg:'#fff',    ac:'#ffd400'},
+ {k:'white',  n:'미니멀 화이트', bg:'#ffffff', fg:'#15181c', ac:'#c1622f'},
+ {k:'news',   n:'뉴스레터',   bg:'#f3ece0', fg:'#2b2620', ac:'#8a6d3b', frame:true},
+ {k:'vivid',  n:'팝 비비드',  bg:'grad:#ff3d6e,#7b2ff7', fg:'#fff', ac:'#ffe14d'},
+ {k:'neon',   n:'네온 글로우', bg:'#0b1020', fg:'#eaf2ff', ac:'#38e8ff', glow:true},
+ {k:'cinema', n:'시네마 필름', bg:'#0d0d0d', fg:'#f2f2f2', ac:'#c9a227', bars:true},
+ {k:'scrap',  n:'스크랩북',   bg:'#efe7d8', fg:'#2a2620', ac:'#b5543a', tape:true},
+ {k:'table',  n:'테이블 프레스', bg:'#fbfaf7', fg:'#1b1e22', ac:'#1b1e22', rule:true},
+ {k:'edit',   n:'에디토리얼', bg:'#f5f1ea', fg:'#1c1a17', ac:'#a8431f', side:true},
+ {k:'step',   n:'스텝 가이드', bg:'#eef4fb', fg:'#12243a', ac:'#1565c0', num:true},
+];
+var bxCardStyle='black', bxCardBg=null;
+function bxLogo(){ try{ return LS.get('logo','')||''; }catch(e){ return ''; } }
+function bxWrap(ctx, text, maxW){
+  var words=String(text).split(/\s+/), lines=[], cur='';
+  words.forEach(function(w){
+    var t=cur?cur+' '+w:w;
+    if(ctx.measureText(t).width>maxW&&cur){ lines.push(cur); cur=w; } else cur=t;
+  });
+  if(cur)lines.push(cur);
+  return lines;
+}
+function bxDrawCard(cv, st, title, eyebrow, bgImg, logoImg, size){
+  size=size||1080; cv.width=size; cv.height=size;
+  var c=cv.getContext('2d'), S=size/1080;
+  /* 바탕 */
+  if(bgImg){
+    var r=Math.max(size/bgImg.width,size/bgImg.height);
+    c.drawImage(bgImg,(size-bgImg.width*r)/2,(size-bgImg.height*r)/2,bgImg.width*r,bgImg.height*r);
+    c.fillStyle='rgba(0,0,0,.45)'; c.fillRect(0,0,size,size);
+  } else if(String(st.bg).indexOf('grad:')===0){
+    var cs=st.bg.slice(5).split(','), g=c.createLinearGradient(0,0,size,size);
+    g.addColorStop(0,cs[0]); g.addColorStop(1,cs[1]); c.fillStyle=g; c.fillRect(0,0,size,size);
+  } else { c.fillStyle=st.bg; c.fillRect(0,0,size,size); }
+  var fg=bgImg?'#fff':st.fg, ac=bgImg?'#ffd400':st.ac;
+  /* 스타일 장식 */
+  if(st.frame){ c.strokeStyle=ac; c.lineWidth=4*S; c.strokeRect(46*S,46*S,size-92*S,size-92*S); }
+  if(st.bars){ c.fillStyle='#000'; c.fillRect(0,0,size,120*S); c.fillRect(0,size-120*S,size,120*S); }
+  if(st.tape){ c.save(); c.translate(size*0.5,70*S); c.rotate(-0.04); c.fillStyle='rgba(255,255,255,.75)';
+               c.fillRect(-150*S,-26*S,300*S,52*S); c.restore(); }
+  if(st.side){ c.fillStyle=ac; c.fillRect(70*S,300*S,10*S,size-560*S); }
+  if(st.rule){ c.strokeStyle='#d8d5cd'; c.lineWidth=2*S;
+               c.beginPath(); c.moveTo(80*S,size-230*S); c.lineTo(size-80*S,size-230*S); c.stroke(); }
+  /* 눈썹 문구 */
+  var padL=(st.side?110:80)*S;
+  if(eyebrow){
+    c.font='600 '+Math.round(34*S)+'px "Apple SD Gothic Neo","Malgun Gothic",sans-serif';
+    c.fillStyle=ac; c.textBaseline='top';
+    c.fillText(String(eyebrow).slice(0,22), padL, (st.bars?170:150)*S);
+  }
+  if(st.num){
+    c.font='800 '+Math.round(96*S)+'px "Apple SD Gothic Neo",sans-serif';
+    c.fillStyle=ac; c.globalAlpha=.25; c.fillText('01', padL, 150*S); c.globalAlpha=1;
+  }
+  /* 제목 */
+  var fs=Math.round(84*S);
+  c.font='800 '+fs+'px "Apple SD Gothic Neo","Malgun Gothic",sans-serif';
+  var maxW=size-padL-80*S, lines=bxWrap(c,title,maxW);
+  while(lines.length>4&&fs>44*S){ fs-=Math.round(6*S);
+    c.font='800 '+fs+'px "Apple SD Gothic Neo","Malgun Gothic",sans-serif'; lines=bxWrap(c,title,maxW); }
+  var lh=fs*1.28, top=(size-lines.length*lh)/2+(st.bars?10*S:0);
+  if(st.glow){ c.shadowColor=ac; c.shadowBlur=26*S; }
+  c.fillStyle=fg; c.textBaseline='middle';
+  lines.slice(0,5).forEach(function(ln,i){ c.fillText(ln, padL, top+lh*i+lh/2); });
+  c.shadowBlur=0;
+  /* 밑줄 강조 */
+  if(st.k==='black'||st.k==='edit'){
+    c.fillStyle=ac; c.fillRect(padL, top+lines.length*lh+22*S, 120*S, 8*S);
+  }
+  /* 로고 */
+  if(logoImg){
+    var lw=size*0.15, lh2=lw*(logoImg.height/logoImg.width);
+    c.globalAlpha=.95; c.drawImage(logoImg, size-lw-52*S, size-lh2-52*S, lw, lh2); c.globalAlpha=1;
+  }
+}
+function bxLoadImg(src){
+  return new Promise(function(res,rej){ if(!src)return res(null);
+    var i=new Image(); i.crossOrigin='anonymous'; i.onload=function(){res(i);}; i.onerror=function(){res(null);}; i.src=src; });
+}
+async function bxPaintCards(){
+  var p=state.post; if(!p) return;
+  var title=(document.getElementById('bxCardText')||{}).value || p.title || '';
+  var eyebrow=(p.coreKeywords||[])[0]||'';
+  var logo=await bxLoadImg(bxLogo());
+  var bg=await bxLoadImg(bxCardBg);
+  BX_STYLES.forEach(function(st){
+    var cv=document.getElementById('bxs-'+st.k); if(!cv)return;
+    bxDrawCard(cv, st, title, eyebrow, bg, logo, 300);
+  });
+  var big=document.getElementById('bxCardBig');
+  if(big){ var st=BX_STYLES.find(function(x){return x.k===bxCardStyle;});
+           bxDrawCard(big, st, title, eyebrow, bg, logo, 1080); }
+}
+function bxPickStyle(k){
+  bxCardStyle=k;
+  document.querySelectorAll('.bx-sty').forEach(function(b){ b.classList.toggle('on', b.dataset.k===k); });
+  bxPaintCards();
+}
+function bxLogoUpload(input){
+  var f=input.files&&input.files[0]; if(!f) return;
+  var fr=new FileReader();
+  fr.onload=function(){ LS.set('logo', String(fr.result)); toast('사무소 로고를 저장했습니다. 앞으로 계속 쓰입니다.'); bxPaintCards();
+    var n=document.getElementById('bxLogoName'); if(n)n.textContent='로고 저장됨'; };
+  fr.readAsDataURL(f);
+}
+function bxBgUpload(input){
+  var f=input.files&&input.files[0]; if(!f) return;
+  var fr=new FileReader();
+  fr.onload=function(){ bxCardBg=String(fr.result); bxPaintCards(); };
+  fr.readAsDataURL(f);
+}
+function bxCardToSlot(){
+  var big=document.getElementById('bxCardBig'); if(!big) return;
+  var url=big.toDataURL('image/jpeg',0.92);
+  var slots=(typeof imageSlots==='function')?imageSlots():[];
+  if(!slots.length) return toast('본문에 사진 자리가 없습니다.', true);
+  state.images[0]=url; state.imgSrc[0]='up';
+  if(typeof renderPhotos==='function') renderPhotos();
+  if(typeof refreshPreviewImages==='function') refreshPreviewImages();
+  toast('1번 사진 자리에 대표이미지를 넣었습니다.');
+}
+function bxCardDownload(){
+  var big=document.getElementById('bxCardBig'); if(!big) return;
+  var a=document.createElement('a');
+  a.download=(state.post.title||'대표이미지').replace(/[\\/:*?"<>|]/g,'')+'.jpg';
+  a.href=big.toDataURL('image/jpeg',0.92); a.click();
+}
+/* ============ 쇼츠 대본 ============ */
+async function bxShorts(btn){
+  var p=state.post; if(!p) return;
+  var box=document.getElementById('bxShortsBox');
+  var old=btn.textContent; btn.disabled=true; btn.textContent='⏳ 만드는 중...';
+  try{
+    var prompt='아래 블로그 글을 바탕으로 45~60초 세로 영상(쇼츠) 대본을 만드세요.\n\n'
+      +'[제목] '+(p.title||'')+'\n[본문]\n'+bxPlain(p).slice(0,4000)+'\n\n'
+      +'[지킬 것]\n- 공인중개사가 직접 말하는 1인칭\n- 첫 3초에 손님이 궁금해할 질문을 던진다\n'
+      +'- 장면 6~8개. 장면마다 자막은 한 줄 25자 이내, 읽는 데 5~8초\n'
+      +'- 과장·확정 수익 표현 금지. 없는 사실 금지\n- 마지막은 사무소로 문의를 유도하는 한 문장\n\n'
+      +'JSON으로만 출력:\n{"hook":"첫 3초 자막 한 줄","scenes":[{"t":"자막 한 줄","v":"화면에 무엇을 보여줄지 한 줄"}],"cta":"마지막 유도 문장","caption":"유튜브 설명란에 넣을 3줄","hashtags":["해시태그 8개. # 없이"]}';
+    var raw=await callAI(prompt,{json:true,maxTokens:4000});
+    var d=parseJSON(raw);
+    p.shorts=d;
+    bxRenderShorts();
+    toast('쇼츠 대본이 나왔습니다.');
+  }catch(e){ box.innerHTML='<div class="bx-row"><span class="bx-st w">실패</span><span class="bx-nm">'+esc(e.message)+'</span></div>'; }
+  btn.disabled=false; btn.textContent=old;
+}
+function bxShortsText(d){
+  var L=['[훅] '+(d.hook||'')];
+  (d.scenes||[]).forEach(function(s,i){ L.push((i+1)+'. '+(s.t||'')+'   〔화면〕 '+(s.v||'')); });
+  L.push('[마무리] '+(d.cta||''));
+  if(d.caption) L.push('\n[설명란]\n'+d.caption);
+  if(d.hashtags&&d.hashtags.length) L.push('\n'+d.hashtags.map(function(h){return '#'+h;}).join(' '));
+  return L.join('\n');
+}
+function bxRenderShorts(){
+  var box=document.getElementById('bxShortsBox'), d=state.post&&state.post.shorts;
+  if(!box) return;
+  if(!d){ box.innerHTML='<div style="font-size:12.5px;color:#98a0a8">아직 만들지 않았습니다. 위 버튼을 눌러 주세요.</div>'; return; }
+  box.innerHTML='<div class="bx-scene" style="border-color:#efc9ae;background:#fdf9f6"><b>첫 3초 — 훅</b>'+esc(d.hook||'')+'</div>'
+   +(d.scenes||[]).map(function(s,i){
+      return '<div class="bx-scene"><b>장면 '+(i+1)+'</b>'+esc(s.t||'')+'<div class="v">화면 · '+esc(s.v||'')+'</div></div>';
+    }).join('')
+   +'<div class="bx-scene" style="border-color:#a9d6ba;background:#f4faf5"><b>마무리</b>'+esc(d.cta||'')+'</div>'
+   +'<button class="btn" style="margin-top:8px" onclick="navigator.clipboard.writeText(bxShortsText(state.post.shorts)).then(function(){toast(\'쇼츠 대본을 복사했습니다\');})">📋 대본 전체 복사</button>';
+}
+/* ============ 마크다운 ============ */
+function bxMarkdown(p){
+  var L=['# '+(p.title||''),''];
+  if(p.meta) L.push('> '+p.meta,'');
+  var img=0;
+  (p.blocks||[]).forEach(function(b){
+    if(b.t==='h2') L.push('## '+b.text,'');
+    else if(b.t==='h3') L.push('### '+b.text,'');
+    else if(b.t==='p') L.push(b.text,'');
+    else if(b.t==='ul') { (b.items||[]).forEach(function(i){L.push('- '+i);}); L.push(''); }
+    else if(b.t==='ol') { (b.items||[]).forEach(function(i,n){L.push((n+1)+'. '+i);}); L.push(''); }
+    else if(b.t==='quote') L.push('> '+b.text,'');
+    else if(b.t==='table'){
+      L.push('| '+(b.head||[]).join(' | ')+' |');
+      L.push('|'+(b.head||[]).map(function(){return '---';}).join('|')+'|');
+      (b.rows||[]).forEach(function(r){ L.push('| '+r.join(' | ')+' |'); });
+      L.push('');
+    }
+    else if(b.t==='image'){ img++; L.push('![사진 '+img+'](사진'+img+'.jpg)', b.caption?'*'+b.caption+'*':'', ''); }
+  });
+  if(p.tags&&p.tags.length) L.push('', p.tags.map(function(t){return '#'+t;}).join(' '));
+  return L.join('\n');
+}
+function bxDownloadMd(){
+  var p=state.post; if(!p) return;
+  var blob=new Blob([bxMarkdown(p)],{type:'text/markdown;charset=utf-8'});
+  var a=document.createElement('a');
+  a.download=(p.title||'블로그글').replace(/[\\/:*?"<>|]/g,'')+'.md';
+  a.href=URL.createObjectURL(blob); a.click();
+  setTimeout(function(){URL.revokeObjectURL(a.href);},1000);
+}
+function bxCopy(txt,msg){ navigator.clipboard.writeText(txt).then(function(){ toast(msg||'복사했습니다'); }); }
+/* ============ 화면에 얹기 ============ */
+function bxMount(){
+  var p=state.post, host=document.getElementById('work');
+  if(!p||!host) return;
+  /* 제목 후보에 유형 라벨 */
+  if(p.titleKinds&&p.titleKinds.length){
+    host.querySelectorAll('.titleopt').forEach(function(b,i){
+      var k=p.titleKinds[i]; if(!k||b.querySelector('.bx-kind'))return;
+      var s=document.createElement('span');
+      s.className='bx-kind';
+      s.style.cssText='font-size:10.5px;font-weight:600;color:#c1622f;background:#fdf1e9;border:1px solid #efc9ae;border-radius:5px;padding:1px 6px;margin-right:6px';
+      s.textContent=k;
+      var tx=b.querySelector('.tx'); if(tx)tx.parentNode.insertBefore(s,tx);
+    });
+  }
+  /* 상태 칩 */
+  var txt=bxPlain(p), target=bxTargetLen();
+  var chips=[
+    {t:'본문 '+txt.length.toLocaleString()+'자 · 목표 '+target.toLocaleString()+'자', ok:txt.length>=target*0.95},
+    {t:'제목 '+(p.title||'').length+'자', ok:(p.title||'').length>=15&&(p.title||'').length<=32},
+    {t:'H2 '+bxH2(p).length+'개', ok:bxH2(p).length>=4},
+    {t:'이미지 '+((p.blocks||[]).filter(function(b){return b.t==='image';}).length)+'장', ok:true},
+  ];
+  var bar=document.createElement('div');
+  bar.className='bx-chips';
+  bar.innerHTML=chips.map(function(c){return '<span class="bx-chip '+(c.ok?'ok':'warn')+'">'+c.t+'</span>';}).join('');
+  host.insertBefore(bar, host.firstChild);
+
+  /* 점검 · 카드 · 쇼츠 · 키워드 카드들 */
+  var seo=bxSeoChecks(p), pub=bxPubChecks(p,target);
+  var seoPass=seo.filter(function(c){return c.ok;}).length, pubPass=pub.filter(function(c){return c.ok;}).length;
+  var wrap=document.createElement('div');
+  wrap.innerHTML=
+  '<div class="card"><h3 class="bx-head">SEO · AEO · GEO 점검'
+   +'<span class="bx-score" style="background:'+(seoPass===seo.length?'#e8f5e9':'#fdf0e6')+';color:'+(seoPass===seo.length?'#256b40':'#9a5a24')+'">'
+   +seoPass+'/'+seo.length+' 통과'+(p.autoFix?' · 자동 보강 '+p.autoFix+'회':'')+'</span></h3>'
+   +'<div class="body"><div style="font-size:12.5px;color:#7b858f;line-height:1.65;margin-bottom:10px">'
+   +'네이버 검색(SEO)뿐 아니라 챗GPT·퍼플렉시티·네이버 AI 브리핑에 인용되는 조건(AEO·GEO)을 기계적으로 셉니다. '
+   +'주의 항목은 아래 [빠진 항목 자동 보강]으로 그 부분만 다시 씁니다.</div>'
+   +bxRows(seo)+'</div></div>'
+
+  +'<div class="card"><h3 class="bx-head">발행 전 점검'
+   +'<span class="bx-score" style="background:'+(pubPass===pub.length?'#e8f5e9':'#fdf0e6')+';color:'+(pubPass===pub.length?'#256b40':'#9a5a24')+'">'
+   +pubPass+'/'+pub.length+' 통과</span></h3>'
+   +'<div class="body">'+bxRows(pub)
+   +'<button class="btn primary" style="margin-top:12px" id="bxFix">✨ 빠진 항목 자동 보강</button>'
+   +'<span style="font-size:11.5px;color:#98a0a8;margin-left:8px">걸린 항목만 AI가 다시 씁니다 · 사진 자리는 그대로 둡니다</span>'
+   +'</div></div>'
+
+  +'<div class="card"><h3>대표이미지 — 카드로 만들기 <span style="font-weight:500;letter-spacing:0;color:#98a0a8">· AI를 쓰지 않아 비용이 들지 않습니다</span></h3>'
+   +'<div class="body">'
+   +'<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px">'
+   +'<label class="btn sm" style="cursor:pointer">사무소 로고 올리기<input type="file" accept="image/png,image/*" onchange="bxLogoUpload(this)" style="display:none"></label>'
+   +'<span id="bxLogoName" style="font-size:12px;color:#7b858f">'+(bxLogo()?'로고 저장됨':'로고 없음 (PNG 투명 배경 권장)')+'</span>'
+   +'<label class="btn sm" style="cursor:pointer">배경 사진 넣기<input type="file" accept="image/*" onchange="bxBgUpload(this)" style="display:none"></label>'
+   +'<button class="btn sm" onclick="bxCardBg=null;bxPaintCards()">배경 빼기</button>'
+   +'</div>'
+   +'<input id="bxCardText" class="fi" style="width:100%;padding:8px 11px;border:1px solid #e4e6e1;border-radius:8px;font-size:14px;margin-bottom:10px" value="'+esc(p.title||'')+'" oninput="bxPaintCards()">'
+   +'<div class="bx-styles">'+BX_STYLES.map(function(st){
+        return '<button class="bx-sty'+(st.k===bxCardStyle?' on':'')+'" data-k="'+st.k+'" onclick="bxPickStyle(\''+st.k+'\')">'
+          +'<canvas id="bxs-'+st.k+'"></canvas><span>'+st.n+'</span></button>';
+      }).join('')+'</div>'
+   +'<div class="bx-cardwrap"><canvas id="bxCardBig"></canvas>'
+   +'<div style="flex:1;min-width:180px;display:flex;flex-direction:column;gap:7px">'
+   +'<button class="btn primary" onclick="bxCardToSlot()">1번 사진 자리에 넣기</button>'
+   +'<button class="btn" onclick="bxCardDownload()">파일로 내려받기</button>'
+   +'<div style="font-size:11.5px;color:#98a0a8;line-height:1.6">같은 스타일을 계속 쓰면 글마다 썸네일 모양이 통일됩니다. 로고는 한 번 올리면 계속 저장됩니다.</div>'
+   +'</div></div></div></div>'
+
+  +'<div class="card"><h3 class="bx-head">🎬 영상(쇼츠) 대본'
+   +'<span class="r"><button class="btn sm" id="bxShortsBtn">대본 만들기</button></span></h3>'
+   +'<div class="body"><div style="font-size:12.5px;color:#7b858f;line-height:1.65;margin-bottom:10px">'
+   +'이 글을 45~60초 세로 영상 대본으로 바꿉니다. 장면별 자막과 화면에 무엇을 보여줄지까지 나옵니다. '
+   +'영상 파일을 만들어 주지는 않습니다 — 대본과 자막을 뽑아 촬영·편집에 쓰시는 용도입니다.</div>'
+   +'<div id="bxShortsBox"></div></div></div>'
+
+  +'<div class="card"><h3>키워드 · 해시태그</h3><div class="body">'
+   +'<div style="margin-bottom:9px"><span style="font-size:12px;color:#7b858f">핵심</span>'
+   +'<div class="bx-kw">'+((p.coreKeywords||[]).map(function(k){return '<span>'+esc(k)+'</span>';}).join('')||'<span style="color:#98a0a8">없음</span>')+'</div></div>'
+   +'<div style="margin-bottom:9px"><span style="font-size:12px;color:#7b858f">롱테일</span>'
+   +'<div class="bx-kw">'+((p.longTail||[]).map(function(k){return '<span>'+esc(k)+'</span>';}).join('')||'<span style="color:#98a0a8">없음</span>')+'</div></div>'
+   +'<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:11px">'
+   +'<button class="btn sm" onclick="bxCopy((state.post.tags||[]).map(function(t){return \'#\'+t;}).join(\' \'),\'해시태그를 복사했습니다\')">해시태그만 복사</button>'
+   +'<button class="btn sm" onclick="bxCopy((state.post.tags||[]).join(\',\'),\'티스토리용 태그를 복사했습니다\')">티스토리 태그</button>'
+   +'<button class="btn sm" onclick="bxCopy([(state.post.coreKeywords||[]).join(\', \'),(state.post.longTail||[]).join(\', \'),(state.post.tags||[]).map(function(t){return \'#\'+t;}).join(\' \')].join(\'\\n\'),\'키워드 전체를 복사했습니다\')">전체 복사</button>'
+   +'<button class="btn sm" onclick="bxDownloadMd()">마크다운 내려받기</button>'
+   +'</div></div></div>'
+
+  +((p.nextPosts&&p.nextPosts.length)?('<div class="card"><h3>다음에 이어 쓸 글 <span style="font-weight:500;letter-spacing:0;color:#98a0a8">· 누르면 그 주제로 들어갑니다</span></h3><div class="body">'
+   +p.nextPosts.map(function(n,i){
+      return '<button class="bx-next" onclick="bxNext('+i+')"><b>'+(i+1)+'. '+esc(n.t)+'</b><small>'+esc(n.k||'')+'</small></button>';
+    }).join('')+'</div></div>'):'');
+  host.appendChild(wrap);
+
+  var fb=document.getElementById('bxFix'); if(fb) fb.onclick=function(){ bxAutoFix(fb); };
+  var sb=document.getElementById('bxShortsBtn'); if(sb) sb.onclick=function(){ bxShorts(sb); };
+  bxRenderShorts();
+  bxPaintCards();
+}
+function bxNext(i){
+  var n=(state.post.nextPosts||[])[i]; if(!n) return;
+  state.picked={ t:n.t, k:n.k||'', cat:'listing' };
+  state.post=null; state.images={}; state.imgSrc={};
+  if(typeof renderPicked==='function') renderPicked();
+  if(typeof renderPost==='function') renderPost();
+  window.scrollTo({top:0,behavior:'smooth'});
+  toast('주제를 바꿨습니다. [생성하기]를 눌러 주세요.');
+}
+/* renderPost 뒤에 얹기 */
+(function(){
+  var _rp=window.renderPost;
+  window.renderPost=function(){ _rp.apply(this, arguments); try{ bxMount(); }catch(e){ console.warn('[보강모듈]', e); } };
+  /* 설정 모달의 챗GPT 모델 불러오기 */
+  var _os=window.openSettings;
+  window.openSettings=function(){
+    _os.apply(this, arguments);
+    var host=document.getElementById('modalHost'); if(!host) return;
+    var btn=host.querySelector('[data-gptmodels]'); if(!btn) return;
+    btn.onclick=async function(){
+      var box=host.querySelector('#gptModelList');
+      var kb=host.querySelector('[data-k="openaiKeys"]');
+      var key=String(kb?kb.value:'').split(/[\n,]/).map(function(x){return x.trim();}).filter(Boolean)[0];
+      box.style.display='block';
+      if(!key){ box.innerHTML='<div class="emptynote">먼저 위에 챗GPT API 키를 넣어 주세요.</div>'; return; }
+      btn.disabled=true; var t0=btn.textContent; btn.textContent='⏳ 물어보는 중...';
+      try{
+        var ids=await fetchOpenAIModels(key);
+        box.innerHTML=ids.length
+          ? ids.map(function(id){ return '<button class="btn sm" data-fill="'+id+'" style="margin:0 5px 5px 0">'+id+'</button>'; }).join('')
+          : '<div class="emptynote">쓸 수 있는 모델이 없습니다.</div>';
+        box.querySelectorAll('[data-fill]').forEach(function(b){ b.onclick=function(){
+          var inp=host.querySelector('[data-k="openaiModel"]');
+          if(inp){ inp.value=b.dataset.fill; inp.style.background='#fffde7'; setTimeout(function(){inp.style.background='';},900); }
+          toast(b.dataset.fill+' 로 바꿨습니다. [저장]을 눌러 주세요.');
+        };});
+      }catch(e){ box.innerHTML='<div class="emptynote" style="color:#c0392b">'+esc(e.message)+'</div>'; }
+      btn.disabled=false; btn.textContent=t0;
+    };
+  };
+})();
+</script>
+
 </body>
 </html>
