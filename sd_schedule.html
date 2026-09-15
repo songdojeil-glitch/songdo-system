@@ -1960,10 +1960,11 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
   // ── 화면 만들기 ─────────────────────────────────────────
   function mount(){
     if(document.getElementById('tc6')) return;
-    var tc5=document.getElementById('tc5'), tn3=document.getElementById('tn3');
-    if(!tc5||!tn3) return;
+    var tc5=document.getElementById('tc5'), tn0=document.getElementById('tn0');
+    if(!tc5||!tn0) return;
 
-    tn3.insertAdjacentHTML('afterend',
+    // 「오늘」 과 「신규등록」 사이에 놓는다
+    tn0.insertAdjacentHTML('afterend',
       '<button onclick="sw(6)" id="tn6" class="tnb">📝 메모&amp;노트</button>');
 
     var st=document.createElement('style');
@@ -2266,6 +2267,11 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
     return Array.isArray(window.todos) && (window.todos.length>0 || window._nmTodosReady===true);
   }
 
+  // 다른 모듈에서 메모 한 건을 꺼내 쓸 수 있게 열어 둔다
+  window.nmGetNote=function(id){
+    return NOTES.find(function(x){return String(x.id)===String(id);})||null;
+  };
+
   function tagHtml(noteId, todoId, kind, when, state, dim){
     var isS=kind==='schedule';
     var bg = dim ? '#f0f0f0' : (isS?'#e3f2fd':'#e8f5e9');
@@ -2348,7 +2354,11 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
       + '<div class="nm-a">'
       +   '<button onclick="nmPin('+n.id+')" title="고정">'+(n.pin?'📌':'📍')+'</button>'
       +   '<button onclick="nmLinkOpen('+n.id+')" title="일정 또는 할일로 등록" '
-      +     'style="background:#e3f2fd;border-color:#90caf9;color:#1565c0">📅 등록</button>'
+      +     'style="background:#e3f2fd;border-color:#90caf9;color:#1565c0">📅 일정</button>'
+      +   '<button onclick="nmToCust('+n.id+')" title="고객관리에서 새 고객으로 등록" '
+      +     'style="background:#e8f5e9;border-color:#a5d6a7;color:#2e7d32">👤 고객</button>'
+      +   '<button onclick="nmToProp('+n.id+')" title="매물관리에서 새 매물로 등록" '
+      +     'style="background:#fff3e0;border-color:#ffcc80;color:#e65100">🏠 매물</button>'
       +   '<button onclick="nmEdit('+n.id+')">수정</button>'
       +   '<button onclick="nmDel('+n.id+')" style="color:#cc3333">삭제</button>'
       + '</div></div>';
@@ -2541,7 +2551,7 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.09.14-1';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.09.14-2';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_schedule.html';      // 이 파일 이름
   var SD_NAME = '일정관리';      // 사람이 부르는 이름
 
@@ -2677,6 +2687,248 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
   function boot(){ mount(); report(); }
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',function(){ setTimeout(boot,600); });
   else setTimeout(boot,600);
+})();
+</script>
+
+<!-- ═══════════════════════════════════════════════════════════
+     입력 편의 개선 모듈  v1.0  (일정관리)
+     ② 등록을 마치면 입력칸을 모두 비운다 — 이전 값이 남아 잘못 저장되는 것 방지
+     ③ 시간 입력을 구글 캘린더 방식(목록에서 고르기)으로 바꾼다
+     ④ 메모&노트에서 고객·매물 등록으로 바로 넘긴다
+     기존 코드를 고치지 않고 덧붙이는 방식
+     ═══════════════════════════════════════════════════════ -->
+<script>
+(function(){
+  'use strict';
+
+  function $(id){ return document.getElementById(id); }
+  function val(id,v){ var e=$(id); if(e) e.value=(v===undefined?'':v); }
+
+  // ══ ② 입력칸 비우기 ═══════════════════════════════════
+  function hhmm(d){ return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); }
+  function ymd(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+
+  // 지금 시각을 30분 단위로 올림 (구글 캘린더와 같은 방식)
+  function nextSlot(){
+    var d=new Date(); d.setSeconds(0,0);
+    d.setMinutes(d.getMinutes()>30 ? 60 : (d.getMinutes()>0 ? 30 : 0));
+    return d;
+  }
+
+  window.schResetForm=function(){
+    window._editingSchId=null;
+
+    ['sch-title','sch-location','sch-memo','sch-end-time','sch-repeat-end',
+     'sch-with-name','sch-with-tel','with-cust-search','with-broker-search'].forEach(function(id){ val(id,''); });
+    val('sch-duration','');
+    val('sch-repeat','');
+
+    var now=new Date(), slot=nextSlot();
+    val('sch-date', ymd(now));
+    val('sch-time', hhmm(slot));
+
+    try{ setKind('schedule'); }catch(e){}
+    try{ setTimeMode('time'); }catch(e){}
+    try{ setWithMode('direct'); }catch(e){}
+    try{ clearWithCust(); }catch(e){}
+    try{ clearWithBroker(); }catch(e){}
+    try{ onRepeatChange(); }catch(e){}
+    try{ buildStart(); }catch(e){}
+
+    var rb=$('repeat-end-box'); if(rb) rb.style.display='none';
+    var rp=$('repeat-preview'); if(rp) rp.style.display='none';
+    var gc=$('sch-gcal'); if(gc) gc.checked=false;
+    var gb=$('gcal-export-box'); if(gb) gb.style.display='none';
+
+    // 수정 모드 흔적 지우기
+    var btn=document.querySelector('#tc4 .btn-p[onclick*="saveSchedule"]');
+    if(btn) btn.textContent='💾 저장';
+    var sec=document.querySelector('#tc4 .sec');
+    if(sec) sec.textContent='📋 새 일정 / 할일 등록';
+    var ok=$('sch-ok'); if(ok) ok.style.display='none';
+  };
+
+  // 「신규등록」으로 들어올 때는 항상 빈 화면에서 시작한다
+  window.schNew=function(){
+    schResetForm();
+    try{ sw(4); }catch(e){}
+    setTimeout(function(){ schResetForm(); var t=$('sch-title'); if(t) t.focus(); }, 120);
+  };
+
+  // 저장을 마치면 비운다 (수정 저장은 원본이 알아서 모드를 풀므로 함께 처리)
+  var _save=window.saveSchedule;
+  if(typeof _save==='function'){
+    window.saveSchedule=function(){
+      var title=(($('sch-title')||{}).value||'').trim();
+      if(!title){ try{ _save.apply(this,arguments); }catch(e){} return; }   // 제목 없음 → 원본이 경고
+      var wasEdit=window._editingSchId;
+      var before=Array.isArray(window.todos)?window.todos.length:0;
+      try{ _save.apply(this,arguments); }catch(e){}
+      var after=Array.isArray(window.todos)?window.todos.length:0;
+      var saved = wasEdit ? !window._editingSchId : (after>before);
+      if(!saved) return;
+      var msg=$('sch-ok') ? $('sch-ok').textContent : '';
+      schResetForm();
+      if(msg){ var ok=$('sch-ok'); if(ok){ ok.textContent=msg; ok.style.display='block';
+        setTimeout(function(){ ok.style.display='none'; }, 3000); } }
+    };
+  }
+
+  // ══ ③ 구글 캘린더 방식 시간 고르기 ═════════════════════
+  function parseTime(s){
+    s=String(s||'').trim().replace(/\s+/g,'');
+    if(!s) return null;
+    var pm=/(오후|pm|PM)/.test(s), am=/(오전|am|AM)/.test(s);
+    s=s.replace(/(오전|오후|am|AM|pm|PM|시|분)/g,function(m){ return m==='시'?':':(m==='분'?'':''); });
+    var h, mi;
+    if(/^\d+$/.test(s)){                 // 숫자만 — 930 → 9:30, 1430 → 14:30, 9 → 9:00
+      if(s.length<=2){ h=parseInt(s,10); mi=0; }
+      else if(s.length===3){ h=parseInt(s.slice(0,1),10); mi=parseInt(s.slice(1),10); }
+      else if(s.length===4){ h=parseInt(s.slice(0,2),10); mi=parseInt(s.slice(2),10); }
+      else return null;
+    }else{
+      var m=s.match(/^(\d{1,2}):(\d{0,2})$/);
+      if(!m) return null;
+      h=parseInt(m[1],10); mi=m[2]?parseInt(m[2],10):0;
+    }
+    if(pm && h<12) h+=12;
+    if(am && h===12) h=0;
+    if(h>23||mi>59) return null;
+    return String(h).padStart(2,'0')+':'+String(mi).padStart(2,'0');
+  }
+
+  function label(t){                       // '14:30' → '오후 2:30'
+    var p=t.split(':'), h=+p[0];
+    var ap=h<12?'오전':'오후', hh=h%12; if(hh===0) hh=12;
+    return ap+' '+hh+':'+p[1];
+  }
+
+  function slots(){
+    var out=[];
+    for(var h=0;h<24;h++) for(var m=0;m<60;m+=30)
+      out.push(String(h).padStart(2,'0')+':'+String(m).padStart(2,'0'));
+    return out;
+  }
+
+  function attachPicker(id){
+    var el=$(id); if(!el || el.dataset.sxTime==='1') return;
+    el.type='text';
+    el.setAttribute('autocomplete','off');
+    el.placeholder='예: 14:30 · 오후 2시';
+    el.dataset.sxTime='1';
+
+    var box=document.createElement('div');
+    box.style.cssText='display:none;position:absolute;z-index:10200;background:#fff;border:0.5px solid #ddd;'
+      +'border-radius:10px;box-shadow:0 6px 24px rgba(0,0,0,.16);max-height:240px;overflow-y:auto;min-width:150px';
+    document.body.appendChild(box);
+
+    function close(){ box.style.display='none'; }
+    // typing=true 일 때만 입력한 글자로 걸러 준다.
+    // 그냥 열었을 때는 전체 목록을 보여 주고 현재 값 위치로 스크롤한다 (이전 시간도 고를 수 있게)
+    function open(typing){
+      var cur=parseTime(el.value);
+      var q=String(el.value||'').trim();
+      var list=slots();
+      if(typing && q){
+        var f=list.filter(function(t){ return t.indexOf(q)===0 || label(t).indexOf(q)>=0; });
+        if(!f.length){ var p=parseTime(q); if(p) f=list.filter(function(t){ return t>=p; }); }
+        if(f.length) list=f;
+      }
+      box.innerHTML=list.map(function(t){
+        var on = t===cur;
+        return '<div data-t="'+t+'" style="padding:7px 14px;font-size:13px;cursor:pointer;white-space:nowrap;'
+          +(on?'background:#1a2744;color:#fff;font-weight:600':'color:#1a1a1a')+'">'
+          + t + ' <span style="font-size:11px;color:'+(on?'rgba(255,255,255,.7)':'#aaa')+'">'+label(t)+'</span></div>';
+      }).join('');
+      var r=el.getBoundingClientRect();
+      box.style.left=(r.left+window.scrollX)+'px';
+      box.style.top=(r.bottom+window.scrollY+4)+'px';
+      box.style.width=Math.max(r.width,150)+'px';
+      box.style.display='block';
+      // 목록 안에서만 위치를 맞춘다 (scrollIntoView 는 페이지 전체를 움직여 목록이 닫힌다)
+      var idx=list.indexOf(cur);
+      if(idx<0) idx=list.indexOf('09:00');
+      if(idx>=0 && box.children[idx]){
+        var top=box.children[idx].offsetTop;
+        box.scrollTop = (list.indexOf(cur)>=0) ? Math.max(0, top - box.clientHeight/2 + 16) : top;
+      }
+    }
+
+    box.addEventListener('mousedown', function(e){
+      var d=e.target.closest('div[data-t]'); if(!d) return;
+      e.preventDefault();
+      el.value=d.getAttribute('data-t');
+      close();
+      el.dispatchEvent(new Event('input',{bubbles:true}));
+      el.dispatchEvent(new Event('change',{bubbles:true}));
+    });
+
+    el.addEventListener('focus', function(){ open(false); });
+    el.addEventListener('click', function(){ open(false); });
+    el.addEventListener('input', function(){ if(box.style.display==='block') open(true); });
+    el.addEventListener('blur', function(){
+      setTimeout(function(){
+        close();
+        var p=parseTime(el.value);
+        if(p && p!==el.value){ el.value=p; el.dispatchEvent(new Event('input',{bubbles:true})); }
+        else if(!p && el.value){ el.value=''; }
+      }, 180);
+    });
+    el.addEventListener('keydown', function(e){
+      if(e.key==='Escape'){ close(); el.blur(); }
+      if(e.key==='Enter'){ e.preventDefault(); el.blur(); }
+    });
+    // 화면이 스크롤되면 목록을 닫는다.
+    // 단, 목록 안에서 일어난 스크롤(현재 값으로 위치를 맞출 때 포함)은 무시한다 —
+    // 이걸 빼먹으면 목록을 여는 순간 스스로 닫혀 버린다.
+    window.addEventListener('scroll', function(e){
+      if(e.target===box || (e.target&&e.target.nodeType===1&&box.contains(e.target))) return;
+      close();
+    }, true);
+  }
+
+  // ══ ④ 메모 → 고객 · 매물 등록으로 넘기기 ═══════════════
+  window.nmToCust=function(noteId){
+    var n=(typeof nmGetNote==='function')?nmGetNote(noteId):null;
+    var txt = n ? (n.text||'') : '';
+    if(!txt){ alert('메모 내용을 찾지 못했습니다.'); return; }
+    if(!confirm('고객관리에서 새 고객으로 등록할까요?\n\n메모 내용이 「First 상담」 칸에 들어갑니다.\n이름·연락처를 채우고 저장하시면 됩니다.')) return;
+    location.href='sd_custs.html?fromNote=1&memo='+encodeURIComponent(txt.slice(0,1500));
+  };
+  window.nmToProp=function(noteId){
+    var n=(typeof nmGetNote==='function')?nmGetNote(noteId):null;
+    var txt = n ? (n.text||'') : '';
+    if(!txt){ alert('메모 내용을 찾지 못했습니다.'); return; }
+    if(!confirm('매물관리에서 새 매물로 등록할까요?\n\n메모 내용이 「물건 주요정보」 칸에 들어갑니다.\n단지명·가격을 채우고 저장하시면 됩니다.')) return;
+    location.href='sd_props.html?fromNote=1&memo='+encodeURIComponent(txt.slice(0,1500));
+  };
+
+  // ══ 시동 ═══════════════════════════════════════════════
+  function boot(){
+    attachPicker('sch-time');
+    attachPicker('sch-end-time');
+
+    // 「신규등록」류 단추를 항상 빈 화면으로 들어가게 바꾼다
+    ['tn4','tn4b'].forEach(function(id){
+      var b=$(id); if(b && !b.dataset.sxNew){ b.dataset.sxNew='1'; b.setAttribute('onclick','schNew()'); }
+    });
+    Array.prototype.forEach.call(document.querySelectorAll('#tc0 button'), function(b){
+      if((b.getAttribute('onclick')||'')==='sw(4)' && !b.dataset.sxNew){
+        b.dataset.sxNew='1'; b.setAttribute('onclick','schNew()');
+      }
+    });
+
+    // 입력 화면에 「비우기」 단추
+    var sec=document.querySelector('#tc4 .sec');
+    if(sec && !$('sch-clear-btn')){
+      sec.insertAdjacentHTML('beforeend',
+        '<button id="sch-clear-btn" onclick="schResetForm()" style="float:right;font-size:11px;padding:3px 10px;'
+        +'border:0.5px solid #e0e0e0;background:#fff;border-radius:6px;cursor:pointer;color:#888">🧹 비우기</button>');
+    }
+  }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',function(){ setTimeout(boot,700); });
+  else setTimeout(boot,700);
+  setTimeout(boot,1800);
 })();
 </script>
 

@@ -8019,7 +8019,7 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.09.14-1';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.09.14-2';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_props.html';      // 이 파일 이름
   var SD_NAME = '매물관리';      // 사람이 부르는 이름
 
@@ -8155,6 +8155,84 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
   function boot(){ mount(); report(); }
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',function(){ setTimeout(boot,600); });
   else setTimeout(boot,600);
+})();
+</script>
+
+<!-- ═══════════════════════════════════════════════════════════
+     입력 편의 개선 모듈  v1.0  (매물관리)
+     - 「새로 등록」으로 들어오면 이전 입력이 남아 있지 않게 비운다
+     - 일정관리 메모&노트에서 넘어온 내용을 받아 채운다
+     기존 코드를 고치지 않고 덧붙이는 방식
+     ═══════════════════════════════════════════════════════ -->
+<script>
+(function(){
+  'use strict';
+  var TAB=1;                 // 등록 화면 탭 번호
+  var MEMOFIELD='f-mo';   // 넘어온 메모를 넣을 칸
+
+  function $(id){ return document.getElementById(id); }
+
+  // ── 입력칸 비우고 새로 시작 ─────────────────────────────
+  window.rxNew=function(){
+    try{ if(typeof clearF==='function') clearF(); }catch(e){}
+    window.editId=null;
+    try{ sw(TAB); }catch(e){}
+    setTimeout(function(){
+      try{ if(typeof clearF==='function') clearF(); }catch(e){}
+      window.editId=null;
+      var b=$('save-btn'); if(b) b.textContent=b.textContent.replace('수정 저장','저장');
+      var banner=$('rx-banner'); if(banner) banner.style.display='none';
+    },120);
+  };
+
+  // ── 넘어온 메모 받기 ────────────────────────────────────
+  function takeHandoff(){
+    var q=new URLSearchParams(location.search);
+    if(q.get('fromNote')!=='1') return;
+    var memo=q.get('memo')||'';
+    if(!memo) return;
+
+    try{ if(typeof clearF==='function') clearF(); }catch(e){}
+    window.editId=null;
+    try{ sw(TAB); }catch(e){}
+
+    setTimeout(function(){
+      var el=$(MEMOFIELD);
+      if(el){ el.value=memo; el.dispatchEvent(new Event('input',{bubbles:true})); }
+      var host=document.querySelector('#tc'+TAB+' .card');
+      if(host && !$('rx-banner')){
+        host.insertAdjacentHTML('beforebegin',
+          '<div id="rx-banner" style="margin-bottom:12px;padding:10px 14px;background:#e3f2fd;'
+          +'border:0.5px solid #90caf9;border-radius:10px;font-size:12.5px;color:#1565c0;line-height:1.6">'
+          +'📝 <b>일정관리 메모&노트</b>에서 넘어온 내용입니다. 나머지 칸을 채우고 저장하세요. '
+          +'<button onclick="this.parentNode.remove()" style="float:right;border:none;background:transparent;'
+          +'color:#1565c0;cursor:pointer;font-size:13px">✕</button></div>');
+      }
+      // 주소창을 정리해 새로고침 때 다시 채워지지 않게 한다
+      try{ history.replaceState(null,'',location.pathname); }catch(e){}
+      if(el) el.focus();
+    }, 700);
+  }
+
+  // ── 시동 ────────────────────────────────────────────────
+  function boot(){
+    // 등록 화면으로 가는 단추를 항상 빈 화면으로 들어가게
+    Array.prototype.forEach.call(document.querySelectorAll('button'), function(b){
+      var oc=(b.getAttribute('onclick')||'').replace(/\s/g,'');
+      if(oc==='sw('+TAB+')' && !b.dataset.rxNew){ b.dataset.rxNew='1'; b.setAttribute('onclick','rxNew()'); }
+    });
+    // 등록 화면에 「비우기」 단추
+    var sec=document.querySelector('#tc'+TAB+' .sec');
+    if(sec && !$('rx-clear-btn')){
+      sec.insertAdjacentHTML('beforeend',
+        '<button id="rx-clear-btn" onclick="rxNew()" style="float:right;font-size:11px;padding:3px 10px;'
+        +'border:0.5px solid #e0e0e0;background:#fff;border-radius:6px;cursor:pointer;color:#888">🧹 비우기</button>');
+    }
+  }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',function(){ setTimeout(boot,700); });
+  else setTimeout(boot,700);
+  setTimeout(boot,1800);
+  setTimeout(takeHandoff,1500);
 })();
 </script>
 
