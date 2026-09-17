@@ -8019,7 +8019,7 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.09.17-2';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.09.17-4';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_props.html';      // 이 파일 이름
   var SD_NAME = '매물관리';      // 사람이 부르는 이름
 
@@ -8318,8 +8318,16 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
       var s=document.createElement('script');
       s.id='sd-kakao-sdk';
       s.src='https://dapi.kakao.com/v2/maps/sdk.js?appkey='+encodeURIComponent(KEY)+'&libraries=services&autoload=false';
-      s.onload=function(){ window.kakao.maps.load(function(){ SDK=true; res(); }); };
+      s.onload=function(){
+        // 카카오가 오류 본문(JSON)을 200으로 돌려줄 때가 있다 — 그때는 kakao 가 없다
+        if(!(window.kakao && window.kakao.maps && typeof window.kakao.maps.load==='function')){
+          return rej(new Error('카카오맵이 이 주소에서 허용되지 않았습니다. 카카오 디벨로퍼스에서 '
+            +'①JavaScript SDK 도메인 등록 ②제품 설정 → 카카오맵 사용 설정을 확인해 주세요.'));
+        }
+        window.kakao.maps.load(function(){ SDK=true; res(); });
+      };
       s.onerror=function(){ rej(new Error('카카오맵을 불러오지 못했습니다. 키와 웹 도메인 등록을 확인해 주세요.')); };
+      setTimeout(function(){ if(!SDK) rej(new Error('카카오맵 응답이 없습니다. 잠시 뒤 다시 열어 주세요.')); }, 10000);
       document.head.appendChild(s);
     });
   }
@@ -8741,7 +8749,13 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
 
   var KEY='', SDK=false, PS=null;
   var GEO={};                 // 이번 화면에서만 쓰는 임시 기억 (새로고침하면 사라진다)
-  var SEQ=0;
+  var SEQ=0, LAST=null;
+  window.sdMapWhy='';         // 마지막 상태 — 문제가 생겼을 때 확인용
+  window.sdMiniMapRetry=function(){
+    if(!LAST) return;
+    if(LAST.name) delete GEO[nkey(LAST.name)];
+    window.sdMiniMap(LAST.host, LAST.name, LAST.opts);
+  };
 
   function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
@@ -8769,8 +8783,16 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
       var s=document.createElement('script');
       s.id='sd-kakao-sdk';
       s.src='https://dapi.kakao.com/v2/maps/sdk.js?appkey='+encodeURIComponent(KEY)+'&libraries=services&autoload=false';
-      s.onload=function(){ window.kakao.maps.load(function(){ SDK=true; res(); }); };
+      s.onload=function(){
+        // 카카오가 오류 본문(JSON)을 200으로 돌려줄 때가 있다 — 그때는 kakao 가 없다
+        if(!(window.kakao && window.kakao.maps && typeof window.kakao.maps.load==='function')){
+          return rej(new Error('카카오맵이 이 주소에서 허용되지 않았습니다. 카카오 디벨로퍼스에서 '
+            +'①JavaScript SDK 도메인 등록 ②제품 설정 → 카카오맵 사용 설정을 확인해 주세요.'));
+        }
+        window.kakao.maps.load(function(){ SDK=true; res(); });
+      };
       s.onerror=function(){ rej(new Error('카카오맵을 불러오지 못했습니다. 키와 웹 도메인 등록을 확인해 주세요.')); };
+      setTimeout(function(){ if(!SDK) rej(new Error('카카오맵 응답이 없습니다. 잠시 뒤 다시 열어 주세요.')); }, 10000);
       document.head.appendChild(s);
     });
   }
@@ -8820,20 +8842,77 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
     return 'https://map.kakao.com/?q='+encodeURIComponent('송도 '+String(name||'').trim());
   }
 
-  function frame(name, inner, foot){
+  function frame(name, inner, foot, big){
+    var right='';
+    if(big){
+      right+='<button onclick="sdMapBig(\''+encodeURIComponent(name)+'\')" '
+        +'style="font-size:11px;font-weight:600;padding:3px 10px;border:1px solid rgba(128,128,128,.4);'
+        +'background:transparent;border-radius:6px;cursor:pointer;color:inherit">⤢ 크게 보기</button>';
+    }
+    right+='<a href="'+kakaoLink(name)+'" target="_blank" rel="noopener" '
+      +'style="font-size:11px;font-weight:600;text-decoration:none;color:#1565c0">카카오맵에서 열기 ↗</a>';
     return '<div style="border:1px solid rgba(128,128,128,.28);border-radius:10px;overflow:hidden">'
       +'<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;'
       +'padding:8px 12px;background:rgba(128,128,128,.10);font-size:12px;font-weight:700">'
       +'<span>📍 위치 <span style="font-weight:400;opacity:.75">'+esc(name)+'</span></span>'
-      +'<a href="'+kakaoLink(name)+'" target="_blank" rel="noopener" '
-      +'style="font-size:11px;font-weight:600;text-decoration:none;color:#1565c0">카카오맵에서 크게 보기 ↗</a>'
+      +'<span style="display:flex;gap:8px;align-items:center;flex-shrink:0">'+right+'</span>'
       +'</div>'+inner
       +(foot?'<div style="padding:7px 12px;font-size:11px;opacity:.7;line-height:1.6">'+foot+'</div>':'')
       +'</div>';
   }
 
-  function note(name, msg){
-    return frame(name, '<div style="padding:16px 12px;font-size:12px;opacity:.75;line-height:1.7">'+msg+'</div>', '');
+  // ── 크게 보기 (화면을 덮는 큰 지도) ─────────────────────
+  window.sdMapBig=function(enc){
+    var name=decodeURIComponent(enc||'');
+    var g=GEO[nkey(name)];
+    if(!g || !(window.kakao&&window.kakao.maps)) return;
+    var old=document.getElementById('sdmap-big'); if(old) old.remove();
+    var ov=document.createElement('div');
+    ov.id='sdmap-big';
+    ov.style.cssText='position:fixed;inset:0;z-index:10300;background:rgba(0,0,0,.6);display:flex;padding:18px';
+    ov.innerHTML='<div style="background:#fff;border-radius:14px;overflow:hidden;display:flex;flex-direction:column;'
+      +'flex:1;max-width:1100px;margin:auto;box-shadow:0 10px 50px rgba(0,0,0,.35)">'
+      +'<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;'
+      +'padding:11px 16px;background:#1a2744;color:#fff">'
+      +'<span style="font-size:14px;font-weight:700">📍 '+esc(g.placeName||name)
+      +(g.addr?' <span style="font-weight:400;opacity:.75;font-size:12px">'+esc(g.addr)+'</span>':'')+'</span>'
+      +'<span style="display:flex;gap:9px;align-items:center;flex-shrink:0">'
+      +'<a href="'+kakaoLink(name)+'" target="_blank" rel="noopener" '
+      +'style="font-size:12px;color:#cfe3ff;text-decoration:none">카카오맵에서 열기 ↗</a>'
+      +'<button onclick="document.getElementById(\'sdmap-big\').remove()" '
+      +'style="background:transparent;color:#fff;border:1px solid rgba(255,255,255,.4);border-radius:6px;'
+      +'padding:4px 11px;font-size:12px;cursor:pointer">✕ 닫기</button></span></div>'
+      +'<div id="sdmap-big-canvas" style="flex:1;background:#eee;min-height:200px"></div></div>';
+    document.body.appendChild(ov);
+    ov.onclick=function(e){ if(e.target===ov) ov.remove(); };
+    var esckey=function(e){ if(e.key==='Escape'){ var b=document.getElementById('sdmap-big'); if(b) b.remove();
+      document.removeEventListener('keydown',esckey); } };
+    document.addEventListener('keydown',esckey);
+    var pos=new kakao.maps.LatLng(g.lat,g.lng);
+    var m=new kakao.maps.Map(document.getElementById('sdmap-big-canvas'), { center:pos, level:3 });
+    new kakao.maps.Marker({ map:m, position:pos });
+    m.addControl(new kakao.maps.ZoomControl(), kakao.maps.ControlPosition.RIGHT);
+    setTimeout(function(){ try{ m.relayout(); m.setCenter(pos); }catch(e){} },120);
+  };
+
+  // ── 「지도 보기」 단추 ───────────────────────────────────
+  // 평소엔 접어 두고, 누를 때만 카카오에 물어본다 (호출 아끼기)
+  window.sdMapToggle=function(boxId, btnId){
+    var b=document.getElementById(boxId), bt=document.getElementById(btnId);
+    if(!b) return;
+    var opening = (b.style.display==='none');
+    b.style.display = opening ? '' : 'none';
+    if(bt) bt.textContent = opening ? '🗺️ 지도 닫기' : '🗺️ 지도 보기';
+    if(opening) window.sdMiniMap(b, b.getAttribute('data-name')||'', { height:230, big:true });
+    else b.innerHTML='';
+  };
+
+  function note(name, msg, retry){
+    return frame(name, '<div style="padding:16px 12px;font-size:12px;opacity:.85;line-height:1.7">'+msg
+      +(retry?' <button onclick="sdMiniMapRetry()" style="margin-left:6px;font-size:11px;padding:3px 10px;'
+        +'border:1px solid rgba(128,128,128,.4);background:transparent;border-radius:6px;cursor:pointer;'
+        +'color:inherit">⟳ 다시 시도</button>':'')
+      +'</div>', '');
   }
 
   // ── 미니 지도 그리기 ────────────────────────────────────
@@ -8849,9 +8928,12 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
     var my=++SEQ;                       // 빠르게 다른 매물을 열면 늦게 온 답은 버린다
     el.innerHTML=note(name,'지도를 준비하는 중…');
 
+    LAST={host:el, name:name, opts:opts};
+
     await loadKey();
     if(my!==SEQ) return;
     if(!KEY){
+      window.sdMapWhy='카카오맵 키 없음';
       el.innerHTML=note(name,
         '카카오맵 키가 아직 없습니다. <b>매물관리 → 🗺️ 지도 탐색</b> 탭에서 키를 한 번 넣으면 '
         +'여기에도 지도가 나옵니다.');
@@ -8861,7 +8943,8 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
     try{ await loadSDK(); }
     catch(e){
       if(my!==SEQ) return;
-      el.innerHTML=note(name, esc(e.message||'지도를 불러오지 못했습니다.'));
+      window.sdMapWhy='SDK: '+(e&&e.message);
+      el.innerHTML=note(name, esc(e.message||'지도를 불러오지 못했습니다.'), true);
       return;
     }
     if(my!==SEQ) return;
@@ -8869,20 +8952,22 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
 
     el.innerHTML=note(name,'위치를 찾는 중…');
     var g;
-    try{ g=await findOne(name); }catch(e){ g=null; }
+    try{ g=await findOne(name); }catch(e){ g=null; window.sdMapWhy='검색 오류: '+(e&&e.message); }
     if(my!==SEQ) return;
 
     if(!g){
+      window.sdMapWhy='이름으로 못 찾음: '+name;
       el.innerHTML=note(name,
-        '이름으로 위치를 찾지 못했습니다. 위의 <b>카카오맵에서 크게 보기</b>로 직접 확인해 주세요.');
+        '이름으로 위치를 찾지 못했습니다. 위의 <b>카카오맵에서 크게 보기</b>로 직접 확인해 주세요.', true);
       return;
     }
+    window.sdMapWhy='정상: '+name;
 
     var cid='sdmap-c'+my;
     el.innerHTML=frame(name,
       '<div id="'+cid+'" style="width:100%;height:'+(opts.height||210)+'px;background:#eee"></div>',
       '🏷️ '+esc(g.placeName||name)+(g.addr?' · '+esc(g.addr):'')
-      +' <span style="opacity:.6">— 이름으로 찾은 위치라 실제와 다를 수 있습니다</span>');
+      +' <span style="opacity:.6">— 이름으로 찾은 위치라 실제와 다를 수 있습니다</span>', true);
 
     var box=document.getElementById(cid);
     if(!box) return;
@@ -8898,8 +8983,9 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
   // anchorId 앞 또는 뒤에 <div id=boxId> 를 한 번만 만든다
   window.sdMiniMapSlot=function(boxId, anchorId, where){
     var b=document.getElementById(boxId);
-    if(b) return b;
-    var a=document.getElementById(anchorId);
+    if(b && b.isConnected) return b;
+    var a=null;
+    String(anchorId).split(',').forEach(function(id){ if(!a) a=document.getElementById(id.trim()); });
     if(!a) return null;
     b=document.createElement('div');
     b.id=boxId;
@@ -8912,21 +8998,53 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
 </script>
 
 <script>
-/* 상세 모달 미니 지도 연결 — 매물관리 (자사 매물 / 매물APT / OP·생숙 / 상가·사무실) */
+/* 상세 모달 지도 — 매물관리
+   매물 상세는 평소 지도를 부르지 않고, 「🗺️ 지도 보기」를 눌렀을 때만 부른다.
+   (모달을 여는 횟수가 많아 카카오 호출을 아끼고, 모달이 바로 뜨게 하려고) */
 (function(){
   'use strict';
+
+  // 모달 제목줄 ✕ 단추 앞에 「지도 보기」 단추를 한 번만 만든다
+  function ensureBtn(btnId, closeSel, boxId){
+    var bt=document.getElementById(btnId);
+    if(bt && bt.isConnected) return bt;
+    var close=document.querySelector(closeSel);
+    if(!close) return null;
+    bt=document.createElement('button');
+    bt.id=btnId; bt.type='button';
+    bt.style.cssText='margin-right:10px;font-size:11.5px;font-weight:600;padding:4px 11px;'
+      +'border:1px solid #bbdefb;background:#f0f6ff;color:#1565c0;border-radius:7px;'
+      +'cursor:pointer;white-space:nowrap;flex-shrink:0';
+    bt.onclick=function(e){ e.stopPropagation(); window.sdMapToggle(boxId, btnId); };
+    close.parentNode.insertBefore(bt, close);
+    return bt;
+  }
+
+  // 상세를 열 때마다 지도는 접힌 상태로 되돌린다
+  function arm(info){
+    var slot=window.sdMiniMapSlot(info.box, info.anchor, info.where);
+    if(!slot){ window.sdMapWhy='자리를 찾지 못함: #'+info.anchor; return; }
+    if(info.pad) slot.style.padding=info.pad;
+    slot.setAttribute('data-name', info.name);
+    slot.style.display='none';
+    slot.innerHTML='';
+    var bt=ensureBtn(info.btn, info.closeSel, info.box);
+    if(bt) bt.textContent='🗺️ 지도 보기';
+    var big=document.getElementById('sdmap-big'); if(big) big.remove();
+  }
+
   function wrap(fnName, pick){
     var orig=window[fnName];
     if(typeof orig!=='function' || orig.__sdmap) return false;
     var w=function(){
-      var out=orig.apply(this, arguments);
+      var out, err=null;
+      try{ out=orig.apply(this, arguments); }catch(e){ err=e; }
       try{
         var info=pick.apply(null, arguments);
-        if(info && info.name){
-          var slot=window.sdMiniMapSlot(info.box, info.anchor, info.where);
-          if(slot) window.sdMiniMap(slot, info.name, info.opts||{});
-        }
-      }catch(e){}
+        if(info && info.name) arm(info);
+        else window.sdMapWhy='단지명을 읽지 못함 ('+fnName+')';
+      }catch(e){ window.sdMapWhy='지도 연결 중 오류: '+(e&&e.message); }
+      if(err) throw err;
       return out;
     };
     w.__sdmap=1;
@@ -8934,23 +9052,30 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
     return true;
   }
 
+  var ND={ box:'sdmap-nd', anchor:'nd-info,nd-title', where:'after',
+           btn:'sdmap-nd-btn', closeSel:'#naver-detail-box button[onclick="closeNaverDetail()"]' };
+
   function boot(){
     // 매물(APT)
     wrap('openNaverDetail', function(idx){
       var r=(window.G&&G.naverData)?G.naverData[idx]:null;
-      return r?{ name:r.단지명, box:'sdmap-nd', anchor:'nd-info', where:'after' }:null;
+      if(!r) return null;
+      var o={ name:r.단지명 }; for(var k in ND) o[k]=ND[k]; return o;
     });
     // 매물(OP/생숙) · 매물(상가/사무실)
     wrap('_nd2', function(ridx, tab){
       if(!window.G) return null;
       var arr=(tab==='sangga')?G.naverSanggaData:G.naverOpData;
       var r=arr?arr[ridx]:null;
-      return r?{ name:r.단지명, box:'sdmap-nd', anchor:'nd-info', where:'after' }:null;
+      if(!r) return null;
+      var o={ name:r.단지명 }; for(var k in ND) o[k]=ND[k]; return o;
     });
     // 자사 매물 관리
     wrap('openDetail', function(id){
       var p=(window.props||[]).filter(function(x){ return x.id===id; })[0];
-      return p?{ name:p.complexName, box:'sdmap-dtl', anchor:'dtl-photos-box', where:'before' }:null;
+      return p?{ name:p.complexName, box:'sdmap-dtl', anchor:'dtl-photos-box,dtl-memo',
+                 where:'before', pad:'0 20px', btn:'sdmap-dtl-btn',
+                 closeSel:'#detail-modal button[onclick="closeDetail()"]' }:null;
     });
   }
 
