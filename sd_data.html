@@ -19272,7 +19272,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.09.14-1';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.09.17-1';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_data.html';      // 이 파일 이름
   var SD_NAME = '실거래가';      // 사람이 부르는 이름
 
@@ -19408,6 +19408,226 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
   function boot(){ mount(); report(); }
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',function(){ setTimeout(boot,600); });
   else setTimeout(boot,600);
+})();
+</script>
+
+<!-- ═══════════════════════════════════════════════════════════
+     상세 모달 미니 지도 모듈  v1.0  — 카카오맵  (부동산 데이터)
+     - 단지·매물 상세를 열면 그 자리에서 위치를 보여 준다
+     - 단지명으로 장소를 찾는다 (주소 칸이 없는 자료가 많아서)
+     - 못 찾으면 가짜로 찍지 않고 카카오맵 검색 고리만 준다
+     - 찾은 위치는 화면에만 두고 저장하지 않는다 (카카오 약관: 실시간 호출만 허용)
+     기존 코드를 고치지 않고 덧붙이는 방식
+     ═══════════════════════════════════════════════════════ -->
+<script>
+(function(){
+  'use strict';
+
+  var KEY='', SDK=false, PS=null;
+  var GEO={};                 // 이번 화면에서만 쓰는 임시 기억 (새로고침하면 사라진다)
+  var SEQ=0;
+
+  function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+  // ── 카카오맵 키 (지도 탐색 탭에서 등록한 것을 함께 쓴다) ──
+  async function loadKey(){
+    if(KEY) return KEY;
+    try{ var r=await window.storage.get('sd_kakao_key'); if(r&&r.value) KEY=String(r.value).trim(); }catch(e){}
+    if(!KEY){ try{ KEY=(localStorage.getItem('sd_kakao_key')||'').trim(); }catch(e){} }
+    return KEY;
+  }
+
+  function loadSDK(){
+    return new Promise(function(res,rej){
+      if(SDK && window.kakao && window.kakao.maps) return res();
+      if(window.kakao && window.kakao.maps && window.kakao.maps.services){ SDK=true; return res(); }
+      if(!KEY) return rej(new Error('키 없음'));
+      var ex=document.getElementById('sd-kakao-sdk');
+      if(ex){ // 다른 모듈이 이미 불러오는 중
+        var t=setInterval(function(){
+          if(window.kakao && window.kakao.maps && window.kakao.maps.services){ clearInterval(t); SDK=true; res(); }
+        },200);
+        setTimeout(function(){ clearInterval(t); if(!SDK) rej(new Error('카카오맵을 불러오지 못했습니다.')); },8000);
+        return;
+      }
+      var s=document.createElement('script');
+      s.id='sd-kakao-sdk';
+      s.src='https://dapi.kakao.com/v2/maps/sdk.js?appkey='+encodeURIComponent(KEY)+'&libraries=services&autoload=false';
+      s.onload=function(){ window.kakao.maps.load(function(){ SDK=true; res(); }); };
+      s.onerror=function(){ rej(new Error('카카오맵을 불러오지 못했습니다. 키와 웹 도메인 등록을 확인해 주세요.')); };
+      document.head.appendChild(s);
+    });
+  }
+
+  // ── 단지명 다듬기 (지도 탐색 탭과 같은 규칙) ──────────────
+  var TAIL=/(상가|사무실|오피스텔|빌딩|타워|프라자|플라자|센터|몰)$/;
+  function nkey(name){
+    if(typeof window.mpKey==='function') return window.mpKey(name);
+    var s=String(name||'').replace(/\s+/g,'');
+    for(var i=0;i<2;i++){ if(TAIL.test(s) && s.replace(TAIL,'').length>=2) s=s.replace(TAIL,''); }
+    return s;
+  }
+  function variants(name){
+    var n=String(name||'').trim();
+    var bare=n.replace(/\s+/g,'');
+    var cut=bare.replace(TAIL,'');
+    return ['인천 연수구 송도동 '+n, '송도 '+n, n, '송도 '+cut, cut]
+      .filter(function(v,i,a){ return v && v.length>=2 && a.indexOf(v)===i; });
+  }
+
+  function ask(q){
+    return new Promise(function(res){
+      PS.keywordSearch(q, function(data,status){
+        res(status===kakao.maps.services.Status.OK && data.length ? data[0] : null);
+      });
+    });
+  }
+
+  async function findOne(name){
+    var k=nkey(name);
+    if(GEO[k]!==undefined) return GEO[k];
+    var tries=variants(name);
+    for(var i=0;i<tries.length;i++){
+      var d=await ask(tries[i]);
+      if(d){
+        GEO[k]={ lat:parseFloat(d.y), lng:parseFloat(d.x),
+                 placeName:d.place_name, addr:d.road_address_name||d.address_name };
+        return GEO[k];
+      }
+      await new Promise(function(r){ setTimeout(r,90); });
+    }
+    GEO[k]=null;
+    return null;
+  }
+
+  function kakaoLink(name){
+    return 'https://map.kakao.com/?q='+encodeURIComponent('송도 '+String(name||'').trim());
+  }
+
+  function frame(name, inner, foot){
+    return '<div style="border:1px solid rgba(128,128,128,.28);border-radius:10px;overflow:hidden">'
+      +'<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;'
+      +'padding:8px 12px;background:rgba(128,128,128,.10);font-size:12px;font-weight:700">'
+      +'<span>📍 위치 <span style="font-weight:400;opacity:.75">'+esc(name)+'</span></span>'
+      +'<a href="'+kakaoLink(name)+'" target="_blank" rel="noopener" '
+      +'style="font-size:11px;font-weight:600;text-decoration:none;color:#1565c0">카카오맵에서 크게 보기 ↗</a>'
+      +'</div>'+inner
+      +(foot?'<div style="padding:7px 12px;font-size:11px;opacity:.7;line-height:1.6">'+foot+'</div>':'')
+      +'</div>';
+  }
+
+  function note(name, msg){
+    return frame(name, '<div style="padding:16px 12px;font-size:12px;opacity:.75;line-height:1.7">'+msg+'</div>', '');
+  }
+
+  // ── 미니 지도 그리기 ────────────────────────────────────
+  // host : 지도를 넣을 자리 (요소 또는 id)
+  // name : 찾을 단지·건물 이름
+  window.sdMiniMap=async function(host, name, opts){
+    opts=opts||{};
+    var el=(typeof host==='string')?document.getElementById(host):host;
+    if(!el) return;
+    name=String(name||'').trim();
+    if(!name){ el.innerHTML=''; return; }
+
+    var my=++SEQ;                       // 빠르게 다른 매물을 열면 늦게 온 답은 버린다
+    el.innerHTML=note(name,'지도를 준비하는 중…');
+
+    await loadKey();
+    if(my!==SEQ) return;
+    if(!KEY){
+      el.innerHTML=note(name,
+        '카카오맵 키가 아직 없습니다. <b>매물관리 → 🗺️ 지도 탐색</b> 탭에서 키를 한 번 넣으면 '
+        +'여기에도 지도가 나옵니다.');
+      return;
+    }
+
+    try{ await loadSDK(); }
+    catch(e){
+      if(my!==SEQ) return;
+      el.innerHTML=note(name, esc(e.message||'지도를 불러오지 못했습니다.'));
+      return;
+    }
+    if(my!==SEQ) return;
+    if(!PS) PS=new kakao.maps.services.Places();
+
+    el.innerHTML=note(name,'위치를 찾는 중…');
+    var g;
+    try{ g=await findOne(name); }catch(e){ g=null; }
+    if(my!==SEQ) return;
+
+    if(!g){
+      el.innerHTML=note(name,
+        '이름으로 위치를 찾지 못했습니다. 위의 <b>카카오맵에서 크게 보기</b>로 직접 확인해 주세요.');
+      return;
+    }
+
+    var cid='sdmap-c'+my;
+    el.innerHTML=frame(name,
+      '<div id="'+cid+'" style="width:100%;height:'+(opts.height||210)+'px;background:#eee"></div>',
+      '🏷️ '+esc(g.placeName||name)+(g.addr?' · '+esc(g.addr):'')
+      +' <span style="opacity:.6">— 이름으로 찾은 위치라 실제와 다를 수 있습니다</span>');
+
+    var box=document.getElementById(cid);
+    if(!box) return;
+    var pos=new kakao.maps.LatLng(g.lat, g.lng);
+    var map=new kakao.maps.Map(box, { center:pos, level:opts.level||4 });
+    new kakao.maps.Marker({ map:map, position:pos });
+    map.addControl(new kakao.maps.ZoomControl(), kakao.maps.ControlPosition.RIGHT);
+    setTimeout(function(){ try{ map.relayout(); map.setCenter(pos); }catch(e){} }, 120);
+    setTimeout(function(){ try{ map.relayout(); map.setCenter(pos); }catch(e){} }, 500);
+  };
+
+  // ── 모달 안에 지도 자리를 만들어 준다 ────────────────────
+  // anchorId 앞 또는 뒤에 <div id=boxId> 를 한 번만 만든다
+  window.sdMiniMapSlot=function(boxId, anchorId, where){
+    var b=document.getElementById(boxId);
+    if(b) return b;
+    var a=document.getElementById(anchorId);
+    if(!a) return null;
+    b=document.createElement('div');
+    b.id=boxId;
+    b.style.margin='14px 0';
+    if(where==='after') a.parentNode.insertBefore(b, a.nextSibling);
+    else a.parentNode.insertBefore(b, a);
+    return b;
+  };
+})();
+</script>
+
+<script>
+/* 상세 모달 미니 지도 연결 — 송도주택공급현황 단지 상세 */
+(function(){
+  'use strict';
+  function wrap(fnName, pick){
+    var orig=window[fnName];
+    if(typeof orig!=='function' || orig.__sdmap) return false;
+    var w=function(){
+      var out=orig.apply(this, arguments);
+      try{
+        var info=pick.apply(null, arguments);
+        if(info && info.name){
+          var slot=window.sdMiniMapSlot(info.box, info.anchor, info.where);
+          if(slot) window.sdMiniMap(slot, info.name, info.opts||{});
+        }
+      }catch(e){}
+      return out;
+    };
+    w.__sdmap=1;
+    window[fnName]=w;
+    return true;
+  }
+
+  function boot(){
+    wrap('hsOpenModal', function(nm){
+      return nm?{ name:nm, box:'sdmap-hs', anchor:'hs-modal-images', where:'before',
+                  opts:{ height:240, level:4 } }:null;
+    });
+  }
+
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',function(){ setTimeout(boot,900); });
+  else setTimeout(boot,900);
+  setTimeout(boot,2200);
 })();
 </script>
 
