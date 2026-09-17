@@ -8019,7 +8019,7 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.09.15-1';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.09.17-1';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_props.html';      // 이 파일 이름
   var SD_NAME = '매물관리';      // 사람이 부르는 이름
 
@@ -8336,21 +8336,57 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
     });
   }
 
+  // ── 단지명 다듬기 ───────────────────────────────────────
+  // 「스마트스퀘어 상가」와 「스마트스퀘어」가 따로 찍히던 문제를 막는다.
+  // 띄어쓰기를 지우고, 끝에 붙은 건물 종류 말을 떼어 같은 열쇠로 만든다.
+  var TAIL=/(상가|사무실|오피스텔|빌딩|타워|프라자|플라자|센터|몰)$/;
+  function nkey(name){
+    var s=String(name||'').replace(/\s+/g,'');
+    for(var i=0;i<2;i++){ if(TAIL.test(s) && s.replace(TAIL,'').length>=2) s=s.replace(TAIL,''); }
+    return s;
+  }
+  window.mpKey=nkey;
+
   // ── 위치 찾기 (단지명 기준) ─────────────────────────────
-  function findOne(name){
+  // 한 가지 형태로 못 찾으면 말을 바꿔 가며 다시 물어본다.
+  function variants(name){
+    var n=String(name||'').trim();
+    var bare=n.replace(/\s+/g,'');
+    var cut=bare.replace(TAIL,'');
+    var list=[
+      '인천 연수구 송도동 '+n,
+      '송도 '+n,
+      n,
+      '송도 '+cut,
+      cut
+    ];
+    return list.filter(function(v,i,a){ return v && v.length>=2 && a.indexOf(v)===i; });
+  }
+
+  function ask(q){
     return new Promise(function(res){
-      if(GEO[name]) return res(GEO[name]);
-      if(GEO[name]===null) return res(null);
-      PS.keywordSearch('인천 연수구 송도동 '+name, function(data,status){
-        if(status===kakao.maps.services.Status.OK && data.length){
-          var d=data[0];
-          GEO[name]={ lat:parseFloat(d.y), lng:parseFloat(d.x), placeName:d.place_name, addr:d.road_address_name||d.address_name };
-        }else{
-          GEO[name]=null;
-        }
-        res(GEO[name]);
+      PS.keywordSearch(q, function(data,status){
+        res(status===kakao.maps.services.Status.OK && data.length ? data[0] : null);
       });
     });
+  }
+
+  async function findOne(name){
+    var k=nkey(name);
+    if(GEO[k]!==undefined) return GEO[k];
+    var tries=variants(name);
+    for(var i=0;i<tries.length;i++){
+      var d=await ask(tries[i]);
+      if(d){
+        GEO[k]={ lat:parseFloat(d.y), lng:parseFloat(d.x),
+                 placeName:d.place_name, addr:d.road_address_name||d.address_name,
+                 hitBy:tries[i] };
+        return GEO[k];
+      }
+      await new Promise(function(r){ setTimeout(r,90); });
+    }
+    GEO[k]=null;
+    return null;
   }
 
   window.mpLoad=async function(){
@@ -8395,17 +8431,23 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
   function draw(list, used, over){
     var bounds=new kakao.maps.LatLngBounds(), n=0;
     FAIL=[];
-    var byName={};
+    // 같은 곳을 가리키는 이름들을 하나로 묶는다 (스마트스퀘어 상가 = 스마트스퀘어)
+    var byName={}, names={};
     list.forEach(function(p){
-      var nm=(p.complexName||'').trim();
-      if(used.indexOf(nm)<0) return;
-      (byName[nm]=byName[nm]||[]).push(p);
+      var raw=(p.complexName||'').trim();
+      if(used.indexOf(raw)<0) return;
+      var k=nkey(raw);
+      (byName[k]=byName[k]||[]).push(p);
+      (names[k]=names[k]||{})[raw]=(names[k][raw]||0)+1;
     });
 
-    Object.keys(byName).forEach(function(nm){
-      var g=GEO[nm];
-      var group=byName[nm];
-      if(!g){ FAIL.push({name:nm, n:group.length}); return; }
+    Object.keys(byName).forEach(function(k){
+      var g=GEO[k];
+      var group=byName[k];
+      var raws=Object.keys(names[k]);
+      // 화면에 보일 이름 — 가장 많이 쓰인 표기
+      var nm=raws.sort(function(a,b){ return names[k][b]-names[k][a] || a.length-b.length; })[0];
+      if(!g){ FAIL.push({name:nm, n:group.length, raws:raws}); return; }
       var sec=sector(group[0].propertyType);
       var color = sec==='상업' ? '#e65100' : '#2e7d32';
       var pos=new kakao.maps.LatLng(g.lat, g.lng);
@@ -8424,6 +8466,10 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
           '<div style="padding:10px 12px;font-size:12px;line-height:1.6;min-width:180px;max-width:260px">'
           +'<div style="font-weight:700;margin-bottom:4px">'+esc(nm)+' <span style="font-weight:400;color:#888">'+group.length+'건</span></div>'
           +'<div style="color:#888;font-size:11px;margin-bottom:6px">'+esc(g.addr||'')+'</div>'
+          + (raws.length>1
+              ? '<div style="font-size:10px;color:#e65100;background:#fff3e0;border-radius:6px;padding:4px 7px;margin-bottom:6px">'
+                +'단지명이 '+raws.length+'가지로 적혀 있어 하나로 묶었습니다 — '+esc(raws.join(' · '))+'</div>'
+              : '')
           + group.slice(0,4).map(function(p){
               return '<div style="padding:3px 0;border-top:0.5px solid #eee">'
                 +'<a href="javascript:mpDetail('+p.id+')" style="color:#1565c0;text-decoration:none">'
@@ -8468,7 +8514,7 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
     var box=$('mp-list'); if(!box) return;
     box.innerHTML=list.map(function(p){
       var nm=(p.complexName||'').trim();
-      var g=GEO[nm];
+      var g=GEO[nkey(nm)];
       var sec=sector(p.propertyType);
       var dot = sec==='상업' ? '#e65100' : '#2e7d32';
       return '<div onclick="mpGo(\''+encodeURIComponent(nm)+'\','+p.id+')" '
@@ -8484,7 +8530,7 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
   }
 
   window.mpGo=function(encName, id){
-    var nm=decodeURIComponent(encName), g=GEO[nm];
+    var nm=decodeURIComponent(encName), g=GEO[nkey(nm)];
     if(!g){ window.open('https://map.kakao.com/?q='+encodeURIComponent(nm),'_blank','noopener'); return; }
     MAP.setLevel(3);
     MAP.panTo(new kakao.maps.LatLng(g.lat,g.lng));
@@ -8492,6 +8538,115 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
     if(mk) kakao.maps.event.trigger(mk,'click');
   };
   window.mpDetail=function(id){ try{ openDetail(id); }catch(e){} };
+
+
+  // ══ 단지명 정리 도우미 ═══════════════════════════════════
+  // 같은 곳인데 표기가 갈린 단지명을 찾아 하나로 맞춘다.
+  // 매물 기록의 complexName 만 바꾸며, 반드시 확인을 받고 실행한다.
+  function tidyGroups(){
+    var HIST=['자사계약완료','타사계약완료','의뢰인확인보류','미확인보류','만기보류','거래완료'];
+    var byKey={};
+    (window.props||[]).forEach(function(p){
+      if(p.naverImport) return;
+      var raw=(p.complexName||'').trim();
+      if(!raw) return;
+      var k=nkey(raw);
+      if(!k) return;
+      var g=byKey[k]=byKey[k]||{names:{}, total:0, active:0};
+      g.names[raw]=(g.names[raw]||0)+1;
+      g.total++;
+      if(HIST.indexOf(p.status)<0) g.active++;
+    });
+    return Object.keys(byKey)
+      .map(function(k){
+        var g=byKey[k];
+        var raws=Object.keys(g.names);
+        // 가장 많이 쓰인 표기를 기준으로 제안 (같으면 짧은 쪽)
+        raws.sort(function(a,b){ return g.names[b]-g.names[a] || a.length-b.length; });
+        return { key:k, names:raws, counts:g.names, total:g.total, active:g.active, suggest:raws[0] };
+      })
+      .filter(function(g){ return g.names.length>1; })
+      .sort(function(a,b){ return b.total-a.total; });
+  }
+
+  window.mpTidy=function(){
+    var gs=tidyGroups();
+    var old=document.getElementById('mp-tidy-ov'); if(old) old.remove();
+    var ov=document.createElement('div');
+    ov.id='mp-tidy-ov';
+    ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:10150;display:flex;'
+      +'align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto';
+
+    var body;
+    if(!gs.length){
+      body='<p style="font-size:13px;color:#2e7d32;padding:10px 0">'
+        +'표기가 갈린 단지명이 없습니다. 정리할 것이 없습니다.</p>';
+    }else{
+      body='<p style="font-size:12px;color:#666;line-height:1.7;margin:0 0 14px">'
+        +'같은 곳으로 보이는데 <b>표기가 갈린 단지명</b> '+gs.length+'묶음을 찾았습니다.<br>'
+        +'기준으로 삼을 이름을 고르고 「이 묶음 맞추기」를 누르면 그 묶음의 매물 단지명이 모두 바뀝니다.<br>'
+        +'<span style="color:#c62828">서로 다른 건물이 섞여 있으면 건너뛰세요.</span></p>'
+        + gs.map(function(g,i){
+            return '<div style="border:0.5px solid #e0e0e0;border-radius:10px;padding:12px 14px;margin-bottom:10px">'
+              +'<div style="font-size:12px;color:#888;margin-bottom:8px">매물 '+g.total+'건 '
+              +(g.active!==g.total?'<span style="color:#aaa">(활성 '+g.active+'건)</span>':'')+'</div>'
+              +'<div style="display:flex;flex-direction:column;gap:5px;margin-bottom:10px">'
+              + g.names.map(function(nm,j){
+                  return '<label style="display:flex;align-items:center;gap:7px;font-size:13px;cursor:pointer">'
+                    +'<input type="radio" name="tidy'+i+'" value="'+encodeURIComponent(nm)+'"'
+                    +(j===0?' checked':'')+' style="cursor:pointer">'
+                    +'<span>'+esc(nm)+'</span>'
+                    +'<span style="font-size:11px;color:#aaa">'+g.counts[nm]+'건</span></label>';
+                }).join('')
+              +'</div>'
+              +'<button onclick="mpTidyApply('+i+')" class="btn-s" style="font-size:12px;'
+              +'background:#e8f5e9;border-color:#a5d6a7;color:#2e7d32">이 묶음 맞추기</button>'
+              +'</div>';
+          }).join('');
+    }
+
+    ov.innerHTML='<div style="background:#fff;border-radius:14px;max-width:560px;width:100%;margin:auto;'
+      +'overflow:hidden;box-shadow:0 8px 40px rgba(0,0,0,.25)">'
+      +'<div style="background:#1a2744;color:#fff;padding:13px 18px;display:flex;justify-content:space-between;align-items:center">'
+      +'<span style="font-size:14px;font-weight:700">🧷 단지명 정리</span>'
+      +'<button onclick="document.getElementById(\'mp-tidy-ov\').remove()" '
+      +'style="background:transparent;color:#fff;border:1px solid rgba(255,255,255,.4);border-radius:6px;'
+      +'padding:4px 10px;font-size:12px;cursor:pointer">✕ 닫기</button></div>'
+      +'<div style="padding:16px;max-height:70vh;overflow-y:auto">'+body+'</div></div>';
+    document.body.appendChild(ov);
+    ov.onclick=function(e){ if(e.target===ov) ov.remove(); };
+    window._mpTidyGroups=gs;
+  };
+
+  window.mpTidyApply=function(i){
+    var gs=window._mpTidyGroups||[];
+    var g=gs[i]; if(!g) return;
+    var sel=document.querySelector('input[name="tidy'+i+'"]:checked');
+    if(!sel){ alert('기준 이름을 골라 주세요.'); return; }
+    var target=decodeURIComponent(sel.value);
+    var others=g.names.filter(function(n){ return n!==target; });
+    if(!others.length){ alert('바꿀 것이 없습니다.'); return; }
+
+    var cnt=0;
+    (window.props||[]).forEach(function(p){
+      if(p.naverImport) return;
+      if(others.indexOf((p.complexName||'').trim())>=0) cnt++;
+    });
+    if(!confirm('단지명을 「'+target+'」 (으)로 맞춥니다.\n\n'
+      + others.map(function(n){return '· '+n;}).join('\n')
+      + '\n\n매물 '+cnt+'건의 단지명이 바뀝니다. 되돌릴 수 없습니다.\n진행할까요?')) return;
+
+    (window.props||[]).forEach(function(p){
+      if(p.naverImport) return;
+      if(others.indexOf((p.complexName||'').trim())>=0) p.complexName=target;
+    });
+    try{ toStore(); }catch(e){}
+    try{ rtbl(); }catch(e){}
+    try{ popSels(); }catch(e){}
+    try{ updFT(); }catch(e){}
+    alert('매물 '+cnt+'건의 단지명을 「'+target+'」 (으)로 맞췄습니다.');
+    mpTidy();
+  };
 
   // ── 화면 만들기 ─────────────────────────────────────────
   function mount(){
@@ -8515,6 +8670,7 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
       +       '<option value="">전체 거래</option><option>매매</option><option>전세</option><option>월세</option></select>'
       +     '<input id="mp-q" type="text" class="fi" style="width:130px;font-size:12px" placeholder="단지명 검색">'
       +     '<button onclick="mpLoad()" class="btn-p" style="font-size:12px;padding:7px 18px">🗺️ 지도에 표시</button>'
+      +     '<button onclick="mpTidy()" class="btn-s" style="font-size:12px">🧷 단지명 정리</button>'
       +     '<span id="mp-status" style="font-size:12px;color:#666"></span>'
       +   '</div>'
       +   '<div style="display:grid;grid-template-columns:300px 1fr;gap:12px" id="mp-grid">'
