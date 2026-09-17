@@ -19272,7 +19272,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.09.17-3';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.09.17-4';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_data.html';      // 이 파일 이름
   var SD_NAME = '실거래가';      // 사람이 부르는 이름
 
@@ -19674,9 +19674,46 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 </script>
 
 <script>
-/* 상세 모달 미니 지도 연결 — 송도주택공급현황 단지 상세 */
+/* 상세 모달 지도 — 부동산 데이터
+   · 송도주택공급현황 단지 상세 : 위치가 본문이라 자동 표시
+   · 매물(APT/OP·생숙/상가·사무실) 상세 : 「🗺️ 지도 보기」를 눌렀을 때만 부른다 */
 (function(){
   'use strict';
+
+  // 제목줄에 「지도 보기」 단추를 한 번만 만든다 (인쇄·닫기 단추 앞)
+  function ensureBtn(btnId, beforeSel, boxId){
+    var bt=document.getElementById(btnId);
+    if(bt && bt.isConnected) return bt;
+    var ref=null;
+    beforeSel.split('|').forEach(function(sel){ if(!ref) ref=document.querySelector(sel.trim()); });
+    if(!ref) return null;
+    bt=document.createElement('button');
+    bt.id=btnId; bt.type='button'; bt.className='no-print';
+    bt.style.cssText='font-size:11.5px;font-weight:600;padding:4px 11px;border:1px solid #90caf9;'
+      +'background:rgba(21,101,192,.12);color:#64b5f6;border-radius:7px;cursor:pointer;'
+      +'white-space:nowrap;flex-shrink:0;margin-right:8px';
+    bt.onclick=function(e){ e.stopPropagation(); window.sdMapToggle(boxId, btnId); };
+    ref.parentNode.insertBefore(bt, ref);
+    return bt;
+  }
+
+  function arm(info){
+    var slot=window.sdMiniMapSlot(info.box, info.anchor, info.where);
+    if(!slot){ window.sdMapWhy='자리를 찾지 못함: #'+info.anchor; return; }
+    slot.className='no-print';                 // 인쇄물에는 지도를 넣지 않는다 (카카오 약관)
+    slot.setAttribute('data-name', info.name);
+    if(info.auto){
+      slot.style.display='';
+      window.sdMiniMap(slot, info.name, info.opts||{});
+      return;
+    }
+    slot.style.display='none';
+    slot.innerHTML='';
+    var bt=ensureBtn(info.btn, info.beforeSel, info.box);
+    if(bt) bt.textContent='🗺️ 지도 보기';
+    var big=document.getElementById('sdmap-big'); if(big) big.remove();
+  }
+
   function wrap(fnName, pick){
     var orig=window[fnName];
     if(typeof orig!=='function' || orig.__sdmap) return false;
@@ -19685,26 +19722,33 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
       try{ out=orig.apply(this, arguments); }catch(e){ err=e; }
       try{
         var info=pick.apply(null, arguments);
-        if(info && info.name){
-          var slot=window.sdMiniMapSlot(info.box, info.anchor, info.where);
-          if(slot) window.sdMiniMap(slot, info.name, info.opts||{});
-          else window.sdMapWhy='자리를 찾지 못함: #'+info.anchor;
-        }else{
-          window.sdMapWhy='단지명을 읽지 못함 ('+fnName+')';
-        }
+        if(info && info.name) arm(info);
+        else window.sdMapWhy='단지명을 읽지 못함 ('+fnName+')';
       }catch(e){ window.sdMapWhy='지도 연결 중 오류: '+(e&&e.message); }
       if(err) throw err;
       return out;
     };
-    w.__sdmap=1;
-    window[fnName]=w;
-    return true;
+    w.__sdmap=1; window[fnName]=w; return true;
   }
 
+  var ND={ box:'sdmap-nd', anchor:'nd-info,nd-title', where:'after', btn:'sdmap-nd-btn',
+           beforeSel:'#naver-detail-box .modal-print-btn | #naver-detail-box button[onclick="closeNaverDetail()"]' };
+  function nd(name){ var o={ name:name }; for(var k in ND) o[k]=ND[k]; return o; }
+
   function boot(){
+    // 송도주택공급현황 단지 상세 — 자동
     wrap('hsOpenModal', function(nm){
       return nm?{ name:nm, box:'sdmap-hs', anchor:'hs-modal-images', where:'before',
-                  opts:{ height:240, level:4 } }:null;
+                  auto:true, opts:{ height:240, level:4 } }:null;
+    });
+    // 매물(APT) — 단추
+    wrap('openNaverDetail', function(idx){
+      var r=(window.G&&G.naverData)?G.naverData[idx]:null;
+      return r?nd(r.단지명):null;
+    });
+    // 매물(OP/생숙) · 매물(상가/사무실) — 단추
+    wrap('openNaverDetail2', function(r){
+      return (r&&r.단지명)?nd(r.단지명):null;
     });
   }
 
