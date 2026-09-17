@@ -19272,7 +19272,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.09.17-11';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.09.17-12';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_data.html';      // 이 파일 이름
   var SD_NAME = '실거래가';      // 사람이 부르는 이름
 
@@ -20163,6 +20163,9 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
                     +'break-inside:avoid}'
                     +'.pm-body .sd-mapcv img{max-width:none!important}'
                     +'.pm-body .sd-mapcv img.vw-tile{width:256px!important;height:256px!important}'
+                    // 표 안의 값은 가운데로 맞춘다 (인쇄·PDF 가독성)
+                    +'.pm-body table.data-table th,.pm-body table.data-table td'
+                    +'{text-align:center!important;vertical-align:middle!important}'
                     +'</style>');
               }catch(e){}
               return wr(str);
@@ -20218,20 +20221,35 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     return y*100+m;
   }
 
+  // 계약년월 읽기 — 파일마다 모양이 달라 여러 형태를 받아 준다
+  function rowYM(r){
+    var v=n(r['계약년월']);
+    if(v>=190000 && v<=999912) return v;
+    var s=String(r['계약년월']||r['계약일자']||r['계약일']||r['거래일']||'');
+    var m=s.match(/(19|20)(\d{2})\D?(\d{1,2})/);
+    if(m) return (parseInt(m[1]+m[2],10))*100+parseInt(m[3],10);
+    var y=n(r['연도']);
+    return y>=1990 ? y*100+12 : 0;
+  }
+
+  // 매매인지 — 실거래 자료의 '거래유형' 칸은 중개/직거래 구분이라 매매 판정에 쓰면 안 된다
+  function isSale(r){
+    var jw=String(r['전월세구분']||'').trim();
+    return !jw || jw==='매매';
+  }
+
   // ── 최근 1년 실거래 ─────────────────────────────────────
   function saleStat(danji, pyeong){
     var rows=window.G && G.saleData;
-    if(!rows || !rows.length) return null;
+    if(!rows || !rows.length) return 'NODATA';
     var nm=(typeof findSaleNm==='function') ? findSaleNm(danji) : danji;
     var cut=cutoffYM();
     var amts=[], pps=[];
     rows.forEach(function(r){
       if(r['단지명']!==nm) return;
       if(Number(r['분양평형'])!==Number(pyeong)) return;
-      if(n(r['계약년월'])<cut) return;
-      var jw=r['전월세구분'];
-      if(jw && jw!=='매매') return;                       // 전·월세는 뺀다
-      if(r['거래유형'] && r['거래유형']!=='매매') return;
+      if(rowYM(r)<cut) return;
+      if(!isSale(r)) return;                              // 전·월세는 뺀다
       var a=n(r['거래금액']);
       if(a>0) amts.push(a);
       var pp=n(r['평당가']);
@@ -20271,7 +20289,8 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 
   // ── 칸 만들기 ───────────────────────────────────────────
   function cellSale(s){
-    if(!s) return '<td class="num" style="color:var(--text3)">—</td>';
+    if(s==='NODATA') return '<td class="num" style="color:var(--text3)" title="실거래 자료가 아직 올라오지 않았습니다">—</td>';
+    if(!s) return '<td class="num" style="color:var(--text3)" title="최근 1년 매매 거래 없음">—</td>';
     var dim = s.cnt<=FEW ? ';'+DIM : '';
     var range = (s.min===s.max) ? '' :
       '<div style="font-size:9.5px;color:var(--text3);line-height:1.3">'+fmt(s.min)+'~'+fmt(s.max)+'</div>';
@@ -20281,7 +20300,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
       +range+'</td>';
   }
   function cellPP(s){
-    if(!s || !(s.pp>0)) return '<td class="num" style="color:var(--text3)">—</td>';
+    if(s==='NODATA' || !s || !(s.pp>0)) return '<td class="num" style="color:var(--text3)">—</td>';
     var dim = s.cnt<=FEW ? ';'+DIM : '';
     return '<td class="num" style="color:var(--accent3)'+dim+'">'+fmt(s.pp)+'만</td>';
   }
