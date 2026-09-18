@@ -5571,14 +5571,19 @@ function buildRentEstimate(selProps,bldgName,estDate,loanRate,intRate,tenant,ren
   var acctMode = document.getElementById('r2-acct-mode') ? document.getElementById('r2-acct-mode').value : 'developer';
   var acctBank, acctNum, acctName;
   if(acctMode==='landlord'){
-    acctBank = (document.getElementById('r2-acct-bank')||{value:''}).value||'수협은행';
-    acctNum  = (document.getElementById('r2-acct-num') ||{value:''}).value||'1010-1152-5134';
-    acctName = (document.getElementById('r2-acct-name')||{value:''}).value||'주식회사 에스개발';
+    // 임대인 계좌는 비워 두면 비운 대로 둔다.
+    // 예전에는 빈 칸일 때 시행사 기본값으로 떨어져 남의 계좌가 찍혔다.
+    acctBank = ((document.getElementById('r2-acct-bank')||{value:''}).value||'').trim();
+    acctNum  = ((document.getElementById('r2-acct-num') ||{value:''}).value||'').trim();
+    acctName = ((document.getElementById('r2-acct-name')||{value:''}).value||'').trim();
   } else {
     acctBank = _r2SavedAcct.bank||'수협은행';
     acctNum  = _r2SavedAcct.num ||'1010-1152-5134';
     acctName = _r2SavedAcct.name||'주식회사 에스개발';
   }
+
+  // 은행·계좌가 모두 비어 있으면 계좌 칸 자체를 넣지 않는다
+  var _acctShow = !!(String(acctBank||'').trim() || String(acctNum||'').trim());
 
   // 담당자 설정 읽기
   var staffSel = document.getElementById('r2-staff-sel');
@@ -5690,10 +5695,12 @@ function buildRentEstimate(selProps,bldgName,estDate,loanRate,intRate,tenant,ren
     +'</thead><tbody>'+rows2html+'</tbody></table></div>'
     // footer
     +'<div style="background:#f0f4ff;border:1px solid #c5cae9;border-radius:10px;padding:16px 20px">'
-    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">'
-    +'<div><div style="font-size:12px;color:#666;margin-bottom:4px">■ 보증금 입금계좌</div>'
-    +'<div style="font-size:16px;font-weight:700">'+acctBank+' '+acctNum+'</div>'
-    +'<div style="font-size:12px;color:#888">'+acctName+'</div></div>'
+    +'<div style="display:grid;grid-template-columns:'+(_acctShow?'1fr 1fr':'1fr')+';gap:10px">'
+    + (_acctShow
+        ? '<div><div style="font-size:12px;color:#666;margin-bottom:4px">■ 보증금 입금계좌</div>'
+          +'<div style="font-size:16px;font-weight:700">'+[acctBank,acctNum].filter(Boolean).join(' ')+'</div>'
+          +(acctName?'<div style="font-size:12px;color:#888">'+acctName+'</div>':'')+'</div>'
+        : '')
     +'<div><div style="font-size:12px;color:#666;margin-bottom:4px">■ 상담문의</div>'
     +'<div style="font-size:16px;font-weight:700">송도제일공인중개사사무소 &nbsp;<span style="font-size:13px;color:#555;font-weight:500">032-851-6688</span></div>'
     +'<div style="font-size:13px;color:#1a2744;font-weight:600;margin-top:3px">'+staff.name+' &nbsp; '+staff.tel+'</div>'
@@ -7545,7 +7552,7 @@ function applyAIResult(){
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.09.18-3';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.09.18-4';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_sangga.html';      // 이 파일 이름
   var SD_NAME = '상가관리';      // 사람이 부르는 이름
 
