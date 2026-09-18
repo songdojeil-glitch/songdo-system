@@ -2221,6 +2221,9 @@ function saveEstimateImage(){
 }
 
 function doPrintImage(el, fname){
+  if(doPrintImage.__busy){ if(typeof showToast==='function') showToast('인쇄 창을 준비하는 중입니다…'); return; }
+  doPrintImage.__busy=1;
+  setTimeout(function(){ doPrintImage.__busy=0; }, 20000);   // 만약을 위한 자동 해제
   var cards = el.querySelectorAll('.est-card');
   if(!cards.length){ cards=[el]; }
   var cardArr=Array.from(cards);
@@ -2237,7 +2240,7 @@ function doPrintImage(el, fname){
   btns.forEach(function(b){b.style.display='none';});
   var canvases=[], done=0;
   cardArr.forEach(function(card,ci){
-    html2canvas(card,{scale:2,useCORS:true,backgroundColor:'#ffffff',logging:false,width:1100,windowWidth:1400}).then(function(cv){
+    html2canvas(card,{scale:1.5,useCORS:true,backgroundColor:'#ffffff',logging:false,width:1100,windowWidth:1400}).then(function(cv){
       canvases[ci]=cv;
       done++;
       if(done===cardArr.length){
@@ -2266,17 +2269,33 @@ function doPrintImage(el, fname){
             +'display:flex;align-items:flex-start;justify-content:center;'
             +'padding-top:3mm;background:#fff;overflow:hidden;'
             +'">'
-            +'<img src="'+cv.toDataURL('image/jpeg',0.95)+'" '
+            +'<img src="'+cv.toDataURL('image/jpeg',0.88)+'" '
             +'style="width:'+wMM+'mm;height:auto;max-height:'+PH+'mm;display:block">'
             +'</div>';
         }).join('');
-        w.document.write('<html><head><title>'+fname+'</title>'
+        w.document.write('<html><head><meta charset="UTF-8"><title>'+fname+'</title>'
           +'<style>*{margin:0;padding:0;box-sizing:border-box}'
           +'body{background:#fff}'
           +'@media print{@page{margin:0;size:A4 portrait}body{margin:0}div{page-break-inside:avoid}img{height:auto!important}}'
           +'@media screen{body{background:#555;padding:8px}div{margin-bottom:8px;box-shadow:0 2px 8px rgba(0,0,0,.3)}}'
           +'</style></head><body>'+pageHtmls+'</body></html>');
-        setTimeout(function(){w.print();},800);
+        w.document.close();          // ★ 이 줄이 없으면 문서가 영원히 "로딩 중"으로 남아 미리보기가 안 뜬다
+        var go=function(){
+          var imgs=Array.prototype.slice.call(w.document.images);
+          var waits=imgs.map(function(im){
+            if(im.complete && im.naturalWidth) return Promise.resolve();
+            return new Promise(function(res){
+              var t=setTimeout(res, 5000);                       // 그림 하나가 말썽이어도 멈추지 않게
+              im.onload=im.onerror=function(){ clearTimeout(t); res(); };
+            });
+          });
+          Promise.all(waits).then(function(){
+            try{ w.focus(); }catch(e){}
+            setTimeout(function(){ doPrintImage.__busy=0; try{ w.print(); }catch(e){} }, 150);
+          });
+        };
+        if(w.document.readyState==='complete') go();
+        else w.addEventListener('load', go);
       }
     });
   });
@@ -7552,7 +7571,7 @@ function applyAIResult(){
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.09.18-9';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.09.18-10';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_sangga.html';      // 이 파일 이름
   var SD_NAME = '상가관리';      // 사람이 부르는 이름
 
