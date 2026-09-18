@@ -7552,7 +7552,7 @@ function applyAIResult(){
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.09.18-6';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.09.18-7';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_sangga.html';      // 이 파일 이름
   var SD_NAME = '상가관리';      // 사람이 부르는 이름
 
@@ -8210,27 +8210,45 @@ function applyAIResult(){
       +'border-right:4px solid transparent;border-top:9px solid #d32f2f"></div></div>';
     canvas.innerHTML=html;
 
-    // 그림이 하나도 안 들어오면 이유를 확인할 수 있게 알려 준다
+    // 그림이 안 들어오면 곧바로 이유를 확인할 수 있게 알려 준다
     var tiles=canvas.querySelectorAll('img.vw-tile');
     if(!tiles.length) return;
+    var one=(tiles[0]||{}).src||'';
+    var bad=0, shown=false;
+    function showFail(){
+      if(shown) return;
+      shown=true;
+      window.sdMapTileUrl=one;      // 콘솔에서도 꺼내 볼 수 있게
+      canvas.innerHTML='<div class="sd-tilefail" style="position:absolute;inset:0;display:flex;'
+        +'align-items:center;justify-content:center;padding:18px;text-align:center;'
+        +'font-size:12.5px;line-height:1.9;color:#333;background:#f6f7f9;overflow:auto">'
+        +'<div style="max-width:560px">'
+        +'<div style="font-size:13.5px;font-weight:700;margin-bottom:6px">'
+        +esc(SRC[st.src].label)+' 지도 그림이 오지 않습니다</div>'
+        +'<div style="opacity:.8;margin-bottom:10px">인증키의 <b>서비스 URL</b>에 '
+        +'<code>'+esc(location.origin)+'</code> 가 등록돼 있어야 할 수 있습니다.</div>'
+        +'<button onclick="window.open(window.sdMapTileUrl,\'_blank\')" '
+        +'style="padding:7px 16px;border:none;border-radius:8px;background:#1565c0;color:#fff;'
+        +'font-size:12.5px;font-weight:700;cursor:pointer">🔎 서버 답 확인 (새 창)</button>'
+        +'<div style="font-size:11px;opacity:.7;margin-top:10px">새 창에 나오는 문구를 알려 주시면 원인을 바로 잡겠습니다.</div>'
+        +'<textarea readonly onclick="this.select()" style="width:100%;margin-top:10px;height:52px;'
+        +'font-size:10.5px;padding:6px;border:1px solid #ddd;border-radius:6px;color:#666;'
+        +'background:#fff;resize:none">'+esc(one)+'</textarea>'
+        +'</div></div>';
+    }
+    Array.prototype.forEach.call(tiles, function(im){
+      im.addEventListener('error', function(){
+        bad++;
+        if(bad>=Math.min(3, tiles.length)) showFail();
+      });
+    });
     setTimeout(function(){
-      if(canvas.innerHTML.indexOf('sd-tilefail')>=0) return;
       var ok=0;
       Array.prototype.forEach.call(canvas.querySelectorAll('img.vw-tile'), function(im){
         if(im.naturalWidth>0) ok++;
       });
-      if(ok>0) return;
-      var one=(canvas.querySelector('img.vw-tile')||{}).src||'';
-      canvas.innerHTML='<div class="sd-tilefail" style="position:absolute;inset:0;display:flex;'
-        +'align-items:center;justify-content:center;padding:20px;text-align:center;'
-        +'font-size:12.5px;line-height:1.8;color:#444;background:#f6f7f9">'
-        +'<div><b>'+esc(SRC[st.src].label)+' 지도 그림이 오지 않습니다.</b><br>'
-        +'인증키·도메인 등록 상태를 확인해 주세요.<br>'
-        +'<a href="'+one+'" target="_blank" rel="noopener" '
-        +'style="color:#1565c0;font-weight:600">👉 지도 그림 주소를 새 창에서 열어 서버 답을 확인</a>'
-        +'<div style="font-size:11px;opacity:.7;margin-top:6px">열었을 때 나오는 문구를 알려 주시면 원인을 잡겠습니다.</div>'
-        +'</div></div>';
-    }, 2500);
+      if(!ok) showFail();
+    }, 2000);
   }
 
   function wire(canvas, st){
