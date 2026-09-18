@@ -7552,7 +7552,7 @@ function applyAIResult(){
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.09.18-5';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.09.18-6';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_sangga.html';      // 이 파일 이름
   var SD_NAME = '상가관리';      // 사람이 부르는 이름
 
@@ -8056,10 +8056,11 @@ function applyAIResult(){
   function tileUrl(src, layer, z, row, col){
     var S=SRC[src], L=S.layers[layer]||S.layers.base;
     if(src==='ngii'){
+      // 이 서버는 tilematrix·tilerow·tilecol 을 소문자로 받아야 한다 (대문자면 거부)
       return 'https://map.ngii.go.kr/openapi/Gettile.do?apikey='+encodeURIComponent(KEYS.ngii)
-        +'&layer='+L.id+'&style=korean&tilematrixset=korean'
-        +'&Service=WMTS&Request=GetTile&Version=1.0.0&Format=image/png'
-        +'&TileMatrix='+nMatrix(z)+'&TileCol='+col+'&TileRow='+row;
+        +'&SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0'
+        +'&LAYER='+L.id+'&STYLE=korean&TILEMATRIXSET=korean&FORMAT=image/png'
+        +'&tilematrix='+nMatrix(z)+'&tilerow='+row+'&tilecol='+col;
     }
     return 'https://api.vworld.kr/req/wmts/1.0.0/'+encodeURIComponent(KEYS.vw)
       +'/'+L.id+'/'+z+'/'+row+'/'+col+'.'+L.ext;
@@ -8208,6 +8209,28 @@ function applyAIResult(){
       +'<div style="position:absolute;left:-4px;top:-9px;width:0;height:0;border-left:4px solid transparent;'
       +'border-right:4px solid transparent;border-top:9px solid #d32f2f"></div></div>';
     canvas.innerHTML=html;
+
+    // 그림이 하나도 안 들어오면 이유를 확인할 수 있게 알려 준다
+    var tiles=canvas.querySelectorAll('img.vw-tile');
+    if(!tiles.length) return;
+    setTimeout(function(){
+      if(canvas.innerHTML.indexOf('sd-tilefail')>=0) return;
+      var ok=0;
+      Array.prototype.forEach.call(canvas.querySelectorAll('img.vw-tile'), function(im){
+        if(im.naturalWidth>0) ok++;
+      });
+      if(ok>0) return;
+      var one=(canvas.querySelector('img.vw-tile')||{}).src||'';
+      canvas.innerHTML='<div class="sd-tilefail" style="position:absolute;inset:0;display:flex;'
+        +'align-items:center;justify-content:center;padding:20px;text-align:center;'
+        +'font-size:12.5px;line-height:1.8;color:#444;background:#f6f7f9">'
+        +'<div><b>'+esc(SRC[st.src].label)+' 지도 그림이 오지 않습니다.</b><br>'
+        +'인증키·도메인 등록 상태를 확인해 주세요.<br>'
+        +'<a href="'+one+'" target="_blank" rel="noopener" '
+        +'style="color:#1565c0;font-weight:600">👉 지도 그림 주소를 새 창에서 열어 서버 답을 확인</a>'
+        +'<div style="font-size:11px;opacity:.7;margin-top:6px">열었을 때 나오는 문구를 알려 주시면 원인을 잡겠습니다.</div>'
+        +'</div></div>';
+    }, 2500);
   }
 
   function wire(canvas, st){
