@@ -2254,25 +2254,33 @@ function doPrintImage(el, fname){
         });
         btns.forEach(function(b){b.style.display='';});
         var w=window.open('','_blank');
-        var W=2100,H=2970; // A4 비율 (210:297)
+        // 페이지마다 따로 맞추면 긴 페이지가 더 작아져 가로 폭이 들쭉날쭉해진다.
+        // 가장 긴 페이지에 맞춘 하나의 폭을 모든 페이지에 똑같이 쓴다.
+        var PW=210, PH=291;   // mm — 아래위 여백 3mm
+        var wMM=PW;
+        canvases.forEach(function(cv){
+          if(!cv||!cv.width||!cv.height) return;
+          var fit=Math.min(PW, PH*cv.width/cv.height);
+          if(fit<wMM) wMM=fit;
+        });
+        wMM=Math.max(60, Math.round(wMM*10)/10);
         var pageHtmls=canvases.map(function(cv,i){
           var isLast=i===canvases.length-1;
-          // 이미지를 A4 비율 안에 맞게 (letter-boxing)
           return '<div style="'
             +'width:210mm;min-height:297mm;'
             +'page-break-after:'+(isLast?'avoid':'always')+';'
             +'page-break-inside:avoid;'
-            +'display:flex;align-items:center;justify-content:center;'
-            +'background:#fff;overflow:hidden;'
+            +'display:flex;align-items:flex-start;justify-content:center;'
+            +'padding-top:3mm;background:#fff;overflow:hidden;'
             +'">'
             +'<img src="'+cv.toDataURL('image/jpeg',0.95)+'" '
-            +'style="max-width:100%;max-height:297mm;width:auto;height:auto;display:block">'
+            +'style="width:'+wMM+'mm;height:auto;max-height:'+PH+'mm;display:block">'
             +'</div>';
         }).join('');
         w.document.write('<html><head><title>'+fname+'</title>'
           +'<style>*{margin:0;padding:0;box-sizing:border-box}'
           +'body{background:#fff}'
-          +'@media print{@page{margin:0;size:A4 portrait}body{margin:0}div{page-break-inside:avoid}img{max-width:210mm!important;height:auto!important}}'
+          +'@media print{@page{margin:0;size:A4 portrait}body{margin:0}div{page-break-inside:avoid}img{height:auto!important}}'
           +'@media screen{body{background:#555;padding:8px}div{margin-bottom:8px;box-shadow:0 2px 8px rgba(0,0,0,.3)}}'
           +'</style></head><body>'+pageHtmls+'</body></html>');
         setTimeout(function(){w.print();},800);
@@ -7553,7 +7561,7 @@ function applyAIResult(){
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.09.18-1';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.09.18-2';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_sangga.html';      // 이 파일 이름
   var SD_NAME = '상가관리';      // 사람이 부르는 이름
 
@@ -8298,6 +8306,49 @@ function applyAIResult(){
     window.sdVMap(host, host.getAttribute('data-name'), {height:460});
   };
 
+  // ── 견적서 같은 곳에 넣을 정적 지도 (미리 좌표를 캐시해 두고 그림만 뽑는다) ──
+  window.sdVEnsure=async function(name){
+    await loadKey();
+    if(!KEY) return null;
+    try{ return await find(name); }catch(e){ return null; }
+  };
+  window.sdVHas=function(name){
+    var g=GEO[String(name||'').replace(/\s+/g,'')];
+    return !!(g && KEY);
+  };
+  // 좌표가 이미 캐시에 있으면 바로 타일 그림 HTML 을 돌려준다 (없으면 빈 문자열)
+  window.sdVTilesHtml=function(name, W, H, opts){
+    opts=opts||{};
+    var g=GEO[String(name||'').replace(/\s+/g,'')];
+    if(!g || !KEY) return '';
+    var z=opts.z||16, layer=opts.layer||'base';
+    W=W||1000; H=H||520;
+    var nT=Math.pow(2,z);
+    var px=lon2fx(g.lng,z)*TSZ, py=lat2fy(g.lat,z)*TSZ;
+    var left=px-W/2, top=py-H/2;
+    var x0=Math.floor(left/TSZ), x1=Math.floor((left+W)/TSZ);
+    var y0=Math.floor(top/TSZ),  y1=Math.floor((top+H)/TSZ);
+    var inner='';
+    for(var y=y0;y<=y1;y++){
+      if(y<0||y>=nT) continue;
+      for(var x=x0;x<=x1;x++){
+        var xx=((x%nT)+nT)%nT;
+        inner+='<img class="vw-tile" src="'+tileUrl(layer,z,y,xx)+'" width="'+TSZ+'" height="'+TSZ+'" '
+          +'style="position:absolute;left:'+(x*TSZ-left)+'px;top:'+(y*TSZ-top)+'px" alt="">';
+      }
+    }
+    inner+='<div style="position:absolute;left:50%;top:50%;width:0;height:0">'
+      +'<div style="position:absolute;left:-11px;top:-32px;width:22px;height:22px;border-radius:50%;'
+      +'background:#d32f2f;border:4px solid #fff;box-shadow:0 1px 5px rgba(0,0,0,.5)"></div>'
+      +'<div style="position:absolute;left:-5px;top:-11px;width:0;height:0;border-left:5px solid transparent;'
+      +'border-right:5px solid transparent;border-top:11px solid #d32f2f"></div></div>';
+    return '<div style="position:relative;width:'+W+'px;height:'+H+'px;overflow:hidden;'
+      +'border-radius:8px;background:#e8e8e8">'+inner+'</div>'
+      +'<div style="font-size:11px;color:#777;margin-top:6px">📍 '+esc(g.placeName||name)
+      +(g.addr?' · '+esc(g.addr):'')
+      +' &nbsp;|&nbsp; <b>출처: 국토교통부 브이월드(공간정보 오픈플랫폼)</b></div>';
+  };
+
   // ── 크게 보기 ───────────────────────────────────────────
   window.sdVBig=function(btn){
     var src=btn.closest('[data-vwmap]').querySelector('[data-vwcanvas]');
@@ -8498,6 +8549,122 @@ function applyAIResult(){
 })();
 </script>
 
+
+<!-- ═══════════════════════════════════════════════════════════
+     견적서 위치도 페이지 모듈  v1.0  (상가관리)
+     - 출력 범위 선택에 「🗺️ 위치도 페이지 포함」을 더한다
+     - 켜져 있으면 견적서 뒤에 위치도 한 장을 붙인다 (브이월드 지도 + 출처)
+     - 좌표는 미리 한 번만 찾아 두고, 출력할 때는 그림만 뽑아 쓴다
+     기존 코드를 고치지 않고 덧붙이는 방식
+     ═══════════════════════════════════════════════════════ -->
+<script>
+(function(){
+  'use strict';
+
+  var BOXES=[
+    { name:'sale-print-opt',   chk:'sg-mapinc-sale' },
+    { name:'leased-print-opt', chk:'sg-mapinc-leased' },
+    { name:'rent-print-opt',   chk:'sg-mapinc-rent' }
+  ];
+
+  function $(id){ return document.getElementById(id); }
+  function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+  function bldgName(){
+    try{
+      var b=(window.BUILDINGS||[]).filter(function(x){ return x.id===window.curBldgId; })[0];
+      return b?b.name:'';
+    }catch(e){ return ''; }
+  }
+  // 상가관리 지도 칸이 쓰는 것과 같은 찾을 말
+  function target(){
+    var inp=$('sg-map-addr-est')||$('sg-map-addr-rent')||$('sg-map-addr-dash');
+    var v=(inp&&inp.value||'').trim();
+    if(v) return v;
+    var ai=(($('ai-addr')||{}).value||'').trim();
+    if(ai) return ai;
+    return bldgName();
+  }
+
+  function wanted(){
+    var id = window._rentPrintMode ? 'sg-mapinc-rent'
+           : window._leasedPrintMode ? 'sg-mapinc-leased'
+           : 'sg-mapinc-sale';
+    var el=$(id);
+    return el ? !!el.checked : false;
+  }
+
+  // ── 위치도 한 장 만들기 ─────────────────────────────────
+  function mapPage(){
+    if(!wanted()) return '';
+    if(typeof window.sdVTilesHtml!=='function') return '';
+    var t=target();
+    if(!t) return '';
+    var tiles=window.sdVTilesHtml(t, 1050, 620, { z:16, layer:'base' });
+    var pageStyle='page-break-before:always;width:100%;padding:24px;box-sizing:border-box;'
+      +'background:#fff;font-family:-apple-system,sans-serif;';
+    var head='<div style="background:#1a2744;color:#fff;border-radius:10px 10px 0 0;padding:14px 20px;'
+      +'margin:-24px -24px 20px;display:flex;justify-content:space-between;align-items:center">'
+      +'<span style="font-size:14px;font-weight:700">입지 · 위치도</span>'
+      +'<span style="font-size:12px;color:#90caf9">송도제일공인중개사사무소</span></div>';
+    var sec='<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">'
+      +'<div style="width:4px;height:28px;background:#2e7d32;border-radius:2px;flex-shrink:0"></div>'
+      +'<span style="font-size:15px;font-weight:800;color:#2e7d32">🗺️ '+esc(bldgName()||t)+' 위치</span></div>';
+    var body = tiles
+      ? tiles
+      : '<div style="width:100%;height:320px;background:#f4f6f8;border-radius:8px;display:flex;'
+        +'align-items:center;justify-content:center;color:#90a4ae;font-size:13px;text-align:center;line-height:1.8">'
+        +'위치도를 준비하지 못했습니다.<br>견적서 탭 위쪽 「건물 위치」에서 지도를 한 번 열어 주세요.</div>';
+    return '<div class="est-card" style="'+pageStyle+'">'+head+sec+body+'</div>';
+  }
+
+  // ── 출력 범위 선택에 체크상자 더하기 ────────────────────
+  function addChecks(){
+    BOXES.forEach(function(b){
+      if($(b.chk)) return;
+      var r=document.querySelector('input[name="'+b.name+'"]');
+      if(!r) return;
+      var row=r.closest('div');
+      if(!row) return;
+      var lab=document.createElement('label');
+      lab.style.cssText='display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;'
+        +'color:#2e7d32;font-weight:700';
+      lab.innerHTML='<input type="checkbox" id="'+b.chk+'" checked> 🗺️ 위치도 페이지 포함';
+      row.appendChild(lab);
+    });
+  }
+
+  // ── 좌표 미리 찾아 두기 (출력할 때 기다리지 않게) ───────
+  var lastT='';
+  function prefetch(){
+    var t=target();
+    if(!t || t===lastT) return;
+    lastT=t;
+    if(typeof window.sdVEnsure==='function') window.sdVEnsure(t);
+  }
+
+  function boot(){
+    addChecks();
+    var orig=window.buildExtraPages;
+    if(typeof orig==='function' && !orig.__sgmap){
+      var w=function(){
+        var base='';
+        try{ base=orig.apply(this, arguments)||''; }catch(e){ base=''; }
+        var extra='';
+        try{ extra=mapPage(); }catch(e){ extra=''; }
+        return base+extra;
+      };
+      w.__sgmap=1;
+      window.buildExtraPages=w;
+    }
+    prefetch();
+  }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',function(){ setTimeout(boot,1500); });
+  else setTimeout(boot,1500);
+  setTimeout(boot,3200);
+  setInterval(prefetch, 8000);     // 건물·주소가 바뀌면 조용히 다시 찾아 둔다
+})();
+</script>
 
 </body>
 </html>
