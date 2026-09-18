@@ -7553,7 +7553,7 @@ function applyAIResult(){
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.09.14-1';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.09.18-1';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_sangga.html';      // 이 파일 이름
   var SD_NAME = '상가관리';      // 사람이 부르는 이름
 
@@ -7691,6 +7691,813 @@ function applyAIResult(){
   else setTimeout(boot,600);
 })();
 </script>
+
+<!-- ═══════════════════════════════════════════════════════════
+     상세 모달 미니 지도 모듈  v1.0  — 카카오맵  (상가관리)
+     - 단지·매물 상세를 열면 그 자리에서 위치를 보여 준다
+     - 단지명으로 장소를 찾는다 (주소 칸이 없는 자료가 많아서)
+     - 못 찾으면 가짜로 찍지 않고 카카오맵 검색 고리만 준다
+     - 찾은 위치는 화면에만 두고 저장하지 않는다 (카카오 약관: 실시간 호출만 허용)
+     기존 코드를 고치지 않고 덧붙이는 방식
+     ═══════════════════════════════════════════════════════ -->
+<script>
+(function(){
+  'use strict';
+
+  var KEY='', SDK=false, PS=null;
+  var GEO={};                 // 이번 화면에서만 쓰는 임시 기억 (새로고침하면 사라진다)
+  var SEQ=0, LAST=null;
+  window.sdMapWhy='';         // 마지막 상태 — 문제가 생겼을 때 확인용
+  window.sdMiniMapRetry=function(){
+    if(!LAST) return;
+    if(LAST.name) delete GEO[nkey(LAST.name)];
+    window.sdMiniMap(LAST.host, LAST.name, LAST.opts);
+  };
+
+  function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+  // ── 카카오맵 키 (지도 탐색 탭에서 등록한 것을 함께 쓴다) ──
+  async function loadKey(){
+    if(KEY) return KEY;
+    try{ var r=await window.storage.get('sd_kakao_key'); if(r&&r.value) KEY=String(r.value).trim(); }catch(e){}
+    if(!KEY){ try{ KEY=(localStorage.getItem('sd_kakao_key')||'').trim(); }catch(e){} }
+    return KEY;
+  }
+
+  function loadSDK(){
+    return new Promise(function(res,rej){
+      if(SDK && window.kakao && window.kakao.maps) return res();
+      if(window.kakao && window.kakao.maps && window.kakao.maps.services){ SDK=true; return res(); }
+      if(!KEY) return rej(new Error('키 없음'));
+      var ex=document.getElementById('sd-kakao-sdk');
+      if(ex){ // 다른 모듈이 이미 불러오는 중
+        var t=setInterval(function(){
+          if(window.kakao && window.kakao.maps && window.kakao.maps.services){ clearInterval(t); SDK=true; res(); }
+        },200);
+        setTimeout(function(){ clearInterval(t); if(!SDK) rej(new Error('카카오맵을 불러오지 못했습니다.')); },8000);
+        return;
+      }
+      var s=document.createElement('script');
+      s.id='sd-kakao-sdk';
+      s.src='https://dapi.kakao.com/v2/maps/sdk.js?appkey='+encodeURIComponent(KEY)+'&libraries=services&autoload=false';
+      s.onload=function(){
+        // 카카오가 오류 본문(JSON)을 200으로 돌려줄 때가 있다 — 그때는 kakao 가 없다
+        if(!(window.kakao && window.kakao.maps && typeof window.kakao.maps.load==='function')){
+          return rej(new Error('카카오맵이 이 주소에서 허용되지 않았습니다. 카카오 디벨로퍼스에서 '
+            +'①JavaScript SDK 도메인 등록 ②제품 설정 → 카카오맵 사용 설정을 확인해 주세요.'));
+        }
+        window.kakao.maps.load(function(){ SDK=true; res(); });
+      };
+      s.onerror=function(){ rej(new Error('카카오맵을 불러오지 못했습니다. 키와 웹 도메인 등록을 확인해 주세요.')); };
+      setTimeout(function(){ if(!SDK) rej(new Error('카카오맵 응답이 없습니다. 잠시 뒤 다시 열어 주세요.')); }, 10000);
+      document.head.appendChild(s);
+    });
+  }
+
+  // ── 단지명 다듬기 (지도 탐색 탭과 같은 규칙) ──────────────
+  var TAIL=/(상가|사무실|오피스텔|빌딩|타워|프라자|플라자|센터|몰)$/;
+  function nkey(name){
+    if(typeof window.mpKey==='function') return window.mpKey(name);
+    var s=String(name||'').replace(/\s+/g,'');
+    for(var i=0;i<2;i++){ if(TAIL.test(s) && s.replace(TAIL,'').length>=2) s=s.replace(TAIL,''); }
+    return s;
+  }
+  function variants(name){
+    var n=String(name||'').trim();
+    // 도로명·지번 주소처럼 보이면 손대지 않고 그대로 물어본다
+    if(/(로|길)\s*\d/.test(n) || /^(서울|인천|경기|부산|대구|대전|광주|울산|세종|강원|충북|충남|전북|전남|경북|경남|제주)/.test(n)){
+      var only=[n];
+      var short=n.replace(/^인천광역시\s*/,'인천 ').replace(/\s+/g,' ').trim();
+      if(short!==n) only.push(short);
+      return only;
+    }
+    var bare=n.replace(/\s+/g,'');
+    var cut=bare.replace(TAIL,'');
+    return ['인천 연수구 송도동 '+n, '송도 '+n, n, '송도 '+cut, cut]
+      .filter(function(v,i,a){ return v && v.length>=2 && a.indexOf(v)===i; });
+  }
+
+  function ask(q){
+    return new Promise(function(res){
+      PS.keywordSearch(q, function(data,status){
+        res(status===kakao.maps.services.Status.OK && data.length ? data[0] : null);
+      });
+    });
+  }
+
+  async function findOne(name){
+    var k=nkey(name);
+    if(GEO[k]!==undefined) return GEO[k];
+    var tries=variants(name);
+    for(var i=0;i<tries.length;i++){
+      var d=await ask(tries[i]);
+      if(d){
+        GEO[k]={ lat:parseFloat(d.y), lng:parseFloat(d.x),
+                 placeName:d.place_name, addr:d.road_address_name||d.address_name };
+        return GEO[k];
+      }
+      await new Promise(function(r){ setTimeout(r,90); });
+    }
+    GEO[k]=null;
+    return null;
+  }
+
+  function kakaoLink(name){
+    return 'https://map.kakao.com/?q='+encodeURIComponent('송도 '+String(name||'').trim());
+  }
+
+  function frame(name, inner, foot, big){
+    var right='';
+    if(big){
+      right+='<span style="display:flex;border:1px solid rgba(128,128,128,.4);border-radius:6px;overflow:hidden">'
+        +'<button style="font-size:11px;font-weight:700;padding:3px 10px;border:none;cursor:default;'
+        +'background:#1a2744;color:#fff">카카오지도</button>'
+        +'<button onclick="sdVMapSwap(this)" style="font-size:11px;font-weight:600;padding:3px 10px;'
+        +'border:none;cursor:pointer;background:transparent;color:inherit">브이월드지도</button></span>';
+      right+='<button onclick="sdMapBig(\''+encodeURIComponent(name)+'\')" '
+        +'style="font-size:11px;font-weight:600;padding:3px 10px;border:1px solid rgba(128,128,128,.4);'
+        +'background:transparent;border-radius:6px;cursor:pointer;color:inherit">⤢ 크게 보기</button>';
+    }
+    right+='<a href="'+kakaoLink(name)+'" target="_blank" rel="noopener" '
+      +'style="font-size:11px;font-weight:600;text-decoration:none;color:#1565c0">카카오맵에서 열기 ↗</a>';
+    return '<div style="border:1px solid rgba(128,128,128,.28);border-radius:10px;overflow:hidden">'
+      +'<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;'
+      +'padding:8px 12px;background:rgba(128,128,128,.10);font-size:12px;font-weight:700">'
+      +'<span>📍 위치 <span style="font-weight:400;opacity:.75">'+esc(name)+'</span></span>'
+      +'<span class="no-print" style="display:flex;gap:8px;align-items:center;flex-shrink:0">'+right+'</span>'
+      +'</div>'+inner
+      +(foot?'<div style="padding:7px 12px;font-size:11px;opacity:.7;line-height:1.6">'+foot+'</div>':'')
+      +'</div>';
+  }
+
+  // ── 크게 보기 (화면을 덮는 큰 지도) ─────────────────────
+  window.sdMapBig=function(enc){
+    var name=decodeURIComponent(enc||'');
+    var g=GEO[nkey(name)];
+    if(!g || !(window.kakao&&window.kakao.maps)) return;
+    var old=document.getElementById('sdmap-big'); if(old) old.remove();
+    var ov=document.createElement('div');
+    ov.id='sdmap-big';
+    ov.style.cssText='position:fixed;inset:0;z-index:10300;background:rgba(0,0,0,.6);display:flex;'
+      +'align-items:stretch;justify-content:center;padding:14px;box-sizing:border-box';
+    ov.innerHTML='<div style="background:#fff;border-radius:14px;overflow:hidden;display:flex;flex-direction:column;'
+      +'width:100%;max-width:1500px;height:100%;box-shadow:0 10px 50px rgba(0,0,0,.35)">'
+      +'<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;'
+      +'padding:11px 16px;background:#1a2744;color:#fff">'
+      +'<span style="font-size:14px;font-weight:700">📍 '+esc(g.placeName||name)
+      +(g.addr?' <span style="font-weight:400;opacity:.75;font-size:12px">'+esc(g.addr)+'</span>':'')+'</span>'
+      +'<span style="display:flex;gap:9px;align-items:center;flex-shrink:0">'
+      +'<a href="'+kakaoLink(name)+'" target="_blank" rel="noopener" '
+      +'style="font-size:12px;color:#cfe3ff;text-decoration:none">카카오맵에서 열기 ↗</a>'
+      +'<button onclick="document.getElementById(\'sdmap-big\').remove()" '
+      +'style="background:transparent;color:#fff;border:1px solid rgba(255,255,255,.4);border-radius:6px;'
+      +'padding:4px 11px;font-size:12px;cursor:pointer">✕ 닫기</button></span></div>'
+      +'<div id="sdmap-big-canvas" style="flex:1 1 auto;background:#eee;min-height:0"></div></div>';
+    document.body.appendChild(ov);
+    ov.onclick=function(e){ if(e.target===ov) ov.remove(); };
+    var esckey=function(e){ if(e.key==='Escape'){ var b=document.getElementById('sdmap-big'); if(b) b.remove();
+      document.removeEventListener('keydown',esckey); } };
+    document.addEventListener('keydown',esckey);
+    var pos=new kakao.maps.LatLng(g.lat,g.lng);
+    var m=new kakao.maps.Map(document.getElementById('sdmap-big-canvas'), { center:pos, level:3 });
+    new kakao.maps.Marker({ map:m, position:pos });
+    m.addControl(new kakao.maps.ZoomControl(), kakao.maps.ControlPosition.RIGHT);
+    setTimeout(function(){ try{ m.relayout(); m.setCenter(pos); }catch(e){} },120);
+    var onres=function(){
+      if(!document.getElementById('sdmap-big')){ window.removeEventListener('resize',onres); return; }
+      try{ m.relayout(); m.setCenter(pos); }catch(e){}
+    };
+    window.addEventListener('resize', onres);
+  };
+
+  // ── 「지도 보기」 단추 ───────────────────────────────────
+  // 평소엔 접어 두고, 누를 때만 카카오에 물어본다 (호출 아끼기)
+  window.sdMapToggle=function(boxId, btnId){
+    var b=document.getElementById(boxId), bt=document.getElementById(btnId);
+    if(!b) return;
+    var opening = (b.style.display==='none');
+    b.style.display = opening ? '' : 'none';
+    if(bt) bt.textContent = opening ? '🗺️ 지도 닫기' : '🗺️ 지도 보기';
+    if(opening) window.sdMiniMap(b, b.getAttribute('data-name')||'', { height:460, big:true });
+    else b.innerHTML='';
+  };
+
+  function note(name, msg, retry){
+    return frame(name, '<div style="padding:16px 12px;font-size:12px;opacity:.85;line-height:1.7">'+msg
+      +(retry?' <button onclick="sdMiniMapRetry()" style="margin-left:6px;font-size:11px;padding:3px 10px;'
+        +'border:1px solid rgba(128,128,128,.4);background:transparent;border-radius:6px;cursor:pointer;'
+        +'color:inherit">⟳ 다시 시도</button>':'')
+      +'</div>', '');
+  }
+
+  // ── 미니 지도 그리기 ────────────────────────────────────
+  // host : 지도를 넣을 자리 (요소 또는 id)
+  // name : 찾을 단지·건물 이름
+  window.sdMiniMap=async function(host, name, opts){
+    opts=opts||{};
+    var el=(typeof host==='string')?document.getElementById(host):host;
+    if(!el) return;
+    name=String(name||'').trim();
+    if(!name){ el.innerHTML=''; return; }
+
+    var my=++SEQ;                       // 빠르게 다른 매물을 열면 늦게 온 답은 버린다
+    el.innerHTML=note(name,'지도를 준비하는 중…');
+
+    LAST={host:el, name:name, opts:opts};
+
+    await loadKey();
+    if(my!==SEQ) return;
+    if(!KEY){
+      window.sdMapWhy='카카오맵 키 없음';
+      el.innerHTML=note(name,
+        '카카오맵 키가 아직 없습니다. <b>매물관리 → 🗺️ 지도 탐색</b> 탭에서 키를 한 번 넣으면 '
+        +'여기에도 지도가 나옵니다.');
+      return;
+    }
+
+    try{ await loadSDK(); }
+    catch(e){
+      if(my!==SEQ) return;
+      window.sdMapWhy='SDK: '+(e&&e.message);
+      el.innerHTML=note(name, esc(e.message||'지도를 불러오지 못했습니다.'), true);
+      return;
+    }
+    if(my!==SEQ) return;
+    if(!PS) PS=new kakao.maps.services.Places();
+
+    el.innerHTML=note(name,'위치를 찾는 중…');
+    var g;
+    try{ g=await findOne(name); }catch(e){ g=null; window.sdMapWhy='검색 오류: '+(e&&e.message); }
+    if(my!==SEQ) return;
+
+    if(!g){
+      window.sdMapWhy='이름으로 못 찾음: '+name;
+      el.innerHTML=note(name,
+        '이름으로 위치를 찾지 못했습니다. 위의 <b>카카오맵에서 크게 보기</b>로 직접 확인해 주세요.', true);
+      return;
+    }
+    window.sdMapWhy='정상: '+name;
+
+    var cid='sdmap-c'+my;
+    el.innerHTML=frame(name,
+      '<div id="'+cid+'" class="sd-mapcv" style="width:100%;height:'+(opts.height||460)+'px;background:#eee"></div>',
+      '🏷️ '+esc(g.placeName||name)+(g.addr?' · '+esc(g.addr):'')
+      +' <span style="opacity:.6">— 이름으로 찾은 위치라 실제와 다를 수 있습니다</span>'
+      +'<br><b>지도 데이터 © 카카오 (Kakao Map)</b>', true);
+
+    var box=document.getElementById(cid);
+    if(!box) return;
+    var pos=new kakao.maps.LatLng(g.lat, g.lng);
+    var map=new kakao.maps.Map(box, { center:pos, level:opts.level||4 });
+    new kakao.maps.Marker({ map:map, position:pos });
+    map.addControl(new kakao.maps.ZoomControl(), kakao.maps.ControlPosition.RIGHT);
+    setTimeout(function(){ try{ map.relayout(); map.setCenter(pos); }catch(e){} }, 120);
+    setTimeout(function(){ try{ map.relayout(); map.setCenter(pos); }catch(e){} }, 500);
+  };
+
+  // ── 모달 안에 지도 자리를 만들어 준다 ────────────────────
+  // anchorId 앞 또는 뒤에 <div id=boxId> 를 한 번만 만든다
+  window.sdMiniMapSlot=function(boxId, anchorId, where){
+    var b=document.getElementById(boxId);
+    if(b && b.isConnected) return b;
+    var a=null;
+    String(anchorId).split(',').forEach(function(id){ if(!a) a=document.getElementById(id.trim()); });
+    if(!a) return null;
+    b=document.createElement('div');
+    b.id=boxId;
+    b.style.margin='14px 0';
+    if(where==='after') a.parentNode.insertBefore(b, a.nextSibling);
+    else a.parentNode.insertBefore(b, a);
+    return b;
+  };
+})();
+</script>
+<!-- ═══════════════════════════════════════════════════════════
+     브이월드 인쇄용 지도 모듈  v1.0  (상가관리)
+     - 국토교통부 공간정보 오픈플랫폼(브이월드) 배경지도
+     - 공공저작물 제1유형(출처표시) — 인쇄·PDF·브리핑 자료에 넣을 수 있다
+     - 좌표도 브이월드 검색으로 구한다 (카카오 자료를 옮겨 쓰지 않는다)
+     - 타일을 <img> 로 직접 깔아 인쇄가 깨지지 않게 한다
+     기존 코드를 고치지 않고 덧붙이는 방식
+     ═══════════════════════════════════════════════════════ -->
+<script>
+(function(){
+  'use strict';
+
+  var KEY='', GEO={}, SEQ=0, TSZ=256;
+  var LAYERS={ base:{id:'Base', ext:'png', label:'일반'},
+               sat :{id:'Satellite', ext:'jpeg', label:'위성'} };
+
+  function $(id){ return document.getElementById(id); }
+  function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+  // ── 인증키 ──────────────────────────────────────────────
+  async function loadKey(){
+    if(KEY) return KEY;
+    try{ var r=await window.storage.get('sd_vworld_key'); if(r&&r.value) KEY=String(r.value).trim(); }catch(e){}
+    if(!KEY){ try{ KEY=(localStorage.getItem('sd_vworld_key')||'').trim(); }catch(e){} }
+    return KEY;
+  }
+  window.sdVKeySave=async function(btn){
+    var box=btn.closest('[data-vwkeybox]');
+    var inp=box?box.querySelector('input'):null;
+    var v=(inp&&inp.value||'').trim();
+    if(v.length<20){ alert('인증키가 너무 짧습니다.\n브이월드에서 발급받은 인증키를 그대로 붙여넣어 주세요.'); return; }
+    KEY=v;
+    try{ await window.storage.set('sd_vworld_key', v); }catch(e){}
+    try{ localStorage.setItem('sd_vworld_key', v); }catch(e){}
+    var host=btn.closest('[data-name]');
+    if(host) window.sdVMap(host, host.getAttribute('data-name'));
+  };
+  window.sdVHasKey=async function(){ await loadKey(); return !!KEY; };
+  window.sdVKeyClear=async function(){
+    if(!confirm('저장된 브이월드 인증키를 지울까요?')) return;
+    KEY='';
+    try{ await window.storage.set('sd_vworld_key',''); }catch(e){}
+    try{ localStorage.removeItem('sd_vworld_key'); }catch(e){}
+    alert('지웠습니다.');
+  };
+
+  // ── 브이월드 검색으로 좌표 찾기 ─────────────────────────
+  // 브라우저에서 바로 부를 수 있게 JSONP 를 먼저 쓰고, 안 되면 보통 방식으로 다시 시도한다
+  function jsonp(url, ms){
+    return new Promise(function(res){
+      var cb='sdvw'+(Date.now()%1e7)+Math.floor(Math.random()*1000);
+      var s=document.createElement('script');
+      var done=false;
+      window[cb]=function(d){ done=true; cleanup(); res(d); };
+      function cleanup(){ try{ delete window[cb]; }catch(e){ window[cb]=undefined; }
+                          if(s.parentNode) s.parentNode.removeChild(s); }
+      s.src=url+'&callback='+cb;
+      s.onerror=function(){ if(!done){ done=true; cleanup(); res(null); } };
+      document.head.appendChild(s);
+      setTimeout(function(){ if(!done){ done=true; cleanup(); res(null); } }, ms||6000);
+    });
+  }
+
+  function searchUrl(q, type, category){
+    return 'https://api.vworld.kr/req/search?service=search&request=search&version=2.0'
+      +'&crs=EPSG:4326&size=5&page=1&format=json&errorformat=json'
+      +'&type='+type+(category?'&category='+category:'')
+      +'&query='+encodeURIComponent(q)
+      +'&key='+encodeURIComponent(KEY)
+      +'&domain='+encodeURIComponent(location.origin);
+  }
+
+  function pick(d){
+    try{
+      var it=d.response.result.items;
+      if(!it || !it.length) return null;
+      var p=it[0].point;
+      var lat=parseFloat(p.y), lng=parseFloat(p.x);
+      if(!isFinite(lat)||!isFinite(lng)) return null;
+      return { lat:lat, lng:lng, title:it[0].title||'',
+               addr:(it[0].address&&(it[0].address.road||it[0].address.parcel))||'' };
+    }catch(e){ return null; }
+  }
+
+  async function ask(url){
+    var d=await jsonp(url);
+    if(d) return pick(d);
+    try{ var r=await fetch(url); var j=await r.json(); return pick(j); }catch(e){ return null; }
+  }
+
+  function variants(name){
+    var n=String(name||'').trim();
+    // 도로명·지번 주소처럼 보이면 손대지 않고 그대로 물어본다
+    if(/(로|길)\s*\d/.test(n) || /^(서울|인천|경기|부산|대구|대전|광주|울산|세종|강원|충북|충남|전북|전남|경북|경남|제주)/.test(n)){
+      var only=[n];
+      var short=n.replace(/^인천광역시\s*/,'인천 ').replace(/\s+/g,' ').trim();
+      if(short!==n) only.push(short);
+      return only;
+    }
+    var bare=n.replace(/\s+/g,'');
+    var cut=bare.replace(/(상가|사무실|오피스텔|빌딩|타워|프라자|플라자|센터|몰)$/,'');
+    return [n, '송도 '+n, cut, '송도 '+cut]
+      .filter(function(v,i,a){ return v && v.length>=2 && a.indexOf(v)===i; });
+  }
+
+  async function find(name){
+    var k=String(name||'').replace(/\s+/g,'');
+    if(GEO[k]!==undefined) return GEO[k];
+    var tries=variants(name);
+    for(var i=0;i<tries.length;i++){
+      var g=await ask(searchUrl(tries[i],'place'));
+      if(g){ GEO[k]=g; return g; }
+    }
+    // 이름으로 못 찾으면 주소로 한 번 더
+    for(var j=0;j<tries.length;j++){
+      var g2=await ask(searchUrl(tries[j],'address','road'));
+      if(g2){ GEO[k]=g2; return g2; }
+    }
+    GEO[k]=null;
+    return null;
+  }
+
+  // ── 타일 계산 (웹 메르카토르) ───────────────────────────
+  function lon2fx(lon,z){ return (lon+180)/360*Math.pow(2,z); }
+  function lat2fy(lat,z){ var r=lat*Math.PI/180;
+    return (1-Math.log(Math.tan(r)+1/Math.cos(r))/Math.PI)/2*Math.pow(2,z); }
+  function fx2lon(fx,z){ return fx/Math.pow(2,z)*360-180; }
+  function fy2lat(fy,z){ var n=Math.PI-2*Math.PI*fy/Math.pow(2,z);
+    return 180/Math.PI*Math.atan(0.5*(Math.exp(n)-Math.exp(-n))); }
+
+  function tileUrl(layer,z,y,x){
+    var L=LAYERS[layer]||LAYERS.base;
+    return 'https://api.vworld.kr/req/wmts/1.0.0/'+encodeURIComponent(KEY)
+      +'/'+L.id+'/'+z+'/'+y+'/'+x+'.'+L.ext;
+  }
+
+  // 한 판 그리기 — st = {lat,lng,z,layer}
+  function paint(canvas, st){
+    var W=canvas.clientWidth||600, H=canvas.clientHeight||300;
+    var n=Math.pow(2,st.z);
+    var px=lon2fx(st.lng,st.z)*TSZ, py=lat2fy(st.lat,st.z)*TSZ;
+    var left=px-W/2, top=py-H/2;
+    var x0=Math.floor(left/TSZ), x1=Math.floor((left+W)/TSZ);
+    var y0=Math.floor(top/TSZ),  y1=Math.floor((top+H)/TSZ);
+    var html='';
+    for(var y=y0;y<=y1;y++){
+      if(y<0||y>=n) continue;
+      for(var x=x0;x<=x1;x++){
+        var xx=((x%n)+n)%n;
+        html+='<img class="vw-tile" src="'+tileUrl(st.layer,st.z,y,xx)+'" width="'+TSZ+'" height="'+TSZ+'" '
+          +'style="position:absolute;left:'+(x*TSZ-left)+'px;top:'+(y*TSZ-top)+'px;'
+          +'user-select:none;-webkit-user-drag:none" alt="">';
+      }
+    }
+    // 하이브리드(지명·도로명) 겹치기 — 위성일 때만
+    if(st.layer==='sat'){
+      for(var y2=y0;y2<=y1;y2++){
+        if(y2<0||y2>=n) continue;
+        for(var x2=x0;x2<=x1;x2++){
+          var xh=((x2%n)+n)%n;
+          html+='<img class="vw-tile" src="https://api.vworld.kr/req/wmts/1.0.0/'+encodeURIComponent(KEY)
+            +'/Hybrid/'+st.z+'/'+y2+'/'+xh+'.png" width="'+TSZ+'" height="'+TSZ+'" '
+            +'style="position:absolute;left:'+(x2*TSZ-left)+'px;top:'+(y2*TSZ-top)+'px" alt="">';
+        }
+      }
+    }
+    // 가운데 표시
+    html+='<div style="position:absolute;left:50%;top:50%;width:0;height:0;pointer-events:none">'
+      +'<div style="position:absolute;left:-9px;top:-26px;width:18px;height:18px;border-radius:50%;'
+      +'background:#d32f2f;border:3px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.5)"></div>'
+      +'<div style="position:absolute;left:-4px;top:-9px;width:0;height:0;border-left:4px solid transparent;'
+      +'border-right:4px solid transparent;border-top:9px solid #d32f2f"></div></div>';
+    canvas.innerHTML=html;
+  }
+
+  // 조작 붙이기 (끌어서 옮기기, 확대·축소)
+  function wire(canvas, st){
+    var dragging=false, sx=0, sy=0, s0=null;
+    canvas.style.cursor='grab';
+    canvas.addEventListener('mousedown', function(e){
+      dragging=true; sx=e.clientX; sy=e.clientY; s0={lat:st.lat,lng:st.lng};
+      canvas.style.cursor='grabbing'; e.preventDefault();
+    });
+    window.addEventListener('mousemove', function(e){
+      if(!dragging) return;
+      var dx=e.clientX-sx, dy=e.clientY-sy;
+      var px=lon2fx(s0.lng,st.z)*TSZ-dx, py=lat2fy(s0.lat,st.z)*TSZ-dy;
+      st.lng=fx2lon(px/TSZ,st.z); st.lat=fy2lat(py/TSZ,st.z);
+      paint(canvas,st);
+    });
+    window.addEventListener('mouseup', function(){
+      if(!dragging) return; dragging=false; canvas.style.cursor='grab';
+    });
+    canvas.dataset.wired='1';
+  }
+
+  window.sdVZoom=function(btn, d){
+    var host=btn.closest('[data-vwmap]');
+    if(!host) return;
+    var canvas=host.querySelector('[data-vwcanvas]');
+    var st=canvas.__st;
+    st.z=Math.max(6, Math.min(19, st.z+d));
+    var lv=host.querySelector('[data-vwlevel]'); if(lv) lv.textContent='레벨 '+st.z;
+    paint(canvas,st);
+  };
+  window.sdVLayer=function(btn, name){
+    var host=btn.closest('[data-vwmap]');
+    if(!host) return;
+    var canvas=host.querySelector('[data-vwcanvas]');
+    canvas.__st.layer=name;
+    Array.prototype.forEach.call(host.querySelectorAll('[data-vwlayer]'), function(b){
+      var on=(b.getAttribute('data-vwlayer')===name);
+      b.style.background = on?'#1a2744':'transparent';
+      b.style.color = on?'#fff':'inherit';
+    });
+    paint(canvas, canvas.__st);
+  };
+
+  // ── 틀 ──────────────────────────────────────────────────
+  function shell(name, inner, foot, ctl){
+    return '<div data-vwmap style="border:1px solid rgba(128,128,128,.28);border-radius:10px;overflow:hidden">'
+      +'<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;'
+      +'padding:8px 12px;background:rgba(46,125,50,.12);font-size:12px;font-weight:700">'
+      +'<span>📍 위치 <span style="font-weight:400;opacity:.75">'+esc(name)+'</span></span>'
+      +'<span class="no-print" style="display:flex;gap:6px;align-items:center;flex-shrink:0">'
+      +'<span style="display:flex;border:1px solid rgba(128,128,128,.4);border-radius:6px;overflow:hidden">'
+      +'<button onclick="sdVBack(this)" style="font-size:11px;font-weight:600;padding:3px 10px;border:none;'
+      +'cursor:pointer;background:transparent;color:inherit">카카오지도</button>'
+      +'<button style="font-size:11px;font-weight:700;padding:3px 10px;border:none;cursor:default;'
+      +'background:#1b5e20;color:#fff">브이월드지도</button></span>'+(ctl||'')+'</span>'
+      +'</div>'+inner
+      +'<div style="padding:6px 12px;font-size:10.5px;opacity:.75;line-height:1.6">'+foot+'</div></div>';
+  }
+
+  function note(name, msg){
+    return shell(name,'<div style="padding:16px 12px;font-size:12px;opacity:.85;line-height:1.7">'+msg+'</div>',
+      '출처: 국토교통부 브이월드(공간정보 오픈플랫폼)');
+  }
+
+  function keyBox(name){
+    return shell(name,
+      '<div data-vwkeybox style="padding:14px 12px">'
+      +'<div style="font-size:12.5px;font-weight:600;color:#2e7d32;margin-bottom:6px">🔑 브이월드 인증키를 넣어 주세요</div>'
+      +'<div style="font-size:11.5px;opacity:.8;line-height:1.7;margin-bottom:9px">'
+      +'브이월드에서 발급받은 인증키를 한 번만 넣으면 사무소 전체에 적용됩니다.<br>'
+      +'인쇄·PDF·고객 브리핑 자료에 넣을 수 있는 공공 지도입니다.</div>'
+      +'<div style="display:flex;gap:7px;flex-wrap:wrap">'
+      +'<input type="password" placeholder="브이월드 인증키 붙여넣기" autocomplete="off" '
+      +'style="flex:1;min-width:220px;max-width:340px;padding:6px 10px;border:1px solid rgba(128,128,128,.4);'
+      +'border-radius:7px;font-size:12px;background:transparent;color:inherit">'
+      +'<button onclick="sdVKeySave(this)" style="padding:6px 16px;border:none;border-radius:7px;'
+      +'background:#2e7d32;color:#fff;font-size:12px;font-weight:600;cursor:pointer">저장</button>'
+      +'</div></div>',
+      '출처: 국토교통부 브이월드(공간정보 오픈플랫폼)');
+  }
+
+  // ── 인쇄용 지도 그리기 ──────────────────────────────────
+  window.sdVMap=async function(host, name, opts){
+    opts=opts||{};
+    var el=(typeof host==='string')?document.getElementById(host):host;
+    if(!el) return;
+    name=String(name||'').trim();
+    if(!name) return;
+
+    var my=++SEQ;
+    el.innerHTML=note(name,'브이월드 지도를 준비하는 중…');
+
+    await loadKey();
+    if(my!==SEQ) return;
+    if(!KEY){ el.innerHTML=keyBox(name); return; }
+
+    el.innerHTML=note(name,'브이월드에서 위치를 찾는 중…');
+    var g=await find(name);
+    if(my!==SEQ) return;
+
+    if(!g){
+      el.innerHTML=note(name,
+        '브이월드에서 이 이름의 위치를 찾지 못했습니다.<br>'
+        +'<span style="opacity:.8">카카오 지도로 위치를 확인하신 뒤, 인쇄 자료에는 지도 대신 주소를 넣어 주세요.</span>');
+      return;
+    }
+
+    var z=opts.level||16, layer=opts.layer||'base';
+    var ctl='<span style="display:flex;border:1px solid rgba(128,128,128,.4);border-radius:6px;overflow:hidden">'
+      + Object.keys(LAYERS).map(function(k){
+          var on=(k===layer);
+          return '<button data-vwlayer="'+k+'" onclick="sdVLayer(this,\''+k+'\')" '
+            +'style="font-size:11px;padding:3px 9px;border:none;cursor:pointer;'
+            +'background:'+(on?'#1a2744':'transparent')+';color:'+(on?'#fff':'inherit')+'">'+LAYERS[k].label+'</button>';
+        }).join('')
+      +'</span>'
+      +'<button onclick="sdVZoom(this,-1)" style="font-size:12px;padding:2px 9px;border:1px solid rgba(128,128,128,.4);'
+      +'background:transparent;border-radius:6px;cursor:pointer;color:inherit">−</button>'
+      +'<span data-vwlevel style="font-size:10.5px;opacity:.7;min-width:44px;text-align:center">레벨 '+z+'</span>'
+      +'<button onclick="sdVZoom(this,1)" style="font-size:12px;padding:2px 9px;border:1px solid rgba(128,128,128,.4);'
+      +'background:transparent;border-radius:6px;cursor:pointer;color:inherit">＋</button>'
+      +'<button onclick="sdVBig(this)" style="font-size:11px;padding:3px 9px;border:1px solid rgba(128,128,128,.4);'
+      +'background:transparent;border-radius:6px;cursor:pointer;color:inherit">⤢ 크게</button>';
+
+    el.innerHTML=shell(name,
+      '<div data-vwcanvas class="sd-mapcv" style="position:relative;width:100%;height:'+(opts.height||460)+'px;'
+      +'background:#e8e8e8;overflow:hidden"></div>',
+      '📍 '+esc(g.title||name)+(g.addr?' · '+esc(g.addr):'')
+      +' &nbsp;|&nbsp; <b>출처: 국토교통부 브이월드(공간정보 오픈플랫폼)</b>', ctl);
+
+    var canvas=el.querySelector('[data-vwcanvas]');
+    canvas.__st={ lat:g.lat, lng:g.lng, z:z, layer:layer, name:name, title:g.title, addr:g.addr };
+    paint(canvas, canvas.__st);
+    wire(canvas, canvas.__st);
+    setTimeout(function(){ paint(canvas, canvas.__st); },150);
+  };
+
+  // 카카오 지도로 되돌리기
+  window.sdVBack=function(btn){
+    var host=btn.closest('[data-name]');
+    if(!host) return;
+    if(typeof window.sdMiniMap==='function') window.sdMiniMap(host, host.getAttribute('data-name'), {height:460, big:true});
+  };
+
+  // 상세 모달의 카카오 지도 → 인쇄용으로 바꾸기
+  window.sdVMapSwap=function(btn){
+    var host=btn.closest('[data-name]');
+    if(!host) return;
+    window.sdVMap(host, host.getAttribute('data-name'), {height:460});
+  };
+
+  // ── 크게 보기 ───────────────────────────────────────────
+  window.sdVBig=function(btn){
+    var src=btn.closest('[data-vwmap]').querySelector('[data-vwcanvas]');
+    var s=src.__st; if(!s) return;
+    var old=document.getElementById('sdvw-big'); if(old) old.remove();
+    var ov=document.createElement('div');
+    ov.id='sdvw-big';
+    ov.style.cssText='position:fixed;inset:0;z-index:10300;background:rgba(0,0,0,.6);display:flex;'
+      +'align-items:stretch;justify-content:center;padding:14px;box-sizing:border-box';
+    ov.innerHTML='<div data-vwmap style="background:#fff;border-radius:14px;overflow:hidden;display:flex;'
+      +'flex-direction:column;width:100%;max-width:1500px;height:100%;box-shadow:0 10px 50px rgba(0,0,0,.35)">'
+      +'<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;'
+      +'padding:11px 16px;background:#1b5e20;color:#fff">'
+      +'<span style="font-size:14px;font-weight:700">🖨️ '+esc(s.title||s.name)
+      +(s.addr?' <span style="font-weight:400;opacity:.8;font-size:12px">'+esc(s.addr)+'</span>':'')+'</span>'
+      +'<span style="display:flex;gap:7px;align-items:center;flex-shrink:0">'
+      +'<button onclick="sdVZoom(this,-1)" style="font-size:13px;padding:3px 11px;background:transparent;'
+      +'color:#fff;border:1px solid rgba(255,255,255,.4);border-radius:6px;cursor:pointer">−</button>'
+      +'<span data-vwlevel style="font-size:11px;opacity:.85;min-width:46px;text-align:center">레벨 '+s.z+'</span>'
+      +'<button onclick="sdVZoom(this,1)" style="font-size:13px;padding:3px 11px;background:transparent;'
+      +'color:#fff;border:1px solid rgba(255,255,255,.4);border-radius:6px;cursor:pointer">＋</button>'
+      +'<button onclick="document.getElementById(\'sdvw-big\').remove()" style="background:transparent;color:#fff;'
+      +'border:1px solid rgba(255,255,255,.4);border-radius:6px;padding:4px 11px;font-size:12px;cursor:pointer">✕ 닫기</button>'
+      +'</span></div>'
+      +'<div data-vwcanvas style="flex:1 1 auto;position:relative;background:#e8e8e8;overflow:hidden;min-height:0"></div>'
+      +'<div style="padding:6px 16px;font-size:10.5px;opacity:.75">출처: 국토교통부 브이월드(공간정보 오픈플랫폼)</div></div>';
+    document.body.appendChild(ov);
+    ov.onclick=function(e){ if(e.target===ov) ov.remove(); };
+    var esckey=function(e){ if(e.key==='Escape'){ var b=document.getElementById('sdvw-big'); if(b) b.remove();
+      document.removeEventListener('keydown',esckey); } };
+    document.addEventListener('keydown',esckey);
+    var c=ov.querySelector('[data-vwcanvas]');
+    c.__st={ lat:s.lat, lng:s.lng, z:s.z, layer:s.layer, name:s.name, title:s.title, addr:s.addr };
+    setTimeout(function(){ paint(c,c.__st); wire(c,c.__st); },60);
+    var onres=function(){
+      if(!document.getElementById('sdvw-big')){ window.removeEventListener('resize',onres); return; }
+      paint(c,c.__st);
+    };
+    window.addEventListener('resize', onres);
+  };
+})();
+</script>
+<!-- ═══════════════════════════════════════════════════════════
+     건물 위치 지도 모듈  v2.0  (상가관리)
+     - 현황 대시보드 / 분양 견적서 / 임대 견적서 세 곳에 「건물 위치」 칸을 만든다
+       · 대시보드 : 카카오지도 먼저 (업무 중 위치·상권 확인)
+       · 견적서   : 브이월드지도 먼저 (고객에게 나가는 자료)
+     - 건물별로 도로명주소를 기억한다 (주소가 있으면 훨씬 정확하게 찾는다)
+     - 평소엔 접어 두고 「지도 보기」를 눌렀을 때만 부른다
+     기존 코드를 고치지 않고 덧붙이는 방식
+     ═══════════════════════════════════════════════════════ -->
+<script>
+(function(){
+  'use strict';
+
+  var ADDR={};                        // 건물id → 도로명주소
+  // 자리마다 어떤 지도를 먼저 보여줄지
+  var SPOTS=[
+    { key:'dash', host:'tc0', before:'dash-stat', vfirst:false, title:'건물 위치' },
+    { key:'est',  host:'tc1', before:null,        vfirst:true,  title:'건물 위치 (견적서용)' },
+    { key:'rent', host:'tc2', before:null,        vfirst:true,  title:'건물 위치 (견적서용)' }
+  ];
+
+  function $(id){ return document.getElementById(id); }
+  function bldg(){
+    try{ return (window.BUILDINGS||[]).filter(function(b){ return b.id===window.curBldgId; })[0]||null; }
+    catch(e){ return null; }
+  }
+  function addrKey(id){ return 'sd_sg_addr_'+id; }
+
+  async function loadAddr(id){
+    if(!id) return '';
+    if(ADDR[id]!==undefined) return ADDR[id];
+    var v='';
+    try{ var r=await window.storage.get(addrKey(id)); if(r&&r.value) v=String(r.value); }catch(e){}
+    if(!v){ try{ v=localStorage.getItem(addrKey(id))||''; }catch(e){} }
+    ADDR[id]=v;
+    return v;
+  }
+
+  // 찾을 말 — 주소가 있으면 주소, 없으면 건물 이름
+  function target(){
+    var b=bldg(); if(!b) return '';
+    var a=(ADDR[b.id]||'').trim();
+    if(a) return a;
+    var ai=(($('ai-addr')||{}).value||'').trim();
+    if(ai) return ai;
+    return b.name||'';
+  }
+
+  window.sgMapSaveAddr=async function(k){
+    var b=bldg(); if(!b){ alert('건물을 먼저 고르세요.'); return; }
+    var v=(($('sg-map-addr-'+k)||{}).value||'').trim();
+    ADDR[b.id]=v;
+    try{ await window.storage.set(addrKey(b.id), v); }catch(e){}
+    try{ localStorage.setItem(addrKey(b.id), v); }catch(e){}
+    var ai=$('ai-addr');
+    if(ai && !ai.value.trim() && v) ai.value=v;
+    // 다른 자리의 주소 칸도 같이 맞춘다
+    SPOTS.forEach(function(sp){
+      var inp=$('sg-map-addr-'+sp.key);
+      if(inp) inp.value=v;
+      var slot=$('sg-map-slot-'+sp.key);
+      if(slot && slot.style.display!=='none') draw(sp);
+    });
+    if(typeof showToast==='function') showToast(v?'📍 주소를 저장했습니다':'📍 주소를 지웠습니다');
+  };
+
+  function draw(sp){
+    var slot=$('sg-map-slot-'+sp.key); if(!slot) return;
+    var t=target();
+    if(!t){ slot.innerHTML='<div style="font-size:12px;color:#888;padding:10px">건물을 먼저 고르세요.</div>'; return; }
+    slot.setAttribute('data-name', t);
+    if(sp.vfirst && typeof window.sdVMap==='function') window.sdVMap(slot, t, { height:460, level:16 });
+    else if(typeof window.sdMiniMap==='function') window.sdMiniMap(slot, t, { height:460, big:true, level:3 });
+  }
+
+  window.sgMapToggle=function(k){
+    var sp=SPOTS.filter(function(x){ return x.key===k; })[0]; if(!sp) return;
+    var slot=$('sg-map-slot-'+k), bt=$('sg-map-btn-'+k);
+    if(!slot||!bt) return;
+    var open=(slot.style.display==='none');
+    slot.style.display = open ? '' : 'none';
+    bt.textContent = open ? '🗺️ 지도 닫기' : '🗺️ 지도 보기';
+    if(open) draw(sp);
+    else slot.innerHTML='';
+  };
+
+  // ── 칸 만들기 ───────────────────────────────────────────
+  function ensureCard(sp){
+    if($('sg-map-card-'+sp.key)) return true;
+    var host=$(sp.host); if(!host) return false;
+    var div=document.createElement('div');
+    div.className='card';
+    div.id='sg-map-card-'+sp.key;
+    div.style.marginBottom='1rem';
+    var hint = sp.vfirst
+      ? '고객에게 나가는 자료라 <b>브이월드지도</b>를 먼저 보여 줍니다. 위에서 카카오지도로 바꿀 수 있습니다.'
+      : '주소를 넣어 두면 훨씬 정확하게 찾습니다. 건물마다 따로 기억하며 사무소 전체에 적용됩니다.';
+    div.innerHTML=
+      '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">'
+      +'<p class="sec" style="margin:0">🗺️ '+sp.title+' '
+      +'<span id="sg-map-name-'+sp.key+'" style="font-size:12px;color:#888;font-weight:400"></span></p>'
+      +'<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">'
+      +'<input id="sg-map-addr-'+sp.key+'" class="fi" style="width:250px;font-size:12px" '
+      +'placeholder="도로명주소 (비우면 건물명으로 찾습니다)">'
+      +'<button onclick="sgMapSaveAddr(\''+sp.key+'\')" class="btn-s" style="font-size:11px">주소 저장</button>'
+      +'<button id="sg-map-btn-'+sp.key+'" onclick="sgMapToggle(\''+sp.key+'\')" class="btn-s" '
+      +'style="font-size:12px;padding:6px 14px;background:'+(sp.vfirst?'#e8f5e9':'#e8f0fe')
+      +';border-color:'+(sp.vfirst?'#a5d6a7':'#bbdefb')+';color:'+(sp.vfirst?'#2e7d32':'#1565c0')
+      +';font-weight:700">🗺️ 지도 보기</button>'
+      +'</div></div>'
+      +'<div style="font-size:11px;color:#999;margin-top:6px;line-height:1.6">'+hint+'</div>'
+      +'<div id="sg-map-slot-'+sp.key+'" style="display:none;margin-top:10px"></div>';
+    var anchor = sp.before ? $(sp.before) : null;
+    if(anchor && anchor.parentNode===host) host.insertBefore(div, anchor);
+    else host.insertBefore(div, host.firstChild);
+    return true;
+  }
+
+  // 건물이 바뀌면 접어 두고 그 건물 주소를 불러온다
+  async function refresh(){
+    SPOTS.forEach(ensureCard);
+    var b=bldg();
+    SPOTS.forEach(function(sp){
+      var nm=$('sg-map-name-'+sp.key); if(nm) nm.textContent = b ? b.name : '';
+      var slot=$('sg-map-slot-'+sp.key), bt=$('sg-map-btn-'+sp.key);
+      if(slot){ slot.style.display='none'; slot.innerHTML=''; }
+      if(bt) bt.textContent='🗺️ 지도 보기';
+    });
+    var big=$('sdmap-big'); if(big) big.remove();
+    var vbig=$('sdvw-big'); if(vbig) vbig.remove();
+    if(!b) return;
+    var a=await loadAddr(b.id);
+    SPOTS.forEach(function(sp){
+      var inp=$('sg-map-addr-'+sp.key);
+      if(inp) inp.value=a||'';
+    });
+  }
+
+  function boot(){
+    SPOTS.forEach(ensureCard);
+    var orig=window.selectBldg;
+    if(typeof orig==='function' && !orig.__sgmap){
+      var w=function(){
+        var out=orig.apply(this, arguments);
+        try{ refresh(); }catch(e){}
+        return out;
+      };
+      w.__sgmap=1;
+      window.selectBldg=w;
+    }
+    refresh();
+  }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',function(){ setTimeout(boot,1200); });
+  else setTimeout(boot,1200);
+  setTimeout(boot,2800);
+})();
+</script>
+
 
 </body>
 </html>
