@@ -19272,7 +19272,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.09.17-13';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.09.18-1';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_data.html';      // 이 파일 이름
   var SD_NAME = '실거래가';      // 사람이 부르는 이름
 
@@ -19777,9 +19777,11 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 </script>
 
 <!-- ═══════════════════════════════════════════════════════════
-     브이월드 인쇄용 지도 모듈  v1.0  (부동산 데이터)
-     - 국토교통부 공간정보 오픈플랫폼(브이월드) 배경지도
-     - 공공저작물 제1유형(출처표시) — 인쇄·PDF·브리핑 자료에 넣을 수 있다
+     공공 지도 모듈  v2.0  — 브이월드 · 국토지리정보원
+     - 인쇄·PDF·홍보물에 넣을 수 있는 공공 지도 (공공누리 제1유형, 출처표시)
+     - 두 곳 중 골라 쓴다
+       · 브이월드        (국토교통부 공간정보 오픈플랫폼)  일반 / 위성
+       · 국토지리정보원  (바로e맵 국가기본도)              일반
      - 좌표도 브이월드 검색으로 구한다 (카카오 자료를 옮겨 쓰지 않는다)
      - 타일을 <img> 로 직접 깔아 인쇄가 깨지지 않게 한다
      기존 코드를 고치지 않고 덧붙이는 방식
@@ -19788,47 +19790,153 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 (function(){
   'use strict';
 
-  var KEY='', GEO={}, SEQ=0, TSZ=256;
-  var LAYERS={ base:{id:'Base', ext:'png', label:'일반'},
-               sat :{id:'Satellite', ext:'jpeg', label:'위성'} };
+  var TSZ=256, GEO={}, SEQ=0, TILES={};
+  var KEYS={ vw:'', ngii:'' };
 
-  function $(id){ return document.getElementById(id); }
   function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
-  // ── 인증키 ──────────────────────────────────────────────
-  async function loadKey(){
-    if(KEY) return KEY;
-    try{ var r=await window.storage.get('sd_vworld_key'); if(r&&r.value) KEY=String(r.value).trim(); }catch(e){}
-    if(!KEY){ try{ KEY=(localStorage.getItem('sd_vworld_key')||'').trim(); }catch(e){} }
-    return KEY;
+  // ── 지도 제공처 ─────────────────────────────────────────
+  var SRC={
+    vw: {
+      label:'브이월드지도', color:'#1b5e20',
+      store:'sd_vworld_key',
+      cite:'출처: 국토교통부 브이월드(공간정보 오픈플랫폼)',
+      hint:'브이월드(공간정보 오픈플랫폼)에서 받은 인증키',
+      layers:{ base:{id:'Base', ext:'png', label:'일반'},
+               sat :{id:'Satellite', ext:'jpeg', label:'위성'} },
+      defZoom:16, minZ:6, maxZ:19
+    },
+    ngii: {
+      label:'국토지리정보원', color:'#0d47a1',
+      store:'sd_ngii_key',
+      cite:'출처: 국토교통부 국토지리정보원(바로e맵)',
+      hint:'국토정보플랫폼(map.ngii.go.kr)에서 받은 인증키',
+      layers:{ base:{id:'korean_map', ext:'png', label:'일반'} },
+      defZoom:11, minZ:0, maxZ:13      // 아래 NRES 배열의 칸 번호
+    }
+  };
+
+  // 국토지리정보원 격자 — EPSG:5179 (브이월드와 좌표계가 다르다)
+  var NRES=[2088.96,1044.48,522.24,261.12,130.56,65.28,32.64,16.32,8.16,4.08,2.04,1.02,0.51,0.255];
+  var NORG=[-200000.0, 4000000.0];
+  function nMatrix(i){ return 'L'+String(5+i).padStart(2,'0'); }
+  function to5179(lon, lat){
+    var a=6378137.0, f=1/298.257222101;
+    var e2=f*(2-f), ep2=e2/(1-e2);
+    var k0=0.9996, lon0=127.5*Math.PI/180, lat0=38*Math.PI/180, FE=1000000, FN=2000000;
+    var p=lat*Math.PI/180, l=lon*Math.PI/180;
+    function M(ph){
+      return a*((1-e2/4-3*e2*e2/64-5*e2*e2*e2/256)*ph
+        -(3*e2/8+3*e2*e2/32+45*e2*e2*e2/1024)*Math.sin(2*ph)
+        +(15*e2*e2/256+45*e2*e2*e2/1024)*Math.sin(4*ph)
+        -(35*e2*e2*e2/3072)*Math.sin(6*ph));
+    }
+    var N=a/Math.sqrt(1-e2*Math.sin(p)*Math.sin(p));
+    var T=Math.tan(p)*Math.tan(p), C=ep2*Math.cos(p)*Math.cos(p), A=(l-lon0)*Math.cos(p);
+    var x=FE+k0*N*(A+(1-T+C)*A*A*A/6+(5-18*T+T*T+72*C-58*ep2)*Math.pow(A,5)/120);
+    var y=FN+k0*(M(p)-M(lat0)+N*Math.tan(p)*(A*A/2+(5-T+9*C+4*C*C)*Math.pow(A,4)/24
+          +(61-58*T+T*T+600*C-330*ep2)*Math.pow(A,6)/720));
+    return [x,y];
   }
+  function from5179(x, y){     // 되돌리기 (끌어서 옮길 때 씀) — 반복 근사
+    var lon=127.5, lat=38.0;
+    for(var i=0;i<8;i++){
+      var p=to5179(lon,lat);
+      var dx=x-p[0], dy=y-p[1];
+      if(Math.abs(dx)<0.01 && Math.abs(dy)<0.01) break;
+      var mPerDegLat=110574, mPerDegLon=111320*Math.cos(lat*Math.PI/180);
+      lat+=dy/mPerDegLat; lon+=dx/mPerDegLon;
+    }
+    return [lon, lat];
+  }
+
+  // 브이월드 격자 — 웹 메르카토르
+  function lon2fx(lon,z){ return (lon+180)/360*Math.pow(2,z); }
+  function lat2fy(lat,z){ var r=lat*Math.PI/180;
+    return (1-Math.log(Math.tan(r)+1/Math.cos(r))/Math.PI)/2*Math.pow(2,z); }
+  function fx2lon(fx,z){ return fx/Math.pow(2,z)*360-180; }
+  function fy2lat(fy,z){ var n=Math.PI-2*Math.PI*fy/Math.pow(2,z);
+    return 180/Math.PI*Math.atan(0.5*(Math.exp(n)-Math.exp(-n))); }
+
+  function tileUrl(src, layer, z, row, col){
+    var S=SRC[src], L=S.layers[layer]||S.layers.base;
+    if(src==='ngii'){
+      return 'https://map.ngii.go.kr/openapi/Gettile.do?apikey='+encodeURIComponent(KEYS.ngii)
+        +'&layer='+L.id+'&style=korean&tilematrixset=korean'
+        +'&Service=WMTS&Request=GetTile&Version=1.0.0&Format=image/png'
+        +'&TileMatrix='+nMatrix(z)+'&TileCol='+col+'&TileRow='+row;
+    }
+    return 'https://api.vworld.kr/req/wmts/1.0.0/'+encodeURIComponent(KEYS.vw)
+      +'/'+L.id+'/'+z+'/'+row+'/'+col+'.'+L.ext;
+  }
+
+  // 한 판에 깔 타일 목록
+  function tileList(st, W, H){
+    var out=[];
+    if(st.src==='ngii'){
+      var r=NRES[st.z]; if(!r) return out;
+      var c=to5179(st.lng, st.lat);
+      var left=c[0]-W/2*r, top=c[1]+H/2*r;
+      var c0=Math.floor((left-NORG[0])/(r*TSZ)), c1=Math.floor((left+W*r-NORG[0])/(r*TSZ));
+      var r0=Math.floor((NORG[1]-top)/(r*TSZ)),  r1=Math.floor((NORG[1]-(top-H*r))/(r*TSZ));
+      for(var row=r0; row<=r1; row++){
+        for(var col=c0; col<=c1; col++){
+          if(row<0||col<0) continue;
+          out.push({ url:tileUrl('ngii', st.layer, st.z, row, col),
+                     left:(NORG[0]+col*r*TSZ-left)/r,
+                     top:(top-(NORG[1]-row*r*TSZ))/r });
+        }
+      }
+      return out;
+    }
+    var n=Math.pow(2,st.z);
+    var px=lon2fx(st.lng,st.z)*TSZ, py=lat2fy(st.lat,st.z)*TSZ;
+    var l=px-W/2, t=py-H/2;
+    for(var y=Math.floor(t/TSZ); y<=Math.floor((t+H)/TSZ); y++){
+      if(y<0||y>=n) continue;
+      for(var x=Math.floor(l/TSZ); x<=Math.floor((l+W)/TSZ); x++){
+        var xx=((x%n)+n)%n;
+        out.push({ url:tileUrl('vw', st.layer, st.z, y, xx), left:(x*TSZ-l), top:(y*TSZ-t) });
+      }
+    }
+    return out;
+  }
+
+  // ── 인증키 ──────────────────────────────────────────────
+  async function loadKey(src){
+    if(KEYS[src]) return KEYS[src];
+    var name=SRC[src].store;
+    try{ var r=await window.storage.get(name); if(r&&r.value) KEYS[src]=String(r.value).trim(); }catch(e){}
+    if(!KEYS[src]){ try{ KEYS[src]=(localStorage.getItem(name)||'').trim(); }catch(e){} }
+    return KEYS[src];
+  }
+  window.sdVHasKey=async function(src){ src=src||'vw'; await loadKey(src); return !!KEYS[src]; };
   window.sdVKeySave=async function(btn){
     var box=btn.closest('[data-vwkeybox]');
+    var src=box?box.getAttribute('data-src')||'vw':'vw';
     var inp=box?box.querySelector('input'):null;
     var v=(inp&&inp.value||'').trim();
-    if(v.length<20){ alert('인증키가 너무 짧습니다.\n브이월드에서 발급받은 인증키를 그대로 붙여넣어 주세요.'); return; }
-    KEY=v;
-    try{ await window.storage.set('sd_vworld_key', v); }catch(e){}
-    try{ localStorage.setItem('sd_vworld_key', v); }catch(e){}
+    if(v.length<10){ alert('인증키가 너무 짧습니다.\n발급받은 인증키를 그대로 붙여넣어 주세요.'); return; }
+    KEYS[src]=v;
+    try{ await window.storage.set(SRC[src].store, v); }catch(e){}
+    try{ localStorage.setItem(SRC[src].store, v); }catch(e){}
     var host=btn.closest('[data-name]');
-    if(host) window.sdVMap(host, host.getAttribute('data-name'));
+    if(host) window.sdVMap(host, host.getAttribute('data-name'), { src:src });
   };
-  window.sdVHasKey=async function(){ await loadKey(); return !!KEY; };
-  window.sdVKeyClear=async function(){
-    if(!confirm('저장된 브이월드 인증키를 지울까요?')) return;
-    KEY='';
-    try{ await window.storage.set('sd_vworld_key',''); }catch(e){}
-    try{ localStorage.removeItem('sd_vworld_key'); }catch(e){}
+  window.sdVKeyClear=async function(src){
+    src=src||'vw';
+    if(!confirm('저장된 '+SRC[src].label+' 인증키를 지울까요?')) return;
+    KEYS[src]='';
+    try{ await window.storage.set(SRC[src].store,''); }catch(e){}
+    try{ localStorage.removeItem(SRC[src].store); }catch(e){}
     alert('지웠습니다.');
   };
 
-  // ── 브이월드 검색으로 좌표 찾기 ─────────────────────────
-  // 브라우저에서 바로 부를 수 있게 JSONP 를 먼저 쓰고, 안 되면 보통 방식으로 다시 시도한다
+  // ── 위치 찾기 (브이월드 검색) ───────────────────────────
   function jsonp(url, ms){
     return new Promise(function(res){
       var cb='sdvw'+(Date.now()%1e7)+Math.floor(Math.random()*1000);
-      var s=document.createElement('script');
-      var done=false;
+      var s=document.createElement('script'), done=false;
       window[cb]=function(d){ done=true; cleanup(); res(d); };
       function cleanup(){ try{ delete window[cb]; }catch(e){ window[cb]=undefined; }
                           if(s.parentNode) s.parentNode.removeChild(s); }
@@ -19838,37 +19946,31 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
       setTimeout(function(){ if(!done){ done=true; cleanup(); res(null); } }, ms||6000);
     });
   }
-
   function searchUrl(q, type, category){
     return 'https://api.vworld.kr/req/search?service=search&request=search&version=2.0'
       +'&crs=EPSG:4326&size=5&page=1&format=json&errorformat=json'
       +'&type='+type+(category?'&category='+category:'')
       +'&query='+encodeURIComponent(q)
-      +'&key='+encodeURIComponent(KEY)
+      +'&key='+encodeURIComponent(KEYS.vw)
       +'&domain='+encodeURIComponent(location.origin);
   }
-
   function pick(d){
     try{
       var it=d.response.result.items;
-      if(!it || !it.length) return null;
-      var p=it[0].point;
-      var lat=parseFloat(p.y), lng=parseFloat(p.x);
+      if(!it||!it.length) return null;
+      var p=it[0].point, lat=parseFloat(p.y), lng=parseFloat(p.x);
       if(!isFinite(lat)||!isFinite(lng)) return null;
       return { lat:lat, lng:lng, title:it[0].title||'',
                addr:(it[0].address&&(it[0].address.road||it[0].address.parcel))||'' };
     }catch(e){ return null; }
   }
-
   async function ask(url){
     var d=await jsonp(url);
     if(d) return pick(d);
-    try{ var r=await fetch(url); var j=await r.json(); return pick(j); }catch(e){ return null; }
+    try{ var r=await fetch(url); return pick(await r.json()); }catch(e){ return null; }
   }
-
   function variants(name){
     var n=String(name||'').trim();
-    // 도로명·지번 주소처럼 보이면 손대지 않고 그대로 물어본다
     if(/(로|길)\s*\d/.test(n) || /^(서울|인천|경기|부산|대구|대전|광주|울산|세종|강원|충북|충남|전북|전남|경북|경남|제주)/.test(n)){
       var only=[n];
       var short=n.replace(/^인천광역시\s*/,'인천 ').replace(/\s+/g,' ').trim();
@@ -19880,16 +19982,16 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     return [n, '송도 '+n, cut, '송도 '+cut]
       .filter(function(v,i,a){ return v && v.length>=2 && a.indexOf(v)===i; });
   }
-
   async function find(name){
     var k=String(name||'').replace(/\s+/g,'');
     if(GEO[k]!==undefined) return GEO[k];
+    await loadKey('vw');
+    if(!KEYS.vw){ return null; }          // 위치 찾기는 브이월드 검색을 쓴다
     var tries=variants(name);
     for(var i=0;i<tries.length;i++){
       var g=await ask(searchUrl(tries[i],'place'));
       if(g){ GEO[k]=g; return g; }
     }
-    // 이름으로 못 찾으면 주소로 한 번 더
     for(var j=0;j<tries.length;j++){
       var g2=await ask(searchUrl(tries[j],'address','road'));
       if(g2){ GEO[k]=g2; return g2; }
@@ -19898,51 +20000,13 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     return null;
   }
 
-  // ── 타일 계산 (웹 메르카토르) ───────────────────────────
-  function lon2fx(lon,z){ return (lon+180)/360*Math.pow(2,z); }
-  function lat2fy(lat,z){ var r=lat*Math.PI/180;
-    return (1-Math.log(Math.tan(r)+1/Math.cos(r))/Math.PI)/2*Math.pow(2,z); }
-  function fx2lon(fx,z){ return fx/Math.pow(2,z)*360-180; }
-  function fy2lat(fy,z){ var n=Math.PI-2*Math.PI*fy/Math.pow(2,z);
-    return 180/Math.PI*Math.atan(0.5*(Math.exp(n)-Math.exp(-n))); }
-
-  function tileUrl(layer,z,y,x){
-    var L=LAYERS[layer]||LAYERS.base;
-    return 'https://api.vworld.kr/req/wmts/1.0.0/'+encodeURIComponent(KEY)
-      +'/'+L.id+'/'+z+'/'+y+'/'+x+'.'+L.ext;
-  }
-
-  // 한 판 그리기 — st = {lat,lng,z,layer}
+  // ── 그리기 ──────────────────────────────────────────────
   function paint(canvas, st){
     var W=canvas.clientWidth||600, H=canvas.clientHeight||300;
-    var n=Math.pow(2,st.z);
-    var px=lon2fx(st.lng,st.z)*TSZ, py=lat2fy(st.lat,st.z)*TSZ;
-    var left=px-W/2, top=py-H/2;
-    var x0=Math.floor(left/TSZ), x1=Math.floor((left+W)/TSZ);
-    var y0=Math.floor(top/TSZ),  y1=Math.floor((top+H)/TSZ);
-    var html='';
-    for(var y=y0;y<=y1;y++){
-      if(y<0||y>=n) continue;
-      for(var x=x0;x<=x1;x++){
-        var xx=((x%n)+n)%n;
-        html+='<img class="vw-tile" src="'+tileUrl(st.layer,st.z,y,xx)+'" width="'+TSZ+'" height="'+TSZ+'" '
-          +'style="position:absolute;left:'+(x*TSZ-left)+'px;top:'+(y*TSZ-top)+'px;'
-          +'user-select:none;-webkit-user-drag:none" alt="">';
-      }
-    }
-    // 하이브리드(지명·도로명) 겹치기 — 위성일 때만
-    if(st.layer==='sat'){
-      for(var y2=y0;y2<=y1;y2++){
-        if(y2<0||y2>=n) continue;
-        for(var x2=x0;x2<=x1;x2++){
-          var xh=((x2%n)+n)%n;
-          html+='<img class="vw-tile" src="https://api.vworld.kr/req/wmts/1.0.0/'+encodeURIComponent(KEY)
-            +'/Hybrid/'+st.z+'/'+y2+'/'+xh+'.png" width="'+TSZ+'" height="'+TSZ+'" '
-            +'style="position:absolute;left:'+(x2*TSZ-left)+'px;top:'+(y2*TSZ-top)+'px" alt="">';
-        }
-      }
-    }
-    // 가운데 표시
+    var html=tileList(st, W, H).map(function(t){
+      return '<img class="vw-tile" src="'+t.url+'" width="'+TSZ+'" height="'+TSZ+'" '
+        +'style="position:absolute;left:'+t.left+'px;top:'+t.top+'px;user-select:none" alt="">';
+    }).join('');
     html+='<div style="position:absolute;left:50%;top:50%;width:0;height:0;pointer-events:none">'
       +'<div style="position:absolute;left:-9px;top:-26px;width:18px;height:18px;border-radius:50%;'
       +'background:#d32f2f;border:3px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.5)"></div>'
@@ -19951,7 +20015,6 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     canvas.innerHTML=html;
   }
 
-  // 조작 붙이기 (끌어서 옮기기, 확대·축소)
   function wire(canvas, st){
     var dragging=false, sx=0, sy=0, s0=null;
     canvas.style.cursor='grab';
@@ -19962,28 +20025,31 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     window.addEventListener('mousemove', function(e){
       if(!dragging) return;
       var dx=e.clientX-sx, dy=e.clientY-sy;
-      var px=lon2fx(s0.lng,st.z)*TSZ-dx, py=lat2fy(s0.lat,st.z)*TSZ-dy;
-      st.lng=fx2lon(px/TSZ,st.z); st.lat=fy2lat(py/TSZ,st.z);
+      if(st.src==='ngii'){
+        var r=NRES[st.z]||1, c=to5179(s0.lng,s0.lat);
+        var ll=from5179(c[0]-dx*r, c[1]+dy*r);
+        st.lng=ll[0]; st.lat=ll[1];
+      }else{
+        var px=lon2fx(s0.lng,st.z)*TSZ-dx, py=lat2fy(s0.lat,st.z)*TSZ-dy;
+        st.lng=fx2lon(px/TSZ,st.z); st.lat=fy2lat(py/TSZ,st.z);
+      }
       paint(canvas,st);
     });
     window.addEventListener('mouseup', function(){
       if(!dragging) return; dragging=false; canvas.style.cursor='grab';
     });
-    canvas.dataset.wired='1';
   }
 
   window.sdVZoom=function(btn, d){
-    var host=btn.closest('[data-vwmap]');
-    if(!host) return;
-    var canvas=host.querySelector('[data-vwcanvas]');
-    var st=canvas.__st;
-    st.z=Math.max(6, Math.min(19, st.z+d));
+    var host=btn.closest('[data-vwmap]'); if(!host) return;
+    var canvas=host.querySelector('[data-vwcanvas]'), st=canvas.__st;
+    var S=SRC[st.src];
+    st.z=Math.max(S.minZ, Math.min(S.maxZ, st.z+d));
     var lv=host.querySelector('[data-vwlevel]'); if(lv) lv.textContent='레벨 '+st.z;
     paint(canvas,st);
   };
   window.sdVLayer=function(btn, name){
-    var host=btn.closest('[data-vwmap]');
-    if(!host) return;
+    var host=btn.closest('[data-vwmap]'); if(!host) return;
     var canvas=host.querySelector('[data-vwcanvas]');
     canvas.__st.layer=name;
     Array.prototype.forEach.call(host.querySelectorAll('[data-vwlayer]'), function(b){
@@ -19995,79 +20061,98 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
   };
 
   // ── 틀 ──────────────────────────────────────────────────
-  function shell(name, inner, foot, ctl){
-    return '<div data-vwmap style="border:1px solid rgba(128,128,128,.28);border-radius:10px;overflow:hidden">'
+  function switcher(cur){
+    var btn=function(k,lab,on,oc){
+      return '<button '+(on?'':'onclick="'+oc+'" ')
+        +'style="font-size:11px;font-weight:'+(on?'700':'600')+';padding:3px 9px;border:none;'
+        +'cursor:'+(on?'default':'pointer')+';background:'+(on?SRC[cur].color:'transparent')
+        +';color:'+(on?'#fff':'inherit')+'">'+lab+'</button>';
+    };
+    return '<span style="display:flex;border:1px solid rgba(128,128,128,.4);border-radius:6px;overflow:hidden">'
+      + btn('k','카카오지도',false,'sdVBack(this)')
+      + btn('vw','브이월드지도',cur==='vw','sdVSrc(this,\'vw\')')
+      + btn('ngii','국토지리정보원',cur==='ngii','sdVSrc(this,\'ngii\')')
+      + '</span>';
+  }
+
+  function shell(name, src, inner, foot, ctl){
+    return '<div data-vwmap data-src="'+src+'" style="border:1px solid rgba(128,128,128,.28);border-radius:10px;overflow:hidden">'
       +'<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;'
-      +'padding:8px 12px;background:rgba(46,125,50,.12);font-size:12px;font-weight:700">'
+      +'padding:8px 12px;background:rgba(128,128,128,.10);font-size:12px;font-weight:700">'
       +'<span>📍 위치 <span style="font-weight:400;opacity:.75">'+esc(name)+'</span></span>'
       +'<span class="no-print" style="display:flex;gap:6px;align-items:center;flex-shrink:0">'
-      +'<span style="display:flex;border:1px solid rgba(128,128,128,.4);border-radius:6px;overflow:hidden">'
-      +'<button onclick="sdVBack(this)" style="font-size:11px;font-weight:600;padding:3px 10px;border:none;'
-      +'cursor:pointer;background:transparent;color:inherit">카카오지도</button>'
-      +'<button style="font-size:11px;font-weight:700;padding:3px 10px;border:none;cursor:default;'
-      +'background:#1b5e20;color:#fff">브이월드지도</button></span>'+(ctl||'')+'</span>'
+      + switcher(src) + (ctl||'') + '</span>'
       +'</div>'+inner
       +'<div style="padding:6px 12px;font-size:10.5px;opacity:.75;line-height:1.6">'+foot+'</div></div>';
   }
-
-  function note(name, msg){
-    return shell(name,'<div style="padding:16px 12px;font-size:12px;opacity:.85;line-height:1.7">'+msg+'</div>',
-      '출처: 국토교통부 브이월드(공간정보 오픈플랫폼)');
+  function note(name, src, msg){
+    return shell(name, src,'<div style="padding:16px 12px;font-size:12px;opacity:.85;line-height:1.7">'+msg+'</div>',
+      SRC[src].cite);
   }
-
-  function keyBox(name){
-    return shell(name,
-      '<div data-vwkeybox style="padding:14px 12px">'
-      +'<div style="font-size:12.5px;font-weight:600;color:#2e7d32;margin-bottom:6px">🔑 브이월드 인증키를 넣어 주세요</div>'
+  function keyBox(name, src){
+    var S=SRC[src];
+    return shell(name, src,
+      '<div data-vwkeybox data-src="'+src+'" style="padding:14px 12px">'
+      +'<div style="font-size:12.5px;font-weight:600;color:'+S.color+';margin-bottom:6px">🔑 '
+      +S.label+' 인증키를 넣어 주세요</div>'
       +'<div style="font-size:11.5px;opacity:.8;line-height:1.7;margin-bottom:9px">'
-      +'브이월드에서 발급받은 인증키를 한 번만 넣으면 사무소 전체에 적용됩니다.<br>'
+      +esc(S.hint)+'를 한 번만 넣으면 사무소 전체에 적용됩니다.<br>'
       +'인쇄·PDF·고객 브리핑 자료에 넣을 수 있는 공공 지도입니다.</div>'
       +'<div style="display:flex;gap:7px;flex-wrap:wrap">'
-      +'<input type="password" placeholder="브이월드 인증키 붙여넣기" autocomplete="off" '
+      +'<input type="password" placeholder="'+esc(S.label)+' 인증키 붙여넣기" autocomplete="off" '
       +'style="flex:1;min-width:220px;max-width:340px;padding:6px 10px;border:1px solid rgba(128,128,128,.4);'
       +'border-radius:7px;font-size:12px;background:transparent;color:inherit">'
       +'<button onclick="sdVKeySave(this)" style="padding:6px 16px;border:none;border-radius:7px;'
-      +'background:#2e7d32;color:#fff;font-size:12px;font-weight:600;cursor:pointer">저장</button>'
-      +'</div></div>',
-      '출처: 국토교통부 브이월드(공간정보 오픈플랫폼)');
+      +'background:'+S.color+';color:#fff;font-size:12px;font-weight:600;cursor:pointer">저장</button>'
+      +'</div></div>', S.cite);
   }
 
-  // ── 인쇄용 지도 그리기 ──────────────────────────────────
+  // ── 공공 지도 그리기 ────────────────────────────────────
   window.sdVMap=async function(host, name, opts){
     opts=opts||{};
     var el=(typeof host==='string')?document.getElementById(host):host;
     if(!el) return;
     name=String(name||'').trim();
     if(!name) return;
+    var src=opts.src||el.getAttribute('data-vwsrc')||'vw';
+    if(!SRC[src]) src='vw';
+    el.setAttribute('data-vwsrc', src);
+    window.sdVLastSrc=src;
 
     var my=++SEQ;
-    el.innerHTML=note(name,'브이월드 지도를 준비하는 중…');
+    el.innerHTML=note(name, src, SRC[src].label+' 지도를 준비하는 중…');
 
-    await loadKey();
+    await loadKey(src);
     if(my!==SEQ) return;
-    if(!KEY){ el.innerHTML=keyBox(name); return; }
+    if(!KEYS[src]){ el.innerHTML=keyBox(name, src); return; }
+    await loadKey('vw');
+    if(!KEYS.vw){ el.innerHTML=keyBox(name, 'vw'); return; }   // 위치 찾기에 필요
 
-    el.innerHTML=note(name,'브이월드에서 위치를 찾는 중…');
+    el.innerHTML=note(name, src, '위치를 찾는 중…');
     var g=await find(name);
     if(my!==SEQ) return;
-
     if(!g){
-      el.innerHTML=note(name,
-        '브이월드에서 이 이름의 위치를 찾지 못했습니다.<br>'
-        +'<span style="opacity:.8">카카오 지도로 위치를 확인하신 뒤, 인쇄 자료에는 지도 대신 주소를 넣어 주세요.</span>');
+      el.innerHTML=note(name, src,
+        '이 이름의 위치를 찾지 못했습니다.<br>'
+        +'<span style="opacity:.8">주소를 넣어 주시면 훨씬 잘 찾습니다.</span>');
       return;
     }
 
-    var z=opts.level||16, layer=opts.layer||'base';
-    var ctl='<span style="display:flex;border:1px solid rgba(128,128,128,.4);border-radius:6px;overflow:hidden">'
-      + Object.keys(LAYERS).map(function(k){
-          var on=(k===layer);
-          return '<button data-vwlayer="'+k+'" onclick="sdVLayer(this,\''+k+'\')" '
-            +'style="font-size:11px;padding:3px 9px;border:none;cursor:pointer;'
-            +'background:'+(on?'#1a2744':'transparent')+';color:'+(on?'#fff':'inherit')+'">'+LAYERS[k].label+'</button>';
-        }).join('')
-      +'</span>'
-      +'<button onclick="sdVZoom(this,-1)" style="font-size:12px;padding:2px 9px;border:1px solid rgba(128,128,128,.4);'
+    var S=SRC[src];
+    var z=opts.level||S.defZoom, layer=opts.layer||'base';
+    var lk=Object.keys(S.layers);
+    var ctl='';
+    if(lk.length>1){
+      ctl+='<span style="display:flex;border:1px solid rgba(128,128,128,.4);border-radius:6px;overflow:hidden">'
+        + lk.map(function(k){
+            var on=(k===layer);
+            return '<button data-vwlayer="'+k+'" onclick="sdVLayer(this,\''+k+'\')" '
+              +'style="font-size:11px;padding:3px 9px;border:none;cursor:pointer;'
+              +'background:'+(on?'#1a2744':'transparent')+';color:'+(on?'#fff':'inherit')+'">'
+              +S.layers[k].label+'</button>';
+          }).join('') +'</span>';
+    }
+    ctl+='<button onclick="sdVZoom(this,-1)" style="font-size:12px;padding:2px 9px;border:1px solid rgba(128,128,128,.4);'
       +'background:transparent;border-radius:6px;cursor:pointer;color:inherit">−</button>'
       +'<span data-vwlevel style="font-size:10.5px;opacity:.7;min-width:44px;text-align:center">레벨 '+z+'</span>'
       +'<button onclick="sdVZoom(this,1)" style="font-size:12px;padding:2px 9px;border:1px solid rgba(128,128,128,.4);'
@@ -20075,27 +20160,32 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
       +'<button onclick="sdVBig(this)" style="font-size:11px;padding:3px 9px;border:1px solid rgba(128,128,128,.4);'
       +'background:transparent;border-radius:6px;cursor:pointer;color:inherit">⤢ 크게</button>';
 
-    el.innerHTML=shell(name,
+    el.innerHTML=shell(name, src,
       '<div data-vwcanvas class="sd-mapcv" style="position:relative;width:100%;height:'+(opts.height||460)+'px;'
       +'background:#e8e8e8;overflow:hidden"></div>',
       '📍 '+esc(g.title||name)+(g.addr?' · '+esc(g.addr):'')
-      +' &nbsp;|&nbsp; <b>출처: 국토교통부 브이월드(공간정보 오픈플랫폼)</b>', ctl);
+      +' &nbsp;|&nbsp; <b>'+S.cite+'</b>', ctl);
 
     var canvas=el.querySelector('[data-vwcanvas]');
-    canvas.__st={ lat:g.lat, lng:g.lng, z:z, layer:layer, name:name, title:g.title, addr:g.addr };
+    canvas.__st={ lat:g.lat, lng:g.lng, z:z, layer:layer, src:src, name:name, title:g.title, addr:g.addr };
     paint(canvas, canvas.__st);
     wire(canvas, canvas.__st);
     setTimeout(function(){ paint(canvas, canvas.__st); },150);
   };
 
+  // 제공처 바꾸기
+  window.sdVSrc=function(btn, src){
+    var host=btn.closest('[data-name]');
+    if(!host) return;
+    window.sdVMap(host, host.getAttribute('data-name'), { src:src, height:460 });
+  };
   // 카카오 지도로 되돌리기
   window.sdVBack=function(btn){
     var host=btn.closest('[data-name]');
     if(!host) return;
     if(typeof window.sdMiniMap==='function') window.sdMiniMap(host, host.getAttribute('data-name'), {height:460, big:true});
   };
-
-  // 상세 모달의 카카오 지도 → 인쇄용으로 바꾸기
+  // 카카오 → 공공 지도
   window.sdVMapSwap=function(btn){
     var host=btn.closest('[data-name]');
     if(!host) return;
@@ -20104,8 +20194,9 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 
   // ── 크게 보기 ───────────────────────────────────────────
   window.sdVBig=function(btn){
-    var src=btn.closest('[data-vwmap]').querySelector('[data-vwcanvas]');
-    var s=src.__st; if(!s) return;
+    var src0=btn.closest('[data-vwmap]').querySelector('[data-vwcanvas]');
+    var s=src0.__st; if(!s) return;
+    var S=SRC[s.src];
     var old=document.getElementById('sdvw-big'); if(old) old.remove();
     var ov=document.createElement('div');
     ov.id='sdvw-big';
@@ -20114,8 +20205,8 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     ov.innerHTML='<div data-vwmap style="background:#fff;border-radius:14px;overflow:hidden;display:flex;'
       +'flex-direction:column;width:100%;max-width:1500px;height:100%;box-shadow:0 10px 50px rgba(0,0,0,.35)">'
       +'<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;'
-      +'padding:11px 16px;background:#1b5e20;color:#fff">'
-      +'<span style="font-size:14px;font-weight:700">🖨️ '+esc(s.title||s.name)
+      +'padding:11px 16px;background:'+S.color+';color:#fff">'
+      +'<span style="font-size:14px;font-weight:700">📍 '+esc(s.title||s.name)
       +(s.addr?' <span style="font-weight:400;opacity:.8;font-size:12px">'+esc(s.addr)+'</span>':'')+'</span>'
       +'<span style="display:flex;gap:7px;align-items:center;flex-shrink:0">'
       +'<button onclick="sdVZoom(this,-1)" style="font-size:13px;padding:3px 11px;background:transparent;'
@@ -20126,15 +20217,16 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
       +'<button onclick="document.getElementById(\'sdvw-big\').remove()" style="background:transparent;color:#fff;'
       +'border:1px solid rgba(255,255,255,.4);border-radius:6px;padding:4px 11px;font-size:12px;cursor:pointer">✕ 닫기</button>'
       +'</span></div>'
-      +'<div data-vwcanvas style="flex:1 1 auto;position:relative;background:#e8e8e8;overflow:hidden;min-height:0"></div>'
-      +'<div style="padding:6px 16px;font-size:10.5px;opacity:.75">출처: 국토교통부 브이월드(공간정보 오픈플랫폼)</div></div>';
+      +'<div data-vwcanvas class="sd-mapcv" style="flex:1 1 auto;position:relative;background:#e8e8e8;'
+      +'overflow:hidden;min-height:0"></div>'
+      +'<div style="padding:6px 16px;font-size:10.5px;opacity:.75">'+S.cite+'</div></div>';
     document.body.appendChild(ov);
     ov.onclick=function(e){ if(e.target===ov) ov.remove(); };
     var esckey=function(e){ if(e.key==='Escape'){ var b=document.getElementById('sdvw-big'); if(b) b.remove();
       document.removeEventListener('keydown',esckey); } };
     document.addEventListener('keydown',esckey);
     var c=ov.querySelector('[data-vwcanvas]');
-    c.__st={ lat:s.lat, lng:s.lng, z:s.z, layer:s.layer, name:s.name, title:s.title, addr:s.addr };
+    c.__st={ lat:s.lat, lng:s.lng, z:s.z, layer:s.layer, src:s.src, name:s.name, title:s.title, addr:s.addr };
     setTimeout(function(){ paint(c,c.__st); wire(c,c.__st); },60);
     var onres=function(){
       if(!document.getElementById('sdvw-big')){ window.removeEventListener('resize',onres); return; }
@@ -20142,8 +20234,82 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     };
     window.addEventListener('resize', onres);
   };
+
+  // ── 인쇄용: 타일을 미리 받아 파일에 심어 둔다 ───────────
+  function ckey(name, W, H, o){
+    return String(name||'').replace(/\s+/g,'')+'|'+W+'x'+H+'|'+(o.src||'vw')+'|'
+      +(o.z!=null?o.z:'')+'|'+(o.layer||'base');
+  }
+  function toDataUrl(url){
+    return fetch(url).then(function(r){
+      if(!r.ok) throw new Error('tile '+r.status);
+      return r.blob();
+    }).then(function(bl){
+      return new Promise(function(res,rej){
+        var fr=new FileReader();
+        fr.onload=function(){ res(fr.result); };
+        fr.onerror=rej;
+        fr.readAsDataURL(bl);
+      });
+    });
+  }
+  window.sdVEnsure=async function(name){ return await find(name); };
+  window.sdVHas=function(name){ return !!GEO[String(name||'').replace(/\s+/g,'')]; };
+
+  window.sdVPrefetchTiles=async function(name, W, H, opts){
+    opts=opts||{};
+    var src=opts.src||'vw';
+    W=W||1050; H=H||620;
+    var o={ src:src, z:(opts.z!=null?opts.z:SRC[src].defZoom), layer:opts.layer||'base' };
+    var key=ckey(name,W,H,o);
+    if(TILES[key]) return true;
+    await loadKey(src); await loadKey('vw');
+    if(!KEYS[src] || !KEYS.vw) return false;
+    var g=null;
+    try{ g=await find(name); }catch(e){ g=null; }
+    if(!g) return false;
+    var st={ lat:g.lat, lng:g.lng, z:o.z, layer:o.layer, src:src };
+    var list=tileList(st, W, H);
+    if(!list.length) return false;
+    var imgs=[];
+    try{
+      for(var i=0;i<list.length;i++){
+        imgs.push({ d: await toDataUrl(list[i].url), left:list[i].left, top:list[i].top });
+      }
+    }catch(e){ return false; }
+    TILES[key]={ g:g, W:W, H:H, imgs:imgs, src:src };
+    return true;
+  };
+  window.sdVTilesReady=function(name, W, H, opts){
+    opts=opts||{};
+    var src=opts.src||'vw';
+    return !!TILES[ckey(name, W||1050, H||620,
+      { src:src, z:(opts.z!=null?opts.z:SRC[src].defZoom), layer:opts.layer||'base' })];
+  };
+  window.sdVTilesHtml=function(name, W, H, opts){
+    opts=opts||{};
+    var src=opts.src||'vw';
+    W=W||1050; H=H||620;
+    var c=TILES[ckey(name,W,H,{ src:src, z:(opts.z!=null?opts.z:SRC[src].defZoom), layer:opts.layer||'base' })];
+    if(!c) return '';
+    var inner=c.imgs.map(function(t){
+      return '<img src="'+t.d+'" width="'+TSZ+'" height="'+TSZ+'" '
+        +'style="position:absolute;left:'+t.left+'px;top:'+t.top+'px" alt="">';
+    }).join('');
+    inner+='<div style="position:absolute;left:50%;top:50%;width:0;height:0">'
+      +'<div style="position:absolute;left:-11px;top:-32px;width:22px;height:22px;border-radius:50%;'
+      +'background:#d32f2f;border:4px solid #fff;box-shadow:0 1px 5px rgba(0,0,0,.5)"></div>'
+      +'<div style="position:absolute;left:-5px;top:-11px;width:0;height:0;border-left:5px solid transparent;'
+      +'border-right:5px solid transparent;border-top:11px solid #d32f2f"></div></div>';
+    return '<div style="position:relative;width:'+W+'px;height:'+H+'px;overflow:hidden;'
+      +'border-radius:8px;background:#e8e8e8">'+inner+'</div>'
+      +'<div style="font-size:11px;color:#777;margin-top:6px">📍 '+esc(c.g.title||name)
+      +(c.g.addr?' · '+esc(c.g.addr):'')
+      +' &nbsp;|&nbsp; <b>'+SRC[c.src].cite+'</b></div>';
+  };
 })();
 </script>
+
 
 <script>
 /* 인쇄 안정화 모듈 v3.0 — 부동산 데이터
