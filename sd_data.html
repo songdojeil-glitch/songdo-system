@@ -19272,7 +19272,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.09.18-7';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.09.19-1';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_data.html';      // 이 파일 이름
   var SD_NAME = '실거래가';      // 사람이 부르는 이름
 
@@ -20423,8 +20423,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 (function(){
   'use strict';
 
-  var DIM='opacity:.38';                 // 의미가 옅어진 칸에 씌우는 흐림
-  var FEW=2;                             // 이 건수 이하는 「표본 적음」으로 흐리게
+  // 흐림 처리는 두지 않는다 — 건수·연차는 숫자 그대로 보여 주고 판단은 사람이 한다.
 
   function n(v){ var x=parseFloat(String(v==null?'':v).replace(/[^0-9.\-]/g,'')); return isFinite(x)?x:0; }
   function fmt(v){ try{ return (Math.round(v)||0).toLocaleString(); }catch(e){ return String(v); } }
@@ -20584,18 +20583,11 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     return { cnt:vals.length, mid:median(vals), min:Math.min.apply(null,vals), max:Math.max.apply(null,vals) };
   }
 
-  // ── 입주 연차 ───────────────────────────────────────────
-  function yearsSince(ipju){
-    var m=String(ipju||'').match(/(19|20)\d{2}/);
-    if(!m) return null;
-    return new Date().getFullYear() - parseInt(m[0],10);
-  }
-
   // ── 칸 만들기 ───────────────────────────────────────────
   function cellSale(s){
     if(s==='NODATA') return '<td class="num" style="color:var(--text3)" title="실거래 자료가 아직 올라오지 않았습니다">—</td>';
     if(!s) return '<td class="num" style="color:var(--text3)" title="최근 1년 매매 거래 없음">—</td>';
-    var dim = s.cnt<=FEW ? ';'+DIM : '';
+    var dim = '';
     var range = (s.min===s.max) ? '' :
       '<div style="font-size:9.5px;color:var(--text3);line-height:1.3">'+fmt(s.min)+'~'+fmt(s.max)+'</div>';
     return '<td class="num" style="line-height:1.35'+dim+'">'
@@ -20605,7 +20597,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
   }
   function cellPP(s){
     if(s==='NODATA' || !s || !(s.pp>0)) return '<td class="num" style="color:var(--text3)">—</td>';
-    var dim = s.cnt<=FEW ? ';'+DIM : '';
+    var dim = '';
     return '<td class="num" style="color:var(--accent3)'+dim+'">'+fmt(s.pp)+'만</td>';
   }
   function cellHoga(h){
@@ -20634,9 +20626,6 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     if(!head || !body) return;
     if(head.cells.length<10) return;               // 표 모양이 다르면 손대지 않는다
 
-    var yrs=yearsSince(d.입주일);
-    var old=(yrs!==null && yrs>=10);               // 입주 10년이 지난 단지
-
     // 머리글
     var ths=['최근1년 실거래','실거래 평당가','현재 호가(중위)'];
     var ref=head.cells[AFTER];
@@ -20646,11 +20635,6 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
       th.textContent=t;
       ref.parentNode.insertBefore(th, ref.nextSibling);
     });
-    if(old){
-      [head.cells[11], head.cells[12]].forEach(function(th){
-        if(th){ th.style.opacity='.38'; th.title='입주 '+yrs+'년차 — 분양가는 참고용'; }
-      });
-    }
 
     // 본문
     var PYS=types.map(function(t){ return Number(t.평형)||0; }).filter(function(v){ return v>0; });
@@ -20667,9 +20651,6 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
       made.reverse().forEach(function(td){
         refTd.parentNode.insertBefore(td, refTd.nextSibling);
       });
-      if(old){
-        [tr.cells[11], tr.cells[12]].forEach(function(td){ if(td) td.style.opacity='.38'; });
-      }
     });
 
     // 표 아래 한 줄 안내
@@ -20677,10 +20658,8 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
       var note=document.createElement('div');
       note.id='hp-note';
       note.style.cssText='font-size:10.5px;color:var(--text3);margin-top:6px;line-height:1.6';
-      note.innerHTML='· 최근 1년 실거래는 <b>매매</b>만 집계했습니다. 괄호 안은 건수, 아랫줄은 최저~최고입니다. '
-        +'2건 이하는 표본이 적어 흐리게 표시합니다.<br>'
-        +'· 현재 호가는 네이버 매물의 <b>중위값</b>입니다.'
-        + (old ? '<br>· 입주 '+yrs+'년차라 <b>분양가·평당분양가</b>는 참고용으로만 흐리게 두었습니다.' : '');
+      note.innerHTML='· 최근 1년 실거래는 <b>매매</b>만 집계했습니다. 괄호 안은 건수, 아랫줄은 최저~최고입니다.<br>'
+        +'· 현재 호가는 네이버 매물의 <b>중위값</b>입니다.';
       tbl.parentNode.parentNode.insertBefore(note, tbl.parentNode.nextSibling);
     }
     tbl.dataset.hpDone='1';
