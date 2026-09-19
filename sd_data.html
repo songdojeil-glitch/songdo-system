@@ -19272,7 +19272,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.09.18-6';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.09.18-7';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_data.html';      // 이 파일 이름
   var SD_NAME = '실거래가';      // 사람이 부르는 이름
 
@@ -20460,16 +20460,98 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     return !jw || jw==='매매';
   }
 
+  // ── 단지명 이어 맞추기 ─────────────────────────────────
+  // 같은 단지를 셋이 다르게 부른다.
+  //   공급현황 「한진해모로」  ·  실거래 「송도한진해모로」  ·  네이버 「송도해모로」
+  // 글자를 다듬어 맞춰 보고, 그래도 다른 것만 아래 표로 이어 준다.
+  var SALE_ALIAS={
+    '위드프리쌍뜨':'위드프리상뜨',
+    '더샵하버뷰13단지':'송도더샵하버뷰(D13)',
+    '더샵하버뷰14단지':'송도더샵하버뷰(D14)',
+    '송도더샵하버뷰II':'송도더샵하버뷰(D15)',
+    '송도더샵그린워크3차(17블록)':'송도더샵그린워크3차(17-1블럭)',
+    '송도더샵그린워크3차(18블록)':'송도더샵그린워크3차(18-1블럭)',
+    '힐스테이트레이크송도':'힐스테이트레이크송도1차'
+  };
+  var NAVER_ALIAS={
+    '한진해모로':'송도해모로',
+    '송도코오롱더프라우3단지(주상복합)':'송도더프라우3단지(주상복합)'
+  };
+
+  function nmBase(x){
+    return String(x||'').toUpperCase()
+      .replace(/VIEW/g,'뷰').replace(/LUXEOCEAN/g,'럭스오션')
+      .replace(/블럭/g,'블록').replace(/BLOCK/g,'블록').replace(/BL(?=\d|$|\D)/g,'블록')
+      .replace(/[\s()\[\]{}·,.\-_\/&+]/g,'')
+      .replace(/주상복합|주상/g,'')
+      .replace(/아파트$/,'');
+  }
+  function nmKeys(x){
+    var b=nmBase(x), n=b.replace(/^송도/,'').replace(/송도$/,'');
+    var out=[];
+    [b,n].forEach(function(v){
+      if(!v) return;
+      if(out.indexOf(v)<0) out.push(v);
+      var bag='~'+v.split('').sort().join('');     // 글자 묶음 — 앞뒤 순서가 바뀐 이름을 잡는다
+      if(out.indexOf(bag)<0) out.push(bag);
+    });
+    return out;
+  }
+  var IDX={};                                      // {실거래|네이버 : {색인, 이름목록, 행수}}
+  function index(kind, rows, field){
+    var c=IDX[kind];
+    if(c && c.len===rows.length) return c;
+    var names=[], seen={};
+    rows.forEach(function(r){
+      var v=String(r[field]||'');
+      if(v && !seen[v]){ seen[v]=1; names.push(v); }
+    });
+    var map={};
+    names.forEach(function(v){
+      nmKeys(v).forEach(function(k){ (map[k]=map[k]||[]).push(v); });
+    });
+    c={ len:rows.length, names:seen, map:map };
+    IDX[kind]=c;
+    return c;
+  }
+  function matchNm(kind, rows, field, nm, alias){
+    if(!nm || !rows || !rows.length) return nm;
+    if(alias[nm]) return alias[nm];
+    var c=index(kind, rows, field);
+    if(c.names[nm]) return nm;
+    var ks=nmKeys(nm);
+    for(var i=0;i<ks.length;i++){
+      var hit=c.map[ks[i]];
+      if(hit && hit.length===1) return hit[0];     // 하나로 좁혀질 때만 받아들인다
+    }
+    return nm;
+  }
+
+  // 평형 이어 맞추기 — 실거래·네이버의 평형이 1~2평 어긋나는 단지가 있다.
+  // 그 단지가 가진 평형 목록 중 가장 가까운 것에만 붙인다 (두 칸에 겹쳐 세지 않게).
+  function nearest(pys, v){
+    var best=null, bd=1e9;
+    (pys||[]).forEach(function(q){ var d=Math.abs(q-v); if(d<bd){ bd=d; best=q; } });
+    return { py:best, gap:bd };
+  }
+  function pyHit(pys, pyeong, v, tol){
+    if(!(v>0)) return false;
+    if(v===pyeong) return true;
+    var nr=nearest(pys, v);
+    return nr.py===pyeong && nr.gap<=(tol||2);
+  }
+
   // ── 최근 1년 실거래 ─────────────────────────────────────
-  function saleStat(danji, pyeong){
+  function saleStat(danji, pyeong, pys){
     var rows=window.G && G.saleData;
     if(!rows || !rows.length) return 'NODATA';
-    var nm=(typeof findSaleNm==='function') ? findSaleNm(danji) : danji;
+    var nm=matchNm('sale', rows, '단지명', danji, SALE_ALIAS);
+    if(nm===danji && typeof findSaleNm==='function') nm=findSaleNm(danji);
     var cut=cutoffYM();
     var amts=[], pps=[];
     rows.forEach(function(r){
       if(r['단지명']!==nm) return;
-      if(Number(r['분양평형'])!==Number(pyeong)) return;
+      if(!pyHit(pys, pyeong, Number(r['분양평형'])||0, 2)) return;
       if(rowYM(r)<cut) return;
       if(!isSale(r)) return;                              // 전·월세는 뺀다
       var a=n(r['거래금액']);
@@ -20485,15 +20567,15 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
   }
 
   // ── 현재 매물 호가 (네이버 매물 · 매매) ─────────────────
-  function hogaStat(danji, pyeong){
+  function hogaStat(danji, pyeong, pys){
     var rows=window.G && G.naverData;
     if(!rows || !rows.length) return null;
-    var bare=String(danji||'').replace(/\s+/g,'');
+    var nm=matchNm('naver', rows, '단지명', danji, NAVER_ALIAS);
+    var bare=String(nm).replace(/\s+/g,'');
     var vals=[];
     rows.forEach(function(r){
-      var rn=String(r.단지명||'').replace(/\s+/g,'');
-      if(rn!==bare) return;
-      if(Number(r.분양평형)!==Number(pyeong)) return;
+      if(String(r.단지명||'').replace(/\s+/g,'')!==bare) return;
+      if(!pyHit(pys, pyeong, Number(r.분양평형)||0, 2)) return;
       if(r.거래유형!=='매매') return;
       var v=n(r.호가);
       if(v>0) vals.push(v);
@@ -20571,11 +20653,12 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     }
 
     // 본문
+    var PYS=types.map(function(t){ return Number(t.평형)||0; }).filter(function(v){ return v>0; });
     Array.prototype.forEach.call(body.rows, function(tr, i){
       var t=types[i];
       if(!t || tr.cells.length<10) return;
       var py=Number(t.평형)||0;
-      var s=saleStat(nm, py), h=hogaStat(nm, py);
+      var s=saleStat(nm, py, PYS), h=hogaStat(nm, py, PYS);
       var html=cellSale(s)+cellPP(s)+cellHoga(h);
       var refTd=tr.cells[AFTER];
       var tmp=document.createElement('tbody');
