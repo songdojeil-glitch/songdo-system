@@ -19272,7 +19272,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.09.20-2';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.09.20-3';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_data.html';      // 이 파일 이름
   var SD_NAME = '실거래가';      // 사람이 부르는 이름
 
@@ -19525,9 +19525,62 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     return 'https://map.kakao.com/?q='+encodeURIComponent('송도 '+String(name||'').trim());
   }
 
+  // ── 지도 종류 (일반 / 위성 / 하이브리드 / 지적편집도) ───
+  // 카카오도 위성지도를 준다. 고른 종류는 기억해 둔다.
+  var KT=[ {k:'base', t:'일반'}, {k:'sat', t:'위성'}, {k:'hyb', t:'하이브리드'}, {k:'cad', t:'지적도'} ];
+  function kTypeGet(){
+    try{ var v=localStorage.getItem('sd_kakao_maptype'); return v&&/^(base|sat|hyb|cad)$/.test(v)?v:'base'; }
+    catch(e){ return 'base'; }
+  }
+  function kTypeBar(){
+    var cur=kTypeGet();
+    var out='<span style="display:flex;border:1px solid rgba(128,128,128,.4);border-radius:6px;overflow:hidden">';
+    KT.forEach(function(o){
+      var on=(o.k===cur);
+      out+='<button '+(on?'':'onclick="sdMapType(this,\''+o.k+'\')" ')
+        +'style="font-size:11px;font-weight:'+(on?'700':'600')+';padding:3px 9px;border:none;'
+        +'cursor:'+(on?'default':'pointer')+';background:'+(on?'#1a2744':'transparent')
+        +';color:'+(on?'#fff':'inherit')+'">'+o.t+'</button>';
+    });
+    return out+'</span>';
+  }
+  function kTypeApply(map, kind){
+    if(!map || !window.kakao || !kakao.maps) return;
+    var M=kakao.maps.MapTypeId;
+    try{
+      [M.HYBRID, M.USE_DISTRICT, M.TERRAIN, M.TRAFFIC].forEach(function(t){
+        try{ map.removeOverlayMapTypeId(t); }catch(e){}
+      });
+      if(kind==='sat'){ map.setMapTypeId(M.SKYVIEW); }
+      else if(kind==='hyb'){ map.setMapTypeId(M.SKYVIEW); map.addOverlayMapTypeId(M.HYBRID); }
+      else if(kind==='cad'){ map.setMapTypeId(M.ROADMAP); map.addOverlayMapTypeId(M.USE_DISTRICT); }
+      else { map.setMapTypeId(M.ROADMAP); }
+    }catch(e){}
+  }
+  // 단추를 누르면 그 지도 칸의 지도에만 적용한다
+  window.sdMapType=function(btn, kind){
+    try{ localStorage.setItem('sd_kakao_maptype', kind); }catch(e){}
+    var bar=btn.parentNode;
+    Array.prototype.forEach.call(bar.children, function(b,i){
+      var on=(KT[i]&&KT[i].k===kind);
+      b.style.fontWeight=on?'700':'600';
+      b.style.background=on?'#1a2744':'transparent';
+      b.style.color=on?'#fff':'inherit';
+      b.style.cursor=on?'default':'pointer';
+      b.onclick=on?null:function(){ window.sdMapType(b, KT[i].k); };
+    });
+    var root=btn.closest('div[style*="border-radius:10px"]')||document;
+    var cv=root.querySelector('.sd-mapcv')||document.getElementById('sdmap-big-canvas');
+    if(cv && cv.__kmap) kTypeApply(cv.__kmap, kind);
+    // 크게 보기 창이 떠 있으면 거기에도 같이 적용
+    var bigcv=document.getElementById('sdmap-big-canvas');
+    if(bigcv && bigcv!==cv && bigcv.__kmap) kTypeApply(bigcv.__kmap, kind);
+  };
+
   function frame(name, inner, foot, big){
     var right='';
     if(big){
+      right+=kTypeBar();
       right+='<span style="display:flex;border:1px solid rgba(128,128,128,.4);border-radius:6px;overflow:hidden">'
         +'<button style="font-size:11px;font-weight:700;padding:3px 10px;border:none;cursor:default;'
         +'background:#1a2744;color:#fff">카카오지도</button>'
@@ -19578,7 +19631,10 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
       document.removeEventListener('keydown',esckey); } };
     document.addEventListener('keydown',esckey);
     var pos=new kakao.maps.LatLng(g.lat,g.lng);
-    var m=new kakao.maps.Map(document.getElementById('sdmap-big-canvas'), { center:pos, level:3 });
+    var bigbox=document.getElementById('sdmap-big-canvas');
+    var m=new kakao.maps.Map(bigbox, { center:pos, level:3 });
+    bigbox.__kmap=m;
+    kTypeApply(m, kTypeGet());
     new kakao.maps.Marker({ map:m, position:pos });
     m.addControl(new kakao.maps.ZoomControl(), kakao.maps.ControlPosition.RIGHT);
     setTimeout(function(){ try{ m.relayout(); m.setCenter(pos); }catch(e){} },120);
@@ -19668,6 +19724,8 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     if(!box) return;
     var pos=new kakao.maps.LatLng(g.lat, g.lng);
     var map=new kakao.maps.Map(box, { center:pos, level:opts.level||4 });
+    box.__kmap=map;                       // 종류 바꾸기에서 찾아 쓴다
+    kTypeApply(map, kTypeGet());
     new kakao.maps.Marker({ map:map, position:pos });
     map.addControl(new kakao.maps.ZoomControl(), kakao.maps.ControlPosition.RIGHT);
     setTimeout(function(){ try{ map.relayout(); map.setCenter(pos); }catch(e){} }, 120);
