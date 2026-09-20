@@ -2220,6 +2220,33 @@ function saveEstimateImage(){
   }
 }
 
+// ── 견적서 캡처 폭 재기 ─────────────────────────────────
+// 표 칸이 많은 견적서는 1100px 를 넘어간다. 고정 폭으로 찍으면 오른쪽이 잘린다.
+// 카드 안에서 가장 오른쪽까지 뻗은 요소를 찾아 그만큼 넓혀 준다.
+function estFitWidth(card, min){
+  min = min || 1100;
+  var need = min;
+  try{
+    var base = card.getBoundingClientRect().left;
+    var cs = window.getComputedStyle(card);
+    var padR = parseFloat(cs.paddingRight) || 0;
+    var all = card.getElementsByTagName('*');
+    for(var i=0; i<all.length; i++){
+      var e = all[i];
+      var r = e.getBoundingClientRect();
+      if(!r.width && !e.scrollWidth) continue;
+      var left = r.left - base;
+      if(r.right - base > need) need = r.right - base;
+      // 가로 스크롤로 숨어 있는 칸이 남아 있으면 그만큼만 더 본다
+      var sw = e.scrollWidth || 0;
+      if(sw > (e.clientWidth||0) + 2 && left + sw > need) need = left + sw;
+    }
+    need += padR + 8;
+  }catch(err){ need = min; }
+  if(!(need > 0)) need = min;
+  return Math.max(min, Math.min(3000, Math.ceil(need)));
+}
+
 function doPrintImage(el, fname){
   if(doPrintImage.__busy){ if(typeof showToast==='function') showToast('인쇄 창을 준비하는 중입니다…'); return; }
   doPrintImage.__busy=1;
@@ -2235,12 +2262,18 @@ function doPrintImage(el, fname){
     autoEls.push(ae);
     var ao=[]; ae.forEach(function(e){ao.push(e.style.overflowX);e.style.overflowX='visible';}); autoOrig.push(ao);
   });
+  // 가장 넓은 장에 맞춘 하나의 폭을 모든 장에 똑같이 쓴다 (장마다 배율이 달라지지 않게)
+  var CW=1100;
+  cardArr.forEach(function(card){ CW=Math.max(CW, estFitWidth(card,1100)); });
+  cardArr.forEach(function(card){ card.style.minWidth=CW+'px'; card.style.width=CW+'px'; card.style.maxWidth=CW+'px'; });
+  // 넓어진 만큼 배율을 낮춰 용량이 불어나지 않게 한다 (A4 기준 충분한 해상도 유지)
+  var SC=Math.max(1, Math.min(1.5, 2400/CW));
   // 교체 버튼 숨김
   var btns=el.querySelectorAll('.extra-img-change-btn');
   btns.forEach(function(b){b.style.display='none';});
   var canvases=[], done=0;
   cardArr.forEach(function(card,ci){
-    html2canvas(card,{scale:1.5,useCORS:true,backgroundColor:'#ffffff',logging:false,width:1100,windowWidth:1400}).then(function(cv){
+    html2canvas(card,{scale:SC,useCORS:true,backgroundColor:'#ffffff',logging:false,width:CW,windowWidth:CW+300}).then(function(cv){
       canvases[ci]=cv;
       done++;
       if(done===cardArr.length){
@@ -2311,13 +2344,17 @@ function doSaveImage(el){
   var autoEls = card.querySelectorAll('[style*="overflow-x:auto"]');
   var origStyles = [];
   autoEls.forEach(function(e){ origStyles.push(e.style.overflowX); e.style.overflowX='visible'; });
+  var CW = estFitWidth(card, 1100);
+  card.style.minWidth = CW+'px';
+  card.style.width = CW+'px';
+  card.style.maxWidth = CW+'px';
   html2canvas(card, {
     scale: 2,
     useCORS: true,
     backgroundColor: '#ffffff',
     logging: false,
-    width: 1100,
-    windowWidth: 1400
+    width: CW,
+    windowWidth: CW+300
   }).then(function(canvas){
     card.setAttribute('style', origStyle);
     autoEls.forEach(function(e,i){ e.style.overflowX=origStyles[i]; });
@@ -2378,11 +2415,15 @@ function doSaveImageNamed(el,fname){
     autoEls.push(ae);
     var ao=[];ae.forEach(function(e){ao.push(e.style.overflowX);e.style.overflowX='visible';});autoOrig.push(ao);
   });
+  // 가장 넓은 장에 맞춘 하나의 폭을 모든 장에 똑같이 쓴다
+  var CW=1100;
+  cardArr.forEach(function(card){ CW=Math.max(CW, estFitWidth(card,1100)); });
+  cardArr.forEach(function(card){ card.style.minWidth=CW+'px'; card.style.width=CW+'px'; card.style.maxWidth=CW+'px'; });
   var btns=el.querySelectorAll('.extra-img-change-btn');
   btns.forEach(function(b){b.style.display='none';});
   var canvases=[],done=0;
   cardArr.forEach(function(card,ci){
-    html2canvas(card,{scale:2,useCORS:true,backgroundColor:'#ffffff',logging:false,width:1100,windowWidth:1400}).then(function(cv){
+    html2canvas(card,{scale:2,useCORS:true,backgroundColor:'#ffffff',logging:false,width:CW,windowWidth:CW+300}).then(function(cv){
       canvases[ci]=cv;
       done++;
       if(done===cardArr.length){
@@ -7571,7 +7612,7 @@ function applyAIResult(){
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.09.19-1';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.09.20-1';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_sangga.html';      // 이 파일 이름
   var SD_NAME = '상가관리';      // 사람이 부르는 이름
 
