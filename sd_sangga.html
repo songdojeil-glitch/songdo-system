@@ -55,6 +55,9 @@ input[type=range]{width:100%;accent-color:#1a1a1a}
 .est-card{border:1px solid #e0e0e0;border-radius:12px;padding:1.5rem;background:#fff;margin-bottom:1rem}
 .est-title{font-size:18px;font-weight:600;margin-bottom:1.5rem;color:#1a1a1a;border-bottom:2px solid #1a1a1a;padding-bottom:10px}
 .est-tbl{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:1rem}
+/* 공동중개용 — 우리 사무소 정보를 뺀 견적서 */
+body.sd-office-off .sd-office{display:none!important}
+body.sd-office-off .sd-foot-grid{grid-template-columns:1fr!important}
 .est-tbl th{background:#1a2744;color:#fff;padding:9px 10px;text-align:center;font-weight:600;white-space:nowrap}
 .est-tbl td{padding:9px 10px;border-bottom:0.5px solid #e8e8e8;text-align:center;white-space:nowrap;vertical-align:middle}
 .est-tbl tbody tr:last-child td{background:#1a2744!important;color:#fff!important;font-weight:700!important;font-size:14px!important}
@@ -2229,7 +2232,8 @@ function estFitWidth(card, min){
   try{
     var base = card.getBoundingClientRect().left;
     var cs = window.getComputedStyle(card);
-    var padR = parseFloat(cs.paddingRight) || 0;
+    var padL = parseFloat(cs.paddingLeft) || 0;
+    var bdL  = parseFloat(cs.borderLeftWidth) || 0;
     var all = card.getElementsByTagName('*');
     for(var i=0; i<all.length; i++){
       var e = all[i];
@@ -2241,7 +2245,7 @@ function estFitWidth(card, min){
       var sw = e.scrollWidth || 0;
       if(sw > (e.clientWidth||0) + 2 && left + sw > need) need = left + sw;
     }
-    need += padR + 8;
+    need = need - padL - bdL + 8;      // style.width 는 안쪽(콘텐츠) 폭이라 여백을 뺀다
   }catch(err){ need = min; }
   if(!(need > 0)) need = min;
   return Math.max(min, Math.min(3000, Math.ceil(need)));
@@ -2266,6 +2270,11 @@ function doPrintImage(el, fname){
   var CW=1100;
   cardArr.forEach(function(card){ CW=Math.max(CW, estFitWidth(card,1100)); });
   cardArr.forEach(function(card){ card.style.minWidth=CW+'px'; card.style.width=CW+'px'; card.style.maxWidth=CW+'px'; });
+  // ★ 찍을 폭은 「실제로 그려진 바깥 폭」이어야 한다.
+  //    style.width 는 안쪽 폭이라 좌우 여백·테두리만큼 모자라고, 그만큼 오른쪽이 잘려 나갔다.
+  var PW2=CW;
+  cardArr.forEach(function(card){ PW2=Math.max(PW2, Math.ceil(card.getBoundingClientRect().width)); });
+  CW=PW2;
   // 넓어진 만큼 배율을 낮춰 용량이 불어나지 않게 한다 (A4 기준 충분한 해상도 유지)
   var SC=Math.max(1, Math.min(1.5, 2400/CW));
   // 교체 버튼 숨김
@@ -2348,6 +2357,7 @@ function doSaveImage(el){
   card.style.minWidth = CW+'px';
   card.style.width = CW+'px';
   card.style.maxWidth = CW+'px';
+  CW = Math.max(CW, Math.ceil(card.getBoundingClientRect().width));   // 실제로 그려진 바깥 폭
   html2canvas(card, {
     scale: 2,
     useCORS: true,
@@ -2419,6 +2429,9 @@ function doSaveImageNamed(el,fname){
   var CW=1100;
   cardArr.forEach(function(card){ CW=Math.max(CW, estFitWidth(card,1100)); });
   cardArr.forEach(function(card){ card.style.minWidth=CW+'px'; card.style.width=CW+'px'; card.style.maxWidth=CW+'px'; });
+  var PW2=CW;
+  cardArr.forEach(function(card){ PW2=Math.max(PW2, Math.ceil(card.getBoundingClientRect().width)); });
+  CW=PW2;                       // 실제로 그려진 바깥 폭으로 찍는다
   var btns=el.querySelectorAll('.extra-img-change-btn');
   btns.forEach(function(b){b.style.display='none';});
   var canvases=[],done=0;
@@ -5584,7 +5597,7 @@ function buildSaleEstimate(selProps,bldgName,estDate,contractRate,loanRate,intRa
     // ── 헤더
     +'<div style="background:#1a2744;color:#fff;border-radius:10px 10px 0 0;padding:18px 24px;margin:-1.5rem -1.5rem 1.5rem;display:flex;justify-content:space-between;align-items:flex-start">'
     +'<div>'
-    +'<div style="font-size:12px;color:#90caf9;margin-bottom:4px">송도제일공인중개사사무소</div>'
+    +'<div class="sd-office" style="font-size:12px;color:#90caf9;margin-bottom:4px">송도제일공인중개사사무소</div>'
     +'<div style="font-size:22px;font-weight:700">'+bldgName+' 분양견적서</div>'
     +discBadge
     +'</div>'
@@ -5608,11 +5621,11 @@ function buildSaleEstimate(selProps,bldgName,estDate,contractRate,loanRate,intRa
     +'<div style="overflow-x:auto;margin-bottom:2rem"><table class="est-tbl"><thead>'+sch_hdr+'</thead><tbody>'+rows3+'</tbody></table></div>'
     // ── footer
     +'<div style="background:#f0f4ff;border:1px solid #c5cae9;border-radius:10px;padding:16px 20px">'
-    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">'
+    +'<div class="sd-foot-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:10px">'
     +'<div><div style="font-size:12px;color:#666;margin-bottom:4px">■ 분양 계좌번호</div>'
     +'<div style="font-size:16px;font-weight:700">'+sAcct.bank+' '+sAcct.num+'</div>'
     +'<div style="font-size:12px;color:#888">'+sAcct.name+'</div></div>'
-    +'<div><div style="font-size:12px;color:#666;margin-bottom:4px">■ 상담문의</div>'
+    +'<div class="sd-office"><div style="font-size:12px;color:#666;margin-bottom:4px">■ 상담문의</div>'
     +'<div style="font-size:16px;font-weight:700">송도제일공인중개사사무소 &nbsp;<span style="font-size:13px;color:#555;font-weight:500">032-851-6688</span></div>'
     +'<div style="font-size:13px;color:#1a2744;font-weight:600;margin-top:3px">'+staff.name+' &nbsp; '+staff.tel+'</div>'
     +'</div>'
@@ -5729,7 +5742,7 @@ function buildRentEstimate(selProps,bldgName,estDate,loanRate,intRate,tenant,ren
     +'<div style="background:#1a2744;color:#fff;border-radius:10px 10px 0 0;padding:18px 24px;margin:-1.5rem -1.5rem 1.5rem;display:flex;justify-content:space-between;align-items:center">'
     // 좌측: 사무소명 + (제목 + 업종 나란히)
     +'<div style="flex:1">'
-    +'<div style="font-size:12px;color:#90caf9;margin-bottom:6px">송도제일공인중개사사무소</div>'
+    +'<div class="sd-office" style="font-size:12px;color:#90caf9;margin-bottom:6px">송도제일공인중개사사무소</div>'
     +'<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">'
     +'<div style="font-size:22px;font-weight:700">'+bldgName+' 임대 견적서</div>'
     +(tenant?'<span style="background:#FFD600;color:#1a1a1a;padding:5px 16px;border-radius:20px;font-size:15px;font-weight:800;letter-spacing:0.02em;white-space:nowrap">★ 입점 추천업종: '+tenant+'</span>':'')
@@ -5755,13 +5768,13 @@ function buildRentEstimate(selProps,bldgName,estDate,loanRate,intRate,tenant,ren
     +'</thead><tbody>'+rows2html+'</tbody></table></div>'
     // footer
     +'<div style="background:#f0f4ff;border:1px solid #c5cae9;border-radius:10px;padding:16px 20px">'
-    +'<div style="display:grid;grid-template-columns:'+(_acctShow?'1fr 1fr':'1fr')+';gap:10px">'
+    +'<div class="sd-foot-grid" style="display:grid;grid-template-columns:'+(_acctShow?'1fr 1fr':'1fr')+';gap:10px">'
     + (_acctShow
         ? '<div><div style="font-size:12px;color:#666;margin-bottom:4px">■ 보증금 입금계좌</div>'
           +'<div style="font-size:16px;font-weight:700">'+[acctBank,acctNum].filter(Boolean).join(' ')+'</div>'
           +(acctName?'<div style="font-size:12px;color:#888">'+acctName+'</div>':'')+'</div>'
         : '')
-    +'<div><div style="font-size:12px;color:#666;margin-bottom:4px">■ 상담문의</div>'
+    +'<div class="sd-office"><div style="font-size:12px;color:#666;margin-bottom:4px">■ 상담문의</div>'
     +'<div style="font-size:16px;font-weight:700">송도제일공인중개사사무소 &nbsp;<span style="font-size:13px;color:#555;font-weight:500">032-851-6688</span></div>'
     +'<div style="font-size:13px;color:#1a2744;font-weight:600;margin-top:3px">'+staff.name+' &nbsp; '+staff.tel+'</div>'
     +'</div>'
@@ -5923,7 +5936,7 @@ function buildLeasedEstimate(selProps,bldgName,estDate,loanRate,intRate,contract
     // 헤더
     +'<div style="background:#1a2744;color:#fff;border-radius:10px 10px 0 0;padding:18px 24px;margin:-1.5rem -1.5rem 1.5rem;display:flex;justify-content:space-between;align-items:flex-start">'
     +'<div>'
-    +'<div style="font-size:12px;color:#90caf9;margin-bottom:4px">송도제일공인중개사사무소</div>'
+    +'<div class="sd-office" style="font-size:12px;color:#90caf9;margin-bottom:4px">송도제일공인중개사사무소</div>'
     +'<div style="font-size:22px;font-weight:700">'+bldgName+' 임대완료 분양호실 견적서</div>'
     +discBadge
     +'</div>'
@@ -5956,11 +5969,11 @@ function buildLeasedEstimate(selProps,bldgName,estDate,loanRate,intRate,contract
     +'<div style="overflow-x:auto;margin-bottom:2rem"><table class="est-tbl"><thead>'+sch_hdrL+'</thead><tbody>'+rows3L+'</tbody></table></div>'
     // 푸터
     +'<div style="background:#f0f4ff;border:1px solid #c5cae9;border-radius:10px;padding:16px 20px">'
-    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">'
+    +'<div class="sd-foot-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:10px">'
     +'<div><div style="font-size:12px;color:#666;margin-bottom:4px">■ 분양 계좌번호</div>'
     +'<div style="font-size:16px;font-weight:700">'+sAcct.bank+' '+sAcct.num+'</div>'
     +'<div style="font-size:12px;color:#888">'+sAcct.name+'</div></div>'
-    +'<div><div style="font-size:12px;color:#666;margin-bottom:4px">■ 상담문의</div>'
+    +'<div class="sd-office"><div style="font-size:12px;color:#666;margin-bottom:4px">■ 상담문의</div>'
     +'<div style="font-size:16px;font-weight:700">송도제일공인중개사사무소 &nbsp;<span style="font-size:13px;color:#555;font-weight:500">032-851-6688</span></div>'
     +'<div style="font-size:13px;color:#1a2744;font-weight:600;margin-top:3px">'+staff.name+' &nbsp; '+staff.tel+'</div>'
     +'</div>'
@@ -7612,7 +7625,7 @@ function applyAIResult(){
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.09.20-1';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.09.20-2';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_sangga.html';      // 이 파일 이름
   var SD_NAME = '상가관리';      // 사람이 부르는 이름
 
@@ -8830,7 +8843,7 @@ function applyAIResult(){
       +'<div style="background:#1a2744;color:#fff;border-radius:10px 10px 0 0;padding:14px 20px;'
       +'margin:-24px -24px 20px;display:flex;justify-content:space-between;align-items:center">'
       +'<span style="font-size:14px;font-weight:700">입지 · 위치도</span>'
-      +'<span style="font-size:12px;color:#90caf9">송도제일공인중개사사무소</span></div>'
+      +'<span class="sd-office" style="font-size:12px;color:#90caf9">송도제일공인중개사사무소</span></div>'
       +'<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">'
       +'<div style="width:4px;height:28px;background:#2e7d32;border-radius:2px;flex-shrink:0"></div>'
       +'<span style="font-size:15px;font-weight:800;color:#2e7d32">🗺️ '+esc(bldgName()||t)+' 위치</span></div>'
@@ -8905,6 +8918,74 @@ function applyAIResult(){
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',function(){ setTimeout(boot,1800); });
   else setTimeout(boot,1800);
   setTimeout(boot,3600);
+})();
+</script>
+
+<!-- ═══════════════════════════════════════════════════════════
+     견적서 사무소 정보 표시 모듈  v1.0  (상가관리)
+     - 견적서에서 「송도제일공인중개사사무소 · 대표 · 연락처」를 넣을지 고른다
+     - 타 부동산과 공동중개할 때 물건지 쪽 정보를 빼고 건네주기 위한 것
+     - 껐다는 사실이 한눈에 보이도록 빨갛게 알린다
+     기존 코드를 고치지 않고 덧붙이는 방식
+     ═══════════════════════════════════════════════════════ -->
+<script>
+(function(){
+  'use strict';
+  var KEY='sd_est_office';                  // '1' 넣음 / '0' 뺌
+  var NAMES=['sale-print-opt','leased-print-opt','rent-print-opt'];
+
+  function on(){
+    try{ return localStorage.getItem(KEY)!=='0'; }catch(e){ return true; }
+  }
+  function apply(){
+    var v=on();
+    document.body.classList.toggle('sd-office-off', !v);
+    NAMES.forEach(function(nm){
+      var cb=document.getElementById('sg-own-'+nm);
+      if(cb) cb.checked=v;
+      var lab=cb&&cb.parentNode;
+      if(lab){
+        lab.style.color   = v ? '#1565c0' : '#c62828';
+        lab.style.fontWeight='700';
+        var tag=lab.querySelector('.sg-own-tag');
+        if(tag) tag.textContent = v ? '🏢 사무소 정보 넣기' : '🚫 사무소 정보 뺌 (공동중개용)';
+      }
+    });
+  }
+  window.sgOwnToggle=function(cb){
+    try{ localStorage.setItem(KEY, cb.checked?'1':'0'); }catch(e){}
+    apply();
+    if(typeof showToast==='function'){
+      showToast(cb.checked ? '🏢 사무소 정보를 넣습니다'
+                           : '🚫 사무소 정보를 뺀 견적서로 만듭니다 (공동중개용)');
+    }
+  };
+
+  function addChecks(){
+    var made=false;
+    NAMES.forEach(function(nm){
+      if(document.getElementById('sg-own-'+nm)) return;
+      var r=document.querySelector('input[name="'+nm+'"]');
+      if(!r) return;
+      var row=r.closest('div');
+      if(!row) return;
+      var lab=document.createElement('label');
+      lab.style.cssText='display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px';
+      lab.title='타 부동산과 공동중개할 때 우리 사무소·대표·연락처를 빼고 건네줍니다';
+      lab.innerHTML='<input type="checkbox" id="sg-own-'+nm+'" onchange="sgOwnToggle(this)" checked>'
+                   +'<span class="sg-own-tag">🏢 사무소 정보 넣기</span>';
+      row.appendChild(lab);
+      made=true;
+    });
+    if(made) apply();
+    return made;
+  }
+
+  function boot(){ addChecks(); apply(); }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',function(){ setTimeout(boot,1600); });
+  else setTimeout(boot,1600);
+  setTimeout(boot,3400);
+  setInterval(function(){ if(addChecks()) apply(); }, 6000);   // 탭을 늦게 열어도 붙도록
 })();
 </script>
 
