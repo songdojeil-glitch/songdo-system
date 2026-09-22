@@ -2551,7 +2551,7 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.09.23-3';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.09.23-4';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_schedule.html';      // 이 파일 이름
   var SD_NAME = '일정관리';      // 사람이 부르는 이름
 
@@ -2972,6 +2972,27 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
     });
     var w=waiters; waiters=[];
     w.forEach(function(fn){ try{ fn(); }catch(e){} });
+    setTimeout(retryLoaders, 60);
+  }
+
+  // 로그인 전에 이미 '자료 읽기'를 시도했다가 빈손으로 끝난 화면을 다시 불러온다.
+  // (화면에 따라 한 번만 읽고 마는 구조가 있어, 그대로 두면 빈 화면이 된다)
+  function retryLoaders(){
+    try{
+      var G = window.G || {};
+      // 데이터 화면
+      if(typeof window.fbAutoLoadOnce === 'function'
+         && !(G.saleData && G.saleData.length) && !(G.rentData && G.rentData.length)){
+        window._fbAutoOnce = false;
+        window.fbAutoLoadOnce();
+      }
+      // 매물 화면
+      if(typeof window.loadNaverFromFirebase === 'function' && !(G.naverData && G.naverData.length)){
+        window.loadNaverFromFirebase();
+      }
+      // 블로그 화면
+      if(typeof window.blogFbPull === 'function') window.blogFbPull();
+    }catch(e){}
   }
   window.sdAuthDone = function(){ openGate('로그인'); };
   window.sdAuthWait = function(){
