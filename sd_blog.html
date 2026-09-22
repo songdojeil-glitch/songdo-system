@@ -2595,7 +2595,7 @@ function vdPaintLen(){ var e=document.getElementById('vdLen'); if(e) e.textConte
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.09.14-1';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.09.23-2';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_blog.html';      // 이 파일 이름
   var SD_NAME = '블로그 스튜디오';      // 사람이 부르는 이름
 
@@ -2618,7 +2618,7 @@ function vdPaintLen(){ var e=document.getElementById('vdLen'); if(e) e.textConte
       +' '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
   }
 
-  // 버전 문자열 비교 — '2026.09.21-2' > '2026.09.14-1'
+  // 버전 문자열 비교 — '2026.09.21-2' > '2026.09.23-2'
   function verKey(v){
     var m=String(v||'').match(/(\d{4})\.(\d{2})\.(\d{2})-(\d+)/);
     return m ? (m[1]+m[2]+m[3]+String(m[4]).padStart(3,'0')) : '0';
@@ -2734,5 +2734,47 @@ function vdPaintLen(){ var e=document.getElementById('vdLen'); if(e) e.textConte
 })();
 </script>
 
+
+<script type="module">
+  // 모듈 방식으로 만든 파이어베이스 앱에도 같은 로그인을 이어 준다
+  try{
+    const { getApps } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');
+    const { getAuth, signInAnonymously, onAuthStateChanged } =
+      await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
+    window.sdAuth = window.sdAuth || {};
+    let n = 0;
+    const tick = () => {
+      const apps = getApps();
+      if(!apps.length){
+        if(n++ < 40) return setTimeout(tick, 250);
+        window.sdAuth.module = '파이어베이스 앱 없음';
+        return;
+      }
+      const auth = getAuth(apps[0]);
+      let settled = false;
+      window.sdAuth.module = '확인 중…';
+      onAuthStateChanged(auth, async u => {
+        if(u){
+          settled = true;
+          window.sdAuth.module = u.isAnonymous
+            ? '로그인됨 (익명) ' + u.uid.slice(0,8)
+            : '로그인됨 (구글 ' + (u.email || u.uid.slice(0,8)) + ')';
+          return;
+        }
+        if(settled){ window.sdAuth.module = '로그아웃 상태'; return; }
+        settled = true;
+        try{ await signInAnonymously(auth); }
+        catch(e){
+          window.sdAuth.module = '익명 로그인 실패: ' + (e && e.code || e && e.message || e);
+          console.warn('[SJDWS] 익명 로그인(모듈) 실패 — 콘솔에서 익명 인증을 켜 주세요.', e);
+        }
+      });
+    };
+    tick();
+  }catch(e){
+    window.sdAuth = window.sdAuth || {};
+    window.sdAuth.module = '실패: ' + (e && e.message || e);
+  }
+</script>
 </body>
 </html>
