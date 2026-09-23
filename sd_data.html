@@ -19272,7 +19272,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.09.23-9';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.09.23-10';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_data.html';      // 이 파일 이름
   var SD_NAME = '실거래가';      // 사람이 부르는 이름
 
@@ -21042,14 +21042,15 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
   };
   var HIDE = { sggCd:1, umdCd:1, landCd:1, bonbun:1, bubun:1, dealYear:1, dealMonth:1, dealDay:1,
                roadNm:1, roadNmSggCd:1, roadNmCd:1, roadNmSeq:1, roadNmbCd:1, roadNmBonbun:1,
-               roadNmBubun:1, jibun:1,
+               roadNmBubun:1,
                // 아래는 계산 열(_name·_area·_amt)이 이미 보여 주므로 「주요 열」에서는 뺀다
                aptNm:1, offiNm:1, mhouseNm:1, bldgNm:1,
                excluUseAr:1, totalFloorAr:1, buildingAr:1, dealAmount:1 };
-  var ORDER = ['_date','umdNm','_name','houseType','_area','_py','floor','buildYear',
+  var ORDER = ['_date','umdNm','jibun','_name','houseType','_area','_py','floor','buildYear',
                '_amt','_ppy','deposit','monthlyRent','contractType','contractTerm',
                'useRRRight','dealingGbn','cdealType','rgstDate'];
-  var CALC = { _date:'계약일', _name:'단지·건물', _area:'전용㎡', _py:'평', _amt:'금액(만원)', _ppy:'평당(만원)' };
+  var CALC = { _date:'계약일', _name:'단지·건물', _area:'전용㎡', _py:'평', _amt:'금액(만원)',
+               _ppy:'평당(만원)', _addr:'주소' };
 
   // ── 도구 ────────────────────────────────────────────────────────────
   function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){
@@ -21147,7 +21148,14 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     if(amt==null && num(o.deposit)!=null) amt = num(o.deposit);
     o._amt  = amt==null ? '' : amt;
     o._ppy  = (amt!=null && o._py) ? Math.round(amt/o._py) : '';
-    o.__type = r.__type; o.__ym = r.__ym;
+    // 지번 주소 — 국토부가 jibun 을 안 주면 본번·부번으로 만든다
+    var jb = o.jibun;
+    if(!jb && o.bonbun){
+      jb = String(parseInt(o.bonbun,10)||'') + (parseInt(o.bubun,10) ? '-'+parseInt(o.bubun,10) : '');
+    }
+    o.jibun = jb || '';
+    o._addr = [r.__sggNm||'', o.umdNm||'', o.jibun].filter(Boolean).join(' ');
+    o.__type = r.__type; o.__ym = r.__ym; o.__sggNm = r.__sggNm;
     return o;
   }
   function fingerprint(o){
@@ -21181,7 +21189,8 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
   function paint(){
     var el = document.getElementById('kr-root'); if(!el) return;
     var st = window.__krState = window.__krState || {
-      sido:'28', sgg:'28185', type:'aptT', from:addYm(thisYm(),-2), to:thisYm(), dong:'', all:false
+      sido:'28', sgg:'28185', type:'aptT', from:addYm(thisYm(),-2), to:thisYm(),
+      dong:'', danji:'', q:'', all:false
     };
     var favs = getFav();
 
@@ -21249,12 +21258,27 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
   }
 
   // ── 결과 ────────────────────────────────────────────────────────────
+  // 법정동 → 단지 → 검색어 순서로 걸러 낸다
+  function sift(){
+    if(!LAST) return [];
+    var st = window.__krState, rows = LAST.rows;
+    if(st.dong)  rows = rows.filter(function(r){ return r.umdNm === st.dong; });
+    if(st.danji) rows = rows.filter(function(r){ return r._name === st.danji; });
+    if(st.q){
+      var q = st.q.replace(/\s/g,'').toLowerCase();
+      rows = rows.filter(function(r){
+        return (String(r._name||'') + String(r.umdNm||'') + String(r.jibun||''))
+                 .replace(/\s/g,'').toLowerCase().indexOf(q) >= 0;
+      });
+    }
+    return rows;
+  }
+
   function render(){
     var out = document.getElementById('kr-out'); if(!out) return;
     if(!LAST){ out.innerHTML=''; return; }
     var st = window.__krState;
-    var rows = LAST.rows;
-    if(st.dong) rows = rows.filter(function(r){ return r.umdNm===st.dong; });
+    var rows = sift();
 
     // 요약
     var amts = rows.map(function(r){ return typeof r._amt==='number'?r._amt:null; }).filter(function(x){return x!=null;});
@@ -21282,8 +21306,31 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
         + '</div>';
     }
 
+    // 단지 고르기
+    var pool = st.dong ? LAST.rows.filter(function(r){ return r.umdNm===st.dong; }) : LAST.rows;
+    var dn = {}; pool.forEach(function(r){ if(r._name) dn[r._name]=(dn[r._name]||0)+1; });
+    var dlist = Object.keys(dn).sort(function(a,b){ return dn[b]-dn[a] || (a<b?-1:1); });
+    h += '<div style="display:flex;gap:7px;flex-wrap:wrap;align-items:flex-end;margin-bottom:10px;'
+      + 'padding:9px 11px;border:0.5px solid var(--border);border-radius:9px">'
+      + '<div><label class="kr-lb">단지·건물 고르기 <span style="opacity:.6">'+dlist.length+'곳</span></label>'
+      + '<select id="kr-danji" onchange="krDanji(this.value)" class="kr-in" style="min-width:230px;max-width:340px">'
+      + '<option value="">전체 ('+pool.length+'건)</option>'
+      + dlist.map(function(d){ return '<option value="'+esc(d)+'"'+(st.danji===d?' selected':'')
+          +'>'+esc(d)+' — '+dn[d]+'건</option>'; }).join('')
+      + '</select></div>'
+      + '<div><label class="kr-lb">이름·지번으로 찾기</label>'
+      + '<input id="kr-q" class="kr-in" placeholder="예: 풍림, 하버뷰, 1-1" value="'+esc(st.q||'')+'" '
+      + 'oninput="krQ(this.value)" style="min-width:170px"></div>'
+      + ((st.danji||st.q||st.dong) ? '<button onclick="krClearF()" class="kr-bs">필터 해제</button>' : '')
+      + ((st.danji||st.q) ? '<button onclick="krFavD()" class="kr-bs" title="이 단지를 즐겨찾기에">☆ 단지</button>' : '')
+      + '</div>';
+
+    // 단지를 고르면 평형별로 갈라 보여 준다 — 단지 분석·블로그용
+    if(st.danji && rows.length) h += byArea(rows);
+
     h += '<div style="display:flex;gap:7px;flex-wrap:wrap;align-items:center;margin-bottom:8px">'
-      + '<span style="font-size:11px;opacity:.65">'+esc(LAST.title)+'</span>'
+      + '<span style="font-size:11px;opacity:.65">'+esc(LAST.title)
+      + (st.danji ? ' · <b>'+esc(st.danji)+'</b>' : '') + '</span>'
       + '<span style="flex:1"></span>'
       + '<button onclick="krXlsx()" class="kr-bs" style="font-size:11.5px;padding:4px 12px">⬇ 엑셀</button>'
       + '<button onclick="krCols()" class="kr-bs" style="font-size:11.5px;padding:4px 12px">'
@@ -21292,6 +21339,42 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     h += table(rows, st.all);
     out.innerHTML = h;
   }
+  // 평형별 요약 (선택한 단지)
+  function byArea(rows){
+    var g = {};
+    rows.forEach(function(r){
+      if(typeof r._area !== 'number') return;
+      var k = r._area.toFixed(2);
+      (g[k] = g[k] || { area:r._area, py:r._py, amts:[], ppys:[], last:'' }); 
+      if(typeof r._amt === 'number') g[k].amts.push(r._amt);
+      if(typeof r._ppy === 'number') g[k].ppys.push(r._ppy);
+      if(r._date > g[k].last) g[k].last = r._date;
+    });
+    var ks = Object.keys(g).sort(function(a,b){ return parseFloat(a)-parseFloat(b); });
+    if(!ks.length) return '';
+    var body = ks.map(function(k){
+      var x = g[k], a = x.amts.slice().sort(function(p,q){ return p-q; });
+      var md = a.length ? (a.length%2 ? a[(a.length-1)/2] : Math.round((a[a.length/2-1]+a[a.length/2])/2)) : null;
+      var pp = x.ppys.length ? Math.round(x.ppys.reduce(function(p,q){return p+q;},0)/x.ppys.length) : null;
+      return '<tr>'
+        + td(x.area) + td(x.py + '평') + td(a.length + '건','r')
+        + td(md!=null ? man(md) : '', 'r')
+        + td(a.length ? man(a[0]) + ' ~ ' + man(a[a.length-1]) : '', 'r')
+        + td(pp!=null ? man(pp) : '', 'r')
+        + td(x.last) + '</tr>';
+    }).join('');
+    return '<div style="margin-bottom:10px;border:0.5px solid var(--border);border-radius:9px;overflow:hidden">'
+      + '<div style="padding:7px 11px;background:var(--bg2);font-size:11.5px;font-weight:700">📐 평형별 요약</div>'
+      + '<table style="width:100%;border-collapse:collapse"><thead><tr>'
+      + ['전용㎡','평','건수','중위','최저~최고','평당(만원)','최근 거래'].map(function(t){
+          return '<th style="padding:5px 9px;font-size:11px;text-align:left;border-bottom:1px solid var(--border)">'+t+'</th>'; }).join('')
+      + '</tr></thead><tbody>' + body + '</tbody></table></div>';
+  }
+  function td(v, r){
+    return '<td style="padding:5px 9px;border-top:0.5px solid var(--border);font-size:11.5px;white-space:nowrap'
+      + (r==='r'?';text-align:right':'') + '">' + esc(v==null?'':v) + '</td>';
+  }
+
   function card(l,v){
     return '<div style="flex:1;min-width:110px;border:0.5px solid var(--border);border-radius:9px;padding:9px 12px">'
       + '<div style="font-size:10.5px;opacity:.6;margin-bottom:3px">'+esc(l)+'</div>'
@@ -21353,7 +21436,26 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     st.from = ymRaw(document.getElementById('kr-from').value);
     st.to   = ymRaw(document.getElementById('kr-to').value);
   };
-  window.krDong = function(d){ window.__krState.dong = d; render(); };
+  window.krDong  = function(d){ var st=window.__krState; st.dong=d; st.danji=''; render(); };
+  window.krDanji = function(v){ window.__krState.danji = v; render(); };
+  window.krQ     = function(v){
+    var st = window.__krState; st.q = v;
+    clearTimeout(window.__krQT);
+    window.__krQT = setTimeout(function(){ render();
+      var i = document.getElementById('kr-q');
+      if(i){ i.focus(); i.setSelectionRange(i.value.length, i.value.length); } }, 250);
+  };
+  window.krClearF = function(){
+    var st = window.__krState; st.dong=''; st.danji=''; st.q=''; render();
+  };
+  window.krFavD = function(){
+    var st = window.__krState, a = getFav();
+    var d = st.danji || st.q; if(!d) return;
+    if(a.some(function(f){ return f.sgg===st.sgg && f.type===st.type && f.danji===d; })){ msg('이미 들어 있습니다.','ok'); return; }
+    a.unshift({ sgg:st.sgg, sido:st.sido, type:st.type, danji:d,
+                label: d.slice(0,12) + ' · ' + T(st.type).n.slice(0,6) });
+    putFav(a); paint(); render();
+  };
   window.krCols = function(){ window.__krState.all = !window.__krState.all; render(); };
 
   window.krGo = async function(){
@@ -21366,11 +21468,15 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     var yms = ymRange(st.from, st.to);
     if(yms.length > 36){ msg('한 번에 36개월까지만 조회합니다.', 'no'); return; }
 
-    BUSY = true; st.dong = '';
+    BUSY = true; st.dong = ''; st.q = '';
+    if(!st.__keepDanji) st.danji = '';
+    st.__keepDanji = false;
     try{
       var raw = await fetchMany(st.type, st.sgg, yms, function(i, n, ym){
         msg('국토부에서 받는 중… ' + ym.slice(0,4)+'년 '+ym.slice(4)+'월 ('+i+'/'+n+')', 'go');
       });
+      var sname = sggName(st.sgg);
+      raw.forEach(function(r){ r.__sggNm = sname; });
       var rows = raw.map(shape).sort(function(a,b){ return a._date < b._date ? 1 : a._date > b._date ? -1 : 0; });
       LAST = { rows: rows, title: sggName(st.sgg)+' · '+T(st.type).n+' · '+ymIso(st.from)+' ~ '+ymIso(st.to),
                sgg: st.sgg, type: st.type };
@@ -21386,8 +21492,10 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     if(!LAST || !LAST.rows.length){ msg('내려받을 자료가 없습니다.', 'no'); return; }
     if(typeof XLSX === 'undefined'){ msg('엑셀 기능을 불러오지 못했습니다.', 'no'); return; }
     var st = window.__krState;
-    var rows = st.dong ? LAST.rows.filter(function(r){ return r.umdNm===st.dong; }) : LAST.rows;
+    var rows = sift();
+    if(!rows.length){ msg('내려받을 자료가 없습니다.', 'no'); return; }
     var cs = cols(rows, true);
+    if(cs.indexOf('_addr') < 0) cs.unshift('_addr');
     var data = rows.map(function(r){
       var o = {}; cs.forEach(function(k){ o[head(k)] = r[k]==null?'':r[k]; }); return o;
     });
@@ -21413,6 +21521,8 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     var f = getFav()[i]; if(!f) return;
     var st = window.__krState;
     st.sido = f.sido || f.sgg.slice(0,2); st.sgg = f.sgg; st.type = f.type;
+    st.danji = f.danji || ''; st.q = '';
+    st.__keepDanji = !!f.danji;
     paint(); window.krGo();
   };
 
