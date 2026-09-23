@@ -19272,7 +19272,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.09.23-11';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.09.23-12';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_data.html';      // 이 파일 이름
   var SD_NAME = '실거래가';      // 사람이 부르는 이름
 
@@ -21052,6 +21052,37 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
   var CALC = { _date:'계약일', _name:'단지·건물', _area:'전용㎡', _py:'평', _amt:'금액(만원)',
                _ppy:'평당(만원)', _addr:'주소' };
 
+  // ── 전용면적 구간 (㎡) — [아래, 위) 로 가른다 ────────────────────────
+  var BANDS = [
+    { k:'',    n:'전체',        lo:null, hi:null },
+    { k:'a',   n:'50㎡ 미만',   lo:0,    hi:50   },
+    { k:'b',   n:'50~65㎡',     lo:50,   hi:65   },
+    { k:'c',   n:'65~84㎡',     lo:65,   hi:84   },
+    { k:'d',   n:'84~86㎡',     lo:84,   hi:86   },
+    { k:'e',   n:'86~100㎡',    lo:86,   hi:100  },
+    { k:'f',   n:'100~120㎡',   lo:100,  hi:120  },
+    { k:'g',   n:'120~140㎡',   lo:120,  hi:140  },
+    { k:'h',   n:'140㎡ 이상',  lo:140,  hi:null }
+  ];
+  function B(k){ for(var i=0;i<BANDS.length;i++) if(BANDS[i].k===k) return BANDS[i]; return BANDS[0]; }
+  function inBand(area, k){
+    if(!k) return true;
+    if(typeof area !== 'number') return false;
+    var b = B(k);
+    if(b.lo != null && area <  b.lo) return false;
+    if(b.hi != null && area >= b.hi) return false;
+    return true;
+  }
+
+  // 계열 색 — dataviz 검사기 통과(인접쌍 최저 ΔE 8.4 protan, 명도·채도·대비 전부 PASS)
+  var SERIES = ['#0891b2','#d9480f','#087f5b','#7c3aed','#b8860b','#c92a4a'];
+  var GRAY   = '#adb5bd';
+  var CHARTS = [];
+  function killCharts(){
+    CHARTS.forEach(function(c){ try{ c.destroy(); }catch(e){} });
+    CHARTS = [];
+  }
+
   // ── 도구 ────────────────────────────────────────────────────────────
   function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){
     return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
@@ -21190,7 +21221,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     var el = document.getElementById('kr-root'); if(!el) return;
     var st = window.__krState = window.__krState || {
       sido:'28', sgg:'28185', type:'aptT', from:addYm(thisYm(),-2), to:thisYm(),
-      dong:'', danji:'', q:'', all:false
+      dong:'', danji:'', q:'', band:'', chart:false, all:false
     };
     var favs = getFav();
 
@@ -21219,6 +21250,8 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
       + fld('시·군·구','<select id="kr-sgg" onchange="krSet()" class="kr-in" style="font-size:12px;min-width:150px">'
             + sggList.map(function(s){ return opt(s[0], s[1], st.sgg); }).join('') + '</select>')
       + fld('법정동', dongSelect())
+      + fld('전용면적', '<select id="kr-band" onchange="krBand(this.value)" class="kr-in" style="font-size:12px;min-width:110px">'
+            + BANDS.map(function(b){ return opt(b.k, b.n, st.band||''); }).join('') + '</select>')
       + fld('유형',   '<select id="kr-type" onchange="krSet()" class="kr-in" style="font-size:12px;min-width:160px">'
             + TYPES.map(function(t){ return opt(t.k, t.n + (t.warn?' ('+t.warn+')':''), st.type); }).join('') + '</select>')
       + fld('시작',   '<input id="kr-from" type="month" value="'+ymIso(st.from)+'" onchange="krSet()" class="kr-in" style="font-size:12px">')
@@ -21258,6 +21291,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     var st = window.__krState, g = {}; if(!LAST) return g;
     LAST.rows.forEach(function(r){
       if(st.dong && r.umdNm !== st.dong) return;
+      if(st.band && !inBand(r._area, st.band)) return;
       if(r._name) g[r._name] = (g[r._name]||0)+1;
     });
     return g;
@@ -21279,7 +21313,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
   function filterRow(){
     var st = window.__krState, g = danjiCounts();
     var ks = Object.keys(g).sort(function(a,b){ return g[b]-g[a] || (a<b?-1:1); });
-    var on = (st.dong || st.danji || st.q);
+    var on = (st.dong || st.danji || st.q || st.band);
     var sub = 0; for(var i=0;i<ks.length;i++) sub += g[ks[i]];
 
     var h = '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-top:9px;'
@@ -21336,6 +21370,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     if(!LAST) return [];
     var st = window.__krState, rows = LAST.rows;
     if(st.dong)  rows = rows.filter(function(r){ return r.umdNm === st.dong; });
+    if(st.band)  rows = rows.filter(function(r){ return inBand(r._area, st.band); });
     if(st.danji) rows = rows.filter(function(r){ return r._name === st.danji; });
     if(st.q){
       var q = st.q.replace(/\s/g,'').toLowerCase();
@@ -21350,6 +21385,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
   function renderOnly(){ render(true); }
   function render(skipFilter){
     var out = document.getElementById('kr-out'); if(!out) return;
+    killCharts();
     if(!LAST){ out.innerHTML=''; return; }
     var st = window.__krState;
     var rows = sift();
@@ -21377,14 +21413,178 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
       + '<span style="font-size:11px;opacity:.65">'+esc(LAST.title)
       + (st.danji ? ' · <b>'+esc(st.danji)+'</b>' : '') + '</span>'
       + '<span style="flex:1"></span>'
+      + '<button onclick="krChart()" class="kr-bs" style="font-size:11.5px;padding:4px 12px;'
+      + (st.chart ? 'border-color:var(--accent);color:var(--accent);font-weight:600' : '') + '">'
+      + (st.chart ? '📊 그래프 닫기' : '📊 그래프 만들기') + '</button>'
       + '<button onclick="krXlsx()" class="kr-bs" style="font-size:11.5px;padding:4px 12px">⬇ 엑셀</button>'
       + '<button onclick="krCols()" class="kr-bs" style="font-size:11.5px;padding:4px 12px">'
       + (st.all?'주요 열만':'전체 열 보기')+'</button></div>';
 
+    h += '<div id="kr-chart"></div>';
     h += table(rows, st.all);
     out.innerHTML = h;
     if(!skipFilter) refreshFilter();
+    if(st.chart) drawCharts(rows);
   }
+  // ══ 그래프 ══════════════════════════════════════════════════════════
+  //  · 거래량과 평균가는 단위가 달라 한 그림에 겹치지 않는다(축 두 개 금지).
+  //  · 단지를 고르면 면적형별로 갈라 본다 — 거래량은 쌓은 막대,
+  //    평균가는 면적형마다 작은 그래프를 따로 둔다. 선 6개를 겹치면
+  //    색으로 구분이 안 되는 짝이 생기기 때문이다(색 검사기 판정).
+  //  · 한 달에 1건뿐인 평균가는 속 빈 점으로 그려 「평균」으로 읽지 않게 한다.
+  function monthList(){
+    var st = window.__krState, out = [], c = st.from, g = 0;
+    while(c <= st.to && g++ < 60){ out.push(c.slice(0,4)+'-'+c.slice(4)); c = addYm(c,1); }
+    return out;
+  }
+  function agg(rows, months){
+    var g = {};
+    months.forEach(function(m){ g[m] = { n:0, sum:0, cnt:0 }; });
+    rows.forEach(function(r){
+      var m = String(r._date||'').slice(0,7); if(!g[m]) return;
+      g[m].n++;
+      if(typeof r._amt === 'number'){ g[m].sum += r._amt; g[m].cnt++; }
+    });
+    return months.map(function(m){
+      return { n:g[m].n, avg: g[m].cnt ? Math.round(g[m].sum/g[m].cnt) : null, cnt:g[m].cnt };
+    });
+  }
+  function areaGroups(rows){
+    var g = {};
+    rows.forEach(function(r){
+      if(typeof r._area !== 'number') return;
+      var k = r._area.toFixed(2);
+      (g[k] = g[k] || { key:k, area:r._area, py:r._py, rows:[] }).rows.push(r);
+    });
+    var ks = Object.keys(g).sort(function(a,b){ return g[b].rows.length - g[a].rows.length; });
+    var top = ks.slice(0,6).map(function(k){ return g[k]; });
+    top.sort(function(a,b){ return a.area - b.area; });            // 보기엔 면적 순
+    var rest = ks.slice(6).reduce(function(acc,k){ return acc.concat(g[k].rows); }, []);
+    if(rest.length) top.push({ key:'etc', area:null, py:null, rows:rest, etc:true });
+    return top;
+  }
+  function gLabel(g){
+    return g.etc ? '기타' : ('전용 ' + g.area + '㎡ (' + g.py + '평)');
+  }
+
+  var AXIS = { color:'#8a94a6', font:{ size:10 } };
+  function grid(){ return { color:'rgba(140,150,165,.16)', drawTicks:false }; }
+
+  function canvasCard(id, title, note, h){
+    return '<div style="border:0.5px solid var(--border);border-radius:10px;padding:11px 13px 9px;background:var(--card)">'
+      + '<div style="font-size:12px;font-weight:700;margin-bottom:2px">' + esc(title) + '</div>'
+      + (note ? '<div style="font-size:10.5px;color:var(--text3);margin-bottom:6px">' + note + '</div>' : '<div style="height:6px"></div>')
+      + '<div style="position:relative;height:' + h + 'px"><canvas id="' + id + '"></canvas></div></div>';
+  }
+
+  function drawCharts(rows){
+    var box = document.getElementById('kr-chart'); if(!box) return;
+    if(typeof Chart === 'undefined'){
+      box.innerHTML = '<div style="padding:14px;font-size:12px;color:var(--red)">그래프 기능을 불러오지 못했습니다 (인터넷 연결 확인).</div>';
+      return;
+    }
+    if(!rows.length){ box.innerHTML = ''; return; }
+
+    var st = window.__krState, months = monthList();
+    var mono = !st.danji;                       // 단지를 안 고르면 통짜로 본다
+    var groups = mono ? null : areaGroups(rows);
+    var h = '<div style="margin-bottom:12px">';
+
+    // ① 월별 거래량
+    h += canvasCard('kr-c1', '월별 거래량',
+          mono ? esc(LAST.title) : '면적형별로 쌓았습니다 · ' + esc(st.danji), 230);
+
+    // ② 월별 평균가
+    if(mono){
+      h += '<div style="height:10px"></div>'
+        + canvasCard('kr-c2', '월별 평균가 (만원)',
+            '속 빈 점은 그 달 거래가 1건뿐이라는 뜻입니다 — 평균으로 읽지 마세요.', 230);
+    } else {
+      h += '<div style="height:10px"></div>'
+        + '<div style="font-size:12px;font-weight:700;margin-bottom:2px">면적형별 월별 평균가 (만원)</div>'
+        + '<div style="font-size:10.5px;color:var(--text3);margin-bottom:7px">'
+        + '선을 겹치면 색으로 구분이 안 되는 짝이 생겨, 면적형마다 따로 그렸습니다. '
+        + '속 빈 점은 그 달 거래가 1건뿐이라는 뜻입니다.</div>'
+        + '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:10px">'
+        + groups.map(function(g,i){
+            return canvasCard('kr-a'+i, gLabel(g), g.rows.length + '건', 180);
+          }).join('')
+        + '</div>';
+    }
+    h += '</div>';
+    box.innerHTML = h;
+
+    // ── 거래량 ──
+    var c1 = document.getElementById('kr-c1');
+    var ds1 = mono
+      ? [{ label:'거래량', data: agg(rows, months).map(function(x){ return x.n; }),
+           backgroundColor:SERIES[0], borderRadius:4, borderSkipped:false }]
+      : groups.map(function(g,i){
+          return { label: gLabel(g), data: agg(g.rows, months).map(function(x){ return x.n; }),
+                   backgroundColor: g.etc ? GRAY : SERIES[i % SERIES.length],
+                   borderRadius:4, borderSkipped:false,
+                   borderColor:'#ffffff', borderWidth:{ top:2 } };   // 쌓은 칸 사이 2px 틈
+        });
+    CHARTS.push(new Chart(c1, {
+      type:'bar',
+      data:{ labels:months, datasets:ds1 },
+      options:{
+        responsive:true, maintainAspectRatio:false,
+        interaction:{ mode:'index', intersect:false },
+        plugins:{
+          legend:{ display: !mono, position:'bottom',
+                   labels:{ boxWidth:10, boxHeight:10, font:{ size:10.5 }, padding:10, usePointStyle:true, pointStyle:'rectRounded' } },
+          tooltip:{ callbacks:{ label:function(c){ return c.dataset.label + ' : ' + c.parsed.y + '건'; } } }
+        },
+        scales:{
+          x:{ stacked:!mono, grid:{ display:false }, ticks:AXIS },
+          y:{ stacked:!mono, beginAtZero:true, grid:grid(), ticks:Object.assign({ precision:0 }, AXIS) }
+        }
+      }
+    }));
+
+    // ── 평균가 ──
+    function lineChart(el, data, color){
+      var avg = data.map(function(x){ return x.avg; });
+      var cnt = data.map(function(x){ return x.cnt; });
+      return new Chart(el, {
+        type:'line',
+        data:{ labels:months, datasets:[{
+          label:'평균가', data:avg, borderColor:color, borderWidth:2,
+          tension:.25, spanGaps:false,
+          pointRadius:function(c){ return cnt[c.dataIndex] ? (cnt[c.dataIndex]===1 ? 4.5 : 5) : 0; },
+          pointBackgroundColor:function(c){ return cnt[c.dataIndex]===1 ? '#fff' : color; },
+          pointBorderColor:color, pointBorderWidth:2,
+          backgroundColor:'transparent'
+        }]},
+        options:{
+          responsive:true, maintainAspectRatio:false,
+          interaction:{ mode:'index', intersect:false },
+          plugins:{
+            legend:{ display:false },
+            tooltip:{ callbacks:{ label:function(c){
+              var n = cnt[c.dataIndex];
+              return (c.parsed.y==null ? '거래 없음' : man(c.parsed.y) + '만원') + '  ·  ' + n + '건';
+            } } }
+          },
+          scales:{
+            x:{ grid:{ display:false }, ticks:AXIS },
+            y:{ grid:grid(), ticks:Object.assign({ callback:function(v){ return man(v); } }, AXIS) }
+          }
+        }
+      });
+    }
+    if(mono){
+      var c2 = document.getElementById('kr-c2');
+      if(c2) CHARTS.push(lineChart(c2, agg(rows, months), SERIES[0]));
+    } else {
+      groups.forEach(function(g,i){
+        var el = document.getElementById('kr-a'+i);
+        if(el) CHARTS.push(lineChart(el, agg(g.rows, months), g.etc ? GRAY : SERIES[i % SERIES.length]));
+      });
+    }
+  }
+
   // 평형별 요약 (선택한 단지)
   function byArea(rows){
     var g = {};
@@ -21494,7 +21694,11 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     }, 250);
   };
   window.krClearF = function(){
-    var st = window.__krState; st.dong=''; st.danji=''; st.q=''; render();
+    var st = window.__krState; st.dong=''; st.danji=''; st.q=''; st.band=''; render();
+  };
+  window.krBand = function(v){ var st=window.__krState; st.band=v; st.danji=''; render(); };
+  window.krChart = function(){
+    var st = window.__krState; st.chart = !st.chart; render();
   };
   window.krFavD = function(){
     var st = window.__krState, a = getFav();
