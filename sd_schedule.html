@@ -2551,7 +2551,7 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.09.23-6';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.09.23-7';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_schedule.html';      // 이 파일 이름
   var SD_NAME = '일정관리';      // 사람이 부르는 이름
 
@@ -3285,21 +3285,28 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
   }
 
   // ── ⬆ 내보내기 : 지정한 한 곳으로만 ──────────────────────
+  // 일정마다 목적지를 따로 정할 수 있다 (없으면 기본 내보낼 곳)
+  function destOf(t){
+    var g=t.gcalTarget;
+    if(g==='none') return '';               // 보내지 않음
+    return g || CFG.pushCal || '';
+  }
   async function push(){
-    var target=CFG.pushCal;
-    if(!target) throw new Error('내보낼 캘린더를 하나 골라 주세요');
     var minD=dOnly(new Date(winMin()).toISOString());
     var maxD=dOnly(new Date(winMax()).toISOString());
     var mine=todos.filter(function(t){
       if(t.kind!=='schedule') return false;              // 할일은 보내지 않는다
-      // 이미 다른 캘린더에 있는 일정은 건드리지 않는다 (같은 일정이 여러 곳에 생기는 것 방지)
-      if(t.gcalId && t.gcalCal && t.gcalCal!==target) return false;
       var d=dOnly(t.date);
       return d>=minD && d<=maxD;
     });
-    var out={created:0, changed:0, same:0, failed:0, total:mine.length};
+    var out={created:0, changed:0, same:0, failed:0, skipped:0, kept:0, total:0};
     for(var i=0;i<mine.length;i++){
       var t=mine[i];
+      var target=destOf(t);
+      if(!target){ out.skipped++; continue; }            // 보내지 않기로 한 일정
+      // 이미 '다른' 캘린더에 있는 일정은 그 자리에 둔다 (중복 생성 방지)
+      if(t.gcalId && t.gcalCal && t.gcalCal!==target){ out.kept++; continue; }
+      out.total++;
       try{
         if(t.gcalId && t.gcalCal===target){
           if(t.gcalUpdated && whenOf(t) && whenOf(t)<=t.gcalUpdated){ out.same++; continue; }       // ② 충돌
@@ -3315,6 +3322,71 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
     }
     await saveTodos();
     return out;
+  }
+
+  // ── 등록 화면의 「보낼 구글 캘린더」 칸 ──────────────────
+  var FIELD_ID='sch-gcaltarget';
+  function fillTargets(){
+    var sel=$(FIELD_ID); if(!sel) return;
+    var keep=sel.value;
+    var w=CALS.filter(function(c){ return c.writable; });
+    var def=(CFG.cals[CFG.pushCal]||{}).name||'기본';
+    sel.innerHTML='<option value="">기본 — '+esc(def)+'</option>'
+      + w.map(function(c){ return '<option value="'+esc(c.id)+'">'+esc(c.summary)+'</option>'; }).join('')
+      + '<option value="none">보내지 않음</option>';
+    if(keep) sel.value=keep;
+  }
+  function injectField(){
+    if($(FIELD_ID)) return true;
+    var btn=document.querySelector('#tc4 .btn-p');
+    if(!btn) return false;
+    var row=document.createElement('div');
+    row.style.cssText='margin-bottom:14px';
+    row.innerHTML='<label class="fl">보낼 구글 캘린더</label>'
+      +'<select id="'+FIELD_ID+'" class="fi"><option value="">기본</option></select>'
+      +'<div style="font-size:11px;color:#999;margin-top:4px">'
+      +'이 일정을 어느 구글 캘린더로 보낼지 정합니다. 「🔗 구글 캘린더」 탭에서 <b>⬆ 내보내기</b>를 누를 때 반영됩니다.</div>';
+    btn.parentNode.insertBefore(row, btn);
+    fillTargets();
+    return true;
+  }
+  // 저장할 때 목적지를 찍어 둔다
+  function hookSave(){
+    var orig=window.saveSchedule;
+    if(typeof orig!=='function' || orig.__gcal) return;
+    var w=function(){
+      var sel=$(FIELD_ID);
+      var want=sel?sel.value:'';
+      var editing=window._editingSchId;
+      var before={}; todos.forEach(function(t){ before[t.id]=1; });
+      var r=orig.apply(this, arguments);
+      try{
+        var hit=[];
+        if(editing){ hit=todos.filter(function(t){ return String(t.id)===String(editing); }); }
+        else { hit=todos.filter(function(t){ return !before[t.id]; }); }
+        hit.forEach(function(t){
+          if(t.kind!=='schedule') return;
+          if(want) t.gcalTarget=want; else delete t.gcalTarget;
+          t.updatedAt=new Date().toISOString();
+        });
+        if(hit.length) saveTodos();
+      }catch(e){}
+      if(sel) sel.value='';
+      return r;
+    };
+    w.__gcal=1;
+    window.saveSchedule=w;
+  }
+  // 수정하려고 불러올 때 그 일정의 목적지를 칸에 되살린다
+  var lastEdit=null;
+  function watchEdit(){
+    var cur=window._editingSchId||null;
+    if(cur===lastEdit) return;
+    lastEdit=cur;
+    var sel=$(FIELD_ID); if(!sel) return;
+    if(!cur){ sel.value=''; return; }
+    var t=todos.filter(function(x){ return String(x.id)===String(cur); })[0];
+    sel.value=(t&&t.gcalTarget)||'';
   }
 
   // ── 화면 ────────────────────────────────────────────────
@@ -3404,7 +3476,7 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
         var w=CALS.filter(function(c){return c.primary&&c.writable;})[0]||CALS.filter(function(c){return c.writable;})[0];
         if(w) CFG.pushCal=w.id;
       }
-      await saveCfg(); paint();
+      await saveCfg(); paint(); fillTargets();
       log('캘린더 '+CALS.length+'개를 찾았습니다','ok');
     }catch(e){ log('목록 실패: '+e.message,'err'); }
     finally{ busy(false); }
@@ -3419,7 +3491,10 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
       }
       if(mode==='push'||mode==='both'){
         var b=await push();
-        log('⬆ 내보내기 — 새로 '+b.created+'건, 갱신 '+b.changed+'건, 그대로 '+b.same+'건'+(b.failed?(', 실패 '+b.failed+'건'):''), b.failed?'err':'ok');
+        log('⬆ 내보내기 — 새로 '+b.created+'건, 갱신 '+b.changed+'건, 그대로 '+b.same+'건'
+            +(b.skipped?(', 안 보냄 '+b.skipped+'건'):'')
+            +(b.kept?(', 다른 캘린더라 그대로 둠 '+b.kept+'건'):'')
+            +(b.failed?(', 실패 '+b.failed+'건'):''), b.failed?'err':'ok');
       }
       CFG.lastSync=new Date().toLocaleString('ko-KR');
       await saveCfg(); paint();
@@ -3471,6 +3546,8 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
     d.innerHTML=card();
     host.insertBefore(d.firstChild, host.firstChild);
     await loadCfg(); paint();
+    injectField(); hookSave();
+    setInterval(function(){ injectField(); hookSave(); watchEdit(); }, 1000);
     try{ await getTok(false); paint(); }catch(e){}
     if(haveTok()){ try{ await gcLoadCals(); }catch(e){} }
   }
