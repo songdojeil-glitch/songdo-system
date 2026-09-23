@@ -19272,7 +19272,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.09.23-8';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.09.23-9';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_data.html';      // 이 파일 이름
   var SD_NAME = '실거래가';      // 사람이 부르는 이름
 
@@ -20936,5 +20936,670 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     window.sdAuth.module = '실패: ' + (e && e.message || e);
   }
 </script>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     K실거래가 (전국 실거래가) 모듈 v1.0   (2026-09-23)
+
+     · 국토교통부 실거래가 API를 브라우저에서 직접 호출한다. 중계 서버 없음.
+     · 1층 : 전국 어디든 실시간 조회 — 저장하지 않는다.
+     · 2층 : 관심 시군구만 하루 2회(08시·14시) 훑어 「새 신고」를 알린다.
+             거래 내용은 저장하지 않고 지문(식별자)만 남기므로 저장량이 거의 없다.
+     · 기존 「매매 실거래」·「전월세 실거래」 탭은 손대지 않는다. 별도 탭이다.
+     · 기존 코드 수정 없음 — 탭 단추와 화면을 이 모듈이 스스로 만든다.
+     ══════════════════════════════════════════════════════════════════════ -->
+<style>
+#kr-root{color:var(--text);font-family:var(--font)}
+#kr-root .kr-lb{display:block;font-size:10.5px;color:var(--text3);margin-bottom:3px;font-weight:500}
+#kr-root .kr-in{padding:6px 10px;border:1px solid var(--border);border-radius:7px;
+  background:var(--card);color:var(--text);font-size:12px;font-family:inherit}
+#kr-root .kr-bp{padding:7px 18px;border:none;border-radius:7px;background:var(--accent);
+  color:#fff;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit}
+#kr-root .kr-bp:hover{filter:brightness(1.1)}
+#kr-root .kr-bs{padding:6px 12px;border:1px solid var(--border);border-radius:7px;
+  background:var(--card);color:var(--text2);font-size:12px;cursor:pointer;font-family:inherit}
+#kr-root .kr-bs:hover{border-color:var(--accent);color:var(--accent)}
+#kr-root .kr-sec{font-size:12.5px;font-weight:700;color:var(--text);margin:0}
+#kr-root table{background:var(--card)}
+#kr-root td,#kr-root th{color:var(--text)}
+</style>
+<script>
+(function(){
+  'use strict';
+  if(window.__krOn) return; window.__krOn=true;
+
+  var TAB       = 17;
+  var API       = 'https://apis.data.go.kr/1613000/';
+  var KEYSTORE  = 'sd_molit_key';     // 국토부 인증키 (파이어베이스 공유)
+  var CFGKEY    = 'sd_kr_cfg';        // { watch:[시군구코드], types:[유형키], lastSlot:'' }
+  var FPKEY     = 'sd_kr_fp_';        // + 시군구_유형  → 지문 목록
+  var NEWKEY    = 'sd_kr_new';        // 새로 발견된 신고 (최대 300건)
+  var FAVKEY    = 'sd_kr_fav';        // 즐겨찾기 (이 PC에만)
+  var MONTHS_W  = 3;                  // 관심지역은 최근 3개월만 훑는다
+  var MAX_NEW   = 300;
+
+  // ── 거래 유형 10종 ──────────────────────────────────────────────────
+  var TYPES = [
+    { k:'aptT', n:'아파트 매매',        p:'RTMSDataSvcAptTrade/getRTMSDataSvcAptTrade',   m:'trade' },
+    { k:'aptR', n:'아파트 전월세',      p:'RTMSDataSvcAptRent/getRTMSDataSvcAptRent',     m:'rent'  },
+    { k:'rhT',  n:'연립·다세대 매매',   p:'RTMSDataSvcRHTrade/getRTMSDataSvcRHTrade',     m:'trade' },
+    { k:'rhR',  n:'연립·다세대 전월세', p:'RTMSDataSvcRHRent/getRTMSDataSvcRHRent',       m:'rent'  },
+    { k:'shT',  n:'단독·다가구 매매',   p:'RTMSDataSvcSHTrade/getRTMSDataSvcSHTrade',     m:'trade' },
+    { k:'shR',  n:'단독·다가구 전월세', p:'RTMSDataSvcSHRent/getRTMSDataSvcSHRent',       m:'rent', warn:'활용신청 필요' },
+    { k:'offT', n:'오피스텔 매매',      p:'RTMSDataSvcOffiTrade/getRTMSDataSvcOffiTrade', m:'trade' },
+    { k:'offR', n:'오피스텔 전월세',    p:'RTMSDataSvcOffiRent/getRTMSDataSvcOffiRent',   m:'rent'  },
+    { k:'silv', n:'아파트 분양권전매',  p:'RTMSDataSvcSilvTrade/getRTMSDataSvcSilvTrade', m:'trade' },
+    { k:'nrg',  n:'상업업무용 매매',    p:'RTMSDataSvcNrgTrade/getRTMSDataSvcNrgTrade',   m:'trade' }
+  ];
+  function T(k){ for(var i=0;i<TYPES.length;i++) if(TYPES[i].k===k) return TYPES[i]; return TYPES[0]; }
+
+  // ── 전국 시군구 코드표 (국토교통부 법정동코드 2026-08-13판에서 추출) ──
+  //    「시도코드|시도명|시군구코드뒤3자리+이름, …」 · 조회 가능한 252개
+  var RAW = [
+'11|서울특별시|110종로구,140중구,170용산구,200성동구,215광진구,230동대문구,260중랑구,290성북구,305강북구,320도봉구,350노원구,380은평구,410서대문구,440마포구,470양천구,500강서구,530구로구,545금천구,560영등포구,590동작구,620관악구,650서초구,680강남구,710송파구,740강동구',
+'26|부산광역시|110중구,140서구,170동구,200영도구,230부산진구,260동래구,290남구,320북구,350해운대구,380사하구,410금정구,440강서구,470연제구,500수영구,530사상구,710기장군',
+'27|대구광역시|110중구,140동구,170서구,200남구,230북구,260수성구,290달서구,710달성군,720군위군',
+'28|인천광역시|110중구,140동구,177미추홀구,185연수구,200남동구,237부평구,245계양구,260서구,710강화군,720옹진군',
+'29|광주광역시|110동구,140서구,155남구,170북구,200광산구',
+'30|대전광역시|110동구,140중구,170서구,200유성구,230대덕구',
+'31|울산광역시|110중구,140남구,170동구,200북구,710울주군',
+'36|세종특별자치시|110세종특별자치시',
+'41|경기도|111수원시 장안구,113수원시 권선구,115수원시 팔달구,117수원시 영통구,131성남시 수정구,133성남시 중원구,135성남시 분당구,150의정부시,171안양시 만안구,173안양시 동안구,192부천시 원미구,194부천시 소사구,196부천시 오정구,210광명시,220평택시,250동두천시,271안산시 상록구,273안산시 단원구,281고양시 덕양구,285고양시 일산동구,287고양시 일산서구,290과천시,310구리시,360남양주시,370오산시,390시흥시,410군포시,430의왕시,450하남시,461용인시 처인구,463용인시 기흥구,465용인시 수지구,480파주시,500이천시,550안성시,570김포시,590화성시,610광주시,630양주시,650포천시,670여주시,800연천군,820가평군,830양평군',
+'43|충청북도|111청주시 상당구,112청주시 서원구,113청주시 흥덕구,114청주시 청원구,130충주시,150제천시,720보은군,730옥천군,740영동군,745증평군,750진천군,760괴산군,770음성군,800단양군',
+'44|충청남도|131천안시 동남구,133천안시 서북구,150공주시,180보령시,200아산시,210서산시,230논산시,250계룡시,270당진시,710금산군,760부여군,770서천군,790청양군,800홍성군,810예산군,825태안군',
+'46|전라남도|110목포시,130여수시,150순천시,170나주시,230광양시,710담양군,720곡성군,730구례군,770고흥군,780보성군,790화순군,800장흥군,810강진군,820해남군,830영암군,840무안군,860함평군,870영광군,880장성군,890완도군,900진도군,910신안군',
+'47|경상북도|111포항시 남구,113포항시 북구,130경주시,150김천시,170안동시,190구미시,210영주시,230영천시,250상주시,280문경시,290경산시,730의성군,750청송군,760영양군,770영덕군,820청도군,830고령군,840성주군,850칠곡군,900예천군,920봉화군,930울진군,940울릉군',
+'48|경상남도|121창원시 의창구,123창원시 성산구,125창원시 마산합포구,127창원시 마산회원구,129창원시 진해구,170진주시,220통영시,240사천시,250김해시,270밀양시,310거제시,330양산시,720의령군,730함안군,740창녕군,820고성군,840남해군,850하동군,860산청군,870함양군,880거창군,890합천군',
+'50|제주특별자치도|110제주시,130서귀포시',
+'51|강원특별자치도|110춘천시,130원주시,150강릉시,170동해시,190태백시,210속초시,230삼척시,720홍천군,730횡성군,750영월군,760평창군,770정선군,780철원군,790화천군,800양구군,810인제군,820고성군,830양양군',
+'52|전북특별자치도|111전주시 완산구,113전주시 덕진구,130군산시,140익산시,180정읍시,190남원시,210김제시,710완주군,720진안군,730무주군,740장수군,750임실군,770순창군,790고창군,800부안군'
+  ];
+  var SIDO=[], SGG={};   // SGG['28'] = [['28185','연수구'], …]
+  RAW.forEach(function(line){
+    var a=line.split('|'), code=a[0];
+    SIDO.push([code, a[1]]);
+    SGG[code]=a[2].split(',').map(function(s){ return [code+s.slice(0,3), s.slice(3)]; });
+  });
+  function sggName(c){
+    var s=SGG[String(c).slice(0,2)]||[];
+    for(var i=0;i<s.length;i++) if(s[i][0]===c) return (SIDO.filter(function(x){return x[0]===c.slice(0,2);})[0]||['',''])[1]+' '+s[i][1];
+    return c;
+  }
+
+  // ── 표에 보여 줄 열 (국토부가 주는 이름 → 우리말) ────────────────────
+  var LABEL = {
+    umdNm:'법정동', jibun:'지번', aptNm:'단지·건물', offiNm:'단지·건물', mhouseNm:'단지·건물',
+    bldgNm:'단지·건물', houseType:'주택유형', buildingType:'유형', buildingUse:'용도',
+    excluUseAr:'전용㎡', totalFloorAr:'연면적㎡', plottageAr:'대지㎡', buildingAr:'건물㎡',
+    floor:'층', buildYear:'건축년도',
+    dealAmount:'거래금액', deposit:'보증금', monthlyRent:'월세',
+    preDeposit:'종전보증금', preMonthlyRent:'종전월세',
+    contractType:'계약구분', contractTerm:'계약기간', useRRRight:'갱신권',
+    dealingGbn:'거래유형', estateAgentSggNm:'중개사 소재지',
+    cdealType:'해제', cdealDay:'해제일', rgstDate:'등기일',
+    slerGbn:'매도자', buyerGbn:'매수자', landLeaseholdGbn:'토지임대부',
+    sggCd:'시군구코드', umdCd:'법정동코드', landCd:'지목', bonbun:'본번', bubun:'부번',
+    roadNm:'도로명', dealYear:'년', dealMonth:'월', dealDay:'일'
+  };
+  var HIDE = { sggCd:1, umdCd:1, landCd:1, bonbun:1, bubun:1, dealYear:1, dealMonth:1, dealDay:1,
+               roadNm:1, roadNmSggCd:1, roadNmCd:1, roadNmSeq:1, roadNmbCd:1, roadNmBonbun:1,
+               roadNmBubun:1, jibun:1,
+               // 아래는 계산 열(_name·_area·_amt)이 이미 보여 주므로 「주요 열」에서는 뺀다
+               aptNm:1, offiNm:1, mhouseNm:1, bldgNm:1,
+               excluUseAr:1, totalFloorAr:1, buildingAr:1, dealAmount:1 };
+  var ORDER = ['_date','umdNm','_name','houseType','_area','_py','floor','buildYear',
+               '_amt','_ppy','deposit','monthlyRent','contractType','contractTerm',
+               'useRRRight','dealingGbn','cdealType','rgstDate'];
+  var CALC = { _date:'계약일', _name:'단지·건물', _area:'전용㎡', _py:'평', _amt:'금액(만원)', _ppy:'평당(만원)' };
+
+  // ── 도구 ────────────────────────────────────────────────────────────
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+  function n2(n){ return (n<10?'0':'')+n; }
+  function num(v){ var x=parseFloat(String(v==null?'':v).replace(/[,\s]/g,'')); return isNaN(x)?null:x; }
+  function man(v){ var x=num(v); return x==null?'' : x.toLocaleString(); }
+  function thisYm(){ var d=new Date(); return d.getFullYear()+n2(d.getMonth()+1); }
+  function addYm(ym, k){
+    var y=parseInt(ym.slice(0,4),10), m=parseInt(ym.slice(4),10)-1+k;
+    y += Math.floor(m/12); m = ((m%12)+12)%12;
+    return y+n2(m+1);
+  }
+  function ymRange(a,b){ var out=[], c=a, guard=0; while(c<=b && guard++<120){ out.push(c); c=addYm(c,1); } return out; }
+  function rowName(r){ return r.aptNm||r.offiNm||r.mhouseNm||r.bldgNm||r.buildingType||''; }
+
+  // ── 설정 ────────────────────────────────────────────────────────────
+  var KEY='', CFG={ watch:[], types:['aptT','aptR','rhT','rhR'], lastSlot:'' }, LAST=null, BUSY=false;
+
+  async function sget(k){
+    var v=null;
+    try{ v = localStorage.getItem(k); }catch(e){}
+    try{ var r = await window.storage.get(k); if(r && r.value) v = r.value; }catch(e){}
+    return v;
+  }
+  async function sset(k, v){
+    try{ localStorage.setItem(k, v); }catch(e){}
+    try{ await window.storage.set(k, v); }catch(e){}
+  }
+  async function loadAll(){
+    KEY = (await sget(KEYSTORE)) || '';
+    var c = await sget(CFGKEY);
+    if(c){ try{ CFG = Object.assign(CFG, JSON.parse(c)); }catch(e){} }
+  }
+  function saveCfg(){ return sset(CFGKEY, JSON.stringify(CFG)); }
+
+  // ── 국토부 호출 ─────────────────────────────────────────────────────
+  async function call(type, sgg, ym, page){
+    if(!KEY) throw new Error('국토부 인증키가 없습니다');
+    var u = API + type.p + '?serviceKey=' + encodeURIComponent(KEY)
+          + '&LAWD_CD=' + sgg + '&DEAL_YMD=' + ym
+          + '&numOfRows=1000&pageNo=' + (page||1) + '&_type=json';
+    var r = await fetch(u);
+    var t = await r.text();
+    var j; try{ j = JSON.parse(t); }
+    catch(e){ throw new Error('응답을 읽지 못했습니다 (' + r.status + ')'); }
+
+    if(j.OpenAPI_ServiceResponse){
+      var h = j.OpenAPI_ServiceResponse.cmmMsgHeader || {};
+      var em = String(h.errMsg||'');
+      if(/NOT_REGISTERED/.test(em))   throw new Error('인증키가 등록되지 않았습니다 — 키를 다시 확인해 주세요');
+      if(/NOT_REGISTERED_FOR/.test(em)||/NO_OPENAPI/.test(em))
+        throw new Error('이 자료는 활용신청이 안 되어 있습니다 — 공공데이터포털에서 신청해 주세요');
+      if(/LIMITED_NUMBER/.test(em))   throw new Error('오늘 호출 한도를 넘었습니다');
+      throw new Error(em || h.returnAuthMsg || '국토부 오류');
+    }
+    var res = j.response || {};
+    var hd  = res.header || {};
+    if(hd.resultCode && !/^0+$/.test(String(hd.resultCode)))
+      throw new Error(hd.resultMsg || ('오류 ' + hd.resultCode));
+    var body  = res.body || {};
+    var items = body.items;
+    var list  = (items && items.item) ? items.item : [];
+    if(!Array.isArray(list)) list = list ? [list] : [];
+    return { rows:list, total: num(body.totalCount)||list.length };
+  }
+
+  async function fetchMany(typeKey, sgg, ymList, onStep){
+    var type = T(typeKey), out = [];
+    for(var i=0;i<ymList.length;i++){
+      if(onStep) onStep(i+1, ymList.length, ymList[i]);
+      var page = 1, got = 0, total = 1;
+      while(page <= 20){
+        var r = await call(type, sgg, ymList[i], page);
+        r.rows.forEach(function(x){ x.__ym = ymList[i]; x.__type = typeKey; out.push(x); });
+        got += r.rows.length; total = r.total;
+        if(got >= total || !r.rows.length) break;
+        page++;
+      }
+    }
+    return out;
+  }
+
+  // ── 행 다듬기 ───────────────────────────────────────────────────────
+  function shape(r){
+    var o = {};
+    for(var k in r){ if(Object.prototype.hasOwnProperty.call(r,k) && k.slice(0,2)!=='__') o[k]= (typeof r[k]==='string'? r[k].trim() : r[k]); }
+    var y=o.dealYear, m=o.dealMonth, d=o.dealDay;
+    o._date = (y? y+'-'+n2(parseInt(m,10)||0)+'-'+n2(parseInt(d,10)||0) : '');
+    o._name = rowName(o);
+    var ar = num(o.excluUseAr) || num(o.totalFloorAr) || num(o.buildingAr) || null;
+    o._area = ar==null ? '' : ar;
+    o._py   = ar==null ? '' : Math.round(ar/3.3058*10)/10;
+    var amt = num(o.dealAmount);
+    if(amt==null && num(o.deposit)!=null) amt = num(o.deposit);
+    o._amt  = amt==null ? '' : amt;
+    o._ppy  = (amt!=null && o._py) ? Math.round(amt/o._py) : '';
+    o.__type = r.__type; o.__ym = r.__ym;
+    return o;
+  }
+  function fingerprint(o){
+    return (o.__type||'')+'|'+(o.umdNm||'')+'|'+(o._name||'')+'|'+o._date+'|'
+         + (o._area||'')+'|'+(o.floor||'')+'|'+(o._amt||'')+'|'+(o.monthlyRent||'');
+  }
+
+  // ── 탭 만들기 ───────────────────────────────────────────────────────
+  function build(){
+    if(document.getElementById('tc'+TAB)) return true;
+    var nav = document.querySelector('.tab-nav-inner') || document.querySelector('.tab-nav');
+    var host = document.getElementById('tc0');
+    if(!nav || !host || !host.parentNode) return false;
+
+    var b = document.createElement('button');
+    b.className = 'tab-btn';
+    b.setAttribute('onclick','sw('+TAB+')');
+    b.innerHTML = '🇰🇷 K실거래가';
+    nav.insertBefore(b, nav.firstChild);
+
+    var panel = document.createElement('div');
+    panel.id = 'tc'+TAB; panel.className = 'tc';
+    panel.innerHTML = '<div id="kr-root" style="padding:2px 0"></div>';
+    host.parentNode.appendChild(panel);
+    return true;
+  }
+
+  // ── 화면 ────────────────────────────────────────────────────────────
+  function opt(v,l,sel){ return '<option value="'+esc(v)+'"'+(sel===v?' selected':'')+'>'+esc(l)+'</option>'; }
+
+  function paint(){
+    var el = document.getElementById('kr-root'); if(!el) return;
+    var st = window.__krState = window.__krState || {
+      sido:'28', sgg:'28185', type:'aptT', from:addYm(thisYm(),-2), to:thisYm(), dong:'', all:false
+    };
+    var favs = getFav();
+
+    var h = '';
+
+    // 인증키
+    if(!KEY){
+      h += '<div style="border:1px solid #ffe082;background:#fff8e1;border-radius:10px;padding:14px;margin-bottom:12px">'
+        + '<div style="font-size:13px;font-weight:700;color:#f57f17;margin-bottom:6px">🔑 국토교통부 인증키를 넣어 주세요</div>'
+        + '<div style="font-size:11.5px;opacity:.85;line-height:1.7;margin-bottom:9px">'
+        + '공공데이터포털(data.go.kr) 마이페이지 → 개발계정의 <b>일반 인증키(Encoding)</b>를 붙여 넣으세요.<br>'
+        + '한 번만 넣으면 사무소 전체에 적용됩니다. <b>대화창이나 메신저에는 절대 붙여넣지 마세요.</b></div>'
+        + '<div style="display:flex;gap:7px;flex-wrap:wrap">'
+        + '<input id="kr-key" type="password" autocomplete="off" placeholder="인증키 붙여넣기" '
+        + 'style="flex:1;min-width:260px;max-width:420px;padding:7px 11px;border:1px solid var(--border);border-radius:7px;font-size:12px;background:transparent;color:inherit">'
+        + '<button onclick="krSaveKey()" class="kr-bp" style="padding:7px 18px">저장</button>'
+        + '</div></div>';
+    }
+
+    // 조회줄
+    var sggList = SGG[st.sido] || [];
+    h += '<div style="border:0.5px solid var(--border);border-radius:10px;padding:12px;margin-bottom:12px">'
+      + '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">'
+      + fld('시·도',  '<select id="kr-sido" onchange="krSido()" class="kr-in" style="font-size:12px;min-width:130px">'
+            + SIDO.map(function(s){ return opt(s[0], s[1], st.sido); }).join('') + '</select>')
+      + fld('시·군·구','<select id="kr-sgg" onchange="krSet()" class="kr-in" style="font-size:12px;min-width:150px">'
+            + sggList.map(function(s){ return opt(s[0], s[1], st.sgg); }).join('') + '</select>')
+      + fld('유형',   '<select id="kr-type" onchange="krSet()" class="kr-in" style="font-size:12px;min-width:160px">'
+            + TYPES.map(function(t){ return opt(t.k, t.n + (t.warn?' ('+t.warn+')':''), st.type); }).join('') + '</select>')
+      + fld('시작',   '<input id="kr-from" type="month" value="'+ymIso(st.from)+'" onchange="krSet()" class="kr-in" style="font-size:12px">')
+      + fld('끝',     '<input id="kr-to" type="month" value="'+ymIso(st.to)+'" onchange="krSet()" class="kr-in" style="font-size:12px">')
+      + '<button onclick="krGo()" class="kr-bp" style="padding:7px 20px">조회</button>'
+      + '<button onclick="krFav()" class="kr-bs" style="padding:7px 12px" title="즐겨찾기에 넣기">☆</button>'
+      + '</div>';
+
+    if(favs.length){
+      h += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:9px;align-items:center">'
+        + '<span style="font-size:11px;opacity:.6">자주 보는 곳</span>'
+        + favs.map(function(f,i){
+            return '<span style="display:inline-flex;align-items:center;border:0.5px solid var(--border);border-radius:14px;overflow:hidden">'
+              + '<button onclick="krJump('+i+')" style="border:none;background:transparent;color:inherit;font-size:11px;padding:3px 4px 3px 10px;cursor:pointer">'
+              + esc(f.label) + '</button>'
+              + '<button onclick="krUnfav('+i+')" style="border:none;background:transparent;color:var(--text3);font-size:11px;padding:3px 8px 3px 3px;cursor:pointer">✕</button></span>';
+          }).join('') + '</div>';
+    }
+    h += '</div>';
+
+    h += '<div id="kr-msg" style="display:none;margin-bottom:10px;padding:9px 13px;border-radius:8px;font-size:12px"></div>';
+    h += '<div id="kr-out"></div>';
+    h += watchBox();
+
+    el.innerHTML = h;
+  }
+  function fld(lbl, inner){
+    return '<div><label class="kr-lb" style="font-size:10.5px">'+lbl+'</label>'+inner+'</div>';
+  }
+  function ymIso(ym){ return ym.slice(0,4)+'-'+ym.slice(4); }
+  function ymRaw(v){ return String(v||'').replace('-',''); }
+
+  function msg(text, kind){
+    var el=document.getElementById('kr-msg'); if(!el) return;
+    var c = kind==='no' ? ['#ffebee','var(--red)'] : kind==='go' ? ['#eceff1','#455a64'] : ['#e8f5e9','var(--accent3)'];
+    el.textContent=text; el.style.background=c[0]; el.style.color=c[1]; el.style.display='block';
+    if(kind!=='go') setTimeout(function(){ if(el.textContent===text) el.style.display='none'; }, 6000);
+  }
+
+  // ── 결과 ────────────────────────────────────────────────────────────
+  function render(){
+    var out = document.getElementById('kr-out'); if(!out) return;
+    if(!LAST){ out.innerHTML=''; return; }
+    var st = window.__krState;
+    var rows = LAST.rows;
+    if(st.dong) rows = rows.filter(function(r){ return r.umdNm===st.dong; });
+
+    // 요약
+    var amts = rows.map(function(r){ return typeof r._amt==='number'?r._amt:null; }).filter(function(x){return x!=null;});
+    var ppys = rows.map(function(r){ return typeof r._ppy==='number'?r._ppy:null; }).filter(function(x){return x!=null;});
+    var srt  = amts.slice().sort(function(a,b){return a-b;});
+    var med  = srt.length ? (srt.length%2 ? srt[(srt.length-1)/2] : Math.round((srt[srt.length/2-1]+srt[srt.length/2])/2)) : null;
+    var avg  = amts.length ? Math.round(amts.reduce(function(a,b){return a+b;},0)/amts.length) : null;
+    var pavg = ppys.length ? Math.round(ppys.reduce(function(a,b){return a+b;},0)/ppys.length) : null;
+
+    var h = '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">'
+      + card('거래 건수', rows.length.toLocaleString()+'건')
+      + (med!=null ? card('중위 금액', man(med)+'만') : '')
+      + (avg!=null ? card('평균 금액', man(avg)+'만') : '')
+      + (srt.length ? card('최저~최고', man(srt[0])+' ~ '+man(srt[srt.length-1])) : '')
+      + (pavg!=null ? card('평균 평당가', man(pavg)+'만') : '')
+      + '</div>';
+
+    // 법정동 칩
+    var dongs = {}; LAST.rows.forEach(function(r){ if(r.umdNm) dongs[r.umdNm]=(dongs[r.umdNm]||0)+1; });
+    var dk = Object.keys(dongs).sort(function(a,b){ return dongs[b]-dongs[a]; });
+    if(dk.length > 1){
+      h += '<div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:10px">'
+        + chip('전체 '+LAST.rows.length, '', !st.dong)
+        + dk.map(function(d){ return chip(d+' '+dongs[d], d, st.dong===d); }).join('')
+        + '</div>';
+    }
+
+    h += '<div style="display:flex;gap:7px;flex-wrap:wrap;align-items:center;margin-bottom:8px">'
+      + '<span style="font-size:11px;opacity:.65">'+esc(LAST.title)+'</span>'
+      + '<span style="flex:1"></span>'
+      + '<button onclick="krXlsx()" class="kr-bs" style="font-size:11.5px;padding:4px 12px">⬇ 엑셀</button>'
+      + '<button onclick="krCols()" class="kr-bs" style="font-size:11.5px;padding:4px 12px">'
+      + (st.all?'주요 열만':'전체 열 보기')+'</button></div>';
+
+    h += table(rows, st.all);
+    out.innerHTML = h;
+  }
+  function card(l,v){
+    return '<div style="flex:1;min-width:110px;border:0.5px solid var(--border);border-radius:9px;padding:9px 12px">'
+      + '<div style="font-size:10.5px;opacity:.6;margin-bottom:3px">'+esc(l)+'</div>'
+      + '<div style="font-size:14px;font-weight:700">'+esc(v)+'</div></div>';
+  }
+  function chip(label, val, on){
+    return '<button onclick="krDong(\''+esc(val)+'\')" style="font-size:11px;padding:3px 10px;border-radius:13px;cursor:pointer;'
+      + 'border:0.5px solid '+(on?'transparent':'var(--border)')+';'
+      + 'background:'+(on?'var(--accent)':'transparent')+';color:'+(on?'#fff':'inherit')+'">'+esc(label)+'</button>';
+  }
+  function cols(rows, all){
+    var seen = {};
+    rows.slice(0,200).forEach(function(r){ for(var k in r) if(r[k]!=='' && r[k]!=null && k.slice(0,2)!=='__') seen[k]=1; });
+    var list = ORDER.filter(function(k){ return seen[k]; });
+    if(all){ Object.keys(seen).forEach(function(k){ if(list.indexOf(k)<0) list.push(k); }); }
+    else   { Object.keys(seen).forEach(function(k){ if(list.indexOf(k)<0 && !HIDE[k] && LABEL[k]) list.push(k); }); }
+    return list;
+  }
+  function head(k){ return CALC[k] || LABEL[k] || k; }
+  function table(rows, all){
+    if(!rows.length) return '<div style="padding:26px 10px;text-align:center;font-size:12.5px;opacity:.6">이 조건에 신고된 거래가 없습니다.</div>';
+    var cs = cols(rows, all);
+    var body = rows.slice(0, 1500).map(function(r){
+      return '<tr>' + cs.map(function(k){
+        var v = r[k]; if(v==null) v='';
+        if(k==='_amt'||k==='_ppy'||k==='deposit'||k==='monthlyRent'||k==='preDeposit'||k==='preMonthlyRent') v = man(v);
+        var right = (k==='_amt'||k==='_ppy'||k==='_area'||k==='_py'||k==='floor'||k==='deposit'||k==='monthlyRent');
+        return '<td style="padding:5px 8px;border-top:0.5px solid var(--border);font-size:11.5px;white-space:nowrap'
+             + (right?';text-align:right':'') + '">' + esc(v) + '</td>';
+      }).join('') + '</tr>';
+    }).join('');
+    return '<div style="overflow:auto;max-height:620px;border:0.5px solid var(--border);border-radius:9px">'
+      + '<table style="width:100%;border-collapse:collapse"><thead><tr>'
+      + cs.map(function(k){ return '<th style="position:sticky;top:0;background:var(--bg2);padding:6px 8px;font-size:11px;'
+          + 'font-weight:700;text-align:left;white-space:nowrap;border-bottom:1px solid var(--border);z-index:1">'+esc(head(k))+'</th>'; }).join('')
+      + '</tr></thead><tbody>' + body + '</tbody></table>'
+      + (rows.length>1500 ? '<div style="padding:8px;font-size:11px;opacity:.6;text-align:center">화면에는 1,500건까지만 표시합니다 — 엑셀로 받으면 전부 들어갑니다.</div>' : '')
+      + '</div>';
+  }
+
+  // ── 창구(전역 함수) ─────────────────────────────────────────────────
+  window.krSaveKey = async function(){
+    var i = document.getElementById('kr-key'); if(!i) return;
+    var v = (i.value||'').trim();
+    if(!v){ msg('인증키를 넣어 주세요.', 'no'); return; }
+    KEY = v; await sset(KEYSTORE, v);
+    paint(); msg('인증키를 저장했습니다. 사무소 전체에 적용됩니다.', 'ok');
+  };
+  window.krSido = function(){
+    var st = window.__krState;
+    st.sido = document.getElementById('kr-sido').value;
+    st.sgg  = (SGG[st.sido] && SGG[st.sido][0]) ? SGG[st.sido][0][0] : '';
+    paint(); render();
+  };
+  window.krSet = function(){
+    var st = window.__krState;
+    st.sgg  = document.getElementById('kr-sgg').value;
+    st.type = document.getElementById('kr-type').value;
+    st.from = ymRaw(document.getElementById('kr-from').value);
+    st.to   = ymRaw(document.getElementById('kr-to').value);
+  };
+  window.krDong = function(d){ window.__krState.dong = d; render(); };
+  window.krCols = function(){ window.__krState.all = !window.__krState.all; render(); };
+
+  window.krGo = async function(){
+    if(BUSY) return;
+    krSet();
+    var st = window.__krState;
+    if(!KEY){ msg('국토부 인증키를 먼저 넣어 주세요.', 'no'); return; }
+    if(!st.sgg){ msg('시·군·구를 골라 주세요.', 'no'); return; }
+    if(st.from > st.to){ msg('시작 달이 끝 달보다 늦습니다.', 'no'); return; }
+    var yms = ymRange(st.from, st.to);
+    if(yms.length > 36){ msg('한 번에 36개월까지만 조회합니다.', 'no'); return; }
+
+    BUSY = true; st.dong = '';
+    try{
+      var raw = await fetchMany(st.type, st.sgg, yms, function(i, n, ym){
+        msg('국토부에서 받는 중… ' + ym.slice(0,4)+'년 '+ym.slice(4)+'월 ('+i+'/'+n+')', 'go');
+      });
+      var rows = raw.map(shape).sort(function(a,b){ return a._date < b._date ? 1 : a._date > b._date ? -1 : 0; });
+      LAST = { rows: rows, title: sggName(st.sgg)+' · '+T(st.type).n+' · '+ymIso(st.from)+' ~ '+ymIso(st.to),
+               sgg: st.sgg, type: st.type };
+      render();
+      msg(rows.length.toLocaleString()+'건을 받았습니다.', 'ok');
+    }catch(e){
+      LAST = null; render();
+      msg(e.message || String(e), 'no');
+    }finally{ BUSY = false; }
+  };
+
+  window.krXlsx = function(){
+    if(!LAST || !LAST.rows.length){ msg('내려받을 자료가 없습니다.', 'no'); return; }
+    if(typeof XLSX === 'undefined'){ msg('엑셀 기능을 불러오지 못했습니다.', 'no'); return; }
+    var st = window.__krState;
+    var rows = st.dong ? LAST.rows.filter(function(r){ return r.umdNm===st.dong; }) : LAST.rows;
+    var cs = cols(rows, true);
+    var data = rows.map(function(r){
+      var o = {}; cs.forEach(function(k){ o[head(k)] = r[k]==null?'':r[k]; }); return o;
+    });
+    var ws = XLSX.utils.json_to_sheet(data);
+    var wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'K실거래가');
+    XLSX.writeFile(wb, 'K실거래가_' + sggName(LAST.sgg).replace(/\s/g,'') + '_' + T(LAST.type).n.replace(/[·\s]/g,'')
+      + '_' + st.from + '-' + st.to + '.xlsx');
+  };
+
+  // ── 즐겨찾기 (이 PC에만) ────────────────────────────────────────────
+  function getFav(){ try{ return JSON.parse(localStorage.getItem(FAVKEY)||'[]'); }catch(e){ return []; } }
+  function putFav(a){ try{ localStorage.setItem(FAVKEY, JSON.stringify(a.slice(0,12))); }catch(e){} }
+  window.krFav = function(){
+    krSet(); var st = window.__krState, a = getFav();
+    var label = sggName(st.sgg).split(' ').slice(-1)[0] + ' · ' + T(st.type).n;
+    if(a.some(function(f){ return f.sgg===st.sgg && f.type===st.type; })){ msg('이미 들어 있습니다.', 'ok'); return; }
+    a.unshift({ sgg:st.sgg, sido:st.sido, type:st.type, label:label });
+    putFav(a); paint(); render();
+  };
+  window.krUnfav = function(i){ var a=getFav(); a.splice(i,1); putFav(a); paint(); render(); };
+  window.krJump = function(i){
+    var f = getFav()[i]; if(!f) return;
+    var st = window.__krState;
+    st.sido = f.sido || f.sgg.slice(0,2); st.sgg = f.sgg; st.type = f.type;
+    paint(); window.krGo();
+  };
+
+  // ══ 2층 · 관심지역 자동 훑기 ════════════════════════════════════════
+  function slotNow(){
+    var d = new Date(), h = d.getHours();
+    var day = d.getFullYear()+'-'+n2(d.getMonth()+1)+'-'+n2(d.getDate());
+    if(h >= 14) return day+'/오후';
+    if(h >= 8)  return day+'/오전';
+    return null;
+  }
+  async function getNew(){ var s = await sget(NEWKEY); try{ return JSON.parse(s||'[]'); }catch(e){ return []; } }
+
+  async function sweep(manual){
+    if(BUSY) return;
+    if(!KEY || !CFG.watch.length || !CFG.types.length) return;
+    var slot = slotNow();
+    if(!manual){ if(!slot || CFG.lastSlot === slot) return; }
+
+    BUSY = true;
+    var found = [], checked = 0;
+    try{
+      var yms = [], base = thisYm();
+      for(var i=0;i<MONTHS_W;i++) yms.push(addYm(base, -i));
+      for(var a=0;a<CFG.watch.length;a++){
+        for(var b=0;b<CFG.types.length;b++){
+          var sgg = CFG.watch[a], tk = CFG.types[b];
+          var fpk = FPKEY + sgg + '_' + tk;
+          var old = {}; var os = await sget(fpk);
+          if(os){ try{ (JSON.parse(os)||[]).forEach(function(f){ old[f]=1; }); }catch(e){} }
+          var firstRun = !os;
+          var rows;
+          try{ rows = (await fetchMany(tk, sgg, yms)).map(shape); }
+          catch(e){ continue; }
+          checked++;
+          var fps = rows.map(fingerprint);
+          if(!firstRun){
+            rows.forEach(function(r, idx){
+              if(!old[fps[idx]]) found.push({
+                sgg: sgg, type: tk, at: new Date().toISOString(),
+                dong: r.umdNm||'', name: r._name||'', date: r._date,
+                area: r._area, py: r._py, floor: r.floor||'',
+                amt: r._amt, ppy: r._ppy, rent: r.monthlyRent||''
+              });
+            });
+          }
+          await sset(fpk, JSON.stringify(fps));
+        }
+      }
+      if(found.length){
+        var cur = await getNew();
+        cur = found.concat(cur).slice(0, MAX_NEW);
+        await sset(NEWKEY, JSON.stringify(cur));
+      }
+      if(slot){ CFG.lastSlot = slot; await saveCfg(); }
+      if(manual) msg(checked + '건을 훑어 새 신고 ' + found.length + '건을 찾았습니다.', 'ok');
+      var el = document.getElementById('kr-watch');
+      if(el) el.outerHTML = watchBox();
+      badge();
+    }catch(e){ if(manual) msg('훑기 실패 — ' + (e.message||e), 'no'); }
+    finally{ BUSY = false; }
+  }
+
+  function watchBox(){
+    var h = '<div id="kr-watch" style="margin-top:16px;border:0.5px solid var(--border);border-radius:10px;padding:12px">'
+      + '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">'
+      + '<p class="kr-sec" style="margin:0">🔔 관심지역 새 신고 <span style="font-weight:400;font-size:11px;color:var(--text3)">'
+      + '하루 두 번(오전 8시·오후 2시 이후 첫 접속) 자동으로 훑습니다</span></p>'
+      + '<span style="display:flex;gap:6px">'
+      + '<button onclick="krWatchAdd()" class="kr-bs" style="font-size:11.5px;padding:4px 11px">＋ 지금 지역 넣기</button>'
+      + '<button onclick="krSweep()" class="kr-bs" style="font-size:11.5px;padding:4px 11px">🔄 지금 훑기</button>'
+      + '<button onclick="krClearNew()" class="kr-bs" style="font-size:11.5px;padding:4px 11px;color:var(--text3)">확인함</button>'
+      + '</span></div>';
+
+    h += '<div style="font-size:11.5px;margin-bottom:8px">감시 중: '
+      + (CFG.watch.length
+          ? CFG.watch.map(function(s,i){ return '<span style="display:inline-flex;align-items:center;border:0.5px solid var(--border);border-radius:13px;margin:0 4px 4px 0">'
+              + '<span style="padding:2px 4px 2px 9px">'+esc(sggName(s))+'</span>'
+              + '<button onclick="krWatchDel('+i+')" style="border:none;background:transparent;color:var(--text3);cursor:pointer;padding:2px 8px 2px 3px">✕</button></span>'; }).join('')
+          : '<span style="opacity:.6">없음 — 「＋ 지금 지역 넣기」를 누르세요</span>')
+      + '</div>';
+
+    h += '<div style="font-size:11px;opacity:.7;margin-bottom:8px">훑는 유형: '
+      + TYPES.map(function(t){
+          var on = CFG.types.indexOf(t.k) >= 0;
+          return '<button onclick="krWatchType(\''+t.k+'\')" style="font-size:10.5px;padding:2px 8px;margin:0 3px 3px 0;border-radius:11px;cursor:pointer;'
+            + 'border:0.5px solid '+(on?'transparent':'var(--border)')+';'
+            + 'background:'+(on?'var(--accent3)':'transparent')+';color:'+(on?'#fff':'inherit')+'">'+esc(t.n)+'</button>';
+        }).join('') + '</div>';
+
+    h += '<div id="kr-newlist" style="font-size:11.5px">'
+      + (CFG.lastSlot ? '<div style="opacity:.6;margin-bottom:6px">마지막 훑기: '+esc(CFG.lastSlot)+'</div>' : '')
+      + '<div style="opacity:.6">새 신고 목록은 훑은 뒤에 표시됩니다.</div></div>';
+
+    h += '<div style="font-size:10.5px;opacity:.55;margin-top:9px;line-height:1.6">'
+      + '거래 내용은 저장하지 않고 <b>지문(짧은 식별자)</b>만 남겨 새 신고인지 가립니다. '
+      + '그래서 쌓이는 자료가 거의 없습니다. 최근 '+MONTHS_W+'개월만 봅니다.</div>';
+
+    return h + '</div>';
+  }
+
+  async function fillNew(){
+    var box = document.getElementById('kr-newlist'); if(!box) return;
+    var list = await getNew();
+    var h = (CFG.lastSlot ? '<div style="opacity:.6;margin-bottom:6px">마지막 훑기: '+esc(CFG.lastSlot)+'</div>' : '');
+    if(!list.length){ box.innerHTML = h + '<div style="opacity:.6">새 신고 없음.</div>'; return; }
+    h += '<div style="border:0.5px solid var(--border);border-radius:8px;overflow:hidden;max-height:300px;overflow-y:auto">'
+      + list.slice(0,120).map(function(x,i){
+          return '<div style="display:flex;gap:8px;align-items:center;padding:5px 9px;'+(i?'border-top:0.5px solid var(--border)':'')+'">'
+            + '<span style="font-size:10px;opacity:.55;min-width:74px">'+esc(T(x.type).n.slice(0,6))+'</span>'
+            + '<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'
+            + esc(x.dong)+' <b>'+esc(x.name)+'</b></span>'
+            + '<span style="font-size:10.5px;opacity:.7;white-space:nowrap">'+esc(x.py||'')+'평 '+esc(x.floor)+'층</span>'
+            + '<span style="font-weight:700;white-space:nowrap">'+man(x.amt)+'만'+(x.rent?' / 월'+man(x.rent):'')+'</span>'
+            + '<span style="font-size:10px;opacity:.55;white-space:nowrap">'+esc(x.date)+'</span></div>';
+        }).join('') + '</div>';
+    box.innerHTML = h;
+  }
+
+  async function badge(){
+    var list = await getNew();
+    var b = document.querySelector('.tab-btn[onclick="sw('+TAB+')"]'); if(!b) return;
+    b.innerHTML = '🇰🇷 K실거래가' + (list.length
+      ? ' <span style="background:var(--red);color:#fff;border-radius:9px;font-size:9.5px;padding:1px 6px">'+list.length+'</span>' : '');
+  }
+
+  window.krWatchAdd = async function(){
+    krSet(); var st = window.__krState;
+    if(!st.sgg) return;
+    if(CFG.watch.indexOf(st.sgg) < 0) CFG.watch.push(st.sgg);
+    if(CFG.watch.length > 5){ CFG.watch = CFG.watch.slice(0,5); msg('관심지역은 5곳까지입니다.', 'no'); }
+    await saveCfg();
+    var el = document.getElementById('kr-watch'); if(el) el.outerHTML = watchBox();
+    fillNew();
+  };
+  window.krWatchDel = async function(i){
+    CFG.watch.splice(i,1); await saveCfg();
+    var el = document.getElementById('kr-watch'); if(el) el.outerHTML = watchBox();
+    fillNew();
+  };
+  window.krWatchType = async function(k){
+    var i = CFG.types.indexOf(k);
+    if(i >= 0) CFG.types.splice(i,1); else CFG.types.push(k);
+    await saveCfg();
+    var el = document.getElementById('kr-watch'); if(el) el.outerHTML = watchBox();
+    fillNew();
+  };
+  window.krSweep = function(){ sweep(true).then(fillNew); };
+  window.krClearNew = async function(){ await sset(NEWKEY,'[]'); fillNew(); badge(); };
+
+  // ── 탭 열기 ─────────────────────────────────────────────────────────
+  var painted = false;
+  window.initKRTab = async function(){
+    if(!painted){ await loadAll(); paint(); painted = true; }
+    render(); fillNew();
+    setTimeout(function(){ sweep(false).then(fillNew); }, 800);
+  };
+
+  function hookSw(){
+    if(typeof window.sw !== 'function') return false;
+    if(window.sw.__kr) return true;
+    var orig = window.sw;
+    var wrapped = function(n){
+      var out = orig.apply(this, arguments);
+      if(n === TAB){ try{ window.initKRTab(); }catch(e){ console.warn('[K실거래가]', e); } }
+      return out;
+    };
+    wrapped.__kr = true; window.sw = wrapped;
+    return true;
+  }
+
+  var tries = 0;
+  (function tick(){
+    var ok = build() && hookSw();
+    if(ok){
+      loadAll().then(function(){
+        badge();
+        setTimeout(function(){ sweep(false); }, 4000);   // 화면을 안 열어도 훑는다
+      });
+      return;
+    }
+    if(tries++ < 80) setTimeout(tick, 250);
+  })();
+
+  window.sdKR = { ver:'1.0', types:TYPES, sgg:SGG, sweep:function(){ return sweep(true); } };
+})();
+</script>
+
 </body>
 </html>
