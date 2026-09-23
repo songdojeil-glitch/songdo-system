@@ -3840,7 +3840,7 @@ function renderCT(){
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.09.23-4';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.09.23-8';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_contracts.html';      // 이 파일 이름
   var SD_NAME = '계약관리';      // 사람이 부르는 이름
 
@@ -4169,6 +4169,346 @@ function renderCT(){
     window.sdAuth = window.sdAuth || {};
     window.sdAuth.module = '실패: ' + (e && e.message || e);
   }
+</script>
+
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     계약 첨부파일 · 구글 드라이브 모듈 v1.0   (2026-09-23)
+
+     · 계약 건마다 구글 드라이브에 폴더를 만들고 서류를 올린다.
+     · 권한은 drive.file 하나뿐 — 이 시스템이 만든 파일만 보인다.
+       드라이브 전체를 읽지 않으므로 구글 보안심사 대상이 아니다.
+     · 기존 코드는 손대지 않는다. openDetail 을 감싸서 화면만 덧붙인다.
+     · 「빼기」는 목록에서만 지운다. 드라이브의 원본 파일은 건드리지 않는다.
+     ══════════════════════════════════════════════════════════════════════ -->
+<script>
+(function(){
+  'use strict';
+  if(window.__sdGdOn) return; window.__sdGdOn=true;
+
+  // ── 설정 ────────────────────────────────────────────────────────────
+  var CLIENT_ID = '567683904975-pt19ltpfpmobqk06bkl6tfavvt2crb41.apps.googleusercontent.com';
+  var SCOPE     = 'https://www.googleapis.com/auth/drive.file';   // 좁은 권한
+  var API       = 'https://www.googleapis.com/drive/v3';
+  var UPLOAD    = 'https://www.googleapis.com/upload/drive/v3/files';
+  var ROOT_NAME = '송도제일 계약서류';
+  var CFGKEY    = 'sd_gdrive_cfg';
+  var FIELDS    = 'id,name,mimeType,size,webViewLink,modifiedTime';
+  var SMALL_MAX = 5 * 1024 * 1024;      // 5MB 이하는 한 번에 올린다
+
+  var CFG = { rootId:'' };
+  var tok = '', tokExp = 0, tokenClient = null, inp = null, working = false;
+
+  // ── 도구 ────────────────────────────────────────────────────────────
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, function(c){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+  function kb(n){ n=Number(n)||0;
+    if(n >= 1048576) return (n/1048576).toFixed(1)+'MB';
+    if(n >= 1024)    return Math.round(n/1024)+'KB';
+    return n+'B'; }
+  function who(){
+    try{ var d=JSON.parse(localStorage.getItem('sd_auth_session')||'{}');
+         return d.name || d.email || ''; }catch(e){ return ''; }
+  }
+  function cur(){
+    if(!window.contracts || window.detailId==null) return null;
+    for(var i=0;i<contracts.length;i++) if(contracts[i].id===window.detailId) return contracts[i];
+    return null;
+  }
+  function safeName(s){ return String(s||'').replace(/[\\\/:*?"<>|]/g,' ').replace(/\s+/g,' ').trim(); }
+
+  // ── 설정 저장/읽기 (파이어베이스 + 로컬 둘 다) ───────────────────────
+  async function loadCfg(){
+    var raw='';
+    try{ raw = localStorage.getItem(CFGKEY) || ''; }catch(e){}
+    try{ var v = await window.storage.get(CFGKEY); if(v && v.value) raw = v.value; }catch(e){}
+    if(raw){ try{ CFG = Object.assign(CFG, JSON.parse(raw)); }catch(e){} }
+    return CFG;
+  }
+  async function saveCfg(){
+    var raw = JSON.stringify(CFG);
+    try{ localStorage.setItem(CFGKEY, raw); }catch(e){}
+    try{ await window.storage.set(CFGKEY, raw); }catch(e){}
+  }
+
+  // ── 구글 로그인 (일정관리와 같은 방식) ───────────────────────────────
+  function loadGis(){
+    if(window.google && google.accounts && google.accounts.oauth2) return Promise.resolve(true);
+    return new Promise(function(res){
+      var s=document.createElement('script');
+      s.src='https://accounts.google.com/gsi/client'; s.async=true; s.defer=true;
+      s.onload=function(){ res(true); }; s.onerror=function(){ res(false); };
+      document.head.appendChild(s);
+    });
+  }
+  function haveTok(){ return !!tok && Date.now() < tokExp - 60000; }
+  async function getTok(interactive){
+    if(haveTok()) return tok;
+    var ok = await loadGis();
+    if(!ok) throw new Error('구글 로그인 기능을 불러오지 못했습니다');
+    return new Promise(function(res, rej){
+      if(!tokenClient){
+        tokenClient = google.accounts.oauth2.initTokenClient({
+          client_id: CLIENT_ID, scope: SCOPE,
+          callback: function(r){
+            if(r && r.access_token){
+              tok = r.access_token; tokExp = Date.now() + ((r.expires_in||3600)*1000);
+              res(tok);
+            } else rej(new Error((r&&r.error_description)||(r&&r.error)||'허용되지 않았습니다'));
+          },
+          error_callback: function(e){ rej(new Error((e&&e.type)||'창이 닫혔습니다')); }
+        });
+      }
+      try{ tokenClient.requestAccessToken({ prompt: interactive ? 'consent' : '' }); }
+      catch(e){ rej(e); }
+    });
+  }
+
+  async function api(path, opts){
+    opts = opts || {};
+    var t = await getTok(false);
+    function go(tk){
+      return fetch(API + path, Object.assign({}, opts, {
+        headers: Object.assign({ 'Authorization':'Bearer '+tk, 'Content-Type':'application/json' }, opts.headers||{})
+      }));
+    }
+    var r = await go(t);
+    if(r.status === 401){ tok=''; tokExp=0; r = await go(await getTok(true)); }
+    if(!r.ok){
+      var m=''; try{ m=(await r.json()).error.message; }catch(e){ m = r.status+' 오류'; }
+      throw new Error(m);
+    }
+    return r.status===204 ? null : r.json();
+  }
+
+  // ── 폴더 ────────────────────────────────────────────────────────────
+  async function mkFolder(name, parentId){
+    var body = { name: name, mimeType:'application/vnd.google-apps.folder' };
+    if(parentId) body.parents = [parentId];
+    return api('/files?fields=id,name,webViewLink', { method:'POST', body: JSON.stringify(body) });
+  }
+  async function alive(id){
+    if(!id) return false;
+    try{ var f = await api('/files/'+id+'?fields=id,trashed'); return !!f && !f.trashed; }
+    catch(e){ return false; }
+  }
+  async function rootId(){
+    await loadCfg();
+    if(await alive(CFG.rootId)) return CFG.rootId;
+    var f = await mkFolder(ROOT_NAME, '');
+    CFG.rootId = f.id; await saveCfg();
+    return f.id;
+  }
+  async function folderFor(c){
+    if(await alive(c.gd && c.gd.fid)) return c.gd.fid;
+    var root = await rootId();
+    var label = safeName([ c.bldg, c.dong, c.ho ].filter(Boolean).join(' '))
+              + ' ' + safeName(c.deal||'') + ' ' + String(c.cdate||'').slice(0,10);
+    var f = await mkFolder(safeName(label) || ('계약 '+c.id), root);
+    c.gd = c.gd || { files: [] };
+    c.gd.fid = f.id; c.gd.flink = f.webViewLink || '';
+    await persist();
+    return f.id;
+  }
+
+  async function persist(){
+    try{ if(typeof toCStore === 'function') await toCStore(); }catch(e){ console.warn('[SD/드라이브] 저장 실패', e); }
+  }
+
+  // ── 올리기 ──────────────────────────────────────────────────────────
+  async function putSmall(file, folderId){
+    var t = await getTok(false);
+    var meta = new Blob([ JSON.stringify({ name:file.name, parents:[folderId] }) ], { type:'application/json' });
+    var fd = new FormData(); fd.append('metadata', meta); fd.append('file', file);
+    var r = await fetch(UPLOAD+'?uploadType=multipart&fields='+encodeURIComponent(FIELDS),
+              { method:'POST', headers:{ 'Authorization':'Bearer '+t }, body: fd });
+    if(!r.ok) throw new Error('multipart '+r.status);
+    return r.json();
+  }
+  async function putBig(file, folderId){
+    var t = await getTok(false);
+    var start = await fetch(UPLOAD+'?uploadType=resumable&fields='+encodeURIComponent(FIELDS), {
+      method:'POST',
+      headers:{ 'Authorization':'Bearer '+t, 'Content-Type':'application/json; charset=UTF-8',
+                'X-Upload-Content-Type': file.type||'application/octet-stream',
+                'X-Upload-Content-Length': String(file.size) },
+      body: JSON.stringify({ name:file.name, parents:[folderId] })
+    });
+    if(!start.ok) throw new Error('resumable '+start.status);
+    var loc = start.headers.get('Location') || start.headers.get('location');
+    if(!loc) throw new Error('큰 파일 올리기 주소를 받지 못했습니다 (5MB 이하로 줄여 주세요)');
+    var r = await fetch(loc, { method:'PUT',
+              headers:{ 'Content-Type': file.type||'application/octet-stream' }, body: file });
+    if(!r.ok) throw new Error('PUT '+r.status);
+    return r.json();
+  }
+  // 두 단계 예비책: 내용만 먼저 올리고 이름·폴더를 뒤에 붙인다
+  async function putFallback(file, folderId){
+    var t = await getTok(false);
+    var r = await fetch(UPLOAD+'?uploadType=media&fields=id', {
+      method:'POST', headers:{ 'Authorization':'Bearer '+t,
+        'Content-Type': file.type||'application/octet-stream' }, body: file });
+    if(!r.ok) throw new Error('media '+r.status);
+    var made = await r.json();
+    return api('/files/'+made.id+'?addParents='+encodeURIComponent(folderId)+'&fields='+encodeURIComponent(FIELDS),
+      { method:'PATCH', body: JSON.stringify({ name: file.name }) });
+  }
+  async function putOne(file, folderId){
+    if(file.size > SMALL_MAX) return putBig(file, folderId);
+    try{ return await putSmall(file, folderId); }
+    catch(e){ console.warn('[SD/드라이브] 한 번에 올리기 실패 → 예비 방식', e); return putFallback(file, folderId); }
+  }
+
+  // ── 동작 ────────────────────────────────────────────────────────────
+  window.sdGdConnect = async function(){
+    try{ await getTok(true); msg('구글 드라이브에 연결됐습니다.', 'ok'); paint(); }
+    catch(e){ msg('연결하지 못했습니다 — '+(e.message||e), 'no'); }
+  };
+  window.sdGdPick = function(){
+    var c = cur(); if(!c){ msg('계약을 먼저 열어 주세요.', 'no'); return; }
+    if(!inp){
+      inp = document.createElement('input');
+      inp.type='file'; inp.multiple=true; inp.style.display='none';
+      inp.addEventListener('change', function(){ var fs=[].slice.call(inp.files||[]); inp.value=''; up(fs); });
+      document.body.appendChild(inp);
+    }
+    inp.click();
+  };
+  async function up(files){
+    if(!files.length || working) return;
+    var c = cur(); if(!c) return;
+    working = true;
+    try{
+      await getTok(false).catch(function(){ return getTok(true); });
+      var fid = await folderFor(c);
+      c.gd = c.gd || { files: [] }; c.gd.files = c.gd.files || [];
+      for(var i=0;i<files.length;i++){
+        msg('올리는 중… ('+(i+1)+'/'+files.length+') '+files[i].name, 'go');
+        var f = await putOne(files[i], fid);
+        c.gd.files.push({ id:f.id, name:f.name, mime:f.mimeType||'', size:Number(f.size)||files[i].size||0,
+                          link:f.webViewLink||('https://drive.google.com/file/d/'+f.id+'/view'),
+                          at:new Date().toISOString(), by:who() });
+      }
+      await persist(); paint();
+      msg(files.length+'개 올렸습니다.', 'ok');
+    }catch(e){ msg('올리지 못했습니다 — '+(e.message||e), 'no'); }
+    finally{ working = false; }
+  }
+  window.sdGdRefresh = async function(){
+    var c = cur(); if(!c || !(c.gd && c.gd.fid)){ msg('아직 이 계약의 폴더가 없습니다.', 'no'); return; }
+    try{
+      msg('드라이브에서 목록을 받는 중…', 'go');
+      var q = "'"+c.gd.fid+"' in parents and trashed=false";
+      var r = await api('/files?q='+encodeURIComponent(q)+'&pageSize=200&orderBy=createdTime'
+                        +'&fields='+encodeURIComponent('files('+FIELDS+')'));
+      var old = {}; (c.gd.files||[]).forEach(function(x){ old[x.id]=x; });
+      c.gd.files = (r.files||[]).map(function(f){
+        var o = old[f.id] || {};
+        return { id:f.id, name:f.name, mime:f.mimeType||'', size:Number(f.size)||o.size||0,
+                 link:f.webViewLink||('https://drive.google.com/file/d/'+f.id+'/view'),
+                 at:o.at || f.modifiedTime || '', by:o.by || '' };
+      });
+      await persist(); paint();
+      msg('드라이브 기준으로 맞췄습니다 ('+c.gd.files.length+'개).', 'ok');
+    }catch(e){ msg('목록을 받지 못했습니다 — '+(e.message||e), 'no'); }
+  };
+  window.sdGdFolder = function(){
+    var c = cur(); if(!c || !(c.gd && c.gd.fid)){ msg('아직 이 계약의 폴더가 없습니다.', 'no'); return; }
+    window.open(c.gd.flink || ('https://drive.google.com/drive/folders/'+c.gd.fid), '_blank', 'noopener');
+  };
+  window.sdGdOpen = function(fileId){
+    var c = cur(); if(!c) return;
+    var f = (c.gd && c.gd.files || []).filter(function(x){ return x.id===fileId; })[0];
+    if(f) window.open(f.link, '_blank', 'noopener');
+  };
+  window.sdGdUnlink = async function(fileId){
+    var c = cur(); if(!c || !c.gd) return;
+    if(!confirm('이 계약의 목록에서만 뺍니다.\n드라이브의 파일은 그대로 남습니다. 계속할까요?')) return;
+    c.gd.files = (c.gd.files||[]).filter(function(x){ return x.id!==fileId; });
+    await persist(); paint();
+    msg('목록에서 뺐습니다. 드라이브 파일은 그대로 있습니다.', 'ok');
+  };
+
+  // ── 화면 ────────────────────────────────────────────────────────────
+  function msg(text, kind){
+    var el = document.getElementById('sd-gd-msg'); if(!el) return;
+    var col = kind==='no' ? ['#ffebee','#c62828'] : kind==='go' ? ['#eceff1','#455a64'] : ['#e8f5e9','#2e7d32'];
+    el.textContent = text; el.style.background=col[0]; el.style.color=col[1]; el.style.display='block';
+    if(kind!=='go') setTimeout(function(){ if(el.textContent===text) el.style.display='none'; }, 4000);
+  }
+  function btn(label, fn, extra){
+    return '<button type="button" onclick="'+fn+'" class="btn-s" style="font-size:11.5px;padding:4px 10px;'+(extra||'')+'">'+label+'</button>';
+  }
+  function paint(){
+    var box = document.getElementById('sd-gd-box'); if(!box) return;
+    var c = cur(); if(!c) return;
+    var list = (c.gd && c.gd.files) || [];
+    var h = '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">'
+      + '<p class="sec" style="margin:0">📂 구글 드라이브 서류 '
+      + '<span style="font-weight:400;font-size:11px;color:#999">'
+      + (list.length ? list.length+'개' : '아직 없음') + '</span></p>'
+      + '<span style="display:flex;gap:6px;flex-wrap:wrap">'
+      + (haveTok() ? '' : btn('🔗 드라이브 연결','sdGdConnect()','color:#1565c0;border-color:#90caf9'))
+      + btn('＋ 서류 올리기','sdGdPick()','color:#2e7d32;border-color:#a5d6a7')
+      + (list.length || (c.gd&&c.gd.fid) ? btn('🔄 새로고침','sdGdRefresh()') : '')
+      + ((c.gd&&c.gd.fid) ? btn('📁 폴더 열기','sdGdFolder()') : '')
+      + '</span></div>';
+
+    if(!list.length){
+      h += '<div style="font-size:11.5px;color:#999;padding:8px 2px;line-height:1.7">'
+        + '계약서 스캔·등기부·건축물대장 같은 서류를 올려 두면 이 계약 건에서 바로 열립니다.<br>'
+        + '파일은 대표님 구글 드라이브의 「'+esc(ROOT_NAME)+'」 폴더 안에 계약별로 정리됩니다.</div>';
+    } else {
+      h += '<div style="border:0.5px solid #f0f0f0;border-radius:8px;overflow:hidden">'
+        + list.map(function(f, i){
+            return '<div style="display:flex;align-items:center;gap:8px;padding:7px 10px;font-size:12px;'
+              + (i ? 'border-top:0.5px solid #f5f5f5' : '') + '">'
+              + '<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'
+              + esc(f.name) + '</span>'
+              + '<span style="font-size:10.5px;color:#aaa;white-space:nowrap">' + kb(f.size)
+              + (f.by ? ' · '+esc(f.by) : '') + '</span>'
+              + '<button type="button" onclick="sdGdOpen(\'' + esc(f.id) + '\')" class="btn-s" '
+              + 'style="font-size:11px;padding:3px 8px">열기</button>'
+              + '<button type="button" onclick="sdGdUnlink(\'' + esc(f.id) + '\')" class="btn-s" '
+              + 'style="font-size:11px;padding:3px 8px;color:#999">빼기</button>'
+              + '</div>';
+          }).join('')
+        + '</div>';
+    }
+    h += '<div id="sd-gd-msg" style="display:none;margin-top:8px;padding:7px 11px;border-radius:7px;font-size:11.5px"></div>';
+    box.innerHTML = h;
+  }
+
+  function mount(){
+    var body = document.getElementById('detail-body'); if(!body) return;
+    if(document.getElementById('sd-gd-box')) { paint(); return; }
+    var box = document.createElement('div');
+    box.id = 'sd-gd-box';
+    box.style.cssText = 'border-top:0.5px solid #f0f0f0;padding-top:10px;margin-top:14px';
+    body.appendChild(box);
+    paint();
+  }
+
+  // ── 기존 openDetail 감싸기 ──────────────────────────────────────────
+  function hook(){
+    if(typeof window.openDetail !== 'function') return false;
+    if(window.openDetail.__sdGd) return true;
+    var orig = window.openDetail;
+    var wrapped = function(){
+      var out = orig.apply(this, arguments);
+      try{ mount(); }catch(e){ console.warn('[SD/드라이브] 화면 붙이기 실패', e); }
+      return out;
+    };
+    wrapped.__sdGd = true;
+    window.openDetail = wrapped;
+    return true;
+  }
+  var n = 0;
+  (function tick(){ if(hook()) return; if(n++ < 60) setTimeout(tick, 250); })();
+
+  loadCfg();
+  window.sdGd = { cfg: function(){ return CFG; }, token: haveTok, scope: SCOPE };
+})();
 </script>
 
 </body>
