@@ -2551,7 +2551,7 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.09.23-5';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.09.23-6';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_schedule.html';      // 이 파일 이름
   var SD_NAME = '일정관리';      // 사람이 부르는 이름
 
@@ -3081,14 +3081,12 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
 </script>
 
 <!-- ═══════════════════════════════════════════════════════════
-     구글 캘린더 쌍방 연동 모듈  v1.0  (일정관리)
-     - 「🔗 구글 캘린더」 탭 맨 위에 직접 연결 칸을 만든다
-     - 복사 → 붙여넣기 없이 화면에서 바로 주고받는다
-     안전장치 셋
-       ① 메아리 : 우리가 올린 일정에는 표식을 숨겨 두고, 내려받을 때 건너뛴다
-       ② 충돌   : 양쪽 번호를 서로 기억해 짝을 맞추고, 나중에 고친 쪽이 이긴다
-       ③ 삭제   : 어느 쪽도 지우지 않는다. 사라진 것은 알려만 준다
-     기존 코드를 고치지 않고 덧붙이는 방식
+     구글 캘린더 쌍방 연동 모듈  v2.0  (일정관리)
+     - 캘린더를 여러 개 한꺼번에 가져올 수 있다
+     - 공유 여부는 '캘린더마다' 따로 정한다
+       (개인 캘린더는 나만 보기 · 업무 캘린더는 직원 공유)
+     - 내보내기는 한 곳으로만 (여러 곳에 흩어지면 관리가 안 된다)
+     안전장치 셋 : ① 메아리 ② 충돌 ③ 삭제 안 함
      ═══════════════════════════════════════════════════════ -->
 <script>
 (function(){
@@ -3099,10 +3097,11 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
   var API='https://www.googleapis.com/calendar/v3';
   var CFGKEY='sd_gcal_cfg';
   var TZ='Asia/Seoul';
-  var BACK=30, FWD=180;               // 오늘 기준 뒤로 30일 ~ 앞으로 180일
+  var BACK=30, FWD=180;
 
-  var tok=null, tokExp=0, tokenClient=null;
-  var CFG={ calId:'', calName:'', share:false, lastSync:'' };
+  var tok=null, tokExp=0, tokenClient=null, CALS=[];
+  // cals : { 캘린더id : { name, on(가져올지), share(직원공유) } }
+  var CFG={ cals:{}, pushCal:'', lastSync:'' };
 
   function $(id){ return document.getElementById(id); }
   function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
@@ -3116,10 +3115,15 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
     ['gc-pull','gc-push','gc-both'].forEach(function(id){ var e=$(id); if(e) e.disabled=!!on; });
   }
 
-  // ── 설정 저장·불러오기 (사무소 전체 공용) ────────────────
   async function loadCfg(){
     try{ var r=await window.storage.get(CFGKEY); if(r&&r.value) CFG=Object.assign(CFG, JSON.parse(r.value)); }catch(e){}
-    try{ var l=localStorage.getItem(CFGKEY); if(l && !CFG.calId) CFG=Object.assign(CFG, JSON.parse(l)); }catch(e){}
+    try{ var l=localStorage.getItem(CFGKEY); if(l && !Object.keys(CFG.cals||{}).length) CFG=Object.assign(CFG, JSON.parse(l)); }catch(e){}
+    if(!CFG.cals) CFG.cals={};
+    // 옛 설정(캘린더 하나) 이어받기
+    if(CFG.calId && !CFG.cals[CFG.calId]){
+      CFG.cals[CFG.calId]={ name:CFG.calName||'', on:true, share:!!CFG.share };
+      CFG.pushCal=CFG.pushCal||CFG.calId;
+    }
   }
   async function saveCfg(){
     var raw=JSON.stringify(CFG);
@@ -3127,7 +3131,6 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
     try{ localStorage.setItem(CFGKEY, raw); }catch(e){}
   }
 
-  // ── 구글 로그인(토큰) ────────────────────────────────────
   function loadGis(){
     if(window.google && google.accounts && google.accounts.oauth2) return Promise.resolve(true);
     return new Promise(function(res){
@@ -3147,17 +3150,12 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
     return new Promise(function(res, rej){
       if(!tokenClient){
         tokenClient=google.accounts.oauth2.initTokenClient({
-          client_id: CLIENT_ID,
-          scope: SCOPE,
+          client_id: CLIENT_ID, scope: SCOPE,
           callback: function(r){
             if(r && r.access_token){
-              tok=r.access_token;
-              tokExp=Date.now() + ((r.expires_in||3600)*1000);
-              paint();
-              res(tok);
-            } else {
-              rej(new Error((r&&r.error_description)||(r&&r.error)||'허용되지 않았습니다'));
-            }
+              tok=r.access_token; tokExp=Date.now()+((r.expires_in||3600)*1000);
+              paint(); res(tok);
+            } else rej(new Error((r&&r.error_description)||(r&&r.error)||'허용되지 않았습니다'));
           },
           error_callback: function(e){ rej(new Error((e&&e.type)||'창이 닫혔습니다')); }
         });
@@ -3166,20 +3164,16 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
       catch(e){ rej(e); }
     });
   }
-
   async function api(path, opts){
     opts=opts||{};
     var t=await getTok(false);
-    var r=await fetch(API+path, Object.assign({}, opts, {
-      headers: Object.assign({ 'Authorization':'Bearer '+t, 'Content-Type':'application/json' }, opts.headers||{})
-    }));
-    if(r.status===401){                      // 토큰이 끊기면 한 번 더 받아 온다
-      tok=null; tokExp=0;
-      var t2=await getTok(true);
-      r=await fetch(API+path, Object.assign({}, opts, {
-        headers: Object.assign({ 'Authorization':'Bearer '+t2, 'Content-Type':'application/json' }, opts.headers||{})
+    function go(tk){
+      return fetch(API+path, Object.assign({}, opts, {
+        headers: Object.assign({ 'Authorization':'Bearer '+tk, 'Content-Type':'application/json' }, opts.headers||{})
       }));
     }
+    var r=await go(t);
+    if(r.status===401){ tok=null; tokExp=0; r=await go(await getTok(true)); }
     if(!r.ok){
       var txt=''; try{ txt=(await r.json()).error.message; }catch(e){ txt=r.status+' 오류'; }
       throw new Error(txt);
@@ -3187,28 +3181,19 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
     return r.status===204 ? null : r.json();
   }
 
-  // ── 날짜 다루기 ─────────────────────────────────────────
   function two(n){ return (n<10?'0':'')+n; }
   function dOnly(s){ return String(s||'').slice(0,10); }
   function hasTime(t){
     if(t.timemode==='allday') return false;
     return /T\d\d:\d\d/.test(String(t.date||'')) && String(t.date).slice(11,16)!=='00:00';
   }
-  function toRfc(dateStr){                 // 'YYYY-MM-DDTHH:mm' → '...+09:00'
-    var s=String(dateStr||'');
-    if(!/T\d\d:\d\d/.test(s)) s=dOnly(s)+'T00:00';
-    return s.slice(0,16)+':00+09:00';
-  }
-  function plusDay(ymd, n){
-    var d=new Date(ymd+'T00:00:00+09:00');
-    d.setDate(d.getDate()+n);
-    return d.getFullYear()+'-'+two(d.getMonth()+1)+'-'+two(d.getDate());
-  }
+  function toRfc(d){ var s=String(d||''); if(!/T\d\d:\d\d/.test(s)) s=dOnly(s)+'T00:00'; return s.slice(0,16)+':00+09:00'; }
+  function plusDay(ymd,n){ var d=new Date(ymd+'T00:00:00+09:00'); d.setDate(d.getDate()+n);
+    return d.getFullYear()+'-'+two(d.getMonth()+1)+'-'+two(d.getDate()); }
   function winMin(){ var d=new Date(); d.setDate(d.getDate()-BACK); return d.toISOString(); }
   function winMax(){ var d=new Date(); d.setDate(d.getDate()+FWD); return d.toISOString(); }
   function whenOf(t){ return String(t.updatedAt||t.createdAt||''); }
 
-  // ── 우리 일정 ↔ 구글 일정 옮겨 담기 ──────────────────────
   function toGoogle(t){
     var body={
       summary: t.title || '(제목 없음)',
@@ -3218,186 +3203,211 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
       extendedProperties: { private: { sjdwsId: String(t.id) } }
     };
     if(hasTime(t)){
-      var st=toRfc(t.date);
-      var en=t.endDate ? toRfc(t.endDate) : null;
-      if(!en || en<=st){
-        var d=new Date(st); d.setHours(d.getHours()+1);
-        en=d.getFullYear()+'-'+two(d.getMonth()+1)+'-'+two(d.getDate())+'T'+two(d.getHours())+':'+two(d.getMinutes())+':00+09:00';
-      }
-      body.start={ dateTime:st, timeZone:TZ };
-      body.end  ={ dateTime:en, timeZone:TZ };
+      var st=toRfc(t.date), en=t.endDate?toRfc(t.endDate):null;
+      if(!en || en<=st){ var d=new Date(st); d.setHours(d.getHours()+1);
+        en=d.getFullYear()+'-'+two(d.getMonth()+1)+'-'+two(d.getDate())+'T'+two(d.getHours())+':'+two(d.getMinutes())+':00+09:00'; }
+      body.start={ dateTime:st, timeZone:TZ }; body.end={ dateTime:en, timeZone:TZ };
     } else {
-      var s=dOnly(t.date);
-      var e=t.endDate ? dOnly(t.endDate) : s;
-      body.start={ date:s };
-      body.end  ={ date:plusDay(e,1) };     // 구글 종일 일정의 끝은 다음 날
+      var s=dOnly(t.date), e=t.endDate?dOnly(t.endDate):s;
+      body.start={ date:s }; body.end={ date:plusDay(e,1) };
     }
     return body;
   }
-  function fromGoogle(ev, calId){
+  function fromGoogle(ev, calId, calName){
     var allday=!!(ev.start&&ev.start.date);
     var d = allday ? (ev.start.date+'T00:00') : String(ev.start.dateTime||'').slice(0,16);
-    var e = '';
-    if(ev.end){
-      e = allday ? plusDay(ev.end.date,-1)+'T00:00' : String(ev.end.dateTime||'').slice(0,16);
-    }
+    var e = ev.end ? (allday ? plusDay(ev.end.date,-1)+'T00:00' : String(ev.end.dateTime||'').slice(0,16)) : '';
     return {
-      kind:'schedule',
-      type:'📅 구글 일정',
-      priority:'normal',
-      title: ev.summary || '(제목 없음)',
-      date: d,
-      endDate: e,
-      location: ev.location || '',
+      kind:'schedule', type:'📅 구글 일정', priority:'normal',
+      title: ev.summary || '(제목 없음)', date:d, endDate:e,
+      location: ev.location||'',
       memo: (ev.description||'').replace(/\n*— SJDWS 일정관리\s*$/,''),
-      timemode: allday ? 'allday' : 'time',
-      withName:'', withTel:'',
-      done:false,
-      gcalId: ev.id,
-      gcalCal: calId,
-      gcalUpdated: ev.updated || ''
+      timemode: allday?'allday':'time', withName:'', withTel:'', done:false,
+      gcalId: ev.id, gcalCal: calId, gcalCalName: calName||'', gcalUpdated: ev.updated||''
     };
   }
 
-  // ── ⬇ 가져오기 ──────────────────────────────────────────
-  async function pull(){
-    if(!CFG.calId) throw new Error('먼저 캘린더를 고르세요');
-    var myUid=(window._authProfile||{}).uid||'anon';
-    var myName=(window._authProfile||{}).name||'';
-    var page='', items=[], n=0;
-    do{
-      var q='/calendars/'+encodeURIComponent(CFG.calId)+'/events'
-           +'?singleEvents=true&orderBy=startTime&maxResults=250'
-           +'&timeMin='+encodeURIComponent(winMin())
-           +'&timeMax='+encodeURIComponent(winMax())
-           + (page?('&pageToken='+encodeURIComponent(page)):'');
-      var r=await api(q);
-      items=items.concat(r.items||[]);
-      page=r.nextPageToken||'';
-    } while(page && ++n<10);
-
-    var added=0, updated=0, echoed=0, skipped=0;
-    items.forEach(function(ev){
-      if(ev.status==='cancelled'){ skipped++; return; }
-      var mine=ev.extendedProperties && ev.extendedProperties.private && ev.extendedProperties.private.sjdwsId;
-      var cur=null;
-      if(mine){
-        cur=todos.filter(function(t){ return String(t.id)===String(mine); })[0];
-        if(cur){                              // ① 메아리 — 우리가 올린 것
-          if(!cur.gcalId){ cur.gcalId=ev.id; cur.gcalCal=CFG.calId; }
-          echoed++; return;
-        }
-      }
-      cur=todos.filter(function(t){ return t.gcalId===ev.id; })[0];
-      var src=fromGoogle(ev, CFG.calId);
-      if(cur){
-        // ② 충돌 — 구글이 더 나중이면 구글이 이긴다
-        var gUp=String(ev.updated||'');
-        var oUp=whenOf(cur);
-        if(gUp && oUp && gUp<=oUp){ skipped++; return; }
-        ['title','date','endDate','location','memo','timemode'].forEach(function(k){ cur[k]=src[k]; });
-        cur.gcalUpdated=src.gcalUpdated;
-        cur.updatedAt=new Date().toISOString();
-        updated++;
-      } else {
-        var t=Object.assign({}, src, {
-          id: Date.now()+Math.floor(Math.random()*1000),
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-          isPublic: !!CFG.share,
-          owner: myUid, ownerName: myName
-        });
-        todos.unshift(t);
-        added++;
-      }
-    });
-    await saveTodos();
-    return { added:added, updated:updated, echoed:echoed, skipped:skipped, total:items.length };
+  function onCals(){
+    return Object.keys(CFG.cals||{}).filter(function(id){ return CFG.cals[id].on; });
   }
 
-  // ── ⬆ 내보내기 ──────────────────────────────────────────
+  // ── ⬇ 가져오기 : 켜 둔 캘린더 전부에서 ────────────────────
+  async function pull(){
+    var ids=onCals();
+    if(!ids.length) throw new Error('가져올 캘린더를 하나 이상 켜 주세요');
+    var myUid=(window._authProfile||{}).uid||'anon';
+    var myName=(window._authProfile||{}).name||'';
+    var tot={added:0, updated:0, echoed:0, skipped:0};
+
+    for(var c=0;c<ids.length;c++){
+      var calId=ids[c], calName=(CFG.cals[calId]||{}).name||'';
+      var share=!!(CFG.cals[calId]||{}).share;
+      var page='', items=[], n=0;
+      do{
+        var q='/calendars/'+encodeURIComponent(calId)+'/events'
+             +'?singleEvents=true&orderBy=startTime&maxResults=250'
+             +'&timeMin='+encodeURIComponent(winMin())+'&timeMax='+encodeURIComponent(winMax())
+             + (page?('&pageToken='+encodeURIComponent(page)):'');
+        var r=await api(q);
+        items=items.concat(r.items||[]);
+        page=r.nextPageToken||'';
+      } while(page && ++n<10);
+
+      items.forEach(function(ev){
+        if(ev.status==='cancelled'){ tot.skipped++; return; }
+        var mineId=ev.extendedProperties && ev.extendedProperties.private && ev.extendedProperties.private.sjdwsId;
+        var cur=null;
+        if(mineId){
+          cur=todos.filter(function(t){ return String(t.id)===String(mineId); })[0];
+          if(cur){ if(!cur.gcalId){ cur.gcalId=ev.id; cur.gcalCal=calId; } tot.echoed++; return; }  // ① 메아리
+        }
+        cur=todos.filter(function(t){ return t.gcalId===ev.id; })[0];
+        var src=fromGoogle(ev, calId, calName);
+        if(cur){
+          var gUp=String(ev.updated||''), oUp=whenOf(cur);
+          if(gUp && oUp && gUp<=oUp){ tot.skipped++; return; }                                     // ② 충돌
+          ['title','date','endDate','location','memo','timemode','gcalCalName'].forEach(function(k){ cur[k]=src[k]; });
+          cur.gcalUpdated=src.gcalUpdated; cur.updatedAt=new Date().toISOString();
+          tot.updated++;
+        } else {
+          todos.unshift(Object.assign({}, src, {
+            id: Date.now()+Math.floor(Math.random()*10000),
+            createdAt:new Date().toISOString(), updatedAt:new Date().toISOString(),
+            isPublic: share, owner:myUid, ownerName:myName
+          }));
+          tot.added++;
+        }
+      });
+    }
+    await saveTodos();
+    tot.cals=ids.length;
+    return tot;
+  }
+
+  // ── ⬆ 내보내기 : 지정한 한 곳으로만 ──────────────────────
   async function push(){
-    if(!CFG.calId) throw new Error('먼저 캘린더를 고르세요');
+    var target=CFG.pushCal;
+    if(!target) throw new Error('내보낼 캘린더를 하나 골라 주세요');
     var minD=dOnly(new Date(winMin()).toISOString());
     var maxD=dOnly(new Date(winMax()).toISOString());
     var mine=todos.filter(function(t){
-      if(t.kind!=='schedule') return false;          // 할일은 보내지 않는다
-      if(t.type==='📅 구글 일정' && !t.gcalId) return false;
+      if(t.kind!=='schedule') return false;              // 할일은 보내지 않는다
+      // 이미 다른 캘린더에 있는 일정은 건드리지 않는다 (같은 일정이 여러 곳에 생기는 것 방지)
+      if(t.gcalId && t.gcalCal && t.gcalCal!==target) return false;
       var d=dOnly(t.date);
       return d>=minD && d<=maxD;
     });
-    var created=0, changed=0, same=0, failed=0;
+    var out={created:0, changed:0, same:0, failed:0, total:mine.length};
     for(var i=0;i<mine.length;i++){
       var t=mine[i];
       try{
-        if(t.gcalId && t.gcalCal===CFG.calId){
-          // ② 충돌 — 우리가 더 나중일 때만 덮어쓴다
-          if(t.gcalUpdated && whenOf(t) && whenOf(t)<=t.gcalUpdated){ same++; continue; }
-          var up=await api('/calendars/'+encodeURIComponent(CFG.calId)+'/events/'+encodeURIComponent(t.gcalId),
+        if(t.gcalId && t.gcalCal===target){
+          if(t.gcalUpdated && whenOf(t) && whenOf(t)<=t.gcalUpdated){ out.same++; continue; }       // ② 충돌
+          var up=await api('/calendars/'+encodeURIComponent(target)+'/events/'+encodeURIComponent(t.gcalId),
                            { method:'PATCH', body:JSON.stringify(toGoogle(t)) });
-          t.gcalUpdated=up.updated||''; changed++;
+          t.gcalUpdated=up.updated||''; out.changed++;
         } else {
-          var ne=await api('/calendars/'+encodeURIComponent(CFG.calId)+'/events',
+          var ne=await api('/calendars/'+encodeURIComponent(target)+'/events',
                            { method:'POST', body:JSON.stringify(toGoogle(t)) });
-          t.gcalId=ne.id; t.gcalCal=CFG.calId; t.gcalUpdated=ne.updated||''; created++;
+          t.gcalId=ne.id; t.gcalCal=target; t.gcalUpdated=ne.updated||''; out.created++;
         }
-      }catch(e){
-        failed++;
-        log('올리기 실패: '+(t.title||'')+' — '+e.message, 'err');
-      }
+      }catch(e){ out.failed++; log('올리기 실패: '+(t.title||'')+' — '+e.message,'err'); }
     }
     await saveTodos();
-    return { created:created, changed:changed, same:same, failed:failed, total:mine.length };
+    return out;
   }
 
   // ── 화면 ────────────────────────────────────────────────
+  function rows(){
+    if(!CALS.length) return '<div style="font-size:12px;color:#999;padding:10px">연결하면 캘린더 목록이 나옵니다.</div>';
+    return '<table style="width:100%;border-collapse:collapse;font-size:12px">'
+      +'<thead><tr style="background:#f5f5f3">'
+      +'<th style="padding:6px;text-align:center;width:52px">가져옴</th>'
+      +'<th style="padding:6px;text-align:left">캘린더</th>'
+      +'<th style="padding:6px;text-align:center;width:118px">가져온 일정</th>'
+      +'<th style="padding:6px;text-align:center;width:66px">내보낼 곳</th>'
+      +'</tr></thead><tbody>'
+      + CALS.map(function(c){
+          var st=CFG.cals[c.id]||{};
+          return '<tr style="border-bottom:1px solid #eee">'
+          +'<td style="padding:6px;text-align:center"><input type="checkbox" onchange="gcOn(\''+esc(c.id)+'\',this)"'+(st.on?' checked':'')+'></td>'
+          +'<td style="padding:6px">'+esc(c.summary)+(c.primary?' <span style="color:#999">(기본)</span>':'')+'</td>'
+          +'<td style="padding:6px;text-align:center">'
+            +'<select onchange="gcShare(\''+esc(c.id)+'\',this)" style="font-size:11px;padding:3px 6px;border:1px solid #ddd;border-radius:6px">'
+            +'<option value="me"'+(st.share?'':' selected')+'>나만 보기</option>'
+            +'<option value="all"'+(st.share?' selected':'')+'>직원 공유</option></select></td>'
+          +'<td style="padding:6px;text-align:center">'
+            +'<input type="radio" name="gc-push-target" onchange="gcTarget(\''+esc(c.id)+'\')"'+(CFG.pushCal===c.id?' checked':'')+(c.writable?'':' disabled')+'></td>'
+          +'</tr>';
+        }).join('')
+      +'</tbody></table>';
+  }
   function paint(){
     var st=$('gc-state');
-    if(st){
-      st.innerHTML = haveTok()
-        ? '<span style="color:#2e7d32;font-weight:600">● 연결됨</span>'
-        : '<span style="color:#999">○ 연결 안 됨</span>';
+    if(st) st.innerHTML = haveTok() ? '<span style="color:#2e7d32;font-weight:600">● 연결됨</span>'
+                                    : '<span style="color:#999">○ 연결 안 됨</span>';
+    var tb=$('gc-tbl'); if(tb) tb.innerHTML=rows();
+    var sm=$('gc-sum');
+    if(sm){
+      var n=onCals().length;
+      var pn=(CFG.cals[CFG.pushCal]||{}).name||'';
+      sm.textContent = (n?('가져오기 '+n+'개'):'가져올 캘린더 없음') + (pn?(' · 내보내기 → '+pn):' · 내보낼 곳 없음');
     }
-    var cn=$('gc-calname');
-    if(cn) cn.textContent = CFG.calName ? ('· '+CFG.calName) : '· 캘린더를 고르세요';
-    var ls=$('gc-last');
-    if(ls) ls.textContent = CFG.lastSync ? ('마지막 동기화 '+CFG.lastSync) : '';
-    var sh=$('gc-share');
-    if(sh) sh.checked=!!CFG.share;
+    var ls=$('gc-last'); if(ls) ls.textContent = CFG.lastSync ? ('마지막 동기화 '+CFG.lastSync) : '';
   }
 
+  window.gcOn=async function(id, cb){
+    CFG.cals[id]=CFG.cals[id]||{name:'',on:false,share:false};
+    CFG.cals[id].on=!!cb.checked;
+    var f=CALS.filter(function(c){return c.id===id;})[0]; if(f) CFG.cals[id].name=f.summary;
+    await saveCfg(); paint();
+  };
+  window.gcShare=async function(id, sel){
+    CFG.cals[id]=CFG.cals[id]||{name:'',on:false,share:false};
+    CFG.cals[id].share=(sel.value==='all');
+    await saveCfg();
+    log((CFG.cals[id].name||id)+' → '+(CFG.cals[id].share?'직원 공유':'나만 보기'));
+  };
+  window.gcTarget=async function(id){
+    CFG.pushCal=id;
+    CFG.cals[id]=CFG.cals[id]||{name:'',on:false,share:false};
+    var f=CALS.filter(function(c){return c.id===id;})[0]; if(f) CFG.cals[id].name=f.summary;
+    await saveCfg(); paint();
+    log('내보낼 곳: '+((CFG.cals[id]||{}).name||id));
+  };
+  window.gcAll=async function(on){
+    CALS.forEach(function(c){
+      CFG.cals[c.id]=CFG.cals[c.id]||{name:c.summary,on:false,share:false};
+      CFG.cals[c.id].name=c.summary;
+      CFG.cals[c.id].on=!!on;
+    });
+    await saveCfg(); paint();
+    log(on?'모든 캘린더를 가져옵니다':'가져오기를 모두 껐습니다');
+  };
+
   window.gcConnect=async function(){
-    try{
-      busy(true,'구글 창을 여는 중…');
-      await getTok(true);
-      log('구글 캘린더에 연결했습니다','ok');
-      await gcLoadCals();
+    try{ busy(true,'구글 창을 여는 중…'); await getTok(true);
+      log('구글 캘린더에 연결했습니다','ok'); await gcLoadCals();
     }catch(e){ log('연결 실패: '+e.message,'err'); }
     finally{ busy(false); paint(); }
   };
   window.gcLoadCals=async function(){
     try{
       busy(true,'캘린더 목록을 가져오는 중…');
-      var r=await api('/users/me/calendarList?minAccessRole=writer&maxResults=250');
-      var sel=$('gc-cal'); if(!sel) return;
-      sel.innerHTML='<option value="">— 캘린더 선택 —</option>' +
-        (r.items||[]).map(function(c){
-          return '<option value="'+esc(c.id)+'"'+(c.id===CFG.calId?' selected':'')+'>'
-                 +esc(c.summary)+(c.primary?' (기본)':'')+'</option>';
-        }).join('');
-      log('캘린더 '+((r.items||[]).length)+'개를 찾았습니다','ok');
+      var r=await api('/users/me/calendarList?maxResults=250');
+      CALS=(r.items||[]).map(function(c){
+        return { id:c.id, summary:c.summary||c.id, primary:!!c.primary,
+                 writable:(c.accessRole==='owner'||c.accessRole==='writer') };
+      });
+      CALS.forEach(function(c){ if(CFG.cals[c.id]) CFG.cals[c.id].name=c.summary; });
+      if(!CFG.pushCal){
+        var w=CALS.filter(function(c){return c.primary&&c.writable;})[0]||CALS.filter(function(c){return c.writable;})[0];
+        if(w) CFG.pushCal=w.id;
+      }
+      await saveCfg(); paint();
+      log('캘린더 '+CALS.length+'개를 찾았습니다','ok');
     }catch(e){ log('목록 실패: '+e.message,'err'); }
     finally{ busy(false); }
-  };
-  window.gcPickCal=async function(sel){
-    CFG.calId=sel.value;
-    CFG.calName=sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].text : '';
-    await saveCfg(); paint();
-    log('캘린더: '+(CFG.calName||'(없음)'));
-  };
-  window.gcShare=async function(cb){
-    CFG.share=!!cb.checked; await saveCfg();
-    log(CFG.share ? '가져온 일정을 직원과 공유합니다' : '가져온 일정을 나만 봅니다');
   };
 
   async function run(mode){
@@ -3405,7 +3415,7 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
       busy(true,'동기화 중…');
       if(mode==='pull'||mode==='both'){
         var a=await pull();
-        log('⬇ 가져오기 — 새로 '+a.added+'건, 갱신 '+a.updated+'건, 우리 것 '+a.echoed+'건 건너뜀','ok');
+        log('⬇ 가져오기 ('+a.cals+'개 캘린더) — 새로 '+a.added+'건, 갱신 '+a.updated+'건, 우리 것 '+a.echoed+'건 건너뜀','ok');
       }
       if(mode==='push'||mode==='both'){
         var b=await push();
@@ -3413,9 +3423,7 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
       }
       CFG.lastSync=new Date().toLocaleString('ko-KR');
       await saveCfg(); paint();
-      try{ if(typeof renderCal==='function') renderCal(); }catch(e){}
-      try{ if(typeof renderToday==='function') renderToday(); }catch(e){}
-      try{ if(typeof renderAllTodos==='function') renderAllTodos(); }catch(e){}
+      ['renderCal','renderToday','renderAllTodos'].forEach(function(f){ try{ if(typeof window[f]==='function') window[f](); }catch(e){} });
     }catch(e){ log('실패: '+e.message,'err'); }
     finally{ busy(false); }
   }
@@ -3427,30 +3435,28 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
     return ''
     +'<div class="card" id="gc-card" style="margin-bottom:1rem;border:1px solid #a5d6a7">'
     +'<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">'
-    +'<p class="sec" style="margin:0">🔗 구글 캘린더 직접 연결 '
-    +'<span id="gc-state" style="font-size:12px;font-weight:400"></span> '
-    +'<span id="gc-calname" style="font-size:12px;color:#888;font-weight:400"></span></p>'
+    +'<p class="sec" style="margin:0">🔗 구글 캘린더 직접 연결 <span id="gc-state" style="font-size:12px;font-weight:400"></span></p>'
     +'<button onclick="gcConnect()" class="btn-g" style="font-size:12px">구글 계정 연결</button>'
     +'</div>'
-    +'<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px">'
-    +'<select id="gc-cal" onchange="gcPickCal(this)" style="font-size:12px;padding:6px 10px;'
-    +'border:1px solid #ddd;border-radius:8px;min-width:220px"><option value="">— 연결 후 선택 —</option></select>'
+    +'<div style="display:flex;gap:6px;margin:10px 0;flex-wrap:wrap;align-items:center">'
+    +'<button onclick="gcAll(true)" class="btn-s" style="font-size:11px">전부 가져오기</button>'
+    +'<button onclick="gcAll(false)" class="btn-s" style="font-size:11px">전부 끄기</button>'
     +'<button onclick="gcLoadCals()" class="btn-s" style="font-size:11px">목록 새로고침</button>'
+    +'<span id="gc-sum" style="font-size:11.5px;color:#666;margin-left:4px"></span>'
     +'</div>'
+    +'<div id="gc-tbl" style="border:1px solid #eee;border-radius:8px;overflow:auto;max-height:260px"></div>'
     +'<div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">'
     +'<button id="gc-pull" onclick="gcPull()" class="btn-g" style="font-size:12px;background:#e3f2fd;color:#1565c0;border-color:#90caf9">⬇ 구글에서 가져오기</button>'
     +'<button id="gc-push" onclick="gcPush()" class="btn-g" style="font-size:12px;background:#e8f5e9;color:#2e7d32;border-color:#a5d6a7">⬆ 구글로 내보내기</button>'
     +'<button id="gc-both" onclick="gcBoth()" class="btn-g" style="font-size:12px;background:#1a2744;color:#fff;font-weight:700">🔄 양방향 동기화</button>'
     +'<span id="gc-busy" style="display:none;font-size:12px;color:#e65100;align-self:center">처리 중…</span>'
     +'</div>'
-    +'<label style="display:flex;align-items:center;gap:6px;margin-top:10px;font-size:12px;color:#555;cursor:pointer">'
-    +'<input type="checkbox" id="gc-share" onchange="gcShare(this)"> 가져온 구글 일정을 직원과 공유 '
-    +'<span style="color:#999">(끄면 나만 봅니다)</span></label>'
     +'<div style="font-size:11px;color:#888;margin-top:10px;line-height:1.7">'
-    +'· 오늘 기준 <b>뒤로 30일 ~ 앞으로 180일</b>만 주고받습니다.<br>'
-    +'· 내보내기는 <b>「일정」만</b> 보냅니다. 할일은 보내지 않습니다.<br>'
+    +'· <b>가져옴</b>을 켠 캘린더는 전부 가져옵니다. 캘린더마다 <b>나만 보기 / 직원 공유</b>를 따로 정합니다.<br>'
+    +'· <b>내보낼 곳</b>은 하나만 고릅니다. 다른 캘린더에서 가져온 일정은 그 자리에 그대로 둡니다.<br>'
+    +'· 오늘 기준 <b>뒤로 30일 ~ 앞으로 180일</b>, 내보내기는 <b>「일정」만</b> (할일 제외).<br>'
     +'· 같은 일정을 양쪽에서 고쳤으면 <b>나중에 고친 쪽</b>이 남습니다.<br>'
-    +'· <b>삭제는 어느 쪽도 하지 않습니다.</b> 지우실 때는 양쪽에서 직접 지워 주세요.'
+    +'· <b>삭제는 어느 쪽도 하지 않습니다.</b>'
     +'</div>'
     +'<div id="gc-last" style="font-size:11px;color:#999;margin-top:6px"></div>'
     +'<div id="gc-log" style="margin-top:10px;max-height:160px;overflow:auto;font-size:11.5px;'
@@ -3464,17 +3470,14 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
     var d=document.createElement('div');
     d.innerHTML=card();
     host.insertBefore(d.firstChild, host.firstChild);
-    await loadCfg();
-    paint();
-    // 예전에 허용해 두었으면 창 없이 조용히 이어 받는다
+    await loadCfg(); paint();
     try{ await getTok(false); paint(); }catch(e){}
-    if(haveTok() && CFG.calId){ try{ await gcLoadCals(); }catch(e){} }
+    if(haveTok()){ try{ await gcLoadCals(); }catch(e){} }
   }
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',function(){ setTimeout(boot,2000); });
   else setTimeout(boot,2000);
   setTimeout(boot,4000);
 })();
 </script>
-
 </body>
 </html>
