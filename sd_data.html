@@ -19272,7 +19272,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.09.23-10';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.09.23-11';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_data.html';      // 이 파일 이름
   var SD_NAME = '실거래가';      // 사람이 부르는 이름
 
@@ -21218,13 +21218,15 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
             + SIDO.map(function(s){ return opt(s[0], s[1], st.sido); }).join('') + '</select>')
       + fld('시·군·구','<select id="kr-sgg" onchange="krSet()" class="kr-in" style="font-size:12px;min-width:150px">'
             + sggList.map(function(s){ return opt(s[0], s[1], st.sgg); }).join('') + '</select>')
+      + fld('법정동', dongSelect())
       + fld('유형',   '<select id="kr-type" onchange="krSet()" class="kr-in" style="font-size:12px;min-width:160px">'
             + TYPES.map(function(t){ return opt(t.k, t.n + (t.warn?' ('+t.warn+')':''), st.type); }).join('') + '</select>')
       + fld('시작',   '<input id="kr-from" type="month" value="'+ymIso(st.from)+'" onchange="krSet()" class="kr-in" style="font-size:12px">')
       + fld('끝',     '<input id="kr-to" type="month" value="'+ymIso(st.to)+'" onchange="krSet()" class="kr-in" style="font-size:12px">')
       + '<button onclick="krGo()" class="kr-bp" style="padding:7px 20px">조회</button>'
       + '<button onclick="krFav()" class="kr-bs" style="padding:7px 12px" title="즐겨찾기에 넣기">☆</button>'
-      + '</div>';
+      + '</div>'
+      + '<div id="kr-filter">' + filterRow() + '</div>';
 
     if(favs.length){
       h += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:9px;align-items:center">'
@@ -21243,7 +21245,78 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     h += watchBox();
 
     el.innerHTML = h;
+    setTimeout(fillNew, 0);      // 화면을 새로 그리면 관심지역 목록도 채운다
   }
+  // 조회 결과에서 법정동·단지 목록을 뽑는다 (국토부는 시군구까지만 받으므로
+  // 동·단지는 받아온 뒤에 고른다 — 조회 전에는 목록이 비어 있다)
+  function dongCounts(){
+    var g = {}; if(!LAST) return g;
+    LAST.rows.forEach(function(r){ if(r.umdNm) g[r.umdNm] = (g[r.umdNm]||0)+1; });
+    return g;
+  }
+  function danjiCounts(){
+    var st = window.__krState, g = {}; if(!LAST) return g;
+    LAST.rows.forEach(function(r){
+      if(st.dong && r.umdNm !== st.dong) return;
+      if(r._name) g[r._name] = (g[r._name]||0)+1;
+    });
+    return g;
+  }
+  function dongSelect(){
+    var st = window.__krState, g = dongCounts();
+    var ks = Object.keys(g).sort(function(a,b){ return g[b]-g[a] || (a<b?-1:1); });
+    if(!ks.length){
+      return '<select id="kr-dong" class="kr-in" disabled style="font-size:12px;min-width:130px">'
+           + '<option>조회 후 선택</option></select>';
+    }
+    var tot = LAST ? LAST.rows.length : 0;
+    return '<select id="kr-dong" onchange="krDong(this.value)" class="kr-in" style="font-size:12px;min-width:130px">'
+      + '<option value="">전체 ('+tot+'건)</option>'
+      + ks.map(function(d){ return '<option value="'+esc(d)+'"'+(st.dong===d?' selected':'')
+          +'>'+esc(d)+' — '+g[d]+'건</option>'; }).join('')
+      + '</select>';
+  }
+  function filterRow(){
+    var st = window.__krState, g = danjiCounts();
+    var ks = Object.keys(g).sort(function(a,b){ return g[b]-g[a] || (a<b?-1:1); });
+    var on = (st.dong || st.danji || st.q);
+    var sub = 0; for(var i=0;i<ks.length;i++) sub += g[ks[i]];
+
+    var h = '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-top:9px;'
+          + 'padding-top:9px;border-top:0.5px dashed var(--border)">';
+    h += '<div><label class="kr-lb">단지·건물'
+       + (ks.length ? ' <span style="opacity:.6">'+ks.length+'곳</span>' : '') + '</label>';
+    if(!ks.length){
+      h += '<select id="kr-danji" class="kr-in" disabled style="min-width:230px"><option>조회 후 선택</option></select>';
+    } else {
+      h += '<select id="kr-danji" onchange="krDanji(this.value)" class="kr-in" style="min-width:230px;max-width:340px">'
+         + '<option value="">전체 ('+sub+'건)</option>'
+         + ks.map(function(d){ return '<option value="'+esc(d)+'"'+(st.danji===d?' selected':'')
+             +'>'+esc(d)+' — '+g[d]+'건</option>'; }).join('')
+         + '</select>';
+    }
+    h += '</div>'
+       + '<div><label class="kr-lb">이름·지번으로 찾기</label>'
+       + '<input id="kr-q" class="kr-in" placeholder="예: 풍림, 하버뷰, 1-1" value="'+esc(st.q||'')+'" '
+       + 'oninput="krQ(this.value)" style="min-width:180px"></div>'
+       + (on ? '<button onclick="krClearF()" class="kr-bs">필터 해제</button>' : '')
+       + ((st.danji||st.q) ? '<button onclick="krFavD()" class="kr-bs" title="이 단지를 즐겨찾기에">☆ 단지</button>' : '')
+       + (LAST ? '' : '<span style="font-size:11px;opacity:.55;padding-bottom:7px">'
+                    + '국토부는 시·군·구까지만 받으므로, 동·단지는 조회한 뒤에 고릅니다</span>')
+       + '</div>';
+    return h;
+  }
+  function refreshFilter(){
+    var box = document.getElementById('kr-filter');
+    if(box) box.innerHTML = filterRow();
+    var d = document.getElementById('kr-dong');
+    if(d){
+      var nd = dongSelect();
+      var wrap = d.parentNode;
+      if(wrap) wrap.innerHTML = '<label class="kr-lb">법정동</label>' + nd;
+    }
+  }
+
   function fld(lbl, inner){
     return '<div><label class="kr-lb" style="font-size:10.5px">'+lbl+'</label>'+inner+'</div>';
   }
@@ -21274,7 +21347,8 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     return rows;
   }
 
-  function render(){
+  function renderOnly(){ render(true); }
+  function render(skipFilter){
     var out = document.getElementById('kr-out'); if(!out) return;
     if(!LAST){ out.innerHTML=''; return; }
     var st = window.__krState;
@@ -21296,35 +21370,6 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
       + (pavg!=null ? card('평균 평당가', man(pavg)+'만') : '')
       + '</div>';
 
-    // 법정동 칩
-    var dongs = {}; LAST.rows.forEach(function(r){ if(r.umdNm) dongs[r.umdNm]=(dongs[r.umdNm]||0)+1; });
-    var dk = Object.keys(dongs).sort(function(a,b){ return dongs[b]-dongs[a]; });
-    if(dk.length > 1){
-      h += '<div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:10px">'
-        + chip('전체 '+LAST.rows.length, '', !st.dong)
-        + dk.map(function(d){ return chip(d+' '+dongs[d], d, st.dong===d); }).join('')
-        + '</div>';
-    }
-
-    // 단지 고르기
-    var pool = st.dong ? LAST.rows.filter(function(r){ return r.umdNm===st.dong; }) : LAST.rows;
-    var dn = {}; pool.forEach(function(r){ if(r._name) dn[r._name]=(dn[r._name]||0)+1; });
-    var dlist = Object.keys(dn).sort(function(a,b){ return dn[b]-dn[a] || (a<b?-1:1); });
-    h += '<div style="display:flex;gap:7px;flex-wrap:wrap;align-items:flex-end;margin-bottom:10px;'
-      + 'padding:9px 11px;border:0.5px solid var(--border);border-radius:9px">'
-      + '<div><label class="kr-lb">단지·건물 고르기 <span style="opacity:.6">'+dlist.length+'곳</span></label>'
-      + '<select id="kr-danji" onchange="krDanji(this.value)" class="kr-in" style="min-width:230px;max-width:340px">'
-      + '<option value="">전체 ('+pool.length+'건)</option>'
-      + dlist.map(function(d){ return '<option value="'+esc(d)+'"'+(st.danji===d?' selected':'')
-          +'>'+esc(d)+' — '+dn[d]+'건</option>'; }).join('')
-      + '</select></div>'
-      + '<div><label class="kr-lb">이름·지번으로 찾기</label>'
-      + '<input id="kr-q" class="kr-in" placeholder="예: 풍림, 하버뷰, 1-1" value="'+esc(st.q||'')+'" '
-      + 'oninput="krQ(this.value)" style="min-width:170px"></div>'
-      + ((st.danji||st.q||st.dong) ? '<button onclick="krClearF()" class="kr-bs">필터 해제</button>' : '')
-      + ((st.danji||st.q) ? '<button onclick="krFavD()" class="kr-bs" title="이 단지를 즐겨찾기에">☆ 단지</button>' : '')
-      + '</div>';
-
     // 단지를 고르면 평형별로 갈라 보여 준다 — 단지 분석·블로그용
     if(st.danji && rows.length) h += byArea(rows);
 
@@ -21338,6 +21383,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 
     h += table(rows, st.all);
     out.innerHTML = h;
+    if(!skipFilter) refreshFilter();
   }
   // 평형별 요약 (선택한 단지)
   function byArea(rows){
@@ -21436,14 +21482,16 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     st.from = ymRaw(document.getElementById('kr-from').value);
     st.to   = ymRaw(document.getElementById('kr-to').value);
   };
-  window.krDong  = function(d){ var st=window.__krState; st.dong=d; st.danji=''; render(); };
+  window.krDong  = function(d){ var st=window.__krState; st.dong=d; st.danji=''; st.q=''; render(); };
   window.krDanji = function(v){ window.__krState.danji = v; render(); };
   window.krQ     = function(v){
     var st = window.__krState; st.q = v;
     clearTimeout(window.__krQT);
-    window.__krQT = setTimeout(function(){ render();
-      var i = document.getElementById('kr-q');
-      if(i){ i.focus(); i.setSelectionRange(i.value.length, i.value.length); } }, 250);
+    window.__krQT = setTimeout(function(){
+      var out = document.getElementById('kr-out');
+      if(!out || !LAST) return;
+      renderOnly();                       // 표만 다시 그린다 — 입력칸은 그대로 둔다
+    }, 250);
   };
   window.krClearF = function(){
     var st = window.__krState; st.dong=''; st.danji=''; st.q=''; render();
@@ -21468,9 +21516,8 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     var yms = ymRange(st.from, st.to);
     if(yms.length > 36){ msg('한 번에 36개월까지만 조회합니다.', 'no'); return; }
 
-    BUSY = true; st.dong = ''; st.q = '';
-    if(!st.__keepDanji) st.danji = '';
-    st.__keepDanji = false;
+    BUSY = true; st.q = '';
+    var keepDong = st.dong, keepDanji = st.danji;
     try{
       var raw = await fetchMany(st.type, st.sgg, yms, function(i, n, ym){
         msg('국토부에서 받는 중… ' + ym.slice(0,4)+'년 '+ym.slice(4)+'월 ('+i+'/'+n+')', 'go');
@@ -21480,6 +21527,9 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
       var rows = raw.map(shape).sort(function(a,b){ return a._date < b._date ? 1 : a._date > b._date ? -1 : 0; });
       LAST = { rows: rows, title: sggName(st.sgg)+' · '+T(st.type).n+' · '+ymIso(st.from)+' ~ '+ymIso(st.to),
                sgg: st.sgg, type: st.type };
+      // 고른 동·단지가 새 결과에도 있으면 그대로 둔다
+      st.dong  = rows.some(function(r){ return r.umdNm === keepDong;  }) ? keepDong  : '';
+      st.danji = rows.some(function(r){ return r._name === keepDanji; }) ? keepDanji : '';
       render();
       msg(rows.length.toLocaleString()+'건을 받았습니다.', 'ok');
     }catch(e){
