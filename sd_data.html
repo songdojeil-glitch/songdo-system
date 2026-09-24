@@ -19337,7 +19337,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.09.24-9';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.09.24-10';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_data.html';      // 이 파일 이름
   var SD_NAME = '실거래가';      // 사람이 부르는 이름
 
@@ -21838,7 +21838,10 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
                     + 'color:var(--accent3);border-color:var(--accent3)">📍 좌표 찾기 <b>'+need+'</b>곳</button>' : '')
       +     '</span>'
       +   '</div>'
-      +   '<div id="kr-map" style="width:100%;height:' + Z.h + 'px"></div></div>'
+      +   '<div style="position:relative">'
+      +     '<div id="kr-map" style="width:100%;height:' + Z.h + 'px"></div>'
+      +     '<div id="kr-cardwrap" style="position:absolute;top:10px;left:10px;z-index:5"></div>'
+      +   '</div></div>'
       + '<div id="kr-rank" style="border:0.5px solid var(--border);border-radius:10px;overflow:hidden;background:var(--card)"></div>'
       + '</div>';
 
@@ -21861,15 +21864,24 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
       pts.forEach(function(o){
         var ll = new kakao.maps.LatLng(o.geo.lat, o.geo.lng);
         b.extend(ll);
+        //  핀은 두 줄 — 위는 이름, 아래는 값. 좁게 만들어 옆 단지를 덜 가린다.
+        var sel = (window.__krState.danji === o.name);
+        var bg  = sel ? 'var(--accent3)' : 'var(--accent)';
         var d = document.createElement('div');
-        d.style.cssText = 'transform:translate(-50%,-100%);cursor:pointer;white-space:nowrap';
-        d.innerHTML = '<div style="background:var(--accent);color:#fff;border-radius:13px;padding:3px 9px;'
-          + 'font-size:11px;font-weight:700;box-shadow:0 1px 4px rgba(0,0,0,.35);line-height:1.3">'
-          + esc(o.name.length>12 ? o.name.slice(0,12)+'…' : o.name)
-          + '<span style="font-weight:400;opacity:.9"> ' + eok(o.med) + (o.band? ' '+o.band+'평' : '') + '</span></div>'
-          + '<div style="width:0;height:0;margin:0 auto;border-left:5px solid transparent;'
-          + 'border-right:5px solid transparent;border-top:7px solid var(--accent)"></div>';
-        d.onclick = function(){ window.krPick(o.name); };
+        d.style.cssText = 'transform:translate(-50%,-100%);cursor:pointer;white-space:nowrap;'
+          + 'z-index:' + (sel ? 30 : 10);
+        d.innerHTML = '<div style="background:' + bg + ';color:#fff;border-radius:6px;padding:2px 5px;'
+          + 'box-shadow:0 1px 3px rgba(0,0,0,.32);line-height:1.15;width:80px;text-align:center'
+          + (sel ? ';outline:2px solid #fff' : '') + '">'
+          +   '<div style="font-size:9px;opacity:.9;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'
+          +     esc(o.name) + '</div>'
+          +   '<div style="font-size:10.5px;font-weight:700">' + eok(o.med)
+          +     (o.band ? '<span style="font-weight:400;font-size:9px;opacity:.85"> '
+                        + Math.round(o.band) + '평</span>' : '') + '</div>'
+          + '</div>'
+          + '<div style="width:0;height:0;margin:0 auto;border-left:4px solid transparent;'
+          + 'border-right:4px solid transparent;border-top:5px solid ' + bg + '"></div>';
+        d.onclick = function(){ window.krCard(o.name); };
         var ov = new kakao.maps.CustomOverlay({ position: ll, content: d, yAnchor: 1, clickable: true });
         ov.setMap(KMAP); KOVER.push(ov);
       });
@@ -21879,6 +21891,180 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
       if(m) m.innerHTML = '<div style="padding:20px;font-size:12px;color:var(--red)">' + esc(e.message||e) + '</div>';
     });
   }
+
+  // ══ 핀을 누르면 뜨는 작은 카드 ═════════════════════════════════════
+  //  1차 = 지도 위 작은 카드(요약) → 「시세 한눈에」 = 면적형별 모달
+  //                              → 「단지 상세」   = 아래 표·그래프
+  function danjiOf(nm){
+    var list = danjiAgg();
+    for(var i=0;i<list.length;i++) if(list[i].name === nm) return list[i];
+    return null;
+  }
+  function pyOf(sqm){ return Math.round(sqm/3.3058); }
+  function amtLabel(){ return isRent() ? '보증금' : '매매가'; }
+
+  //  면적형(전용㎡ 반올림)별로 묶는다
+  function bandsOf(nm){
+    var g = {};
+    sift().forEach(function(r){
+      if(r._name !== nm || !r._area) return;
+      var k = Math.round(r._area);
+      var b = g[k] || (g[k] = { sqm:k, py:pyOf(k), amts:[], ppys:[], cnt:0, last:'', lastAmt:null, hi:null });
+      b.cnt++;
+      if(typeof r._amt === 'number'){
+        b.amts.push(r._amt);
+        if(b.hi == null || r._amt > b.hi) b.hi = r._amt;
+      }
+      if(typeof r._ppy === 'number') b.ppys.push(r._ppy);
+      if(r._date > b.last){ b.last = r._date; b.lastAmt = (typeof r._amt === 'number') ? r._amt : null; }
+    });
+    function med(a){ if(!a.length) return null; var b=a.slice().sort(function(x,y){return x-y;});
+      return b.length%2 ? b[(b.length-1)/2] : Math.round((b[b.length/2-1]+b[b.length/2])/2); }
+    return Object.keys(g).map(function(k){
+      var b = g[k];
+      b.med = med(b.amts);
+      b.ppy = b.ppys.length ? Math.round(b.ppys.reduce(function(x,y){return x+y;},0)/b.ppys.length) : null;
+      return b;
+    }).sort(function(a,b){ return b.cnt - a.cnt; });
+  }
+
+  window.krCardClose = function(){
+    var w = document.getElementById('kr-cardwrap'); if(w) w.innerHTML = '';
+  };
+
+  window.krCard = function(nm){
+    var w = document.getElementById('kr-cardwrap'); if(!w) return;
+    var o = danjiOf(nm); if(!o){ w.innerHTML=''; return; }
+    var q = esc(nm).replace(/'/g, "\\'");
+    var bs = bandsOf(nm), b0 = bs[0] || null;
+
+    function cell(t, v, cl){
+      return '<div style="padding:5px 7px;background:var(--bg2);border-radius:6px">'
+        + '<div style="font-size:9.5px;color:var(--text3);margin-bottom:1px">' + t + '</div>'
+        + '<div style="font-size:11.5px;font-weight:700' + (cl ? ';color:'+cl : '') + '">' + v + '</div></div>';
+    }
+    var chg = (o.chg == null) ? '—'
+      : (o.chg > 0 ? '▲' : o.chg < 0 ? '▼' : '') + Math.abs(o.chg) + '%';
+    var chgC = (o.chg == null || o.chg === 0) ? '' : (o.chg > 0 ? 'var(--red)' : 'var(--blue)');
+
+    w.innerHTML =
+      '<div style="width:236px;background:var(--card);border:0.5px solid var(--border);border-radius:10px;'
+      + 'box-shadow:0 4px 16px rgba(0,0,0,.18);overflow:hidden">'
+      + '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:6px;padding:9px 11px 0">'
+      +   '<div style="min-width:0">'
+      +     '<div style="font-size:9.5px;color:var(--accent);font-weight:700;margin-bottom:2px">'
+      +       esc(T(window.__krState.type).n) + '</div>'
+      +     '<div style="font-size:13px;font-weight:700;line-height:1.25;word-break:keep-all">' + esc(nm) + '</div>'
+      +     '<div style="font-size:10px;color:var(--text3);margin-top:2px">' + esc(o.dong)
+      +       (o.year ? ' · ' + o.year + '년' : '') + ' · 거래 ' + o.cnt + '건</div>'
+      +   '</div>'
+      +   '<button onclick="krCardClose()" style="border:0;background:transparent;cursor:pointer;'
+      +     'font-size:15px;line-height:1;color:var(--text3);padding:0 2px">×</button>'
+      + '</div>'
+      + '<div style="padding:8px 11px 0">'
+      +   '<div style="font-size:19px;font-weight:800;color:var(--accent);line-height:1.15">' + eok(o.med) + '</div>'
+      +   '<div style="font-size:10px;color:var(--text3);margin-bottom:8px">'
+      +     (b0 ? '전용 ' + b0.sqm + '㎡(' + b0.py + '평) ' : '') + '중위 ' + amtLabel() + '</div>'
+      +   '<div style="display:grid;grid-template-columns:1fr 1fr;gap:5px">'
+      +     cell('최근 거래', eok(o.lastAmt) || '—', '')
+      +     cell('평당가', o.ppy ? o.ppy.toLocaleString() + '만' : '—', '')
+      +     cell('기간 변동', chg, chgC)
+      +     cell('면적형', bs.length + '종', '')
+      +   '</div>'
+      + '</div>'
+      + '<div style="display:flex;gap:6px;padding:9px 11px 11px">'
+      +   '<button onclick="krSise(\'' + q + '\')" style="flex:1;font-size:11px;padding:6px 0;border-radius:7px;'
+      +     'border:0;background:var(--accent);color:#fff;cursor:pointer;font-weight:600">📊 시세 한눈에</button>'
+      +   '<button onclick="krCardClose();krPick(\'' + q + '\')" style="flex:1;font-size:11px;padding:6px 0;'
+      +     'border-radius:7px;border:1px solid var(--border);background:transparent;cursor:pointer">단지 상세 →</button>'
+      + '</div></div>';
+  };
+
+  // ══ 「시세 한눈에」 모달 — 면적형별 시세와 최근 거래 ═══════════════
+  window.krSiseClose = function(){
+    var o = document.getElementById('kr-sise-overlay'); if(o) o.remove();
+  };
+
+  window.krSise = function(nm){
+    krSiseClose();
+    var o = danjiOf(nm); if(!o) return;
+    var bs = bandsOf(nm);
+    var recent = sift().filter(function(r){ return r._name === nm; })
+      .sort(function(a,b){ return a._date < b._date ? 1 : a._date > b._date ? -1 : 0; }).slice(0, 12);
+    var L = amtLabel(), q = esc(nm).replace(/'/g, "\\'");
+
+    var th = 'padding:6px 8px;font-size:10.5px;color:var(--text3);font-weight:600;'
+           + 'border-bottom:0.5px solid var(--border);white-space:nowrap';
+    var td = 'padding:6px 8px;font-size:11.5px;border-bottom:0.5px solid var(--border);white-space:nowrap';
+
+    var h = '<div style="background:var(--card);border-radius:12px;max-width:620px;width:94%;'
+      + 'max-height:86vh;overflow-y:auto;box-shadow:0 8px 40px rgba(0,0,0,.3)" onclick="event.stopPropagation()">'
+      + '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;'
+      +   'padding:14px 16px;border-bottom:0.5px solid var(--border);position:sticky;top:0;background:var(--card)">'
+      +   '<div><div style="font-size:15px;font-weight:700">' + esc(nm) + '</div>'
+      +     '<div style="font-size:11px;color:var(--text3);margin-top:2px">' + esc(o.dong)
+      +       (o.year ? ' · ' + o.year + '년' : '') + ' · ' + esc(T(window.__krState.type).n)
+      +       ' · ' + window.__krState.from.slice(0,4) + '.' + window.__krState.from.slice(4)
+      +       '~' + window.__krState.to.slice(0,4) + '.' + window.__krState.to.slice(4)
+      +       ' 거래 ' + o.cnt + '건</div></div>'
+      +   '<button onclick="krSiseClose()" style="border:0;background:transparent;cursor:pointer;'
+      +     'font-size:20px;line-height:1;color:var(--text3)">×</button>'
+      + '</div>'
+      + '<div style="padding:14px 16px">'
+      +   '<div style="font-size:12px;font-weight:700;margin-bottom:7px">면적형별 ' + L + '</div>'
+      +   '<table style="width:100%;border-collapse:collapse">'
+      +     '<thead><tr><th style="' + th + ';text-align:left">전용면적</th>'
+      +       '<th style="' + th + ';text-align:right">중위</th>'
+      +       '<th style="' + th + ';text-align:right">최고</th>'
+      +       '<th style="' + th + ';text-align:right">최근</th>'
+      +       '<th style="' + th + ';text-align:right">평당가</th>'
+      +       '<th style="' + th + ';text-align:right">건수</th></tr></thead><tbody>'
+      +     bs.map(function(b){
+            return '<tr><td style="' + td + ';text-align:left"><b>' + b.sqm + '㎡</b>'
+              + '<span style="color:var(--text3);font-size:10.5px"> ' + b.py + '평</span></td>'
+              + '<td style="' + td + ';text-align:right;font-weight:700">' + (eok(b.med) || '—') + '</td>'
+              + '<td style="' + td + ';text-align:right">' + (eok(b.hi) || '—') + '</td>'
+              + '<td style="' + td + ';text-align:right">' + (eok(b.lastAmt) || '—')
+              + '<div style="font-size:9.5px;color:var(--text3)">' + esc(b.last || '') + '</div></td>'
+              + '<td style="' + td + ';text-align:right">' + (b.ppy ? b.ppy.toLocaleString() + '만' : '—') + '</td>'
+              + '<td style="' + td + ';text-align:right">' + b.cnt + '</td></tr>';
+          }).join('')
+      +   '</tbody></table>'
+      +   '<div style="font-size:12px;font-weight:700;margin:16px 0 7px">최근 거래</div>'
+      +   '<table style="width:100%;border-collapse:collapse">'
+      +     '<thead><tr><th style="' + th + ';text-align:left">계약일</th>'
+      +       '<th style="' + th + ';text-align:right">전용</th>'
+      +       '<th style="' + th + ';text-align:right">층</th>'
+      +       '<th style="' + th + ';text-align:right">' + L + '</th></tr></thead><tbody>'
+      +     recent.map(function(r){
+            var off = r.cdealType === 'O';   // 해제된 거래
+            return '<tr' + (off ? ' style="opacity:.55"' : '') + '>'
+              + '<td style="' + td + ';text-align:left">' + esc(r._date) + '</td>'
+              + '<td style="' + td + ';text-align:right">' + (r._area || '—') + '㎡</td>'
+              + '<td style="' + td + ';text-align:right">' + esc(r.floor || '—') + '</td>'
+              + '<td style="' + td + ';text-align:right;font-weight:700'
+              + (off ? ';text-decoration:line-through' : '') + '">' + (eok(r._amt) || '—')
+              + (off ? '<span style="font-weight:400;font-size:9.5px"> 해제</span>' : '') + '</td></tr>';
+          }).join('')
+      +   '</tbody></table>'
+      +   '<div style="font-size:10px;color:var(--text3);margin-top:10px;line-height:1.5">'
+      +     '국토교통부 실거래가 신고 자료 · 조회 조건(기간·면적 필터)에 걸린 거래만 셉니다.</div>'
+      +   '<div style="display:flex;gap:7px;margin-top:14px">'
+      +     '<button onclick="krSiseClose();krCardClose();krPick(\'' + q + '\')" '
+      +       'style="flex:1;font-size:12px;padding:9px 0;border-radius:8px;border:0;'
+      +       'background:var(--accent);color:#fff;cursor:pointer;font-weight:600">'
+      +       '단지 상세 — 표와 그래프 보기 →</button>'
+      +   '</div>'
+      + '</div></div>';
+
+    var ov = document.createElement('div');
+    ov.id = 'kr-sise-overlay';
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9000;'
+      + 'display:flex;align-items:center;justify-content:center;padding:18px';
+    ov.innerHTML = h;
+    ov.onclick = function(){ krSiseClose(); };
+    document.body.appendChild(ov);
+  };
 
   function drawRank(){
     var host = document.getElementById('kr-rank'); if(!host) return;
