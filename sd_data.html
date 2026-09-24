@@ -10206,7 +10206,26 @@ function openT2Detail(unitName){
     if(bp>0) pyeongSet[bp]=true;
   });
   var pyeongs=Object.keys(pyeongSet).map(Number).sort(function(a,b){return a-b;});
-  var COLORS=['#0e7490','#b8860b','#d9480f','#087f5b','#7c3aed','#c92a4a','#1971c2','#d9480f'];
+  // 색 검사기 통과분 (인접쌍 최저 ΔE 8.4 protan) — K실거래가와 같은 색을 쓴다
+  var COLORS=['#0891b2','#d9480f','#087f5b','#7c3aed','#b8860b','#c92a4a'];
+  // 분양평형마다 대표 전용㎡ — 가장 많이 나온 값을 고른다
+  var sqmByPy={};
+  (function(){
+    var tally={};
+    unitRows.forEach(function(r){
+      var bp=parseInt(r['분양평형']||0);
+      var sq=parseFloat(r['전용(㎡)']||r['전용']||0);
+      if(!bp){ bp=pyeongIdx[Math.round(sq*10)]||0; }
+      if(!bp||!sq) return;
+      (tally[bp]=tally[bp]||{})[sq]=(tally[bp][sq]||0)+1;
+    });
+    Object.keys(tally).forEach(function(bp){
+      var best=null,n=-1;
+      Object.keys(tally[bp]).forEach(function(sq){ if(tally[bp][sq]>n){ n=tally[bp][sq]; best=parseFloat(sq); } });
+      sqmByPy[bp]=best;
+    });
+  })();
+  function pyLabel(bp){ return bp+'평' + (sqmByPy[bp]? ' · 전용 '+sqmByPy[bp]+'㎡' : ''); }
   var labels=ymLabels();
   var volByPy={},priceByPy={};
   pyeongs.forEach(function(bp){volByPy[bp]=new Array(12).fill(0);priceByPy[bp]=[];for(var i=0;i<12;i++)priceByPy[bp].push([]);});
@@ -10244,7 +10263,7 @@ function openT2Detail(unitName){
       return parseFloat(r['환산보증금']||0)||Math.round(parseFloat(r['보증금']||r['보증금액']||0)+parseFloat(r['월세금']||r['월세금액']||0)*12/0.058);
     }).filter(Boolean);
     var avgP=avg2(prices)||0,maxP=prices.length?Math.max.apply(null,prices):0,minP=prices.length?Math.min.apply(null,prices):0,py=avgP&&bp?Math.round(avgP/bp):0;
-    sumRows+='<tr><td class="num">'+bp+'평</td><td class="num">'+aRows.length+'</td><td class="num" style="color:var(--yellow)">'+fmt천(avgP)+'</td><td class="num" style="color:var(--yellow)">'+fmt천(maxP)+'</td><td class="num" style="color:#1971c2">'+fmt천(minP)+'</td><td class="num" style="color:#d9480f">'+fmt평(py)+'</td></tr>';
+    sumRows+='<tr><td class="num">'+bp+'평</td><td class="num" style="color:var(--text3)">'+(sqmByPy[bp]||'-')+'</td><td class="num">'+aRows.length+'</td><td class="num" style="color:var(--yellow)">'+fmt천(avgP)+'</td><td class="num" style="color:var(--yellow)">'+fmt천(maxP)+'</td><td class="num" style="color:#1971c2">'+fmt천(minP)+'</td><td class="num" style="color:#d9480f">'+fmt평(py)+'</td></tr>';
   });
   var g=unitRows.length?parseInt(unitRows[0]['공구']||0):0;
   var color=DIST_COLORS[g]||'#4a5568';
@@ -10259,15 +10278,22 @@ function openT2Detail(unitName){
       '<div class="table-wrap zoomable" onclick="openZoom(this)" style="cursor:zoom-in">'+
         '<table class="data-table mobile-scroll" >'+
           ''+
-          '<thead><tr><th class="num">평형</th><th class="num">건수</th><th class="num" style="color:var(--yellow)">평균가</th><th class="num" style="color:var(--yellow)">최고가</th><th class="num" style="color:#1971c2">최저가</th><th class="num" style="color:#d9480f">평당가</th></tr></thead>'+
+          '<thead><tr><th class="num">분양평형</th><th class="num">전용㎡</th><th class="num">건수</th><th class="num" style="color:var(--yellow)">평균가</th><th class="num" style="color:var(--yellow)">최고가</th><th class="num" style="color:#1971c2">최저가</th><th class="num" style="color:#d9480f">평당가</th></tr></thead>'+
           '<tbody>'+sumRows+'</tbody></table></div></div>'+
-    '<div class="grid-2" style="gap:16px">'+
-      '<div class="chart-card zoomable" onclick="openZoom(this)" style="cursor:zoom-in" title="클릭하면 확대됩니다">'+
-        '<div class="chart-card-title">📊 최근 12개월 월별 거래량 (평형별)</div>'+
-        '<div class="chart-wrap" style="height:420px"><canvas id="t2-chart-vol"></canvas></div></div>'+
-      '<div class="chart-card zoomable" onclick="openZoom(this)" style="cursor:zoom-in" title="클릭하면 확대됩니다">'+
-        '<div class="chart-card-title">📈 최근 12개월 평균가 추이 (평형별)</div>'+
-        '<div class="chart-wrap" style="height:420px"><canvas id="t2-chart-price"></canvas></div></div>'+
+    '<div class="chart-card zoomable" onclick="openZoom(this)" style="cursor:zoom-in;margin-bottom:16px" title="클릭하면 확대됩니다">'+
+      '<div class="chart-card-title">📊 최근 12개월 월별 거래량 (분양평형별로 쌓음 · 맨 위 숫자가 합계)</div>'+
+      '<div class="chart-wrap" style="height:340px"><canvas id="t2-chart-vol"></canvas></div></div>'+
+    '<div style="font-size:12px;font-weight:700;margin-bottom:3px;color:var(--accent3)">'+
+      '📈 최근 12개월 평균가 추이 — 분양평형별</div>'+
+    '<div style="font-size:11px;color:var(--text3);margin-bottom:8px;line-height:1.6">'+
+      '선을 한 그림에 겹치면 색으로 구분되지 않는 짝이 생겨 평형마다 따로 그렸습니다. '+
+      '실선은 평균, 점선(△)은 그 달 최고가이고, <b>속 빈 점은 그 달 거래가 1건뿐</b>이라는 뜻입니다.</div>'+
+    '<div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px">'+
+      pyeongs.map(function(bp,i){
+        return '<div class="chart-card zoomable" onclick="openZoom(this)" style="cursor:zoom-in" title="클릭하면 확대됩니다">'+
+          '<div class="chart-card-title">'+pyLabel(bp)+'</div>'+
+          '<div class="chart-wrap" style="height:230px"><canvas id="t2-pc-'+i+'"></canvas></div></div>';
+      }).join('')+
     '</div>';
   overlay.style.display='block';
   // ── 모달 내 테이블 컬럼 리사이즈 초기화
@@ -10277,70 +10303,102 @@ function openT2Detail(unitName){
   }, 80);
   var tc='#4a5568',gc='rgba(0,0,0,.08)';
   setTimeout(function(){
-    var volDs=pyeongs.map(function(bp,i){return {label:bp+'평',data:volByPy[bp],backgroundColor:COLORS[i%COLORS.length]+'99',borderColor:COLORS[i%COLORS.length],borderWidth:1};});
-    var volLabelPlugin={id:'volLabel',afterDatasetsDraw:function(chart){var cx=chart.ctx;chart.data.datasets.forEach(function(ds,di){var meta=chart.getDatasetMeta(di);if(meta.hidden) return;meta.data.forEach(function(bar,i){var v=ds.data[i];if(!v||v<=0) return;cx.save();cx.fillStyle='#1a2332';cx.font='bold '+pxF(9)+'px sans-serif';cx.textAlign='center';cx.textBaseline='bottom';cx.fillText(v,bar.x,bar.y-2);cx.restore();});});}};
-new Chart(document.getElementById('t2-chart-vol').getContext('2d'),{type:'bar',data:{labels:labels,datasets:volDs},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:tc,font:{size:10},boxWidth:12}}},scales:{x:{ticks:{color:tc,font:{size:9}},grid:{display:false}},y:{ticks:{color:tc,font:{size:10},stepSize:1},grid:{color:gc},beginAtZero:true}}},plugins:[volLabelPlugin]});
-    var priceDs=[];
-    pyeongs.forEach(function(bp,i){
-      var color=COLORS[i%COLORS.length];
-      var avgVals=priceByPy[bp].map(function(arr){return avg2(arr);});
-      var maxVals=priceByPy[bp].map(function(arr){return arr.length?Math.max.apply(null,arr):null;});
-      // 평균가 실선
-      priceDs.push({label:bp+'평 평균',data:avgVals,borderColor:color,backgroundColor:color+'22',
-        borderWidth:2,pointRadius:3,tension:0.3,spanGaps:true,_bp:bp,_type:'avg'});
-      // 최고가 점선
-      priceDs.push({label:bp+'평 최고',data:maxVals,borderColor:color,backgroundColor:'transparent',
-        borderWidth:1.2,borderDash:[4,4],pointRadius:2,pointStyle:'triangle',tension:0.3,spanGaps:true,_bp:bp,_type:'max'});
+    // ── 거래량 : 분양평형별로 쌓은 막대 (칸 안에 값, 맨 위에 합계) ──
+    var volDs=pyeongs.map(function(bp,i){
+      return { label:pyLabel(bp), data:volByPy[bp],
+               backgroundColor:COLORS[i%COLORS.length],
+               borderColor:'#ffffff', borderWidth:{top:2},
+               borderRadius:4, borderSkipped:false };
     });
-    var priceLabelPlugin={id:'priceLabel',afterDatasetsDraw:function(chart){
-      var cx=chart.ctx;
+    var volLabelPlugin={ id:'t2volLabel', afterDatasetsDraw:function(chart){
+      var cx=chart.ctx, ar=chart.chartArea; if(!ar) return;
+      var tot=[], xs=[];
       chart.data.datasets.forEach(function(ds,di){
-        if(ds._type!=='avg') return; // 평균선만 레이블
-        var meta=chart.getDatasetMeta(di);if(meta.hidden) return;
-        var col=ds.borderColor;
+        var meta=chart.getDatasetMeta(di); if(meta.hidden) return;
+        meta.data.forEach(function(bar,i){
+          var v=Number(ds.data[i])||0; tot[i]=(tot[i]||0)+v; xs[i]=bar.x;
+          if(v<=0) return;
+          var hgt=Math.abs((bar.base!=null?bar.base:ar.bottom)-bar.y);
+          if(hgt<15) return;
+          cx.save(); cx.fillStyle='#ffffff'; cx.font='bold '+pxF(9)+'px sans-serif';
+          cx.textAlign='center'; cx.textBaseline='middle';
+          cx.fillText(String(v), bar.x, bar.y+hgt/2); cx.restore();
+        });
+      });
+      if(!chart.scales||!chart.scales.y) return;
+      tot.forEach(function(v,i){
+        if(!v||xs[i]==null) return;
+        cx.save(); cx.fillStyle='#1a2332'; cx.font='bold '+pxF(10)+'px sans-serif';
+        cx.shadowColor='rgba(255,255,255,.95)'; cx.shadowBlur=3;
+        cx.textAlign='center'; cx.textBaseline='bottom';
+        cx.fillText(String(v), xs[i], chart.scales.y.getPixelForValue(v)-3); cx.restore();
+      });
+    }};
+    new Chart(document.getElementById('t2-chart-vol').getContext('2d'),{
+      type:'bar', data:{labels:labels,datasets:volDs},
+      options:{ responsive:true, maintainAspectRatio:false,
+        layout:{padding:{top:14}},
+        interaction:{mode:'index',intersect:false},
+        plugins:{ legend:{position:'bottom',labels:{color:tc,font:{size:10},boxWidth:10,boxHeight:10,padding:9,usePointStyle:true,pointStyle:'rectRounded'}},
+                  tooltip:{callbacks:{label:function(c){ return c.dataset.label+' : '+c.parsed.y+'건'; }}} },
+        scales:{ x:{stacked:true,ticks:{color:tc,font:{size:9}},grid:{display:false}},
+                 y:{stacked:true,beginAtZero:true,ticks:{color:tc,font:{size:10},stepSize:1},grid:{color:gc}} } },
+      plugins:[volLabelPlugin]
+    });
+
+    // ── 평균가 : 분양평형마다 작은 그래프를 따로 ──
+    var priceLabelPlugin={ id:'t2priceLabel', afterDatasetsDraw:function(chart){
+      var cx=chart.ctx, n=(chart.data.labels||[]).length||1, ar=chart.chartArea; if(!ar) return;
+      var step=((ar.right-ar.left)/n)<34 ? 2 : 1;
+      chart.data.datasets.forEach(function(ds,di){
+        if(ds._type!=='avg') return;
+        var meta=chart.getDatasetMeta(di); if(meta.hidden) return;
         meta.data.forEach(function(pt,i){
-          var v=ds.data[i];if(v==null) return;
-          var align=di%4<2?-1:1;
-          cx.save();cx.fillStyle=col;cx.font='bold '+pxF(9)+'px sans-serif';
-          cx.textAlign='center';cx.textBaseline=align<0?'bottom':'top';
-          cx.fillText(fmt만(v),pt.x,pt.y+align*12);cx.restore();
+          var v=ds.data[i]; if(v==null||(i%step)) return;
+          cx.save(); cx.fillStyle='#1a2332'; cx.font='bold '+pxF(9)+'px sans-serif';
+          cx.shadowColor='rgba(255,255,255,.95)'; cx.shadowBlur=3;
+          cx.textAlign='center'; cx.textBaseline='bottom';
+          cx.fillText(fmt만(v), pt.x, pt.y-9); cx.restore();
         });
       });
     }};
-    new Chart(document.getElementById('t2-chart-price').getContext('2d'),{
-      type:'line',
-      data:{labels:labels,datasets:priceDs},
-      options:{
-        responsive:true,maintainAspectRatio:false,
-        layout:{padding:{top:20,bottom:20}},
-        plugins:{
-          legend:{labels:{color:tc,font:{size:10},boxWidth:12,
-            filter:function(item){return item.text.indexOf('최고')<0;} // 범례에서 최고가선 숨김
-          }},
-          tooltip:{callbacks:{
-            title:function(items){return labels[items[0].dataIndex];},
-            label:function(ctx){
-              if(ctx.dataset._type==='max'){
-                var v=ctx.raw; if(v==null) return null;
-                return ctx.dataset._bp+'평 최고가: '+fmt천(v);
-              }
-              var bp=ctx.dataset._bp;
-              var i=ctx.dataIndex;
-              var arr=priceByPy[bp][i];
-              if(!arr||!arr.length) return ctx.dataset.label+': -';
-              var mn=Math.min.apply(null,arr), mx=Math.max.apply(null,arr), av=avg2(arr);
-              if(arr.length===1) return bp+'평: '+fmt천(av)+' (1건)';
-              return bp+'평 평균 '+fmt천(av)+' | 최고 '+fmt천(mx)+' | 최저 '+fmt천(mn)+' ('+arr.length+'건)';
-            },
-            filter:function(item){return item.raw!=null;}
-          }}
-        },
-        scales:{
-          x:{ticks:{color:tc,font:{size:9}},grid:{display:false}},
-          y:{ticks:{color:tc,font:{size:10},callback:function(v){return fmt만(v);}},grid:{color:gc}}
-        }
-      },
-      plugins:[priceLabelPlugin]
+    pyeongs.forEach(function(bp,i){
+      var el=document.getElementById('t2-pc-'+i); if(!el) return;
+      var color=COLORS[i%COLORS.length];
+      var cnts   = priceByPy[bp].map(function(arr){ return arr.length; });
+      var avgVals= priceByPy[bp].map(function(arr){ return avg2(arr); });
+      var maxVals= priceByPy[bp].map(function(arr){ return arr.length?Math.max.apply(null,arr):null; });
+      new Chart(el.getContext('2d'),{
+        type:'line',
+        data:{ labels:labels, datasets:[
+          { label:'평균', data:avgVals, borderColor:color, backgroundColor:'transparent',
+            borderWidth:2, tension:.25, spanGaps:false, _bp:bp, _type:'avg',
+            pointRadius:function(c){ return cnts[c.dataIndex] ? 5 : 0; },
+            pointBackgroundColor:function(c){ return cnts[c.dataIndex]===1 ? '#fff' : color; },
+            pointBorderColor:color, pointBorderWidth:2 },
+          { label:'최고', data:maxVals, borderColor:color, backgroundColor:'transparent',
+            borderWidth:1.2, borderDash:[4,4], pointRadius:2.5, pointStyle:'triangle',
+            tension:.25, spanGaps:false, _bp:bp, _type:'max' }
+        ]},
+        options:{ responsive:true, maintainAspectRatio:false,
+          layout:{padding:{top:18}},
+          interaction:{mode:'index',intersect:false},
+          plugins:{ legend:{display:false},
+            tooltip:{ callbacks:{
+              title:function(items){ return labels[items[0].dataIndex]; },
+              label:function(ctx){
+                var arr=priceByPy[bp][ctx.dataIndex];
+                if(ctx.dataset._type==='max'){ return ctx.raw==null?null:'최고 '+fmt천(ctx.raw); }
+                if(!arr||!arr.length) return '거래 없음';
+                var mn=Math.min.apply(null,arr), mx=Math.max.apply(null,arr), av=avg2(arr);
+                if(arr.length===1) return fmt천(av)+' (1건)';
+                return '평균 '+fmt천(av)+' | 최고 '+fmt천(mx)+' | 최저 '+fmt천(mn)+' ('+arr.length+'건)';
+              },
+              filter:function(item){ return item.raw!=null; } }} },
+          scales:{ x:{ticks:{color:tc,font:{size:9}},grid:{display:false}},
+                   y:{ticks:{color:tc,font:{size:10},callback:function(v){return fmt만(v);}},grid:{color:gc}} } },
+        plugins:[priceLabelPlugin]
+      });
     });
   },100);
 }
@@ -19272,7 +19330,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.09.24-1';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.09.24-2';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_data.html';      // 이 파일 이름
   var SD_NAME = '실거래가';      // 사람이 부르는 이름
 
