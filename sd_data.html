@@ -19330,7 +19330,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.09.24-2';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.09.24-3';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_data.html';      // 이 파일 이름
   var SD_NAME = '실거래가';      // 사람이 부르는 이름
 
@@ -21280,7 +21280,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     var el = document.getElementById('kr-root'); if(!el) return;
     var st = window.__krState = window.__krState || {
       sido:'28', sgg:'28185', type:'aptT', from:addYm(thisYm(),-2), to:thisYm(),
-      dong:'', danji:'', q:'', band:'', dsort:'name', chart:false, all:false
+      dong:'', danji:'', q:'', band:'', rk:'', ct:'', dsort:'name', chart:false, all:false
     };
     var favs = getFav();
 
@@ -21349,6 +21349,8 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     LAST.rows.forEach(function(r){
       if(st.dong && r.umdNm !== st.dong) return;
       if(st.band && !inBand(r._area, st.band)) return;
+      if(st.rk){ var w=num(r.monthlyRent)||0; if(st.rk==='wolse' ? !(w>0) : (w>0)) return; }
+      if(st.ct && String(r.contractType||'').indexOf(st.ct) !== 0) return;
       if(r._name) g[r._name] = (g[r._name]||0)+1;
     });
     return g;
@@ -21373,7 +21375,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     var ks = Object.keys(g).sort(byName
       ? function(a,b){ return a.localeCompare(b, 'ko'); }              // 가나다순
       : function(a,b){ return g[b]-g[a] || a.localeCompare(b,'ko'); }); // 거래 많은 순
-    var on = (st.dong || st.danji || st.q || st.band);
+    var on = (st.dong || st.danji || st.q || st.band || st.rk || st.ct);
     var sub = 0; for(var i=0;i<ks.length;i++) sub += g[ks[i]];
 
     // 전용면적 구간 — 칩으로 내놓아야 눈에 띈다. 조회 뒤에는 구간별 건수도 같이 보인다.
@@ -21402,6 +21404,43 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
             + '</button>';
         }).join('')
       + '</div></div>';
+
+    // 전월세일 때만 — 전세/월세, 신규/갱신
+    if(T(st.type).m === 'rent'){
+      var pool2 = LAST ? LAST.rows.filter(function(r){
+        if(st.dong && r.umdNm !== st.dong) return false;
+        if(st.band && !inBand(r._area, st.band)) return false;
+        return true;
+      }) : [];
+      var cJ = 0, cW = 0, cN = 0, cR = 0;
+      pool2.forEach(function(r){
+        ((num(r.monthlyRent)||0) > 0) ? cW++ : cJ++;
+        var t = String(r.contractType||'');
+        if(t.indexOf('신규') === 0) cN++; else if(t.indexOf('갱신') === 0) cR++;
+      });
+      var pill = function(fn, val, cur, label, cnt, has){
+        var on = cur === val, none = LAST && val && !cnt;
+        return '<button onclick="'+fn+'(\''+val+'\')" '+(none?'disabled ':'')
+          + 'style="font-size:11px;padding:4px 12px;border-radius:14px;cursor:'+(none?'default':'pointer')+';'
+          + 'border:1px solid '+(on?'transparent':'var(--border)')+';'
+          + 'background:'+(on?'var(--accent3)':'transparent')+';'
+          + 'color:'+(on?'#fff':(none?'var(--text3)':'inherit'))+';opacity:'+(none?'.45':'1')+'">'
+          + esc(label) + (LAST && has ? ' <span style="opacity:.7;font-size:10px">'+cnt+'</span>' : '') + '</button>';
+      };
+      h += '<div style="display:flex;gap:18px;flex-wrap:wrap;margin-top:9px">'
+        + '<div><label class="kr-lb" style="margin-bottom:5px">임대 구분</label>'
+        + '<div style="display:flex;gap:5px;flex-wrap:wrap">'
+        + pill('krRk','', st.rk, '전체', pool2.length, true)
+        + pill('krRk','jeonse', st.rk, '전세', cJ, true)
+        + pill('krRk','wolse',  st.rk, '월세', cW, true)
+        + '</div></div>'
+        + '<div><label class="kr-lb" style="margin-bottom:5px">계약 구분</label>'
+        + '<div style="display:flex;gap:5px;flex-wrap:wrap">'
+        + pill('krCt','', st.ct, '전체', pool2.length, true)
+        + pill('krCt','신규', st.ct, '신규', cN, true)
+        + pill('krCt','갱신', st.ct, '갱신', cR, true)
+        + '</div></div></div>';
+    }
 
     h += '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-top:9px">';
     var sortBtn = function(k, t){
@@ -21465,6 +21504,13 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     var st = window.__krState, rows = LAST.rows;
     if(st.dong)  rows = rows.filter(function(r){ return r.umdNm === st.dong; });
     if(st.band)  rows = rows.filter(function(r){ return inBand(r._area, st.band); });
+    if(st.rk)    rows = rows.filter(function(r){
+      var w = num(r.monthlyRent) || 0;
+      return st.rk === 'wolse' ? w > 0 : w === 0;           // 월세 0이면 전세
+    });
+    if(st.ct)    rows = rows.filter(function(r){
+      return String(r.contractType||'').indexOf(st.ct) === 0;   // 신규 / 갱신
+    });
     if(st.danji) rows = rows.filter(function(r){ return r._name === st.danji; });
     if(st.q){
       var q = st.q.replace(/\s/g,'').toLowerCase();
@@ -21755,7 +21801,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
       var md = a.length ? (a.length%2 ? a[(a.length-1)/2] : Math.round((a[a.length/2-1]+a[a.length/2])/2)) : null;
       var pp = x.ppys.length ? Math.round(x.ppys.reduce(function(p,q){return p+q;},0)/x.ppys.length) : null;
       return '<tr>'
-        + td(x.area) + td(x.py + '평') + td(a.length + '건','r')
+        + td(x.area,'r') + td(x.py + '평','r') + td(a.length + '건','r')
         + td(md!=null ? man(md) : '', 'r')
         + td(a.length ? man(a[0]) + ' ~ ' + man(a[a.length-1]) : '', 'r')
         + td(pp!=null ? man(pp) : '', 'r')
@@ -21764,8 +21810,9 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     return '<div style="margin-bottom:10px;border:0.5px solid var(--border);border-radius:9px;overflow:hidden">'
       + '<div style="padding:7px 11px;background:var(--bg2);font-size:11.5px;font-weight:700">📐 평형별 요약</div>'
       + '<table style="width:100%;border-collapse:collapse"><thead><tr>'
-      + ['전용㎡','평','건수','중위','최저~최고','평당(만원)','최근 거래'].map(function(t){
-          return '<th style="padding:5px 9px;font-size:11px;text-align:left;border-bottom:1px solid var(--border)">'+t+'</th>'; }).join('')
+      + [['전용㎡',1],['평',1],['건수',1],['중위',1],['최저~최고',1],['평당(만원)',1],['최근 거래',0]].map(function(t){
+          return '<th style="padding:5px 9px;font-size:11px;text-align:'+(t[1]?'right':'left')+';'
+               + 'border-bottom:1px solid var(--border)">'+t[0]+'</th>'; }).join('')
       + '</tr></thead><tbody>' + body + '</tbody></table></div>';
   }
   function td(v, r){
@@ -21792,6 +21839,10 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     return list;
   }
   function head(k){ return CALC[k] || LABEL[k] || k; }
+  // 숫자 칸은 머리글도 오른쪽 — 가운데로 두면 숫자와 여전히 어긋난다
+  var NUMCOL = { _area:1, _py:1, _amt:1, _ppy:1, floor:1, buildYear:1,
+                 deposit:1, monthlyRent:1, preDeposit:1, preMonthlyRent:1 };
+  function isNum(k){ return !!NUMCOL[k]; }
   function table(rows, all){
     if(!rows.length) return '<div style="padding:26px 10px;text-align:center;font-size:12.5px;opacity:.6">이 조건에 신고된 거래가 없습니다.</div>';
     var cs = cols(rows, all);
@@ -21799,15 +21850,15 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
       return '<tr>' + cs.map(function(k){
         var v = r[k]; if(v==null) v='';
         if(k==='_amt'||k==='_ppy'||k==='deposit'||k==='monthlyRent'||k==='preDeposit'||k==='preMonthlyRent') v = man(v);
-        var right = (k==='_amt'||k==='_ppy'||k==='_area'||k==='_py'||k==='floor'||k==='deposit'||k==='monthlyRent');
         return '<td style="padding:5px 8px;border-top:0.5px solid var(--border);font-size:11.5px;white-space:nowrap'
-             + (right?';text-align:right':'') + '">' + esc(v) + '</td>';
+             + (isNum(k)?';text-align:right':'') + '">' + esc(v) + '</td>';
       }).join('') + '</tr>';
     }).join('');
     return '<div style="overflow:auto;max-height:620px;border:0.5px solid var(--border);border-radius:9px">'
       + '<table style="width:100%;border-collapse:collapse"><thead><tr>'
       + cs.map(function(k){ return '<th style="position:sticky;top:0;background:var(--bg2);padding:6px 8px;font-size:11px;'
-          + 'font-weight:700;text-align:left;white-space:nowrap;border-bottom:1px solid var(--border);z-index:1">'+esc(head(k))+'</th>'; }).join('')
+          + 'font-weight:700;text-align:'+(isNum(k)?'right':'left')+';white-space:nowrap;'
+          + 'border-bottom:1px solid var(--border);z-index:1">'+esc(head(k))+'</th>'; }).join('')
       + '</tr></thead><tbody>' + body + '</tbody></table>'
       + (rows.length>1500 ? '<div style="padding:8px;font-size:11px;opacity:.6;text-align:center">화면에는 1,500건까지만 표시합니다 — 엑셀로 받으면 전부 들어갑니다.</div>' : '')
       + '</div>';
@@ -21846,8 +21897,11 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     }, 250);
   };
   window.krClearF = function(){
-    var st = window.__krState; st.dong=''; st.danji=''; st.q=''; st.band=''; render();
+    var st = window.__krState;
+    st.dong=''; st.danji=''; st.q=''; st.band=''; st.rk=''; st.ct=''; render();
   };
+  window.krRk = function(v){ var st=window.__krState; st.rk = (st.rk===v && v) ? '' : v; st.danji=''; render(); };
+  window.krCt = function(v){ var st=window.__krState; st.ct = (st.ct===v && v) ? '' : v; st.danji=''; render(); };
   window.krDsort = function(k){ window.__krState.dsort = k; refreshFilter(); };
   window.krBand = function(v){
     var st = window.__krState;
