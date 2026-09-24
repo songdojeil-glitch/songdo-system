@@ -19337,7 +19337,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.09.24-5';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.09.24-6';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_data.html';      // 이 파일 이름
   var SD_NAME = '실거래가';      // 사람이 부르는 이름
 
@@ -21183,10 +21183,26 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     return y+n2(m+1);
   }
   function ymRange(a,b){ var out=[], c=a, guard=0; while(c<=b && guard++<120){ out.push(c); c=addYm(c,1); } return out; }
-  function rowName(r){ return r.aptNm||r.offiNm||r.mhouseNm||r.bldgNm||r.buildingType||''; }
+  function rowName(r){ return r.aptNm||r.offiNm||r.mhouseNm||r.bldgNm||''; }
 
   // ── 설정 ────────────────────────────────────────────────────────────
   var KEY='', CFG={ watch:[], types:['aptT','aptR','rhT','rhR'], lastSlot:'' }, LAST=null, BUSY=false;
+
+  // ── 지번 → 건물명 사전 (파이어베이스 공유) ──────────────────────────
+  //  국토부 실거래는 상업업무용·단독 등에 건물명을 주지 않아 「집합」만 남는다.
+  //  건축물대장에서 받아 채우고 사무소 전체가 나눠 쓴다. 전국 어디든 같은 방식.
+  //  열쇠 = 시군구코드|법정동코드|본번|부번 ← 실거래 응답이 이 넷을 그대로 준다
+  var NAMES = {};
+  var NAMEKEY = 'sd_bldg_names';
+  var BLD = 'https://apis.data.go.kr/1613000/BldRgstHubService/getBrTitleInfo';
+  function bkey(r){
+    var sgg = r.sggCd || (window.__krState && window.__krState.sgg) || '';
+    var umd = r.umdCd || '';
+    var bun = String(r.bonbun||'').replace(/\D/g,'');
+    var ji  = String(r.bubun||'').replace(/\D/g,'');
+    if(!sgg || !umd || !bun) return '';
+    return sgg + '|' + umd + '|' + ('0000'+bun).slice(-4) + '|' + ('0000'+(ji||'0')).slice(-4);
+  }
 
   async function sget(k){
     var v=null;
@@ -21202,6 +21218,40 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     KEY = (await sget(KEYSTORE)) || '';
     var c = await sget(CFGKEY);
     if(c){ try{ CFG = Object.assign(CFG, JSON.parse(c)); }catch(e){} }
+    var n = await sget(NAMEKEY);
+    if(n){ try{ NAMES = JSON.parse(n) || {}; }catch(e){ NAMES = {}; } }
+  }
+  function saveNames(){ return sset(NAMEKEY, JSON.stringify(NAMES)); }
+
+  // 건축물대장 표제부에서 건물명을 받아 온다
+  async function askBld(k){
+    var p = k.split('|');
+    var u = BLD + '?serviceKey=' + encodeURIComponent(KEY)
+          + '&sigunguCd=' + p[0] + '&bjdongCd=' + p[1]
+          + '&platGbCd=0&bun=' + p[2] + '&ji=' + p[3]
+          + '&numOfRows=50&pageNo=1&_type=json';
+    var r = await fetch(u);
+    var t = await r.text(), j;
+    try{ j = JSON.parse(t); }catch(e){ throw new Error('응답을 읽지 못했습니다'); }
+    if(j.OpenAPI_ServiceResponse){
+      var em = String((j.OpenAPI_ServiceResponse.cmmMsgHeader||{}).errMsg||'');
+      if(/NOT_REGISTERED_FOR|NO_OPENAPI/.test(em))
+        throw new Error('건축물대장이 활용신청되어 있지 않습니다 — 공공데이터포털에서 「국토교통부_건축물대장정보 서비스」를 신청해 주세요');
+      if(/NOT_REGISTERED/.test(em)) throw new Error('인증키가 등록되지 않았습니다');
+      if(/LIMITED_NUMBER/.test(em)) throw new Error('오늘 호출 한도를 넘었습니다');
+      throw new Error(em || '건축물대장 오류');
+    }
+    var body = (j.response||{}).body || {};
+    var list = (body.items && body.items.item) || [];
+    if(!Array.isArray(list)) list = list ? [list] : [];
+    var tal = {};
+    list.forEach(function(x){
+      var nm = String(x.bldNm||'').trim() || String(x.dongNm||'').trim();
+      if(nm) tal[nm] = (tal[nm]||0) + 1;
+    });
+    var best = '', n = 0;          // 동이 여럿이면 가장 많이 나온 이름
+    Object.keys(tal).forEach(function(nm){ if(tal[nm] > n){ n = tal[nm]; best = nm; } });
+    return best;                   // 빈 값이면 대장에도 이름이 없는 건물이다
   }
   function saveCfg(){ return sset(CFGKEY, JSON.stringify(CFG)); }
 
@@ -21258,7 +21308,6 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     for(var k in r){ if(Object.prototype.hasOwnProperty.call(r,k) && k.slice(0,2)!=='__') o[k]= (typeof r[k]==='string'? r[k].trim() : r[k]); }
     var y=o.dealYear, m=o.dealMonth, d=o.dealDay;
     o._date = (y? y+'-'+n2(parseInt(m,10)||0)+'-'+n2(parseInt(d,10)||0) : '');
-    o._name = rowName(o);
     var ar = num(o.excluUseAr) || num(o.totalFloorAr) || num(o.buildingAr) || null;
     o._area = ar==null ? '' : ar;
     o._py   = ar==null ? '' : Math.round(ar/3.3058*10)/10;
@@ -21272,6 +21321,14 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
       jb = String(parseInt(o.bonbun,10)||'') + (parseInt(o.bubun,10) ? '-'+parseInt(o.bubun,10) : '');
     }
     o.jibun = jb || '';
+    // 이름 정하기 : 사전 → 국토부가 준 이름 → 지번
+    var _k = bkey(o), _d = _k && NAMES[_k];
+    var _raw = rowName(o);
+    if(/^\s*(집합|일반)\s*$/.test(_raw)) _raw = '';   // 「집합」은 구분이지 이름이 아니다
+    o._name  = (_d && _d.n) || _raw
+             || ((o.umdNm ? o.umdNm + ' ' : '') + (o.jibun || '')) || '(이름 없음)';
+    o._bkey  = _k;
+    o._named = !!((_d && _d.n) || _raw);
     o._addr = [r.__sggNm||'', o.umdNm||'', o.jibun].filter(Boolean).join(' ');
     o.__type = r.__type; o.__ym = r.__ym; o.__sggNm = r.__sggNm;
     return o;
@@ -21585,6 +21642,13 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
       + '<span style="font-size:11px;opacity:.65">'+esc(LAST.title)
       + (st.danji ? ' · <b>'+esc(st.danji)+'</b>' : '') + '</span>'
       + '<span style="flex:1"></span>'
+      + (function(){
+          var u = unnamedKeys().length;
+          if(!u) return '';
+          return '<button onclick="krFillNames()" class="kr-bs" style="font-size:11.5px;padding:4px 12px;'
+               + 'color:var(--accent3);border-color:var(--accent3)">🏢 건물명 채우기 <b>'+u+'</b>곳</button>';
+        })()
+      + (st.danji ? '<button onclick="krNameEdit()" class="kr-bs" style="font-size:11.5px;padding:4px 12px">✎ 이름</button>' : '')
       + '<button onclick="krChart()" class="kr-bs" style="font-size:11.5px;padding:4px 12px;'
       + (st.chart ? 'border-color:var(--accent);color:var(--accent);font-weight:600' : '') + '">'
       + (st.chart ? '📊 그래프 닫기' : '📊 그래프 만들기') + '</button>'
@@ -21990,6 +22054,69 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
       LAST = null; render();
       msg(e.message || String(e), 'no');
     }finally{ BUSY = false; }
+  };
+
+  // 지금 걸러 낸 결과에서 아직 이름이 없는 지번을 모은다
+  function unnamedKeys(){
+    var seen = {}, out = [];
+    sift().forEach(function(r){
+      if(r._named || !r._bkey) return;
+      if(NAMES[r._bkey]) return;          // 이미 물어본 지번(대장에 이름이 없던 곳 포함)
+      if(seen[r._bkey]) return;
+      seen[r._bkey] = 1; out.push(r._bkey);
+    });
+    return out;
+  }
+
+  window.krFillNames = async function(){
+    if(BUSY) return;
+    if(!KEY){ msg('국토부 인증키를 먼저 넣어 주세요.', 'no'); return; }
+    var ks = unnamedKeys();
+    if(!ks.length){ msg('채울 지번이 없습니다.', 'ok'); return; }
+    if(ks.length > 300 && !confirm(ks.length + '곳을 조회합니다. 시간이 걸립니다. 계속할까요?')) return;
+
+    BUSY = true;
+    var got = 0, blank = 0, fail = '';
+    try{
+      for(var i=0; i<ks.length; i++){
+        msg('건축물대장에서 건물명을 받는 중… (' + (i+1) + '/' + ks.length + ')', 'go');
+        var nm = '';
+        try{ nm = await askBld(ks[i]); }
+        catch(e){ fail = e.message || String(e); break; }
+        NAMES[ks[i]] = { n: nm, s: '대장', t: new Date().toISOString() };
+        if(nm) got++; else blank++;
+        if(i % 20 === 19) await saveNames();       // 중간중간 저장
+      }
+      await saveNames();
+      if(LAST){ LAST.rows = LAST.rows.map(function(r){ return shape(r); }); }
+      render();
+      if(fail) msg('일부만 받았습니다 — ' + fail, 'no');
+      else msg('건물명 ' + got + '곳을 채웠습니다.'
+               + (blank ? '  (대장에도 이름이 없는 곳 ' + blank + '곳은 지번으로 둡니다)' : ''), 'ok');
+    }catch(e){ msg('받지 못했습니다 — ' + (e.message||e), 'no'); }
+    finally{ BUSY = false; }
+  };
+
+  // 손으로 이름 붙이기 — 대장 이름보다 실무에서 통하는 이름이 나을 때가 많다
+  window.krNameEdit = async function(){
+    var st = window.__krState;
+    var rows = sift();
+    var ks = {}; rows.forEach(function(r){ if(r._bkey) ks[r._bkey] = r; });
+    var list = Object.keys(ks);
+    if(!list.length){ msg('지번을 알 수 없는 자료입니다.', 'no'); return; }
+    if(list.length > 1){ msg('단지·건물을 하나 고른 뒤에 눌러 주세요 (지금 ' + list.length + '곳).', 'no'); return; }
+    var k = list[0], r = ks[k];
+    var cur = (NAMES[k] && NAMES[k].n) || '';
+    var v = prompt((r.umdNm||'') + ' ' + (r.jibun||'') + ' 의 건물명을 넣어 주세요.\n비우고 확인하면 지번으로 되돌립니다.', cur);
+    if(v === null) return;
+    v = v.trim();
+    if(v) NAMES[k] = { n: v, s: '손', t: new Date().toISOString() };
+    else delete NAMES[k];
+    await saveNames();
+    if(LAST){ LAST.rows = LAST.rows.map(function(x){ return shape(x); }); }
+    st.danji = v || ((r.umdNm ? r.umdNm + ' ' : '') + (r.jibun||''));
+    render();
+    msg(v ? ('「' + v + '」로 저장했습니다. 사무소 전체에 적용됩니다.') : '지번으로 되돌렸습니다.', 'ok');
   };
 
   window.krXlsx = function(){
