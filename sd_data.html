@@ -2144,11 +2144,14 @@ tr.naver-fav>td:first-child{border-left:3px solid #b8860b;}
     <button class="filter-btn" onclick="opSet('type','월세',this)">월세</button>
     <span class="filter-label" style="margin-left:12px">전용면적</span>
     <button class="filter-btn on" onclick="opSet('area','all',this)">전체</button>
-    <button class="filter-btn" onclick="opSet('area','u30',this)">30㎡ 미만 <span id="op-a1"></span></button>
-    <button class="filter-btn" onclick="opSet('area','30',this)">30~50㎡ <span id="op-a2"></span></button>
-    <button class="filter-btn" onclick="opSet('area','50',this)">50~70㎡ <span id="op-a3"></span></button>
-    <button class="filter-btn" onclick="opSet('area','70',this)">70~90㎡ <span id="op-a4"></span></button>
-    <button class="filter-btn" onclick="opSet('area','90',this)">90㎡ 이상 <span id="op-a5"></span></button>
+    <button class="filter-btn" onclick="opSet('area','a',this)">50㎡ 미만 <span id="op-a1"></span></button>
+    <button class="filter-btn" onclick="opSet('area','b',this)">50~65㎡ <span id="op-a2"></span></button>
+    <button class="filter-btn" onclick="opSet('area','c',this)">65~84㎡ <span id="op-a3"></span></button>
+    <button class="filter-btn" onclick="opSet('area','d',this)">84~86㎡ <span id="op-a4"></span></button>
+    <button class="filter-btn" onclick="opSet('area','e',this)">86~100㎡ <span id="op-a5"></span></button>
+    <button class="filter-btn" onclick="opSet('area','f',this)">100~120㎡ <span id="op-a6"></span></button>
+    <button class="filter-btn" onclick="opSet('area','g',this)">120~140㎡ <span id="op-a7"></span></button>
+    <button class="filter-btn" onclick="opSet('area','h',this)">140㎡ 이상 <span id="op-a8"></span></button>
     <span id="ag-op-bar" style="display:inline-flex;align-items:center;gap:6px;flex-wrap:nowrap"></span>
   </div>
 
@@ -5330,14 +5333,18 @@ function _uploadNaverFiles(input, callback){
 var G_op = { type:'all', area:'all', kind:'all', gong:'all', unit:'' };
 function opSetGong(v){ G_op.gong=v; G_op.unit=''; renderTab7(); }
 function opSetUnit(v){ G_op.unit=(G_op.unit===v?'':v); renderTab7(); }
-/* 전용 ㎡ 구간 — 30 미만 / 30~50 / 50~70 / 70~90 / 90 이상
-   경계는 아래를 포함하고 위는 제외한다(30~50 은 30 포함, 50 제외). */
+/* 전용 ㎡ 구간 — K실거래가(오피스텔 매매·전월세)와 같은 칸이다.
+   호가와 실거래를 같은 축에서 맞춰 보려면 구간이 같아야 한다.
+   경계는 아래를 포함하고 위는 제외한다(50~65 는 50 포함, 65 제외). */
 var OP_AREA_BANDS=[
-  {k:'u30', lo:0,  hi:30,     id:'op-a1'},
-  {k:'30',  lo:30, hi:50,     id:'op-a2'},
-  {k:'50',  lo:50, hi:70,     id:'op-a3'},
-  {k:'70',  lo:70, hi:90,     id:'op-a4'},
-  {k:'90',  lo:90, hi:1e9,    id:'op-a5'}
+  {k:'a', lo:0,   hi:50,   id:'op-a1'},
+  {k:'b', lo:50,  hi:65,   id:'op-a2'},
+  {k:'c', lo:65,  hi:84,   id:'op-a3'},
+  {k:'d', lo:84,  hi:86,   id:'op-a4'},
+  {k:'e', lo:86,  hi:100,  id:'op-a5'},
+  {k:'f', lo:100, hi:120,  id:'op-a6'},
+  {k:'g', lo:120, hi:140,  id:'op-a7'},
+  {k:'h', lo:140, hi:1e9,  id:'op-a8'}
 ];
 function opAreaHit(sqm, key){
   if(!key||key==='all') return true;
@@ -19330,7 +19337,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.09.24-4';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.09.24-5';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_data.html';      // 이 파일 이름
   var SD_NAME = '실거래가';      // 사람이 부르는 이름
 
@@ -21123,7 +21130,28 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     { k:'g',   n:'120~140㎡',   lo:120,  hi:140  },
     { k:'h',   n:'140㎡ 이상',  lo:140,  hi:null }
   ];
-  function B(k){ for(var i=0;i<BANDS.length;i++) if(BANDS[i].k===k) return BANDS[i]; return BANDS[0]; }
+  // 상업업무용은 쓰는 단위가 다르다 — 「매물(상가/사무실)」 탭의 평 구간을
+  // 그대로 ㎡로 옮겼다(1평 = 3.3058㎡). 그래야 호가와 실거래를 맞춰 본다.
+  var BANDS_NRG = [
+    { k:'',    n:'전체',        lo:null, hi:null },
+    { k:'n1',  n:'33㎡ 미만',   sub:'10평 미만', lo:0,   hi:33   },
+    { k:'n2',  n:'33~50㎡',     sub:'10~15평',   lo:33,  hi:50   },
+    { k:'n3',  n:'50~66㎡',     sub:'15~20평',   lo:50,  hi:66   },
+    { k:'n4',  n:'66~99㎡',     sub:'20평대',    lo:66,  hi:99   },
+    { k:'n5',  n:'99~132㎡',    sub:'30평대',    lo:99,  hi:132  },
+    { k:'n6',  n:'132~165㎡',   sub:'40평대',    lo:132, hi:165  },
+    { k:'n7',  n:'165~198㎡',   sub:'50평대',    lo:165, hi:198  },
+    { k:'n8',  n:'198~231㎡',   sub:'60평대',    lo:198, hi:231  },
+    { k:'n9',  n:'231~264㎡',   sub:'70평대',    lo:231, hi:264  },
+    { k:'n10', n:'264㎡ 이상',  sub:'80평 이상', lo:264, hi:null }
+  ];
+  function bandSet(){ return T(window.__krState.type).k === 'nrg' ? BANDS_NRG : BANDS; }
+  function bandLabel(){ return T(window.__krState.type).k === 'nrg' ? '면적 (㎡)' : '전용면적 (㎡)'; }
+  function B(k){
+    var all = BANDS.concat(BANDS_NRG);
+    for(var i=0;i<all.length;i++) if(all[i].k===k) return all[i];
+    return BANDS[0];
+  }
   function inBand(area, k){
     if(!k) return true;
     if(typeof area !== 'number') return false;
@@ -21379,17 +21407,17 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     var sub = 0; for(var i=0;i<ks.length;i++) sub += g[ks[i]];
 
     // 전용면적 구간 — 칩으로 내놓아야 눈에 띈다. 조회 뒤에는 구간별 건수도 같이 보인다.
-    var bn = {};
+    var BS = bandSet(), bn = {};
     if(LAST) LAST.rows.forEach(function(r){
       if(st.dong && r.umdNm !== st.dong) return;
-      BANDS.forEach(function(b){ if(b.k && inBand(r._area, b.k)) bn[b.k] = (bn[b.k]||0)+1; });
+      BS.forEach(function(b){ if(b.k && inBand(r._area, b.k)) bn[b.k] = (bn[b.k]||0)+1; });
     });
     var btot = LAST ? (st.dong ? LAST.rows.filter(function(r){ return r.umdNm===st.dong; }).length : LAST.rows.length) : 0;
 
     var h = '<div style="margin-top:9px;padding-top:9px;border-top:0.5px dashed var(--border)">'
-      + '<label class="kr-lb" style="margin-bottom:5px">전용면적 (㎡)</label>'
+      + '<label class="kr-lb" style="margin-bottom:5px">'+bandLabel()+'</label>'
       + '<div style="display:flex;gap:5px;flex-wrap:wrap">'
-      + BANDS.map(function(b){
+      + BS.map(function(b){
           var sel = (st.band||'') === b.k;
           var cnt = b.k ? (bn[b.k]||0) : btot;
           var none = LAST && b.k && !cnt;
@@ -21400,7 +21428,9 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
             + 'background:'+(sel?'var(--accent)':'transparent')+';'
             + 'color:'+(sel?'#fff':(none?'var(--text3)':'inherit'))+';'
             + 'opacity:'+(none?'.45':'1')+'">'
-            + esc(b.n) + (LAST ? ' <span style="opacity:.7;font-size:10px">'+cnt+'</span>' : '')
+            + esc(b.n)
+            + (b.sub ? ' <span style="opacity:.5;font-size:9.5px">'+esc(b.sub)+'</span>' : '')
+            + (LAST ? ' <span style="opacity:.7;font-size:10px">'+cnt+'</span>' : '')
             + '</button>';
         }).join('')
       + '</div></div>';
@@ -21885,7 +21915,12 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     st.sgg  = document.getElementById('kr-sgg').value;
     var was = st.type;
     st.type = document.getElementById('kr-type').value;
-    if(st.type !== was){ st.rk=''; st.ct=''; }   // 유형이 바뀌면 전월세 필터는 푼다
+    if(st.type !== was){
+      st.rk=''; st.ct='';                        // 전월세 필터는 푼다
+      // 구간표가 다른 유형으로 옮기면 고른 면적 칸도 푼다
+      var ok=false; bandSet().forEach(function(b){ if(b.k===st.band) ok=true; });
+      if(!ok) st.band='';
+    }
     st.from = ymRaw(document.getElementById('kr-from').value);
     st.to   = ymRaw(document.getElementById('kr-to').value);
   };
