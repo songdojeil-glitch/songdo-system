@@ -19330,7 +19330,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.09.24-3';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.09.24-4';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_data.html';      // 이 파일 이름
   var SD_NAME = '실거래가';      // 사람이 부르는 이름
 
@@ -21349,8 +21349,8 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     LAST.rows.forEach(function(r){
       if(st.dong && r.umdNm !== st.dong) return;
       if(st.band && !inBand(r._area, st.band)) return;
-      if(st.rk){ var w=num(r.monthlyRent)||0; if(st.rk==='wolse' ? !(w>0) : (w>0)) return; }
-      if(st.ct && String(r.contractType||'').indexOf(st.ct) !== 0) return;
+      if(isRent() && st.rk){ var w=num(r.monthlyRent)||0; if(st.rk==='wolse' ? !(w>0) : (w>0)) return; }
+      if(isRent() && st.ct && String(r.contractType||'').indexOf(st.ct) !== 0) return;
       if(r._name) g[r._name] = (g[r._name]||0)+1;
     });
     return g;
@@ -21375,7 +21375,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     var ks = Object.keys(g).sort(byName
       ? function(a,b){ return a.localeCompare(b, 'ko'); }              // 가나다순
       : function(a,b){ return g[b]-g[a] || a.localeCompare(b,'ko'); }); // 거래 많은 순
-    var on = (st.dong || st.danji || st.q || st.band || st.rk || st.ct);
+    var on = (st.dong || st.danji || st.q || st.band || (isRent() && (st.rk || st.ct)));
     var sub = 0; for(var i=0;i<ks.length;i++) sub += g[ks[i]];
 
     // 전용면적 구간 — 칩으로 내놓아야 눈에 띈다. 조회 뒤에는 구간별 건수도 같이 보인다.
@@ -21498,17 +21498,19 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
   }
 
   // ── 결과 ────────────────────────────────────────────────────────────
+  function isRent(){ return T(window.__krState.type).m === 'rent'; }
+
   // 법정동 → 단지 → 검색어 순서로 걸러 낸다
   function sift(){
     if(!LAST) return [];
     var st = window.__krState, rows = LAST.rows;
     if(st.dong)  rows = rows.filter(function(r){ return r.umdNm === st.dong; });
     if(st.band)  rows = rows.filter(function(r){ return inBand(r._area, st.band); });
-    if(st.rk)    rows = rows.filter(function(r){
+    if(isRent() && st.rk) rows = rows.filter(function(r){
       var w = num(r.monthlyRent) || 0;
       return st.rk === 'wolse' ? w > 0 : w === 0;           // 월세 0이면 전세
     });
-    if(st.ct)    rows = rows.filter(function(r){
+    if(isRent() && st.ct) rows = rows.filter(function(r){
       return String(r.contractType||'').indexOf(st.ct) === 0;   // 신규 / 갱신
     });
     if(st.danji) rows = rows.filter(function(r){ return r._name === st.danji; });
@@ -21881,7 +21883,9 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
   window.krSet = function(){
     var st = window.__krState;
     st.sgg  = document.getElementById('kr-sgg').value;
+    var was = st.type;
     st.type = document.getElementById('kr-type').value;
+    if(st.type !== was){ st.rk=''; st.ct=''; }   // 유형이 바뀌면 전월세 필터는 푼다
     st.from = ymRaw(document.getElementById('kr-from').value);
     st.to   = ymRaw(document.getElementById('kr-to').value);
   };
