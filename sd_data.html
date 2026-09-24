@@ -19337,7 +19337,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.09.24-12';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.09.24-13';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_data.html';      // 이 파일 이름
   var SD_NAME = '실거래가';      // 사람이 부르는 이름
 
@@ -21771,6 +21771,9 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
           return '<button onclick="krFillNames()" class="kr-bs" style="font-size:11.5px;padding:4px 12px;'
                + 'color:var(--accent3);border-color:var(--accent3)">🏢 건물명 채우기 <b>'+u+'</b>곳</button>';
         })()
+      + (st.danji ? '<button onclick="krReport(\''+esc(st.danji).replace(/'/g,"\\'")+'\')" class="kr-bs" '
+                  + 'style="font-size:11.5px;padding:4px 12px;border-color:var(--accent3);'
+                  + 'color:var(--accent3);font-weight:600">📄 브리핑</button>' : '')
       + (st.danji ? '<button onclick="krNameEdit()" class="kr-bs" style="font-size:11.5px;padding:4px 12px">✎ 이름</button>' : '')
       + '<button onclick="krMap()" class="kr-bs" style="font-size:11.5px;padding:4px 12px;'
       + (st.map ? 'border-color:var(--accent);color:var(--accent);font-weight:600' : '') + '">'
@@ -22021,11 +22024,16 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
       +     cell('면적형', bs.length + '종', '')
       +   '</div>'
       + '</div>'
-      + '<div style="display:flex;gap:6px;padding:9px 11px 11px">'
+      + '<div style="display:flex;gap:6px;padding:9px 11px 5px">'
       +   '<button onclick="krSise(\'' + q + '\')" style="flex:1;font-size:11px;padding:6px 0;border-radius:7px;'
       +     'border:0;background:var(--accent);color:#fff;cursor:pointer;font-weight:600">📊 시세 한눈에</button>'
       +   '<button onclick="krCardClose();krPick(\'' + q + '\')" style="flex:1;font-size:11px;padding:6px 0;'
       +     'border-radius:7px;border:1px solid var(--border);background:transparent;cursor:pointer">단지 상세 →</button>'
+      + '</div>'
+      + '<div style="padding:0 11px 11px">'
+      +   '<button onclick="krReport(\'' + q + '\')" style="width:100%;font-size:11px;padding:6px 0;'
+      +     'border-radius:7px;border:1px solid var(--accent3);background:transparent;color:var(--accent3);'
+      +     'cursor:pointer;font-weight:600">📄 브리핑 보고서</button>'
       + '</div></div>';
   };
 
@@ -22140,10 +22148,14 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
       +   '<div style="font-size:10px;color:var(--text3);margin-top:10px;line-height:1.5">'
       +     '국토교통부 실거래가 신고 자료 · 조회 조건(기간·면적 필터)에 걸린 거래만 셉니다.</div>'
       +   '<div style="display:flex;gap:7px;margin-top:14px">'
-      +     '<button onclick="krSiseClose();krCardClose();krPick(\'' + q + '\')" '
+      +     '<button onclick="krReport(\'' + q + '\')" '
       +       'style="flex:1;font-size:12px;padding:9px 0;border-radius:8px;border:0;'
-      +       'background:var(--accent);color:#fff;cursor:pointer;font-weight:600">'
-      +       '단지 상세 — 표와 그래프 보기 →</button>'
+      +       'background:var(--accent3);color:#fff;cursor:pointer;font-weight:600">'
+      +       '📄 브리핑 보고서 — 인쇄·블로그용</button>'
+      +     '<button onclick="krSiseClose();krCardClose();krPick(\'' + q + '\')" '
+      +       'style="flex:1;font-size:12px;padding:9px 0;border-radius:8px;'
+      +       'border:1px solid var(--border);background:transparent;cursor:pointer">'
+      +       '단지 상세 — 표와 그래프 →</button>'
       +   '</div>'
       + '</div></div>';
 
@@ -22214,6 +22226,321 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
                      grid:{ display:false } } } }
     });
   }
+
+  // ══ 단지 브리핑 보고서 ═════════════════════════════════════════════
+  //  ① 단지 개요 ② 면적형별 시세 ③ 시세 흐름 ④ 최근 거래 ⑤ 비슷한 단지
+  //  인쇄(A4)와 블로그 붙여넣기를 함께 노린다.
+  var REPCSS = false;
+  function repCss(){
+    if(REPCSS) return; REPCSS = true;
+    var st = document.createElement('style');
+    st.textContent =
+      '@media print{'
+      + ' body > *:not(#kr-rep-overlay){display:none !important}'
+      + ' #kr-rep-overlay{position:static !important;background:#fff !important;padding:0 !important;'
+      +   'display:block !important;overflow:visible !important}'
+      + ' #kr-rep-sheet{box-shadow:none !important;max-height:none !important;width:100% !important;'
+      +   'max-width:none !important;overflow:visible !important;border-radius:0 !important}'
+      + ' .kr-rep-noprint{display:none !important}'
+      + ' #kr-rep-sheet table{page-break-inside:auto} #kr-rep-sheet tr{page-break-inside:avoid}'
+      + ' #kr-rep-sec{page-break-inside:avoid}'
+      + '}';
+    document.head.appendChild(st);
+  }
+  //  두 점 사이 거리(㎞)
+  function hav(a, b){
+    var R = 6371, t = Math.PI/180;
+    var dLat = (b.lat-a.lat)*t, dLng = (b.lng-a.lng)*t;
+    var x = Math.sin(dLat/2)*Math.sin(dLat/2)
+          + Math.cos(a.lat*t)*Math.cos(b.lat*t)*Math.sin(dLng/2)*Math.sin(dLng/2);
+    return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1-x));
+  }
+  //  거래회전율 — 조회 기간 거래를 1년으로 늘려 세대수로 나눈다
+  function turnover(o, A){
+    if(!A || !A.h) return null;
+    var m = monthList().length; if(!m) return null;
+    return (o.cnt / m * 12) / A.h * 100;
+  }
+  function nearBy(nm){
+    var list = danjiAgg(), me = null;
+    for(var i=0;i<list.length;i++) if(list[i].name === nm){ me = list[i]; break; }
+    if(!me || !me.geo) return [];
+    return list.filter(function(x){ return x.name !== nm && x.geo && x.med != null; })
+      .map(function(x){ x = Object.create(x); x.km = hav(me.geo, x.geo); return x; })
+      .filter(function(x){ return x.km <= 3; })
+      .sort(function(a,b){ return a.km - b.km; }).slice(0, 8);
+  }
+
+  window.krReport = function(nm){ aptLoad().then(function(){ krReportDraw(nm); }); };
+  window.krReportClose = function(){
+    var o = document.getElementById('kr-rep-overlay'); if(o) o.remove();
+  };
+  window.krReportPrint = function(){ window.print(); };
+
+  function krReportDraw(nm){
+    repCss(); krReportClose(); krSiseClose();
+    var o = danjiOf(nm); if(!o) return;
+    var A = aptFind(nm, o.dong, o.jibun), FM = aptFeeM2(A);
+    var bs = bandsOf(nm), L = amtLabel();
+    var rows = sift().filter(function(r){ return r._name === nm; })
+      .sort(function(a,b){ return a._date < b._date ? 1 : a._date > b._date ? -1 : 0; });
+    var recent = rows.slice(0, 20), near = nearBy(nm), tv = turnover(o, A);
+    var st = window.__krState;
+    var per = st.from.slice(0,4)+'.'+st.from.slice(4) + '~' + st.to.slice(0,4)+'.'+st.to.slice(4);
+    var today = new Date(), asof = today.getFullYear() + '.' + n2(today.getMonth()+1) + '.' + n2(today.getDate());
+    var age = A && A.y ? (today.getFullYear() - parseInt(String(A.y).slice(0,4),10)) : null;
+
+    var th = 'padding:6px 7px;font-size:10.5px;color:#666;font-weight:600;border-bottom:1px solid #ccc;white-space:nowrap';
+    var td = 'padding:6px 7px;font-size:11.5px;border-bottom:1px solid #eee;white-space:nowrap';
+    function hdr(t){ return '<div style="font-size:13px;font-weight:700;margin:20px 0 8px;'
+      + 'padding-bottom:5px;border-bottom:2px solid #0891b2">' + t + '</div>'; }
+
+    var h = '<div id="kr-rep-sheet" style="background:#fff;color:#1a1a1a;border-radius:10px;max-width:820px;'
+      + 'width:96%;max-height:92vh;overflow-y:auto;box-shadow:0 8px 40px rgba(0,0,0,.3);padding:26px 30px 30px"'
+      + ' onclick="event.stopPropagation()">'
+
+      // 머리말
+      + '<div class="kr-rep-noprint" style="display:flex;gap:7px;justify-content:flex-end;margin-bottom:14px">'
+      +   '<button onclick="krReportCopy()" style="font-size:11.5px;padding:6px 13px;border-radius:7px;'
+      +     'border:1px solid #ccc;background:#fff;cursor:pointer">📋 블로그용 복사</button>'
+      +   '<button onclick="krReportPrint()" style="font-size:11.5px;padding:6px 13px;border-radius:7px;'
+      +     'border:1px solid #ccc;background:#fff;cursor:pointer">🖨 인쇄 · PDF</button>'
+      +   '<button onclick="krReportClose()" style="font-size:11.5px;padding:6px 13px;border-radius:7px;'
+      +     'border:0;background:#0891b2;color:#fff;cursor:pointer">닫기</button>'
+      + '</div>'
+      + '<div style="border-bottom:3px solid #0891b2;padding-bottom:11px;margin-bottom:4px">'
+      +   '<div style="font-size:21px;font-weight:800;letter-spacing:-.4px">' + esc(nm)
+      +     ' <span style="font-size:13px;font-weight:600;color:#0891b2">단지 브리핑</span></div>'
+      +   '<div style="font-size:11.5px;color:#666;margin-top:5px">'
+      +     esc(sggName(st.sgg)) + ' ' + esc(o.dong) + (A && A.j && A.j[0] ? ' ' + esc(A.j[0]) : '')
+      +     ' · ' + esc(T(st.type).n) + ' · 조회 ' + per + ' · 작성 ' + asof + '</div>'
+      + '</div>'
+
+      // ① 단지 개요
+      + hdr('① 단지 개요')
+      + '<div id="kr-rep-sec" style="display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin-bottom:6px">'
+      + [ ['중위 ' + L, eok(o.med) || '—', '#0891b2'],
+          ['거래 건수', o.cnt + '건', ''],
+          ['세대수', A ? A.h.toLocaleString() + '세대' : '—', ''],
+          ['거래회전율', tv == null ? '—' : '연 ' + tv.toFixed(1) + '%', ''] ]
+        .map(function(c){
+          return '<div style="border:1px solid #e3e3e3;border-radius:8px;padding:8px 10px">'
+            + '<div style="font-size:9.5px;color:#777">' + c[0] + '</div>'
+            + '<div style="font-size:15px;font-weight:700;margin-top:2px'
+            + (c[2] ? ';color:' + c[2] : '') + '">' + c[1] + '</div></div>';
+        }).join('')
+      + '</div>'
+      + (A ? '<table style="width:100%;border-collapse:collapse;margin-top:8px">'
+          + [ ['준공', String(A.y).slice(0,7).replace('-','.') + (age != null ? ' (' + age + '년차)' : ''),
+               '규모', A.h.toLocaleString() + '세대' + (A.b ? ' / ' + A.b + '개동' : '')],
+              ['난방', A.heat || '—', '분류', A.cls || '—'],
+              ['지번', (A.j||[]).join(', ') || '—', '평당가', o.ppy ? o.ppy.toLocaleString() + '만원' : '—'] ]
+            .map(function(r){
+              return '<tr>'
+                + '<td style="' + td + ';width:11%;color:#777;background:#fafafa">' + r[0] + '</td>'
+                + '<td style="' + td + ';width:39%">' + esc(r[1]) + '</td>'
+                + '<td style="' + td + ';width:11%;color:#777;background:#fafafa">' + r[2] + '</td>'
+                + '<td style="' + td + ';width:39%">' + esc(r[3]) + '</td></tr>';
+            }).join('')
+          + '</table>'
+        : '<div style="font-size:11px;color:#888;padding:8px 0">단지 제원 자료가 없는 지역입니다 '
+          + '(현재 송도동만 갖고 있습니다).</div>')
+
+      // ② 면적형별 시세
+      + hdr('② 면적형별 ' + L)
+      + '<table style="width:100%;border-collapse:collapse">'
+      +   '<thead><tr><th style="' + th + ';text-align:left">전용면적</th>'
+      +     '<th style="' + th + ';text-align:right">중위</th>'
+      +     '<th style="' + th + ';text-align:right">최고</th>'
+      +     '<th style="' + th + ';text-align:right">최근</th>'
+      +     '<th style="' + th + ';text-align:right">평당가</th>'
+      +     '<th style="' + th + ';text-align:right">건수</th>'
+      +     (FM ? '<th style="' + th + ';text-align:right">월 공용관리비</th>'
+                + '<th style="' + th + ';text-align:right">월 장충금</th>' : '')
+      +   '</tr></thead><tbody>'
+      +   bs.map(function(b){
+            var z = FM ? aptSizeFor(A, b.sqm) : null;
+            return '<tr><td style="' + td + ';text-align:left"><b>' + b.sqm + '㎡</b>'
+              + '<span style="color:#888;font-size:10.5px"> ' + b.py + '평</span></td>'
+              + '<td style="' + td + ';text-align:right;font-weight:700">' + (eok(b.med) || '—') + '</td>'
+              + '<td style="' + td + ';text-align:right">' + (eok(b.hi) || '—') + '</td>'
+              + '<td style="' + td + ';text-align:right">' + (eok(b.lastAmt) || '—') + '</td>'
+              + '<td style="' + td + ';text-align:right">' + (b.ppy ? b.ppy.toLocaleString() + '만' : '—') + '</td>'
+              + '<td style="' + td + ';text-align:right">' + b.cnt + '</td>'
+              + (FM ? '<td style="' + td + ';text-align:right">' + (z ? won(FM.pub*z[1]) : '—') + '</td>'
+                    + '<td style="' + td + ';text-align:right">' + (z ? won(FM.ltr*z[1]) : '—') + '</td>' : '')
+              + '</tr>';
+          }).join('')
+      + '</tbody></table>'
+      + (FM ? '<div style="font-size:10px;color:#888;margin-top:6px;line-height:1.55">'
+            + '관리비는 ' + FM.ym.slice(0,4) + '.' + FM.ym.slice(4) + ' 기준, 관리비부과면적 × ㎡단가로 어림한 값입니다. '
+            + '난방·전기·수도 등 개별관리비는 쓰는 만큼이라 빠져 있습니다. '
+            + '장기수선충당금 적립액 ' + (FM.bal/1e8).toFixed(1) + '억원.</div>' : '')
+
+      // ③ 시세 흐름
+      + hdr('③ 시세 흐름')
+      + '<div style="height:190px"><canvas id="kr-rep-price"></canvas></div>'
+      + '<div style="height:100px;margin-top:8px"><canvas id="kr-rep-vol"></canvas></div>'
+
+      // ④ 최근 거래
+      + hdr('④ 최근 거래 <span style="font-size:10.5px;font-weight:400;color:#888">'
+            + '전체 ' + rows.length + '건 중 ' + recent.length + '건</span>')
+      + '<table style="width:100%;border-collapse:collapse">'
+      +   '<thead><tr><th style="' + th + ';text-align:left">계약일</th>'
+      +     '<th style="' + th + ';text-align:right">전용</th>'
+      +     '<th style="' + th + ';text-align:right">평</th>'
+      +     '<th style="' + th + ';text-align:right">층</th>'
+      +     '<th style="' + th + ';text-align:right">' + L + '</th>'
+      +     '<th style="' + th + ';text-align:right">거래유형</th></tr></thead><tbody>'
+      +   recent.map(function(r){
+            var off = r.cdealType === 'O';
+            return '<tr' + (off ? ' style="color:#999"' : '') + '>'
+              + '<td style="' + td + ';text-align:left">' + esc(r._date) + '</td>'
+              + '<td style="' + td + ';text-align:right">' + (r._area || '—') + '㎡</td>'
+              + '<td style="' + td + ';text-align:right">' + (r._py || '—') + '</td>'
+              + '<td style="' + td + ';text-align:right">' + esc(r.floor || '—') + '</td>'
+              + '<td style="' + td + ';text-align:right;font-weight:700'
+              + (off ? ';text-decoration:line-through' : '') + '">' + (eok(r._amt) || '—') + '</td>'
+              + '<td style="' + td + ';text-align:right;font-size:10.5px">'
+              + esc(off ? '해제' : (r.dealingGbn || '—')) + '</td></tr>';
+          }).join('')
+      + '</tbody></table>'
+
+      // ⑤ 비슷한 단지
+      + hdr('⑤ 가까운 단지 <span style="font-size:10.5px;font-weight:400;color:#888">3㎞ 이내 · 가까운 순</span>')
+      + (near.length
+          ? '<div style="display:grid;grid-template-columns:1fr 1fr;gap:7px">'
+            + near.map(function(x){
+                return '<div style="border:1px solid #e3e3e3;border-radius:8px;padding:7px 10px;'
+                  + 'display:flex;justify-content:space-between;align-items:center;gap:8px">'
+                  + '<span style="min-width:0"><span style="font-size:11.5px;font-weight:600;display:block;'
+                  +   'overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(x.name) + '</span>'
+                  +   '<span style="font-size:9.5px;color:#888">' + x.km.toFixed(1) + '㎞ · ' + esc(x.dong)
+                  +   (x.year ? ' · ' + x.year + '년' : '') + ' · ' + x.cnt + '건</span></span>'
+                  + '<span style="font-size:12.5px;font-weight:700;white-space:nowrap">' + eok(x.med) + '</span></div>';
+              }).join('')
+            + '</div>'
+          : '<div style="font-size:11px;color:#888">좌표가 있는 이웃 단지가 없습니다. '
+            + '지도에서 「📍 좌표 찾기」를 한 번 눌러 주세요.</div>')
+
+      + '<div style="margin-top:22px;padding-top:11px;border-top:1px solid #ddd;font-size:10px;'
+      +   'color:#888;line-height:1.6">'
+      +   '자료 : 국토교통부 실거래가 공개시스템'
+      +   (A ? ' · 공동주택관리정보시스템(K-apt)' : '')
+      +   '<br>조회 조건(기간·면적 필터)에 걸린 거래만 셉니다. 해제(취소) 거래는 취소선으로 표시했습니다.'
+      +   '<br>작성 : 송도제일공인중개사사무소 · ' + asof
+      + '</div></div>';
+
+    var ov = document.createElement('div');
+    ov.id = 'kr-rep-overlay';
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9100;'
+      + 'display:flex;align-items:center;justify-content:center;padding:16px';
+    ov.innerHTML = h;
+    ov.onclick = function(){ krReportClose(); };
+    document.body.appendChild(ov);
+    repChart(nm, L);
+    window.__krRepText = repText(nm, o, A, FM, bs, recent, near, tv, per, asof, L);
+  }
+
+  function repChart(nm, L){
+    if(typeof Chart !== 'function') return;
+    var rows = sift().filter(function(r){ return r._name === nm; });
+    var yms = monthList(), byM = {};
+    rows.forEach(function(r){
+      var m = String(r._date).slice(0,7); if(m) (byM[m] = byM[m] || []).push(r);
+    });
+    function med(a){ if(!a.length) return null; var b=a.slice().sort(function(x,y){return x-y;});
+      return b.length%2 ? b[(b.length-1)/2] : (b[b.length/2-1]+b[b.length/2])/2; }
+    var price = [], vol = [], thin = [];
+    yms.forEach(function(m){
+      var a = (byM[m]||[]).map(function(r){ return r._amt; })
+                          .filter(function(v){ return typeof v === 'number'; });
+      vol.push((byM[m]||[]).length);
+      price.push(a.length ? Math.round(med(a))/10000 : null);
+      thin.push(a.length === 1);
+    });
+    var lab = yms.map(function(m){ return m.slice(2).replace('-','.'); });
+    var pc = document.getElementById('kr-rep-price');
+    if(pc) new Chart(pc, { type:'line',
+      data:{ labels:lab, datasets:[{ label:'월별 중위 ' + L + ' (억)', data:price,
+        borderColor:'#0891b2', backgroundColor:'rgba(8,145,178,.10)', fill:true,
+        borderWidth:2, tension:.25, spanGaps:true,
+        pointRadius: thin.map(function(t){ return t ? 4 : 3; }),
+        pointBackgroundColor: thin.map(function(t){ return t ? '#fff' : '#0891b2'; }),
+        pointBorderColor:'#0891b2', pointBorderWidth:2 }] },
+      options:{ responsive:true, maintainAspectRatio:false, animation:false,
+        plugins:{ legend:{ labels:{ boxWidth:10, font:{size:10}, color:'#444' } } },
+        scales:{ y:{ ticks:{ font:{size:9.5}, color:'#666', callback:function(v){ return v + '억'; } },
+                     grid:{ color:'#eee' } },
+                 x:{ ticks:{ font:{size:9}, color:'#666', maxRotation:0, autoSkip:true, maxTicksLimit:12 },
+                     grid:{ display:false } } } } });
+    var vc = document.getElementById('kr-rep-vol');
+    if(vc) new Chart(vc, { type:'bar',
+      data:{ labels:lab, datasets:[{ label:'월별 거래량 (건)', data:vol,
+        backgroundColor:'#adb5bd', borderRadius:2, maxBarThickness:22 }] },
+      options:{ responsive:true, maintainAspectRatio:false, animation:false,
+        plugins:{ legend:{ labels:{ boxWidth:10, font:{size:10}, color:'#444' } } },
+        scales:{ y:{ beginAtZero:true, ticks:{ font:{size:9.5}, color:'#666', precision:0, stepSize:1 },
+                     grid:{ color:'#eee' } },
+                 x:{ ticks:{ font:{size:9}, color:'#666', maxRotation:0, autoSkip:true, maxTicksLimit:12 },
+                     grid:{ display:false } } } } });
+  }
+
+  //  블로그에 그대로 붙일 글 — 표 대신 글머리표로 편다
+  function repText(nm, o, A, FM, bs, recent, near, tv, per, asof, L){
+    var t = [];
+    t.push('[' + nm + '] 실거래 브리핑 (' + asof + ' 작성)');
+    t.push('');
+    t.push('▶ 단지 개요');
+    t.push('· 위치 : ' + sggName(window.__krState.sgg) + ' ' + o.dong
+           + (A && A.j && A.j[0] ? ' ' + A.j[0] : ''));
+    if(A){
+      t.push('· 준공 : ' + String(A.y).slice(0,7).replace('-','.'));
+      t.push('· 규모 : ' + A.h.toLocaleString() + '세대' + (A.b ? ' / ' + A.b + '개동' : '')
+             + (A.heat ? ' · ' + A.heat : ''));
+    }
+    t.push('· 거래 : ' + per + ' ' + o.cnt + '건'
+           + (tv == null ? '' : ' (거래회전율 연 ' + tv.toFixed(1) + '%)'));
+    t.push('· 중위 ' + L + ' : ' + (eok(o.med) || '—')
+           + (o.ppy ? ' (평당 ' + o.ppy.toLocaleString() + '만원)' : ''));
+    t.push('');
+    t.push('▶ 면적형별 ' + L);
+    bs.forEach(function(b){
+      var z = FM ? aptSizeFor(A, b.sqm) : null;
+      t.push('· 전용 ' + b.sqm + '㎡(' + b.py + '평) — 중위 ' + (eok(b.med)||'—')
+             + ' / 최고 ' + (eok(b.hi)||'—') + ' / ' + b.cnt + '건');
+      if(z) t.push('   관리비 약 ' + won(FM.pub*z[1]) + ' + 장기수선충당금 ' + won(FM.ltr*z[1]));
+    });
+    t.push('');
+    t.push('▶ 최근 거래');
+    recent.slice(0, 10).forEach(function(r){
+      t.push('· ' + r._date + '  전용 ' + (r._area||'—') + '㎡  ' + (r.floor||'—') + '층  '
+             + (eok(r._amt)||'—') + (r.cdealType === 'O' ? ' (해제)' : ''));
+    });
+    if(near.length){
+      t.push('');
+      t.push('▶ 가까운 단지 (3㎞ 이내)');
+      near.slice(0, 6).forEach(function(x){
+        t.push('· ' + x.name + ' — ' + x.km.toFixed(1) + '㎞ · ' + eok(x.med));
+      });
+    }
+    t.push('');
+    t.push('※ 국토교통부 실거래가 공개시스템'
+           + (A ? ' · 공동주택관리정보시스템(K-apt)' : '') + ' 자료');
+    t.push('※ 조회 조건에 걸린 거래만 집계했습니다. 실제 계약은 개별 확인이 필요합니다.');
+    t.push('※ 송도제일공인중개사사무소');
+    return t.join('\n');
+  }
+
+  window.krReportCopy = function(){
+    var txt = window.__krRepText || '';
+    if(!txt) return;
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(txt).then(function(){
+        if(typeof showToast === 'function') showToast('✅ 블로그용 글을 복사했습니다');
+      });
+    }
+  };
 
   function drawRank(){
     var host = document.getElementById('kr-rank'); if(!host) return;
