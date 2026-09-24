@@ -19337,7 +19337,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.09.24-7';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.09.24-8';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_data.html';      // 이 파일 이름
   var SD_NAME = '실거래가';      // 사람이 부르는 이름
 
@@ -21269,8 +21269,52 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     if(n){ try{ NAMES = JSON.parse(n) || {}; }catch(e){ NAMES = {}; } }
     var m = await sget(UMDKEY);
     if(m){ try{ UMD = JSON.parse(m) || {}; }catch(e){ UMD = {}; } }
+    var g = await sget(GEOKEY);
+    if(g){ try{ GEO = JSON.parse(g) || {}; }catch(e){ GEO = {}; } }
   }
   function saveNames(){ return sset(NAMEKEY, JSON.stringify(NAMES)); }
+
+  // ── 단지 좌표 사전 (파이어베이스 공유) ──────────────────────────────
+  //  국토부 실거래에는 위경도가 없다. 카카오 장소검색으로 한 번 찾아
+  //  사무소 전체가 나눠 쓴다. 열쇠 = 시군구코드|이름
+  var GEO = {}, GEOKEY = 'sd_geo', KMAP = null, KOVER = [];
+  function gkey(sgg, nm){ return String(sgg) + '|' + String(nm||'').trim(); }
+  function saveGeo(){ return sset(GEOKEY, JSON.stringify(GEO)); }
+
+  async function kakaoReady(){
+    if(window.kakao && kakao.maps && kakao.maps.services) return true;
+    var key = '';
+    try{ var r = await window.storage.get('sd_kakao_key'); if(r && r.value) key = String(r.value).trim(); }catch(e){}
+    if(!key){ try{ key = (localStorage.getItem('sd_kakao_key')||'').trim(); }catch(e){} }
+    if(!key) throw new Error('카카오맵 키가 없습니다 — 지도 탐색 탭에서 한 번 등록해 주세요');
+    var ex = document.getElementById('sd-kakao-sdk');
+    if(!ex){
+      var sc = document.createElement('script');
+      sc.id = 'sd-kakao-sdk';
+      sc.src = 'https://dapi.kakao.com/v2/maps/sdk.js?appkey=' + encodeURIComponent(key) + '&libraries=services&autoload=false';
+      document.head.appendChild(sc);
+    }
+    for(var i=0;i<60;i++){
+      if(window.kakao && kakao.maps){
+        if(kakao.maps.services) return true;
+        if(typeof kakao.maps.load === 'function'){
+          await new Promise(function(res){ kakao.maps.load(res); });
+          if(kakao.maps.services) return true;
+        }
+      }
+      await new Promise(function(r){ setTimeout(r, 200); });
+    }
+    throw new Error('카카오맵을 불러오지 못했습니다 (키·도메인 등록 확인)');
+  }
+
+  function kakaoFind(q){
+    return new Promise(function(res){
+      var ps = new kakao.maps.services.Places();
+      ps.keywordSearch(q, function(d, st){
+        res((st === kakao.maps.services.Status.OK && d && d.length) ? d[0] : null);
+      });
+    });
+  }
 
   // 건축물대장 표제부에서 건물명을 받아 온다
   async function askBld(k){
@@ -21418,7 +21462,8 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     var el = document.getElementById('kr-root'); if(!el) return;
     var st = window.__krState = window.__krState || {
       sido:'28', sgg:'28185', type:'aptT', from:addYm(thisYm(),-2), to:thisYm(),
-      dong:'', danji:'', q:'', band:'', rk:'', ct:'', dsort:'name', chart:false, all:false
+      dong:'', danji:'', q:'', band:'', rk:'', ct:'', dsort:'name',
+      chart:false, map:false, msort:'med', all:false
     };
     var favs = getFav();
 
@@ -21668,6 +21713,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
   function render(skipFilter){
     var out = document.getElementById('kr-out'); if(!out) return;
     killCharts();
+    KOVER.forEach(function(o){ try{ o.setMap(null); }catch(e){} }); KOVER = []; KMAP = null;
     if(!LAST){ out.innerHTML=''; return; }
     var st = window.__krState;
     var rows = sift();
@@ -21702,6 +21748,9 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
                + 'color:var(--accent3);border-color:var(--accent3)">🏢 건물명 채우기 <b>'+u+'</b>곳</button>';
         })()
       + (st.danji ? '<button onclick="krNameEdit()" class="kr-bs" style="font-size:11.5px;padding:4px 12px">✎ 이름</button>' : '')
+      + '<button onclick="krMap()" class="kr-bs" style="font-size:11.5px;padding:4px 12px;'
+      + (st.map ? 'border-color:var(--accent);color:var(--accent);font-weight:600' : '') + '">'
+      + (st.map ? '🗺 지도 닫기' : '🗺 지도·순위') + '</button>'
       + '<button onclick="krChart()" class="kr-bs" style="font-size:11.5px;padding:4px 12px;'
       + (st.chart ? 'border-color:var(--accent);color:var(--accent);font-weight:600' : '') + '">'
       + (st.chart ? '📊 그래프 닫기' : '📊 그래프 만들기') + '</button>'
@@ -21709,12 +21758,125 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
       + '<button onclick="krCols()" class="kr-bs" style="font-size:11.5px;padding:4px 12px">'
       + (st.all?'주요 열만':'전체 열 보기')+'</button></div>';
 
+    h += '<div id="kr-mapwrap"></div>';
     h += '<div id="kr-chart"></div>';
     h += table(rows, st.all);
     out.innerHTML = h;
     if(!skipFilter) refreshFilter();
+    if(st.map) drawMap();
     if(st.chart) drawCharts(rows);
   }
+  // ══ 지도 · 이 지역 순위 ═════════════════════════════════════════════
+  //  국토부는 지도 범위(bbox) 조회를 지원하지 않는다. 그래서 지도는
+  //  「조회한 결과를 그려 주는」 화면이다 — 지도를 옮겨도 다시 받지 않는다.
+  var MSORT = [
+    { k:'med',  n:'시세 높은순', v:function(o){ return o.med; },  t:function(o){ return eok(o.med); } },
+    { k:'chg',  n:'상승률',      v:function(o){ return o.chg; },  t:function(o){ return o.chg==null?'—':((o.chg>0?'▲':o.chg<0?'▼':'')+Math.abs(o.chg)+'%'); } },
+    { k:'ppy',  n:'평당가',      v:function(o){ return o.ppy; },  t:function(o){ return o.ppy==null?'—':man(o.ppy)+'만'; } },
+    { k:'cnt',  n:'거래 많은순', v:function(o){ return o.cnt; },  t:function(o){ return o.cnt+'건'; } }
+  ];
+  function MS(k){ for(var i=0;i<MSORT.length;i++) if(MSORT[i].k===k) return MSORT[i]; return MSORT[0]; }
+
+  function drawMap(){
+    var box = document.getElementById('kr-mapwrap'); if(!box) return;
+    var list = danjiAgg();
+    if(!list.length){ box.innerHTML = ''; return; }
+    var have = list.filter(function(o){ return o.geo; }).length;
+    var need = list.filter(function(o){ return !o.geo && !(o.key in GEO); }).length;
+
+    box.innerHTML =
+      '<div style="display:grid;grid-template-columns:minmax(0,2fr) minmax(260px,1fr);gap:10px;margin-bottom:12px">'
+      + '<div style="border:0.5px solid var(--border);border-radius:10px;overflow:hidden;background:var(--card)">'
+      +   '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;'
+      +   'padding:8px 11px;border-bottom:0.5px solid var(--border);font-size:11.5px">'
+      +     '<span><b>🗺 지도</b> <span style="opacity:.6">조회한 ' + list.length + '곳 중 ' + have + '곳 표시</span></span>'
+      +     (need ? '<button onclick="krFillGeo()" class="kr-bs" style="font-size:11px;padding:3px 10px;'
+                  + 'color:var(--accent3);border-color:var(--accent3)">📍 좌표 찾기 <b>'+need+'</b>곳</button>' : '')
+      +   '</div>'
+      +   '<div id="kr-map" style="width:100%;height:520px"></div></div>'
+      + '<div id="kr-rank" style="border:0.5px solid var(--border);border-radius:10px;overflow:hidden;background:var(--card)"></div>'
+      + '</div>';
+
+    drawRank();
+
+    if(!have){
+      var m = document.getElementById('kr-map');
+      if(m) m.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;'
+        + 'font-size:12px;color:var(--text3);text-align:center;padding:20px">'
+        + '아직 좌표가 없습니다.<br>위의 「📍 좌표 찾기」를 한 번 눌러 주세요 — 한 번만 찾으면 사무소 전체가 같이 씁니다.</div>';
+      return;
+    }
+    kakaoReady().then(function(){
+      var el = document.getElementById('kr-map'); if(!el) return;
+      var pts = list.filter(function(o){ return o.geo; });
+      KMAP = new kakao.maps.Map(el, {
+        center: new kakao.maps.LatLng(pts[0].geo.lat, pts[0].geo.lng), level: 5
+      });
+      var b = new kakao.maps.LatLngBounds();
+      pts.forEach(function(o){
+        var ll = new kakao.maps.LatLng(o.geo.lat, o.geo.lng);
+        b.extend(ll);
+        var d = document.createElement('div');
+        d.style.cssText = 'transform:translate(-50%,-100%);cursor:pointer;white-space:nowrap';
+        d.innerHTML = '<div style="background:var(--accent);color:#fff;border-radius:13px;padding:3px 9px;'
+          + 'font-size:11px;font-weight:700;box-shadow:0 1px 4px rgba(0,0,0,.35);line-height:1.3">'
+          + esc(o.name.length>12 ? o.name.slice(0,12)+'…' : o.name)
+          + '<span style="font-weight:400;opacity:.9"> ' + eok(o.med) + (o.band? ' '+o.band+'평' : '') + '</span></div>'
+          + '<div style="width:0;height:0;margin:0 auto;border-left:5px solid transparent;'
+          + 'border-right:5px solid transparent;border-top:7px solid var(--accent)"></div>';
+        d.onclick = function(){ window.krPick(o.name); };
+        var ov = new kakao.maps.CustomOverlay({ position: ll, content: d, yAnchor: 1, clickable: true });
+        ov.setMap(KMAP); KOVER.push(ov);
+      });
+      if(pts.length > 1) KMAP.setBounds(b);
+    }).catch(function(e){
+      var m = document.getElementById('kr-map');
+      if(m) m.innerHTML = '<div style="padding:20px;font-size:12px;color:var(--red)">' + esc(e.message||e) + '</div>';
+    });
+  }
+
+  function drawRank(){
+    var host = document.getElementById('kr-rank'); if(!host) return;
+    var st = window.__krState, ms = MS(st.msort);
+    var list = danjiAgg().slice().sort(function(a,b){
+      var x = ms.v(a), y = ms.v(b);
+      if(x == null && y == null) return 0;
+      if(x == null) return 1; if(y == null) return -1;
+      return y - x;
+    });
+    var h = '<div style="padding:8px 11px;border-bottom:0.5px solid var(--border)">'
+      + '<div style="font-size:11.5px;font-weight:700;margin-bottom:6px">📋 이 지역 순위 '
+      + '<span style="font-weight:400;opacity:.6">' + list.length + '곳</span></div>'
+      + '<div style="display:flex;gap:4px;flex-wrap:wrap">'
+      + MSORT.map(function(m){
+          var on = m.k === st.msort;
+          return '<button onclick="krMsort(\''+m.k+'\')" style="font-size:10.5px;padding:3px 9px;border-radius:12px;'
+            + 'cursor:pointer;border:1px solid '+(on?'transparent':'var(--border)')+';'
+            + 'background:'+(on?'var(--accent)':'transparent')+';color:'+(on?'#fff':'inherit')+'">'+m.n+'</button>';
+        }).join('')
+      + '</div></div>'
+      + '<div style="max-height:472px;overflow-y:auto">'
+      + list.map(function(o, i){
+          var sel = st.danji === o.name;
+          return '<div onclick="krPick(\''+esc(o.name).replace(/'/g,"\\'")+'\')" '
+            + 'style="display:flex;gap:8px;align-items:center;padding:6px 11px;cursor:pointer;'
+            + (i?'border-top:0.5px solid var(--border);':'') + (sel?'background:var(--bg2)':'') + '">'
+            + '<span style="font-size:10.5px;color:var(--text3);min-width:16px;text-align:right">'+(i+1)+'</span>'
+            + '<span style="flex:1;min-width:0">'
+            +   '<span style="font-size:11.5px;font-weight:600;display:block;overflow:hidden;'
+            +   'text-overflow:ellipsis;white-space:nowrap">'+esc(o.name)+'</span>'
+            +   '<span style="font-size:10px;color:var(--text3)">'+esc(o.dong)
+            +     (o.year? ' · '+o.year+'년':'') + (o.band? ' · '+o.band+'평':'') + '</span></span>'
+            + '<span style="text-align:right;white-space:nowrap">'
+            +   '<span style="font-size:11.5px;font-weight:700;display:block">'+ms.t(o)+'</span>'
+            +   '<span style="font-size:10px;color:var(--text3)">'
+            +     (st.msort==='cnt' ? eok(o.med) : o.cnt+'건') + '</span></span>'
+            + '</div>';
+        }).join('')
+      + '</div>';
+    host.innerHTML = h;
+  }
+
   // ══ 그래프 ══════════════════════════════════════════════════════════
   //  · 거래량과 평균가는 단위가 달라 한 그림에 겹치지 않는다(축 두 개 금지).
   //  · 단지를 고르면 면적형별로 갈라 본다 — 거래량은 쌓은 막대,
@@ -22067,6 +22229,12 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
   window.krChart = function(){
     var st = window.__krState; st.chart = !st.chart; render();
   };
+  window.krMap   = function(){ var st = window.__krState; st.map = !st.map; render(); };
+  window.krMsort = function(k){ window.__krState.msort = k; drawRank(); };
+  window.krPick  = function(nm){
+    var st = window.__krState; st.danji = nm; render();
+    var el = document.getElementById('kr-out'); if(el) el.scrollIntoView({behavior:'smooth', block:'start'});
+  };
   window.krFavD = function(){
     var st = window.__krState, a = getFav();
     var d = st.danji || st.q; if(!d) return;
@@ -22171,6 +22339,78 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     st.danji = v || ((r.umdNm ? r.umdNm + ' ' : '') + (r.jibun||''));
     render();
     msg(v ? ('「' + v + '」로 저장했습니다. 사무소 전체에 적용됩니다.') : '지번으로 되돌렸습니다.', 'ok');
+  };
+
+  // 지금 걸러 낸 결과를 단지별로 묶는다 — 지도 핀과 순위표가 같이 쓴다
+  function danjiAgg(){
+    var st = window.__krState, rows = sift(), g = {};
+    rows.forEach(function(r){
+      var nm = r._name; if(!nm) return;
+      var o = g[nm] || (g[nm] = { name:nm, dong:r.umdNm||'', amts:[], ppys:[], years:{}, pys:{},
+                                  cnt:0, last:'', lastAmt:null, half:[[],[]] });
+      o.cnt++;
+      if(typeof r._amt === 'number') o.amts.push(r._amt);
+      if(typeof r._ppy === 'number') o.ppys.push(r._ppy);
+      if(r.buildYear) o.years[r.buildYear] = (o.years[r.buildYear]||0)+1;
+      if(r._py) o.pys[r._py] = (o.pys[r._py]||0)+1;
+      if(r._date > o.last){ o.last = r._date; o.lastAmt = (typeof r._amt==='number') ? r._amt : null; }
+    });
+    // 기간을 반으로 갈라 앞뒤 중위를 견준다 — 「상승률」
+    var yms = monthList();
+    if(yms.length >= 6){
+      var cut = yms[Math.floor(yms.length/2)];
+      rows.forEach(function(r){
+        var o = g[r._name]; if(!o || typeof r._amt !== 'number') return;
+        o.half[String(r._date).slice(0,7) < cut ? 0 : 1].push(r._amt);
+      });
+    }
+    function med(a){ if(!a.length) return null; var b=a.slice().sort(function(x,y){return x-y;});
+      return b.length%2 ? b[(b.length-1)/2] : Math.round((b[b.length/2-1]+b[b.length/2])/2); }
+    function top(o){ var k='',n=-1; Object.keys(o).forEach(function(x){ if(o[x]>n){n=o[x];k=x;} }); return k; }
+    return Object.keys(g).map(function(nm){
+      var o = g[nm];
+      o.med = med(o.amts);
+      o.ppy = o.ppys.length ? Math.round(o.ppys.reduce(function(a,b){return a+b;},0)/o.ppys.length) : null;
+      o.year = top(o.years); o.band = top(o.pys);
+      var a0 = med(o.half[0]), a1 = med(o.half[1]);
+      o.chg = (a0 && a1) ? Math.round((a1-a0)/a0*1000)/10 : null;
+      o.key = gkey(window.__krState.sgg, nm);
+      o.geo = GEO[o.key] || null;
+      return o;
+    });
+  }
+  function eok(v){
+    if(v == null) return '';
+    if(v < 10000) return Math.round(v).toLocaleString()+'만';
+    var e = Math.floor(v/10000), r = Math.round((v%10000)/1000);
+    return e + (r ? '.'+r : '') + '억';
+  }
+
+  window.krFillGeo = async function(){
+    if(BUSY) return;
+    var list = danjiAgg().filter(function(o){ return !o.geo && !GEO[o.key]; });
+    if(!list.length){ msg('좌표를 모두 갖고 있습니다.', 'ok'); return; }
+    list.sort(function(a,b){ return b.cnt - a.cnt; });
+    if(list.length > 120) list = list.slice(0, 120);
+    BUSY = true;
+    var got = 0, miss = 0;
+    try{
+      await kakaoReady();
+      var region = sggName(window.__krState.sgg);
+      for(var i=0;i<list.length;i++){
+        msg('지도에 올릴 좌표를 찾는 중… (' + (i+1) + '/' + list.length + ') ' + list[i].name, 'go');
+        var o = list[i], d = null;
+        var tries = [ region + ' ' + o.dong + ' ' + o.name, region + ' ' + o.name, o.name ];
+        for(var t=0; t<tries.length && !d; t++) d = await kakaoFind(tries[t]);
+        if(d){ GEO[o.key] = { lat:parseFloat(d.y), lng:parseFloat(d.x), p:d.place_name||'' }; got++; }
+        else { GEO[o.key] = null; miss++; }
+        if(i % 20 === 19) await saveGeo();
+        await new Promise(function(r){ setTimeout(r, 60); });
+      }
+      await saveGeo(); render();
+      msg('좌표 ' + got + '곳을 찾았습니다.' + (miss ? '  (못 찾은 곳 ' + miss + '곳)' : ''), 'ok');
+    }catch(e){ msg(e.message || String(e), 'no'); }
+    finally{ BUSY = false; }
   };
 
   window.krXlsx = function(){
