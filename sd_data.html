@@ -19337,7 +19337,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.09.24-8';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.09.24-9';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_data.html';      // 이 파일 이름
   var SD_NAME = '실거래가';      // 사람이 부르는 이름
 
@@ -21315,6 +21315,27 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
       });
     });
   }
+  // 지번 주소로 정확히 찍는다 — 이름 검색보다 훨씬 안전하다
+  function kakaoAddr(q){
+    return new Promise(function(res){
+      var gc = new kakao.maps.services.Geocoder();
+      gc.addressSearch(q, function(d, st){
+        res((st === kakao.maps.services.Status.OK && d && d.length) ? d[0] : null);
+      });
+    });
+  }
+  // 찾은 곳이 조회한 시·군·구 안인지 본다. 아니면 버린다.
+  //  (이름만으로 찾다가 「하나타운1」이 대구로 간 일이 있었다)
+  function inRegion(addr, sgg){
+    var full = sggName(sgg);                       // 「인천광역시 연수구」
+    var parts = full.split(' ');
+    var gu = parts[parts.length-1];                // 「연수구」
+    var sido = parts[0].replace(/(특별시|광역시|특별자치시|특별자치도|도)$/,'');  // 「인천」
+    var a = String(addr||'');
+    if(!a) return false;
+    return a.indexOf(gu) >= 0 && a.indexOf(sido) >= 0;
+  }
+  function geoBad(g, sgg){ return !g || !g.addr || !inRegion(g.addr, sgg); }
 
   // 건축물대장 표제부에서 건물명을 받아 온다
   async function askBld(k){
@@ -21463,7 +21484,8 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     var st = window.__krState = window.__krState || {
       sido:'28', sgg:'28185', type:'aptT', from:addYm(thisYm(),-2), to:thisYm(),
       dong:'', danji:'', q:'', band:'', rk:'', ct:'', dsort:'name',
-      chart:false, map:false, msort:'med', all:false
+      chart:false, map:false, msort:'med', all:false,
+      msize:(function(){ try{ return localStorage.getItem('sd_kr_msize') || 'l'; }catch(e){ return 'l'; } })()
     };
     var favs = getFav();
 
@@ -21769,6 +21791,13 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
   // ══ 지도 · 이 지역 순위 ═════════════════════════════════════════════
   //  국토부는 지도 범위(bbox) 조회를 지원하지 않는다. 그래서 지도는
   //  「조회한 결과를 그려 주는」 화면이다 — 지도를 옮겨도 다시 받지 않는다.
+  //  「넓게」 는 지도가 한 줄을 다 쓰고 순위표는 아래로 내려간다
+  var MSIZES = [ { k:'n', n:'보통' }, { k:'l', n:'크게' }, { k:'w', n:'넓게' } ];
+  var MSIZE = {
+    n: { h:520, rh:472, cols:'minmax(0,2fr) minmax(260px,1fr)' },
+    l: { h:760, rh:712, cols:'minmax(0,3fr) minmax(250px,1fr)' },
+    w: { h:820, rh:300, cols:'minmax(0,1fr)' }
+  };
   var MSORT = [
     { k:'med',  n:'시세 높은순', v:function(o){ return o.med; },  t:function(o){ return eok(o.med); } },
     { k:'chg',  n:'상승률',      v:function(o){ return o.chg; },  t:function(o){ return o.chg==null?'—':((o.chg>0?'▲':o.chg<0?'▼':'')+Math.abs(o.chg)+'%'); } },
@@ -21781,19 +21810,35 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     var box = document.getElementById('kr-mapwrap'); if(!box) return;
     var list = danjiAgg();
     if(!list.length){ box.innerHTML = ''; return; }
+    var sggNow = window.__krState.sgg;
+    list.forEach(function(o){ if(o.geo && geoBad(o.geo, sggNow)) o.geo = null; });  // 엉뚱한 좌표는 안 쓴다
     var have = list.filter(function(o){ return o.geo; }).length;
-    var need = list.filter(function(o){ return !o.geo && !(o.key in GEO); }).length;
+    var need = list.filter(function(o){
+      if(!(o.key in GEO)) return true;
+      var g = GEO[o.key];
+      return g !== null && geoBad(g, sggNow);
+    }).length;
+
+    var Z = MSIZE[window.__krState.msize] || MSIZE.l;
+    var sizeBtns = MSIZES.map(function(z){
+      var on = z.k === (window.__krState.msize || 'l');
+      return '<button onclick="krMsize(\'' + z.k + '\')" class="kr-bs" style="font-size:10.5px;padding:3px 9px;'
+        + (on ? 'background:var(--accent3);color:#fff;border-color:var(--accent3)' : '') + '">' + z.n + '</button>';
+    }).join('');
 
     box.innerHTML =
-      '<div style="display:grid;grid-template-columns:minmax(0,2fr) minmax(260px,1fr);gap:10px;margin-bottom:12px">'
+      '<div style="display:grid;grid-template-columns:' + Z.cols + ';gap:10px;margin-bottom:12px">'
       + '<div style="border:0.5px solid var(--border);border-radius:10px;overflow:hidden;background:var(--card)">'
       +   '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;'
       +   'padding:8px 11px;border-bottom:0.5px solid var(--border);font-size:11.5px">'
       +     '<span><b>🗺 지도</b> <span style="opacity:.6">조회한 ' + list.length + '곳 중 ' + have + '곳 표시</span></span>'
-      +     (need ? '<button onclick="krFillGeo()" class="kr-bs" style="font-size:11px;padding:3px 10px;'
-                  + 'color:var(--accent3);border-color:var(--accent3)">📍 좌표 찾기 <b>'+need+'</b>곳</button>' : '')
+      +     '<span style="display:flex;gap:5px;align-items:center;flex-wrap:wrap">'
+      +       '<span style="opacity:.55;font-size:10.5px">크기</span>' + sizeBtns
+      +       (need ? '<button onclick="krFillGeo()" class="kr-bs" style="font-size:11px;padding:3px 10px;margin-left:4px;'
+                    + 'color:var(--accent3);border-color:var(--accent3)">📍 좌표 찾기 <b>'+need+'</b>곳</button>' : '')
+      +     '</span>'
       +   '</div>'
-      +   '<div id="kr-map" style="width:100%;height:520px"></div></div>'
+      +   '<div id="kr-map" style="width:100%;height:' + Z.h + 'px"></div></div>'
       + '<div id="kr-rank" style="border:0.5px solid var(--border);border-radius:10px;overflow:hidden;background:var(--card)"></div>'
       + '</div>';
 
@@ -21855,7 +21900,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
             + 'background:'+(on?'var(--accent)':'transparent')+';color:'+(on?'#fff':'inherit')+'">'+m.n+'</button>';
         }).join('')
       + '</div></div>'
-      + '<div style="max-height:472px;overflow-y:auto">'
+      + '<div style="max-height:' + ((MSIZE[window.__krState.msize] || MSIZE.l).rh) + 'px;overflow-y:auto">'
       + list.map(function(o, i){
           var sel = st.danji === o.name;
           return '<div onclick="krPick(\''+esc(o.name).replace(/'/g,"\\'")+'\')" '
@@ -22230,6 +22275,11 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     var st = window.__krState; st.chart = !st.chart; render();
   };
   window.krMap   = function(){ var st = window.__krState; st.map = !st.map; render(); };
+  window.krMsize = function(k){
+    window.__krState.msize = k;
+    try{ localStorage.setItem('sd_kr_msize', k); }catch(e){}
+    drawMap();
+  };
   window.krMsort = function(k){ window.__krState.msort = k; drawRank(); };
   window.krPick  = function(nm){
     var st = window.__krState; st.danji = nm; render();
@@ -22346,8 +22396,9 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     var st = window.__krState, rows = sift(), g = {};
     rows.forEach(function(r){
       var nm = r._name; if(!nm) return;
-      var o = g[nm] || (g[nm] = { name:nm, dong:r.umdNm||'', amts:[], ppys:[], years:{}, pys:{},
+      var o = g[nm] || (g[nm] = { name:nm, dong:r.umdNm||'', jibun:'', amts:[], ppys:[], years:{}, pys:{},
                                   cnt:0, last:'', lastAmt:null, half:[[],[]] });
+      if(!o.jibun && r.jibun && !/\*/.test(r.jibun)) o.jibun = r.jibun;   // 가려진 지번은 안 쓴다
       o.cnt++;
       if(typeof r._amt === 'number') o.amts.push(r._amt);
       if(typeof r._ppy === 'number') o.ppys.push(r._ppy);
@@ -22388,7 +22439,13 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 
   window.krFillGeo = async function(){
     if(BUSY) return;
-    var list = danjiAgg().filter(function(o){ return !o.geo && !GEO[o.key]; });
+    var sggNow = window.__krState.sgg;
+    var list = danjiAgg().filter(function(o){
+      if(!(o.key in GEO)) return true;                       // 아직 안 찾아 본 곳
+      var g = GEO[o.key];
+      if(g === null) return false;                           // 찾아 봤는데 없던 곳
+      return geoBad(g, sggNow);                              // 지역이 안 맞는 옛 기록
+    });
     if(!list.length){ msg('좌표를 모두 갖고 있습니다.', 'ok'); return; }
     list.sort(function(a,b){ return b.cnt - a.cnt; });
     if(list.length > 120) list = list.slice(0, 120);
@@ -22396,14 +22453,29 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     var got = 0, miss = 0;
     try{
       await kakaoReady();
-      var region = sggName(window.__krState.sgg);
+      var sgg = window.__krState.sgg, region = sggName(sgg);
       for(var i=0;i<list.length;i++){
         msg('지도에 올릴 좌표를 찾는 중… (' + (i+1) + '/' + list.length + ') ' + list[i].name, 'go');
-        var o = list[i], d = null;
-        var tries = [ region + ' ' + o.dong + ' ' + o.name, region + ' ' + o.name, o.name ];
-        for(var t=0; t<tries.length && !d; t++) d = await kakaoFind(tries[t]);
-        if(d){ GEO[o.key] = { lat:parseFloat(d.y), lng:parseFloat(d.x), p:d.place_name||'' }; got++; }
-        else { GEO[o.key] = null; miss++; }
+        var o = list[i], hit = null;
+
+        // ① 지번 주소로 — 가장 정확하다
+        if(o.jibun){
+          var a = await kakaoAddr(region + ' ' + o.dong + ' ' + o.jibun);
+          if(a) hit = { lat:parseFloat(a.y), lng:parseFloat(a.x),
+                        addr:(a.address && a.address.address_name) || a.address_name || '', p:'지번' };
+        }
+        // ② 이름으로 — 단, 조회한 시·군·구 안에 있어야만 받아들인다
+        if(!hit){
+          var tries = [ region + ' ' + o.dong + ' ' + o.name, region + ' ' + o.name ];
+          for(var t=0; t<tries.length && !hit; t++){
+            var d = await kakaoFind(tries[t]);
+            if(!d) continue;
+            var ad = d.road_address_name || d.address_name || '';
+            if(!inRegion(ad, sgg)) continue;       // 엉뚱한 지역이면 버린다
+            hit = { lat:parseFloat(d.y), lng:parseFloat(d.x), addr:ad, p:d.place_name||'' };
+          }
+        }
+        if(hit){ GEO[o.key] = hit; got++; } else { GEO[o.key] = null; miss++; }
         if(i % 20 === 19) await saveGeo();
         await new Promise(function(r){ setTimeout(r, 60); });
       }
