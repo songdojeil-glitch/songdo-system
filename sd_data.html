@@ -19337,7 +19337,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.09.24-6';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.09.24-7';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_data.html';      // 이 파일 이름
   var SD_NAME = '실거래가';      // 사람이 부르는 이름
 
@@ -21194,14 +21194,61 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
   //  열쇠 = 시군구코드|법정동코드|본번|부번 ← 실거래 응답이 이 넷을 그대로 준다
   var NAMES = {};
   var NAMEKEY = 'sd_bldg_names';
-  var BLD = 'https://apis.data.go.kr/1613000/BldRgstHubService/getBrTitleInfo';
+  var BLD  = 'https://apis.data.go.kr/1613000/BldRgstHubService/getBrTitleInfo';
+  var RGCD = 'https://apis.data.go.kr/1741000/StanReginCd/getStanReginCdList';
+  var UMDKEY = 'sd_umd_codes';    // { '28185': { '송도동':'10600', … } }
+  var UMD = {};
+
+  // 실거래가 주는 것은 sggCd·umdNm·jibun 뿐이다(umdCd·본번·부번은 안 온다).
+  // 그래서 사전 열쇠도 이 셋으로 만든다.
   function bkey(r){
-    var sgg = r.sggCd || (window.__krState && window.__krState.sgg) || '';
-    var umd = r.umdCd || '';
-    var bun = String(r.bonbun||'').replace(/\D/g,'');
-    var ji  = String(r.bubun||'').replace(/\D/g,'');
-    if(!sgg || !umd || !bun) return '';
-    return sgg + '|' + umd + '|' + ('0000'+bun).slice(-4) + '|' + ('0000'+(ji||'0')).slice(-4);
+    var sgg = String(r.sggCd || (window.__krState && window.__krState.sgg) || '');
+    var umd = String(r.umdNm || '').trim();
+    var jb  = String(r.jibun || '').trim();
+    if(!sgg || !umd || !jb) return '';
+    return sgg + '|' + umd + '|' + jb;
+  }
+  // 「29-1」 → 본번 0029 · 부번 0001
+  function splitJibun(jb){
+    var m = String(jb||'').trim().match(/^(\d+)(?:\s*-\s*(\d+))?$/);
+    if(!m) return null;                                   // 「8**」처럼 가려진 지번
+    return { bun: ('0000'+m[1]).slice(-4), ji: ('0000'+(m[2]||'0')).slice(-4) };
+  }
+
+  // 법정동코드는 행정표준코드에서 받아 시군구 단위로 통째 캐시한다
+  async function umdCode(sgg, nm){
+    if(UMD[sgg] && UMD[sgg][nm]) return UMD[sgg][nm];
+    if(UMD[sgg]) return '';                               // 이미 받아 봤는데 없는 동
+    var full = sggName(sgg);
+    var u = RGCD + '?ServiceKey=' + encodeURIComponent(KEY) + '&serviceKey=' + encodeURIComponent(KEY)
+          + '&type=json&pageNo=1&numOfRows=1000&locatadd_nm=' + encodeURIComponent(full);
+    var t = await fetch(u).then(function(r){ return r.text(); });
+    var j; try{ j = JSON.parse(t); }catch(e){ throw new Error('법정동코드 응답을 읽지 못했습니다'); }
+    if(j.OpenAPI_ServiceResponse){
+      var em = String((j.OpenAPI_ServiceResponse.cmmMsgHeader||{}).errMsg||'');
+      if(/NOT_REGISTERED_FOR|NO_OPENAPI/.test(em))
+        throw new Error('법정동코드 자료가 활용신청되어 있지 않습니다 — 공공데이터포털에서 「행정안전부_행정표준코드관리시스템(법정동)」을 신청해 주세요');
+      throw new Error(em || '법정동코드 오류');
+    }
+    // 응답 모양이 판마다 달라 행 배열을 찾아 쓴다
+    var rows = [];
+    (function dig(x, d){
+      if(!x || d > 4) return;
+      if(Array.isArray(x)){ if(x.length && x[0] && x[0].region_cd) rows = rows.concat(x); else x.forEach(function(y){ dig(y, d+1); }); return; }
+      if(typeof x === 'object') Object.keys(x).forEach(function(k){ dig(x[k], d+1); });
+    })(j, 0);
+    var map = {};
+    rows.forEach(function(x){
+      var cd = String(x.region_cd||'');
+      if(cd.length !== 10 || cd.slice(0,5) !== String(sgg)) return;
+      if(cd.slice(8) !== '00') return;                    // 리 제외
+      if(cd.slice(5,8) === '000') return;                 // 시군구 자신 제외
+      var nm2 = String(x.locallow_nm || '').trim() || String(x.locatadd_nm||'').trim().split(' ').pop();
+      if(nm2) map[nm2] = cd.slice(5,10);
+    });
+    UMD[sgg] = map;
+    try{ await sset(UMDKEY, JSON.stringify(UMD)); }catch(e){}
+    return map[nm] || '';
   }
 
   async function sget(k){
@@ -21220,15 +21267,21 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     if(c){ try{ CFG = Object.assign(CFG, JSON.parse(c)); }catch(e){} }
     var n = await sget(NAMEKEY);
     if(n){ try{ NAMES = JSON.parse(n) || {}; }catch(e){ NAMES = {}; } }
+    var m = await sget(UMDKEY);
+    if(m){ try{ UMD = JSON.parse(m) || {}; }catch(e){ UMD = {}; } }
   }
   function saveNames(){ return sset(NAMEKEY, JSON.stringify(NAMES)); }
 
   // 건축물대장 표제부에서 건물명을 받아 온다
   async function askBld(k){
-    var p = k.split('|');
+    var p = k.split('|');                       // 시군구 | 법정동명 | 지번
+    var jb = splitJibun(p[2]);
+    if(!jb) return null;                        // 가려진 지번 — 찾을 수 없다
+    var bj = await umdCode(p[0], p[1]);
+    if(!bj) return null;                        // 법정동코드를 못 찾았다
     var u = BLD + '?serviceKey=' + encodeURIComponent(KEY)
-          + '&sigunguCd=' + p[0] + '&bjdongCd=' + p[1]
-          + '&platGbCd=0&bun=' + p[2] + '&ji=' + p[3]
+          + '&sigunguCd=' + p[0] + '&bjdongCd=' + bj
+          + '&platGbCd=0&bun=' + jb.bun + '&ji=' + jb.ji
           + '&numOfRows=50&pageNo=1&_type=json';
     var r = await fetch(u);
     var t = await r.text(), j;
@@ -22076,15 +22129,15 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     if(ks.length > 300 && !confirm(ks.length + '곳을 조회합니다. 시간이 걸립니다. 계속할까요?')) return;
 
     BUSY = true;
-    var got = 0, blank = 0, fail = '';
+    var got = 0, blank = 0, skip = 0, fail = '';
     try{
       for(var i=0; i<ks.length; i++){
         msg('건축물대장에서 건물명을 받는 중… (' + (i+1) + '/' + ks.length + ')', 'go');
         var nm = '';
         try{ nm = await askBld(ks[i]); }
         catch(e){ fail = e.message || String(e); break; }
-        NAMES[ks[i]] = { n: nm, s: '대장', t: new Date().toISOString() };
-        if(nm) got++; else blank++;
+        if(nm === null){ NAMES[ks[i]] = { n:'', s:'불가', t:new Date().toISOString() }; skip++; }
+        else { NAMES[ks[i]] = { n: nm, s: '대장', t: new Date().toISOString() }; nm ? got++ : blank++; }
         if(i % 20 === 19) await saveNames();       // 중간중간 저장
       }
       await saveNames();
@@ -22092,7 +22145,8 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
       render();
       if(fail) msg('일부만 받았습니다 — ' + fail, 'no');
       else msg('건물명 ' + got + '곳을 채웠습니다.'
-               + (blank ? '  (대장에도 이름이 없는 곳 ' + blank + '곳은 지번으로 둡니다)' : ''), 'ok');
+               + (blank ? '  · 대장에 이름이 없는 곳 ' + blank + '곳' : '')
+               + (skip  ? '  · 지번이 가려져 못 찾은 곳 ' + skip + '곳' : ''), 'ok');
     }catch(e){ msg('받지 못했습니다 — ' + (e.message||e), 'no'); }
     finally{ BUSY = false; }
   };
