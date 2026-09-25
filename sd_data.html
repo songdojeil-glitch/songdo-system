@@ -19353,7 +19353,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.09.25-5';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.09.25-6';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_data.html';      // 이 파일 이름
   var SD_NAME = '실거래가';      // 사람이 부르는 이름
 
@@ -23784,7 +23784,23 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
   var TAB   = 18;
   var RECENT= 'sd_danji_recent';      // 최근 본 단지 (이 PC 에만)
   var MONTHS= 12;                     // 기본으로 받는 기간
-  var CACHE = {};                     // 'sgg|months' → { trade:[], rent:[], at:Date }
+  var CACHE = {};                     // 'sgg|종류|기간' → { trade:[], rent:[], at:Date }
+
+  /*  다룰 물건 종류 — 국토부가 종류마다 다른 창구를 쓴다.
+      분양권은 전매(매매)만 있고 전월세가 없다. */
+  var KINDS = [
+    { k:'apt',  n:'아파트',        t:'aptT', r:'aptR' },
+    { k:'off',  n:'오피스텔',      t:'offT', r:'offR' },
+    { k:'rh',   n:'연립·다세대',   t:'rhT',  r:'rhR'  },
+    { k:'silv', n:'아파트 분양권', t:'silv', r:null   }
+  ];
+  function KIND(k){ for(var i=0;i<KINDS.length;i++) if(KINDS[i].k===k) return KINDS[i]; return KINDS[0]; }
+  var DEALSEL = [
+    { k:'sale',   n:'매매',   c:'#c62828' },
+    { k:'jeonse', n:'전세',   c:'#1565c0' },
+    { k:'wolse',  n:'월세',   c:'#6a1b9a' }
+  ];
+  function DSEL(k){ for(var i=0;i<DEALSEL.length;i++) if(DEALSEL[i].k===k) return DEALSEL[i]; return DEALSEL[0]; }
   var OURS  = null;                   // { props:[], cts:[], custs:[] }
   var CUR   = null;                   // 지금 보고 있는 단지
   var BUSY  = false;
@@ -23812,13 +23828,33 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
   // ── 상태 저장 ───────────────────────────────────────────────────────
   function st(){
     return window.__djState = window.__djState || (function(){
-      var d = { sgg:'28185', mode:'recent', months:MONTHS, year:0, q:'' };
+      var d = { sgg:'28185', mode:'recent', months:MONTHS, year:0, q:'',
+                kind:'apt', deal:'sale', wAxis:'conv', rate:5.8, newOnly:true };
       try{ var s = localStorage.getItem('sd_danji_state'); if(s) d = JSON.parse(s); }catch(e){}
       if(!d.months) d.months = MONTHS;
       if(!d.mode)   d.mode = 'recent';          // 예전에 저장된 상태를 받아 준다
+      if(!d.kind)   d.kind = 'apt';
+      if(!d.deal)   d.deal = 'sale';
+      if(!d.wAxis)  d.wAxis = 'conv';
+      if(!d.rate)   d.rate = 5.8;
+      if(d.newOnly === undefined) d.newOnly = true;
       return d;
     })();
   }
+
+  /* ── 월세를 값으로 바꾸기 ──────────────────────────────────────────────
+     환산보증금 = 보증금 + 월세 × 12 ÷ 이율.  기존 탭(1112줄)과 같은 식·같은
+     기본 이율(5.8%)을 쓴다. 이 셈에는 엑셀 변환의 축 보정이 필요 없다 —
+     보증금과 월세만 있으면 되고 국토부가 둘 다 그대로 준다.
+     (엑셀 보정이 손보는 것은 분양평형·전용률이고, 그게 어긋나면 평당가가 틀어진다) */
+  function convDeposit(dep, mon, rate){
+    var r = (rate || st().rate || 5.8) / 100;
+    return Math.round((dep || 0) + (mon || 0) * 12 / r);
+  }
+  //  이 줄이 월세인가
+  function isWolse(r){ return (K().num(r.monthlyRent) || 0) > 0; }
+  //  갱신계약인가 — 전 계약을 이어받아 시세보다 낮게 찍히고, 갱신요구권을 쓰면 5% 상한에 묶인다
+  function isRenew(r){ return /갱신/.test(String(r.contractType || '')); }
   function stSave(){ try{ localStorage.setItem('sd_danji_state', JSON.stringify(st())); }catch(e){} }
 
   /* ── 기간 다루기 ──────────────────────────────────────────────────────
@@ -23996,7 +24032,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
   }
 
   // ── 실거래 받기 ─────────────────────────────────────────────────────
-  function cacheKey(){ return st().sgg + '|' + periodKey(); }
+  function cacheKey(){ return st().sgg + '|' + st().kind + '|' + periodKey(); }
 
   async function ensure(force){
     var S = K(); if(!S) throw new Error('S실거래가 모듈이 아직 준비되지 않았습니다');
@@ -24004,14 +24040,16 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     if(CACHE[ck] && !force) return CACHE[ck];    // 이미 받아 뒀으면 인증키도 필요 없다
     if(!S.key()) throw new Error('국토부 인증키가 없습니다 — S실거래가 탭에서 먼저 넣어 주세요');
 
+    var kd = KIND(st().kind);
     var yms = periodYms();
     var sname = S.sggName(st().sgg);
-    var done = 0, tot = yms.length * 2;
+    var done = 0, tot = yms.length * (kd.r ? 2 : 1);
     function step(){ done++; msg('실거래를 받는 중… ' + done + '/' + tot, 'go'); }
 
     var pair = await Promise.all([
-      S.fetchMany('aptT', st().sgg, yms, step),
-      S.fetchMany('aptR', st().sgg, yms, step).catch(function(){ return []; })
+      S.fetchMany(kd.t, st().sgg, yms, step),
+      kd.r ? S.fetchMany(kd.r, st().sgg, yms, step).catch(function(){ return []; })
+           : Promise.resolve([])
     ]);
     function prep(raw){
       raw.forEach(function(r){ r.__sggNm = sname; });
@@ -24020,6 +24058,54 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     CACHE[ck] = { trade: prep(pair[0]), rent: prep(pair[1]), at: new Date() };
     msg('');
     return CACHE[ck];
+  }
+
+  /* ── 지금 고른 거래에 맞는 줄을 골라 값을 다시 매긴다 ───────────────────
+     매매 : 거래금액 그대로
+     전세 : 보증금 (월세 0 인 줄만)
+     월세 : 환산보증금 또는 월세 금액 — 고른 축에 따라
+     값을 바꾸면 평당가도 같이 다시 셈해야 한다. 원본은 건드리지 않고 베껴 쓴다. */
+  function pickRows(D, nm){
+    var S = K(), s = st();
+    var src = (s.deal === 'sale') ? (D.trade || []) : (D.rent || []);
+    var out = [];
+    src.forEach(function(r){
+      if(!sameDanji(r._name, nm)) return;
+      if(s.deal !== 'sale'){
+        var w = isWolse(r);
+        if(s.deal === 'jeonse' && w) return;
+        if(s.deal === 'wolse' && !w) return;
+        if(s.newOnly && isRenew(r)) return;      // 갱신은 시세가 아니다
+      }
+      var o = {}, k;
+      for(k in r) if(Object.prototype.hasOwnProperty.call(r,k)) o[k] = r[k];
+      if(s.deal === 'wolse'){
+        var dep = S.num(r.deposit) || 0, mon = S.num(r.monthlyRent) || 0;
+        o._dep = dep; o._mon = mon;
+        o._amt = (s.wAxis === 'rent') ? mon : convDeposit(dep, mon, s.rate);
+        o._ppy = (o._py && o._amt) ? Math.round(o._amt / o._py) : '';
+      }
+      out.push(o);
+    });
+    return out;
+  }
+  //  매매 화면에서 전세가율을 내려면 전세 줄이 따로 필요하다
+  function jeonseRows(D, nm){
+    var s = st();
+    return (D.rent || []).filter(function(r){
+      return sameDanji(r._name, nm) && !isWolse(r) && !(s.newOnly && isRenew(r));
+    });
+  }
+  //  값 표기 — 월세를 「월세 금액」 축으로 보면 억이 아니라 만원이다
+  function amtTxt(v){
+    var S = K(), s = st();
+    if(v == null || v === '') return '—';
+    return (s.deal === 'wolse' && s.wAxis === 'rent') ? (fmtN(v) + '만') : S.eok(v);
+  }
+  function dealLabel(){
+    var s = st(), d = DSEL(s.deal).n;
+    if(s.deal === 'wolse') d += (s.wAxis === 'conv' ? ' (환산보증금)' : ' (월세 금액)');
+    return d;
   }
 
   //  받아 둔 자료에서 단지 목록을 뽑는다 (거래 많은 순)
@@ -24033,6 +24119,68 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     });
     return Object.keys(g).map(function(k){ return g[k]; })
       .sort(function(a,b){ return b.n - a.n; });
+  }
+
+  /*  종류·거래 고르는 줄. 분양권은 전매(매매)만 있어 전세·월세를 잠근다. */
+  function kindRow(){
+    var s = st(), kd = KIND(s.kind);
+    var h = '<div style="margin-top:9px;padding-top:9px;border-top:0.5px dashed var(--border);'
+      + 'display:flex;gap:14px;flex-wrap:wrap;align-items:center">';
+
+    h += '<div style="display:flex;gap:5px;align-items:center">'
+      + '<span style="font-size:10.5px;color:var(--text3)">종류</span>'
+      + KINDS.map(function(k){
+          var on = (s.kind === k.k);
+          return '<button onclick="djKind(\''+k.k+'\')" style="font-size:11.5px;padding:5px 12px;'
+            + 'border-radius:14px;cursor:pointer;border:1px solid '+(on?'transparent':'var(--border)')+';'
+            + 'background:'+(on?'var(--accent)':'transparent')+';color:'+(on?'#fff':'inherit')+'">'
+            + esc(k.n) + '</button>'; }).join('')
+      + '</div>';
+
+    h += '<div style="display:flex;gap:5px;align-items:center">'
+      + '<span style="font-size:10.5px;color:var(--text3)">거래</span>'
+      + DEALSEL.map(function(d){
+          var on = (s.deal === d.k), off = (!kd.r && d.k !== 'sale');
+          return '<button onclick="djDeal(\''+d.k+'\')" ' + (off ? 'disabled ' : '')
+            + 'title="' + (off ? esc(kd.n) + '은 전월세 자료가 없습니다' : '') + '" '
+            + 'style="font-size:11.5px;padding:5px 14px;border-radius:14px;'
+            + 'cursor:'+(off?'default':'pointer')+';opacity:'+(off?'.4':'1')+';'
+            + 'border:1px solid '+(on?'transparent':'var(--border)')+';'
+            + 'background:'+(on?d.c:'transparent')+';color:'+(on?'#fff':'inherit')+'">'
+            + esc(d.n) + '</button>'; }).join('')
+      + '</div>';
+
+    //  월세일 때만 — 값을 무엇으로 볼지, 이율은 몇 %인지
+    if(s.deal === 'wolse'){
+      h += '<div style="display:flex;gap:6px;align-items:center;background:var(--bg3);'
+        + 'border-radius:10px;padding:5px 11px">'
+        + '<span style="font-size:10.5px;color:var(--text3)">값 기준</span>'
+        + [['conv','환산보증금'],['rent','월세 금액']].map(function(x){
+            var on = (s.wAxis === x[0]);
+            return '<button onclick="djWAxis(\''+x[0]+'\')" style="font-size:11px;padding:4px 10px;'
+              + 'border-radius:12px;cursor:pointer;border:1px solid '+(on?'transparent':'var(--border)')+';'
+              + 'background:'+(on?'#6a1b9a':'transparent')+';color:'+(on?'#fff':'inherit')+'">'
+              + x[1] + '</button>'; }).join('')
+        + (s.wAxis === 'conv'
+            ? '<span style="font-size:10.5px;color:var(--text3);margin-left:4px">이율</span>'
+              + '<input id="dj-rate" type="number" value="'+s.rate+'" min="1" max="30" step="0.1" '
+              + 'onchange="djRate(this.value)" style="width:52px;padding:3px 6px;font-size:11px;'
+              + 'text-align:center;border:1px solid var(--border);border-radius:6px;'
+              + 'background:var(--card);color:var(--text)">'
+              + '<span style="font-size:10.5px;color:var(--text3)">% · 보증금 + 월세×12÷이율</span>'
+            : '')
+        + '</div>';
+    }
+    //  전월세는 갱신을 섞으면 시세가 낮게 나온다
+    if(s.deal !== 'sale' && kd.r){
+      h += '<label style="display:flex;gap:5px;align-items:center;font-size:11px;'
+        + 'color:var(--text2);cursor:pointer">'
+        + '<input type="checkbox" onchange="djNewOnly(this.checked)"'
+        + (s.newOnly ? ' checked' : '') + '> 신규 계약만'
+        + '<span style="font-size:10px;color:var(--text3)">(갱신은 전 계약을 이어받아 낮게 찍힙니다)</span>'
+        + '</label>';
+    }
+    return h + '</div>';
   }
 
   // ── 화면: 검색 ──────────────────────────────────────────────────────
@@ -24077,6 +24225,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
       +   '</optgroup></select></div>'
       + '<button class="dj-bs" onclick="djMap()" style="padding:8px 14px">🗺 지도에서 고르기</button>'
       + '</div>'
+      + kindRow()
       + '<div id="dj-sugbox"></div>'
       + '<div id="dj-mapwrap" style="display:none;margin-top:10px"></div>'
       + '<div id="dj-msg" style="font-size:11.5px;margin-top:8px;min-height:16px"></div>';
@@ -24109,6 +24258,25 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     if(CUR) djGoName(CUR.nm);
   };
   window.djMonths = function(v){ window.djPeriod('r' + v); };   // 예전 이름 (안내문 단추가 쓴다)
+
+  function reload(){ if(MAPON) djMap(true); if(CUR) djGoName(CUR.nm); }
+  window.djKind = function(v){
+    var s = st(), kd = KIND(v);
+    s.kind = v;
+    if(!kd.r && s.deal !== 'sale') s.deal = 'sale';   // 분양권은 전월세가 없다
+    stSave(); paint(); reload();
+  };
+  window.djDeal = function(v){
+    var s = st(), kd = KIND(s.kind);
+    if(!kd.r && v !== 'sale') return;
+    s.deal = v; stSave(); paint(); reload();
+  };
+  window.djWAxis  = function(v){ st().wAxis = v; stSave(); paint(); reload(); };
+  window.djRate   = function(v){
+    var r = parseFloat(v); if(!(r > 0)) return;
+    st().rate = Math.round(r * 10) / 10; stSave(); reload();
+  };
+  window.djNewOnly = function(v){ st().newOnly = !!v; stSave(); reload(); };
 
   window.djSuggest = function(){
     var box = document.getElementById('dj-sugbox'), q = document.getElementById('dj-q');
@@ -24160,15 +24328,17 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
       var D = await ensure(false);
 
       //  받은 자료에서 이름이 꼭 맞는 단지를 찾는다. 없으면 비슷한 이름을 찾는다.
+      //  이름은 매매·전월세 양쪽에서 모은다 — 전세만 신고된 단지도 있다.
       var names = {};
-      D.trade.forEach(function(r){ if(r._name) names[r._name] = 1; });
+      (D.trade || []).forEach(function(r){ if(r._name) names[r._name] = 1; });
+      (D.rent  || []).forEach(function(r){ if(r._name) names[r._name] = 1; });
       var hit = names[nm] ? nm : Object.keys(names).filter(function(x){ return sameDanji(x, nm); })[0];
       if(!hit){
         BUSY = false;
         return noHit(nm, D);
       }
-      var rows = D.trade.filter(function(r){ return r._name === hit; });
-      var rent = D.rent.filter(function(r){ return sameDanji(r._name, hit); });
+      var rows = pickRows(D, hit);                 // 고른 거래에 맞는 줄 + 값 다시 매김
+      var rent = jeonseRows(D, hit);               // 매매 화면의 전세가율용
       CUR = { nm:hit, sgg:st().sgg, rows:rows, rent:rent };
       recentAdd(hit, st().sgg);
       draw();
@@ -24189,8 +24359,11 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     body.innerHTML = '<div class="dj-card">'
       + '<div class="dj-h">🔎 ' + esc(nm) + ' 을(를) 찾지 못했습니다</div>'
       + '<div style="font-size:12.5px;color:var(--text2);line-height:1.7">'
-      +   '<b>' + esc(S.sggName(st().sgg)) + '</b> 의 <b>' + esc(periodLabel()) + '</b> 아파트 매매에서 '
-      +   '이 이름으로 신고된 거래가 없습니다 (받은 거래 ' + fmtN(D.trade.length) + '건).<br>'
+      +   '<b>' + esc(S.sggName(st().sgg)) + '</b> 의 <b>' + esc(periodLabel()) + '</b> '
+      +   esc(KIND(st().kind).n) + ' ' + esc(DSEL(st().deal).n) + ' 에서 '
+      +   '이 이름으로 신고된 거래가 없습니다 (받은 거래 매매 ' + fmtN((D.trade||[]).length)
+      +   '건 · 전월세 ' + fmtN((D.rent||[]).length) + '건).<br>'
+      +   '종류(아파트·오피스텔·연립·분양권)나 거래(매매·전세·월세)를 바꿔 보세요.<br>'
       +   '자료가 없는 것이지 단지가 없는 것이 아닙니다 — 거래가 뜸한 단지는 기간을 넓혀야 나옵니다.'
       + '</div>'
       + '<div style="margin-top:11px;display:flex;gap:6px;flex-wrap:wrap">'
@@ -24211,14 +24384,27 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
      좌표 창고(sd_geo)는 S실거래가 탭과 같은 것을 쓴다 — 한쪽에서 찾아 두면
      다른 쪽에서도 바로 쓴다. */
   function danjiAgg(){
-    var S = K(), D = CACHE[cacheKey()]; if(!D) return [];
+    var S = K(), s = st(), D = CACHE[cacheKey()]; if(!D) return [];
+    //  지도 핀도 지금 고른 거래(매매/전세/월세)의 값으로 찍는다
+    var src = (s.deal === 'sale') ? (D.trade || []) : (D.rent || []);
     var g = {};
-    D.trade.forEach(function(r){
+    src.forEach(function(r){
       if(!r._name) return;
+      if(s.deal !== 'sale'){
+        var w = isWolse(r);
+        if(s.deal === 'jeonse' && w) return;
+        if(s.deal === 'wolse' && !w) return;
+        if(s.newOnly && isRenew(r)) return;
+      }
       var o = g[r._name] = g[r._name] ||
         { name:r._name, dong:r.umdNm||'', jibun:r.jibun||'', amts:[], cnt:0 };
       o.cnt++;
-      if(r.cdealType !== 'O' && typeof r._amt === 'number') o.amts.push(r._amt);
+      var v = r._amt;
+      if(s.deal === 'wolse'){
+        var dep = S.num(r.deposit) || 0, mon = S.num(r.monthlyRent) || 0;
+        v = (s.wAxis === 'rent') ? mon : convDeposit(dep, mon, s.rate);
+      }
+      if(r.cdealType !== 'O' && typeof v === 'number') o.amts.push(v);
       if(!o.jibun && r.jibun) o.jibun = r.jibun;
     });
     return Object.keys(g).map(function(k){
@@ -24257,7 +24443,8 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
       '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;'
       +   'flex-wrap:wrap;margin-bottom:7px">'
       + '<span style="font-size:11.5px;color:var(--text3)">'
-      +   esc(S.sggName(st().sgg)) + ' · ' + esc(periodLabel()) + ' 거래가 있는 단지 '
+      +   esc(S.sggName(st().sgg)) + ' · ' + esc(KIND(st().kind).n) + ' '
+      +   esc(DSEL(st().deal).n) + ' · ' + esc(periodLabel()) + ' 거래가 있는 단지 '
       +   '<b style="color:var(--text)">' + list.length + '</b>곳 중 '
       +   '<b style="color:var(--text)">' + have.length + '</b>곳을 지도에 올렸습니다'
       +   (none ? ' · 좌표를 아직 안 찾은 곳 ' + none + '곳' : '')
@@ -24294,7 +24481,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
       var d = document.createElement('div');
       d.className = 'dj-pin';
       d.innerHTML = '<div class="dj-pin-n">' + esc(o.name.length > 9 ? o.name.slice(0,9) : o.name)
-        + '</div><div class="dj-pin-v">' + (o.med ? S.eok(o.med) : o.cnt + '건') + '</div>';
+        + '</div><div class="dj-pin-v">' + (o.med ? amtTxt(o.med) : o.cnt + '건') + '</div>';
       d.title = o.name + ' · 거래 ' + o.cnt + '건';
       d.onclick = (function(nm){ return function(){ djPick(nm); }; })(o.name);
       DJOVER.push(new kakao.maps.CustomOverlay({
@@ -24357,10 +24544,11 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     var r0 = CUR.rows[0] || {};
     var A  = S.aptFind(nm, r0.umdNm, r0.jibun);
     var FM = A ? S.aptFeeM2(A) : null;
-    var ST = S.stats(CUR.rows, CUR.rent);
+    //  전세가율은 매매 화면에서만 말이 된다 (전세 화면에서 전세÷전세를 낼 수는 없다)
+    var ST = S.stats(CUR.rows, st().deal === 'sale' ? CUR.rent : null);
     var HS = hsOf(nm);
     var mine = oursOf(nm);
-    var eok = S.eok;
+    var eok = amtTxt;                 // 고른 거래에 맞는 표기 (월세 금액 축이면 만원)
 
     var h = head(nm, r0, A, HS, mine)
           + spec(A, HS)
@@ -24415,7 +24603,9 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
       + '</div>'
       + '<div style="font-size:10.5px;color:var(--text3);margin-top:9px;padding-top:9px;'
       +   'border-top:0.5px dashed var(--border)">'
-      +   '국토교통부 실거래 · '+esc(periodLabel())
+      +   '국토교통부 실거래 · ' + esc(KIND(st().kind).n) + ' ' + esc(dealLabel())
+      +   ' · ' + esc(periodLabel())
+      +   (st().deal !== 'sale' && st().newOnly ? ' · 신규 계약만' : '')
       +   (D && D.at ? ' · 받은 시각 ' + D.at.toLocaleString('ko-KR') : '')
       + '</div></div>';
   }
@@ -24462,11 +24652,17 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
   }
   function summary(ST, eok){
     if(!ST.cnt) return '<div class="dj-card" style="font-size:12.5px;color:var(--text3)">'
-      + '이 기간에 매매 신고가 없습니다.</div>';
+      + '이 기간에 ' + esc(KIND(st().kind).n) + ' ' + esc(DSEL(st().deal).n)
+      + ' 신고가 없습니다.'
+      + (st().deal !== 'sale' && st().newOnly
+          ? ' (갱신 계약은 뺀 셈입니다 — 「신규 계약만」을 꺼 보세요)' : '')
+      + '</div>';
     var vp = ST.vsPeak;
     var vpTxt = vp==null ? '—' : (vp>0?'▲':'▼') + Math.abs(vp) + '%';
     var vpCol = vp==null ? 'var(--text)' : (vp>=0 ? '#c62828' : '#1565c0');
-    return '<div class="dj-card"><div class="dj-h">💰 시세 한눈에</div><div class="dj-kpi">'
+    return '<div class="dj-card"><div class="dj-h">💰 시세 한눈에 '
+      + '<span style="font-size:10.5px;font-weight:400;color:var(--text3)">'
+      + esc(KIND(st().kind).n) + ' ' + esc(dealLabel()) + '</span></div><div class="dj-kpi">'
       + kv('중위 거래가', eok(ST.med), '거래 '+ST.cnt+'건' + (ST.off?' · 해제 '+ST.off+'건':''))
       + kv('신고가', eok(ST.peak), ST.peakAt ? esc(ST.peakAt) : '', '#c62828')
       + kv('최저가', eok(ST.low),  ST.lowAt  ? esc(ST.lowAt)  : '', '#1565c0')
@@ -24594,7 +24790,8 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     var yrs = periodMonths() / 12;      // 기간이 몇 달이든 연 기준으로 환산한다
     var rate = Math.round(ST.live.length / h / yrs * 1000) / 10;   // 연 회전율 %
     var judge = rate >= 5 ? ['활발','#2e7d32'] : rate >= 2 ? ['보통','#e65100'] : ['뜸함','#c62828'];
-    return '<div class="dj-card"><div class="dj-h">🔁 거래 회전율</div><div class="dj-kpi">'
+    return '<div class="dj-card"><div class="dj-h">🔁 '
+      + (st().deal === 'sale' ? '거래 회전율' : '임대 회전율') + '</div><div class="dj-kpi">'
       + kv('연 회전율', rate + '%', fmtN(h)+'세대 중 연 '+Math.round(ST.live.length/yrs)+'건', judge[1])
       + kv('판정', judge[0], '5% 이상 활발 · 2% 미만 뜸함', judge[1])
       + kv('기간 내 거래', ST.live.length + '건', periodLabel())
@@ -24670,7 +24867,8 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
         전 면적형을 섞은 중위값과 견주면 59㎡ 매물이 「시세보다 20% 싸다」로 나온다.
         손님 앞에서 낼 수 없는 숫자다. */
     var cmp = [];
-    if(ST && ST.byArea && ST.byArea.length){
+    //  전세·월세 화면의 중위값에 매매 호가를 견주면 엉터리가 된다. 매매일 때만 낸다.
+    if(st().deal === 'sale' && ST && ST.byArea && ST.byArea.length){
       ST.byArea.forEach(function(a){
         if(!a.med) return;
         var rs = (g['매매'] || []).filter(function(o){
@@ -24849,35 +25047,29 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     var S = K(), D = CACHE[cacheKey()]; if(!D) return '';
     var me = S.stats(CUR.rows, null);
     if(!me.med) return '';
-    var g = {};
-    D.trade.forEach(function(r){
-      if(!r._name || r._name === nm || r.cdealType === 'O') return;
-      if(typeof r._amt !== 'number') return;
-      (g[r._name] = g[r._name] || []).push(r);
+    var g = {}, sel = st();
+    //  매매 화면이면 매매끼리, 전세 화면이면 전세끼리 견준다
+    danjiAgg().forEach(function(o){
+      if(o.name === nm || !o.med || o.amts.length < 3) return;
+      g[o.name] = o;
     });
     var out = Object.keys(g).map(function(k){
-      var rows = g[k];
-      if(rows.length < 3) return null;                 // 표본이 얇으면 뺀다
-      var m = S.med(rows.map(function(r){ return r._amt; }));
-      var p = S.med(rows.map(function(r){ return r._ppy; })
-                .filter(function(v){ return typeof v==='number'; }));
-      return { nm:k, med:m, ppy:p, cnt:rows.length,
-               gap: me.med ? Math.abs(m - me.med) : 1e12,
-               dong:(rows[0].umdNm||'') };
-    }).filter(Boolean).sort(function(a,b){ return a.gap - b.gap; }).slice(0, 8);
+      var o = g[k];
+      return { nm:k, med:o.med, ppy:null, cnt:o.amts.length,
+               gap: me.med ? Math.abs(o.med - me.med) : 1e12, dong:o.dong };
+    }).sort(function(a,b){ return a.gap - b.gap; }).slice(0, 8);
     if(!out.length) return '';
 
     return '<div class="dj-card"><div class="dj-h">🏘 값이 비슷한 단지'
       + ' <span style="font-size:10.5px;font-weight:400;color:var(--text3)">'
-      + '(같은 시군구 · 중위 거래가가 가까운 순 · 3건 이상)</span></div>'
+      + '(같은 시군구 · 같은 거래 · 중위값이 가까운 순 · 3건 이상)</span></div>'
       + '<div style="overflow-x:auto"><table><thead><tr>'
-      + '<th>단지</th><th>법정동</th><th>중위 거래가</th><th>평당</th><th>건수</th><th></th>'
+      + '<th>단지</th><th>법정동</th><th>중위 '+esc(DSEL(st().deal).n)+'</th><th>건수</th><th></th>'
       + '</tr></thead><tbody>'
       + out.map(function(o){
           return '<tr><td><b>'+esc(o.nm)+'</b></td>'
             + '<td style="text-align:left">'+esc(o.dong)+'</td>'
-            + '<td>'+S.eok(o.med)+'</td>'
-            + '<td>'+(o.ppy ? fmtN(o.ppy)+'만' : '—')+'</td>'
+            + '<td>'+amtTxt(o.med)+'</td>'
             + '<td>'+o.cnt+'</td>'
             + '<td><button class="dj-bs dj-noprint" onclick="djPick(\''
             + esc(o.nm).replace(/'/g,"\\'") + '\')">브리핑</button></td></tr>'; }).join('')
@@ -24887,12 +25079,15 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
   // ── 블로그용 복사 ───────────────────────────────────────────────────
   window.djCopy = function(){
     if(!CUR) return;
-    var S = K(), ST = S.stats(CUR.rows, CUR.rent), eok = S.eok;
+    var S = K(), ST = S.stats(CUR.rows, st().deal === 'sale' ? CUR.rent : null), eok = amtTxt;
     var r0 = CUR.rows[0] || {}, A = S.aptFind(CUR.nm, r0.umdNm, r0.jibun), HS = hsOf(CUR.nm);
     var L = [];
-    L.push('■ ' + CUR.nm + ' 시세 브리핑');
+    L.push('■ ' + CUR.nm + ' ' + KIND(st().kind).n + ' ' + DSEL(st().deal).n + ' 시세 브리핑');
     L.push('(' + [S.sggName(st().sgg), r0.umdNm||''].filter(Boolean).join(' ') + ' · 국토교통부 실거래 '
-      + periodLabel() + ' 기준)');
+      + periodLabel() + ' 기준'
+      + (st().deal !== 'sale' && st().newOnly ? ' · 신규 계약만' : '')
+      + (st().deal === 'wolse' && st().wAxis === 'conv'
+          ? ' · 환산보증금 = 보증금 + 월세×12÷' + st().rate + '%' : '') + ')');
     L.push('');
     if(A){
       var sp = [];
