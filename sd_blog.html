@@ -1029,6 +1029,94 @@ ${PLATFORM_NOTE[$('#optPlatform').value]}
 JSON만 출력하세요.`;
 }
 
+/* ── 공인중개사법 표시·광고 명시사항 ────────────────────────────────
+   시행령 제17조의2 — 인터넷으로 중개대상물을 광고할 때 반드시 적어야
+   하는 항목이다. 빠뜨리면 과태료 대상이라, 비어 있으면 글에 [직접 확인]
+   으로 남기고 발행 전 확인 목록 맨 위로 올린다.
+   ⚖ 가 붙은 것은 끌 수 없다.                                        */
+const LEGAL = [
+  { k:'addr',  n:'소재지',           law:1, from:'addr' },
+  { k:'kind',  n:'중개대상물 종류',   law:1, from:'cls',  sel:['아파트','오피스텔','연립·다세대','단독·다가구','상가','사무실','토지'] },
+  { k:'deal',  n:'거래 형태',         law:1, sel:['매매','전세','월세','단기임대'] },
+  { k:'price', n:'가격 (보증금/월세)', law:1, ph:'예: 8억 5,000만 / 보증금 4억·월 60만' },
+  { k:'area',  n:'전용면적 (㎡)',      law:1, ph:'예: 84.87' },
+  { k:'floor', n:'해당 층 / 총 층',    law:1, ph:'예: 12층 / 43층' },
+  { k:'dir',   n:'방향 (거실 기준)',   law:1, sel:['남향','남동향','남서향','동향','서향','북동향','북서향','북향'] },
+  { k:'rooms', n:'방 / 욕실 수',       law:1, ph:'예: 3 / 2' },
+  { k:'move',  n:'입주 가능일',        law:1, ph:'예: 즉시 / 2026.11 협의' },
+  { k:'park',  n:'주차 대수',          law:1, ph:'예: 세대당 1.3대 / 총 2,802대' },
+  { k:'appr',  n:'사용승인일',         law:1, from:'y' },
+  { k:'fee',   n:'관리비 (월)',        law:1, from:'feeNote', ph:'예: 약 17만 원 (공용)' },
+  { k:'hh',    n:'총 세대수',          law:0, from:'h' },
+  { k:'heat',  n:'난방 방식',          law:0, from:'heat' },
+];
+const legalVals = LS.get('legal', {});
+
+/* 단지 사전이 채워 줄 수 있는 값 */
+function legalAuto(key){
+  const o = script.apt; if(!o) return '';
+  switch(key){
+    case 'addr': return script.addr || (o.d + ' ' + ((o.j||[])[0]||''));
+    case 'cls':  return o.cls || '';
+    case 'y':    return o.y ? String(o.y).slice(0,10).replace(/-/g,'.') : '';
+    case 'h':    return o.h ? o.h.toLocaleString() + '세대' : '';
+    case 'heat': return o.heat || '';
+    case 'feeNote': {
+      if(!o.fee || !o.k) return '';
+      const a = 84 * o.k;
+      return '전용 84㎡ 기준 월 공용 약 ' + (Math.round(o.fee.pub*a/100)*100).toLocaleString() + '원'
+           + ' (' + o.fee.ym.slice(0,4) + '.' + o.fee.ym.slice(4) + ' 기준·어림)';
+    }
+  }
+  return '';
+}
+function legalOf(it){ return (legalVals[it.k] || '').trim() || legalAuto(it.from); }
+function legalMissing(){ return LEGAL.filter(it => it.law && !legalOf(it)); }
+
+function legalRows(){
+  return LEGAL.map(it => {
+    const auto = legalAuto(it.from), v = (legalVals[it.k]||'');
+    const shown = v || auto;
+    const badge = it.law ? '<span title="공인중개사법 필수" style="color:#b8860b;font-weight:700">⚖</span> ' : '';
+    const tag = auto && !v
+      ? '<span style="font-size:10px;color:var(--brand)">단지 자료 ✓</span>'
+      : (shown ? '' : '<span style="font-size:10px;color:#c92a4a">비어 있음</span>');
+    const input = it.sel
+      ? '<select data-lk="' + it.k + '"><option value="">— 고르세요 —</option>'
+        + it.sel.map(x => '<option' + (v===x?' selected':'') + '>' + x + '</option>').join('') + '</select>'
+      : '<input data-lk="' + it.k + '" value="' + esc(v) + '" placeholder="'
+        + esc(it.ph || (auto ? auto : '')) + '">';
+    return '<tr><td style="padding:4px 6px;font-size:11.5px;white-space:nowrap">' + badge + it.n + '</td>'
+      + '<td style="padding:4px 6px">' + input + '</td>'
+      + '<td style="padding:4px 6px;text-align:right">' + tag + '</td></tr>';
+  }).join('');
+}
+function legalPaint(){
+  const box = document.getElementById('legalBox'); if(!box) return;
+  const miss = legalMissing();
+  const warn = document.getElementById('legalWarn');
+  if(warn) warn.innerHTML = miss.length
+    ? '<b>⚖ 법정 필수 ' + miss.length + '개가 비었습니다</b> — ' + miss.map(x=>x.n).join(', ')
+      + '<br><span style="font-weight:400">비워 두면 글에 <b>[직접 확인]</b> 으로 남고, 발행 전 확인 목록 맨 위에 올라갑니다.</span>'
+    : '<b>⚖ 법정 명시사항이 모두 찼습니다.</b> 표시·광고 규정(시행령 제17조의2) 기준입니다.';
+  if(warn) warn.className = 'notice ' + (miss.length ? 'warn' : 'ok');
+}
+function legalGrab(host){
+  host.querySelectorAll('[data-lk]').forEach(i => { legalVals[i.dataset.lk] = i.value.trim(); });
+  LS.set('legal', legalVals);
+}
+/* 프롬프트에 넣을 매물 제원 — 빈 법정 항목은 [직접 확인] 으로 */
+function legalFacts(){
+  const L = [], miss = [];
+  LEGAL.forEach(it => {
+    const v = legalOf(it);
+    if(v) L.push('· ' + it.n + ': ' + v);
+    else if(it.law){ L.push('· ' + it.n + ': [직접 확인]'); miss.push(it.n); }
+  });
+  if(!L.length) return { text:'', miss:[] };
+  return { text: '[매물 제원 — 공인중개사법 표시·광고 명시사항]\n' + L.join('\n'), miss };
+}
+
 /* ══ 대본만 넣으세요 ══════════════════════════════════════════════
    주제를 고르는 대신, 가진 재료(원고·매물정보·유튜브 대본)를 그대로
    넣으면 블로그 글로 만들어 준다. 사진은 AI 가 읽어서 글에 쓰고,
@@ -1097,10 +1185,22 @@ function aptFacts(o){
 }
 
 const SCRIPT_KINDS = {
-  '매물': '매물 광고 글. 이 물건을 찾는 손님이 읽고 연락하고 싶어지게. 다만 과장 없이.',
+  '검수': '작성자가 이미 써 둔 글입니다. 새로 지어내지 말고 **고쳐 쓰기**를 하세요. '
+        + '맞춤법·띄어쓰기·오타를 바로잡고, 앞뒤가 안 맞는 대목을 정리하고, 법령·제도 설명이 틀렸으면 '
+        + '고치되 무엇을 왜 고쳤는지 checkFacts 에 적습니다. 원글의 목소리와 주장은 그대로 둡니다.',
+  '매물': '매물 광고 글. 이 물건을 찾는 손님이 읽고 연락하고 싶어지게. 다만 과장 없이. '
+        + '공인중개사법 표시·광고 명시사항을 빠짐없이 담습니다.',
+  '사진매물': '주소와 현장 사진만 가지고 쓰는 매물 글. 사진을 한 장씩 차례로 읽어 '
+        + '무엇이 보이는지 쉬운 말로 풀어 주고, 그 사진이 그대로 본문에 들어갑니다.',
+  '대본': '유튜브 대본이나 자막을 글로 옮긴 것. 구어체를 글말로 다듬되 내용과 순서는 그대로.',
   '정보': '정보·설명 글. 제도·절차·시세 흐름을 풀어 준다.',
-  '대본': '유튜브 대본을 글로 옮긴 것. 말투를 글말로 다듬되 내용은 그대로.',
-  '후기': '현장·상담 후기. 겪은 일을 이야기처럼.',
+};
+const KIND_LABEL = {
+  '검수':  ['📝 원고 검수', '내가 쓴 글 · 메모<br>오타 · 맥락 · 법령까지 보고 다시 씀'],
+  '매물':  ['🏠 매물 광고', '네이버 매물 정보 등<br>공인중개사법 명시사항 점검'],
+  '사진매물':['📷 사진만으로 매물', '주소 + 현장 사진만<br>사진을 읽어 쉬운 말로 설명'],
+  '대본':  ['🎬 유튜브 대본', '자막 · 변환 텍스트<br>구어체를 글말로 정리'],
+  '정보':  ['📚 정보·설명', '제도 · 절차 · 시세<br>풀어서 설명하는 글'],
 };
 
 function scriptRows(){
@@ -1149,9 +1249,15 @@ async function scriptTakeFiles(list){
 
 function openScript(){
   const a = state.author;
-  const kinds = Object.keys(SCRIPT_KINDS).map(k =>
-    '<label><input type="radio" name="skind" value="' + k + '"' + (script.kind===k?' checked':'') + '><span>'
-    + ({ '매물':'매물 광고', '정보':'정보·설명', '대본':'유튜브 대본', '후기':'현장 후기' }[k]) + '</span></label>').join('');
+  const kinds = Object.keys(SCRIPT_KINDS).map(k => {
+    const L = KIND_LABEL[k], on = script.kind === k;
+    return '<label style="display:block;border:1.5px solid ' + (on?'var(--brand)':'var(--line)')
+      + ';border-radius:9px;padding:8px 10px;cursor:pointer;'
+      + (on?'background:rgba(8,145,178,.06)':'') + '">'
+      + '<input type="radio" name="skind" value="' + k + '"' + (on?' checked':'') + ' style="display:none">'
+      + '<div style="font-size:12px;font-weight:700">' + L[0] + '</div>'
+      + '<div style="font-size:10.5px;opacity:.7;line-height:1.45;margin-top:2px">' + L[1] + '</div></label>';
+  }).join('');
 
   const close = modal('대본만 넣으세요', `
     <div class="notice ok">가진 재료를 그대로 넣으면 블로그 글로 만들어 드립니다.
@@ -1159,7 +1265,8 @@ function openScript(){
       재료에 없는 사실은 <b>지어내지 않고</b>, 빠진 항목은 발행 전 확인 목록에 올립니다.<br>
       사람 이름·주민등록번호·계좌번호는 재료에 있어도 <b>글에 옮기지 않습니다</b>.</div>
 
-    <div class="field"><label>어떤 글인가요</label><div class="radios">${kinds}</div></div>
+    <div class="field"><label>무엇을 넣으시나요</label>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:7px">${kinds}</div></div>
 
     <div class="field"><label>매물 주소 <span style="font-weight:400;opacity:.6">(매물 광고일 때만)</span></label>
       <div style="display:flex;gap:6px">
@@ -1190,6 +1297,17 @@ function openScript(){
           <b>화면을 캡처해 사진으로 넣거나</b> 내용을 복사해 붙여넣어 주세요.</div>
       </div>
       <div id="scriptRows" style="margin-top:8px">${scriptRows()}</div>
+    </div>
+
+    <div id="legalWrap" class="field" style="display:none">
+      <label>⚖ 매물 제원 — 공인중개사법 표시·광고 명시사항</label>
+      <div id="legalWarn" class="notice warn"></div>
+      <div id="legalBox" style="max-height:290px;overflow-y:auto;border:0.5px solid var(--line);border-radius:9px">
+        <table style="width:100%;border-collapse:collapse"><tbody id="legalBody"></tbody></table>
+      </div>
+      <div class="hint">⚖ 는 인터넷 광고에 반드시 적어야 하는 항목입니다(시행령 제17조의2).
+        단지 자료를 붙이면 소재지·종류·사용승인일·세대수·난방·관리비가 저절로 찹니다.
+        여기 넣은 값은 이 컴퓨터에 남아 다음에도 그대로 나옵니다.</div>
     </div>
 
     <div class="field"><label>더 시킬 것 <span style="font-weight:400;opacity:.6">(없으면 비워 두세요)</span></label>
@@ -1228,6 +1346,32 @@ function openScript(){
                        scriptTakeFiles(e.dataTransfer.files); };
   scriptPaint();
 
+  /* 매물 계열일 때만 법정 점검표를 보인다 */
+  function legalSync(){
+    const k = host.querySelector('[name=skind]:checked');
+    const kind = k ? k.value : '매물';
+    const on = (kind === '매물' || kind === '사진매물');
+    host.querySelector('#legalWrap').style.display = on ? '' : 'none';
+    if(on){
+      host.querySelector('#legalBody').innerHTML = legalRows();
+      host.querySelectorAll('[data-lk]').forEach(i => i.onchange = ()=>{
+        legalGrab(host); host.querySelector('#legalBody').innerHTML = legalRows();
+        host.querySelectorAll('[data-lk]').forEach(x => x.onchange = i.onchange);
+        legalPaint();
+      });
+      legalPaint();
+    }
+  }
+  host.querySelectorAll('[name=skind]').forEach(r => r.onchange = ()=>{
+    host.querySelectorAll('[name=skind]').forEach(x => {
+      const lb = x.closest('label');
+      if(lb){ lb.style.borderColor = x.checked ? 'var(--brand)' : 'var(--line)';
+              lb.style.background  = x.checked ? 'rgba(8,145,178,.06)' : ''; }
+    });
+    legalSync();
+  });
+  legalSync();
+
   const aptBox = host.querySelector('#scriptApt');
   function showApt(){
     if(!script.apt) return;
@@ -1253,7 +1397,10 @@ function openScript(){
         + '사전에 담긴 곳은 지금 <b>송도동</b>뿐입니다. 지번(예: 송도동 18-6)이나 단지명을 넣어 보세요.';
       return;
     }
-    script.apt = o; showApt(); toast(o.n + ' 자료를 붙였습니다');
+    script.apt = o; showApt();
+    if(!script.addr) script.addr = q;
+    legalSync();
+    toast(o.n + ' 자료를 붙였습니다 — 법정 항목이 저절로 찼습니다');
   };
 
   function grab(){
@@ -1264,12 +1411,18 @@ function openScript(){
     script.extra = host.querySelector('#scriptExtra').value.trim();
     const k = host.querySelector('[name=skind]:checked');
     script.kind = k ? k.value : '매물';
+    if(host.querySelector('[data-lk]')) legalGrab(host);
   }
   host.querySelector('[data-cancel]').onclick = ()=>{ grab(); close(); };
   host.querySelector('[data-go]').onclick = ()=>{
     grab();
     if(!script.text.trim() && !script.imgs.length && !script.files.length)
       return toast('재료를 넣어 주세요 — 글을 붙여넣거나 사진을 올리면 됩니다.', true);
+    const miss = (script.kind === '매물' || script.kind === '사진매물') ? legalMissing() : [];
+    if(miss.length >= 3 && !confirm(
+        '⚖ 법정 필수 항목 ' + miss.length + '개가 비었습니다.\n\n'
+        + miss.map(x=>'· '+x.n).join('\n')
+        + '\n\n비워 두면 글에 [직접 확인] 으로 남습니다.\n그대로 만들까요?')) return;
     close(); generateFromScript();
   };
 }
@@ -1282,7 +1435,8 @@ function scriptPrompt(){
     '간결':'군더더기 없이 정보 위주로. 짧은 문장.' }[tone];
   const n = script.imgs.length;
   const files = script.files.map(f => '--- ' + f.name + ' ---\n' + f.text).join('\n\n');
-  const isAd = script.kind === '매물';
+  const isAd = (script.kind === '매물' || script.kind === '사진매물');
+  const LF = isAd ? legalFacts() : { text:'', miss:[] };
 
   return `당신은 대한민국 부동산 블로그 글을 대신 써 주는 전문 작가입니다.
 아래 작성자가 가진 **재료**를 블로그 글 한 편으로 만들어 주세요.
@@ -1297,6 +1451,8 @@ ${script.addr ? `[매물 주소] ${script.addr}${script.dong ? ' / ' + script.do
 
 [재료 — 작성자가 넣은 글]
 ${script.text.trim() || '(글로 넣은 것은 없음)'}
+
+${LF.text ? LF.text + '\n※ [직접 확인] 로 된 항목은 아직 안 채워진 것입니다. 지어내지 말고 본문에도 「[직접 확인]」 이라고 그대로 두세요.' : ''}
 
 ${script.apt ? aptFacts(script.apt) + '\n※ 이 단지 자료는 공식 통계라 그대로 써도 됩니다. 관리비는 어림값이라고 밝혀 주세요.' : ''}
 
@@ -1329,7 +1485,12 @@ ${n ? `[재료 — 사진 ${n}장]
    재료에 적힌 것만 씁니다. 재료에 없으면 그 항목을 아예 빼거나 "확인 필요"로 남깁니다.
 2. 재료에서 확인되지 않아 뺀 항목은 checkFacts 에 "무엇이 빠졌는지"로 적어 주세요.
 3. 추측을 사실처럼 쓰지 마세요. "~로 보입니다", "~일 수 있습니다" 같은 표현도 근거가 재료에 있어야 합니다.
+${LF.miss.length ? `3-1. **아직 안 채워진 법정 항목 ${LF.miss.length}개** — ${LF.miss.join(', ')} — 는
+   본문에 「[직접 확인]」 이라고 그대로 적고, checkFacts 의 **맨 앞**에
+   "⚖ (항목명) 은(는) 인터넷 광고에 반드시 적어야 합니다 — 채워 주세요" 로 올리세요.` : ''}
 ${isAd ? `4. 매물 광고입니다. 과장 광고 표현(최고·최저가·무조건·확실·급매 남발)을 쓰지 마세요.
+   위 [매물 제원] 의 항목은 하나도 빠뜨리지 말고 제원 표에 담으세요 — 공인중개사법 시행령
+   제17조의2 가 인터넷 광고에 적도록 정한 것들입니다.
 5. 동·호수는 그대로 쓰지 말고 "중층", "고층" 정도로만 쓰세요. 개인정보와 보안 때문입니다.
 6. 글 맨 끝에 아래 법정 표기를 그대로 담은 p 블록을 하나 두세요 — 표시·광고 규정 사항입니다.
    「${a.office}${a.regno ? ' | 등록번호 ' + a.regno : ''}${a.addr ? ' | ' + a.addr : ''}${a.phone ? ' | ' + a.phone : ''} | 개업공인중개사 ${a.name}」
@@ -1339,8 +1500,13 @@ ${isAd ? `4. 매물 광고입니다. 과장 광고 표현(최고·최저가·무
 ${script.extra ? `[작성자가 더 시킨 것 — 아래를 반드시 지키세요]\n${script.extra}\n` : ''}
 
 [글 짜임]
-${isAd ? `- 첫 소제목 바로 아래에 매물 제원 표를 하나 둡니다. 재료에서 확인된 항목만 행으로 넣으세요
-  (전용면적·공급면적·층·방향·입주 가능일·매매가 또는 보증금/월세·관리비 등). 없는 항목은 행 자체를 빼세요.
+${isAd ? `- 첫 소제목 바로 아래에 매물 제원 표를 둡니다. 위 [매물 제원] 의 항목을 그대로 행으로 옮기세요
+  ([직접 확인] 인 것도 그대로 적습니다 — 무엇이 비었는지 손님도 알아야 합니다).
+` : ''}${script.kind === '사진매물' ? `- 사진이 재료의 전부입니다. 한 장씩 차례로 "무엇이 보이는지" 를 쉬운 말로 풀어 주세요.
+  거실·주방·방·욕실·베란다·조망·현관처럼 공간을 짚어 주고, 사진에서 읽히는 것만 말합니다.
+  사진에 없는 것(층수·향·연식 등)은 위 [매물 제원] 에 있는 값만 쓰고, 없으면 쓰지 않습니다.
+` : ''}${script.kind === '검수' ? `- 원글을 다시 쓰는 것입니다. 소제목 구성이 이미 있으면 살리고, 없으면 내용에 맞게 나눕니다.
+  고친 대목(맞춤법·사실관계·법령)은 checkFacts 에 "무엇을 어떻게 고쳤는지" 로 적습니다.
 ` : ''}- 첫 문단은 손님이 실제로 묻는 질문이나 현장의 장면에서 시작합니다. 사전식 정의로 시작하지 않습니다.
 - 소제목(h2)은 4~7개. 재료의 흐름을 따르되 읽는 사람이 찾기 쉬운 말로.
 - 작성자가 1인칭으로 말합니다("제가", "저희 사무소에서는").
@@ -1380,7 +1546,7 @@ async function generateFromScript(){
   const n = script.imgs.length;
   $('#work').innerHTML = `<div class="card"><div class="progress">
       <div class="big"><span class="spin"></span> 넣어 주신 재료로 글을 쓰고 있습니다</div>
-      <div class="sm">${esc(script.kind === '매물' ? '매물 광고' : script.kind === '대본' ? '유튜브 대본 정리' : script.kind === '후기' ? '현장 후기' : '정보·설명 글')}${n ? ' · 사진 ' + n + '장 읽는 중' : ''}<br>
+      <div class="sm">${esc((KIND_LABEL[script.kind]||['글'])[0])}${n ? ' · 사진 ' + n + '장 읽는 중' : ''}<br>
         보통 30~90초 걸립니다. 창을 닫지 마세요.</div></div></div>`;
   try{
     const raw = await callAI(scriptPrompt(), { json:true, maxTokens:16000, images: script.imgs });
@@ -3019,7 +3185,7 @@ function vdPaintLen(){ var e=document.getElementById('vdLen'); if(e) e.textConte
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.09.25-2';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.09.25-3';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_blog.html';      // 이 파일 이름
   var SD_NAME = '블로그 스튜디오';      // 사람이 부르는 이름
 
