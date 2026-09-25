@@ -19353,7 +19353,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.09.25-3';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.09.25-5';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_data.html';      // 이 파일 이름
   var SD_NAME = '실거래가';      // 사람이 부르는 이름
 
@@ -23705,6 +23705,10 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     hav:hav, turnover:turnover,
     // 단지 사전 (sd_apt.json)
     aptLoad:aptLoad, aptFind:aptFind, aptFeeM2:aptFeeM2, aptFeeOf:aptFeeOf,
+    // 지도·좌표 (단지 브리핑 탭이 같은 좌표 창고를 함께 쓴다)
+    kakaoReady:kakaoReady, kakaoAddr:kakaoAddr, kakaoFind:kakaoFind,
+    inRegion:inRegion, geoBad:geoBad, gkey:gkey, saveGeo:saveGeo,
+    sget:sget, sset:sset,
     // 지금 상태
     key:  function(){ return KEY;  },
     last: function(){ return LAST; },
@@ -23754,6 +23758,14 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 #dj-root .dj-sug div{padding:9px 13px;font-size:12.5px;cursor:pointer;border-bottom:0.5px solid var(--border)}
 #dj-root .dj-sug div:hover{background:var(--bg3)}
 #dj-root .dj-kpi{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+/* 지도 핀 — 두 줄로 작게. 옆 단지와 덜 겹치고 지도를 덜 가린다 */
+#dj-root .dj-pin{width:80px;padding:3px 2px;border-radius:7px;background:#fff;
+  border:1px solid rgba(0,0,0,.18);box-shadow:0 2px 6px rgba(0,0,0,.18);
+  text-align:center;cursor:pointer;font-family:var(--font);line-height:1.15;
+  transform:translateX(-50%)}
+#dj-root .dj-pin:hover{border-color:var(--accent);box-shadow:0 3px 10px rgba(0,0,0,.28);z-index:9}
+#dj-root .dj-pin-n{font-size:9px;color:#444;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#dj-root .dj-pin-v{font-size:10.5px;font-weight:800;color:#0891b2}
 #dj-root .dj-kv{background:var(--bg3);border-radius:10px;padding:11px 13px}
 #dj-root .dj-kv b{display:block;font-size:18px;font-weight:700;margin-top:3px}
 #dj-root .dj-kv span{font-size:10.5px;color:var(--text3)}
@@ -23777,6 +23789,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
   var CUR   = null;                   // 지금 보고 있는 단지
   var BUSY  = false;
   var CH    = null;                   // 흐름 그래프
+  var MAPON = false, DJMAP = null, DJOVER = [];   // 단지 고르는 지도
 
   function K(){ return window.sdKR && window.sdKR.stats ? window.sdKR : null; }
   function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g, function(c){
@@ -23799,13 +23812,53 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
   // ── 상태 저장 ───────────────────────────────────────────────────────
   function st(){
     return window.__djState = window.__djState || (function(){
-      var d = { sgg:'28185', months:MONTHS, q:'' };
+      var d = { sgg:'28185', mode:'recent', months:MONTHS, year:0, q:'' };
       try{ var s = localStorage.getItem('sd_danji_state'); if(s) d = JSON.parse(s); }catch(e){}
       if(!d.months) d.months = MONTHS;
+      if(!d.mode)   d.mode = 'recent';          // 예전에 저장된 상태를 받아 준다
       return d;
     })();
   }
   function stSave(){ try{ localStorage.setItem('sd_danji_state', JSON.stringify(st())); }catch(e){} }
+
+  /* ── 기간 다루기 ──────────────────────────────────────────────────────
+     두 가지 방식을 함께 쓴다.
+       recent : 최근 N개월 (오늘부터 거꾸로)
+       year   : 그 해 1월부터 — 올해면 이번 달까지, 지난해면 12월까지
+     회전율처럼 「연 기준」으로 환산하는 셈이 있어 실제 개월 수가 꼭 필요하다. */
+  function nowYm(){ var d = new Date();
+    return { y:d.getFullYear(), m:d.getMonth()+1 }; }
+  function periodYms(){
+    var S = K(), s = st();
+    if(s.mode === 'year' && s.year){
+      var n = nowYm();
+      var last = (s.year >= n.y) ? n.m : 12;
+      var out = [];
+      for(var m=1; m<=last; m++) out.push(String(s.year) + String(m).padStart(2,'0'));
+      return out;
+    }
+    var to = S.thisYm(), from = S.addYm(to, -(s.months - 1));
+    return S.ymRange(from, to);
+  }
+  function periodMonths(){ return periodYms().length || 1; }
+  function periodLabel(){
+    var s = st();
+    if(s.mode === 'year' && s.year){
+      var n = nowYm(), last = (s.year >= n.y) ? n.m : 12;
+      return s.year + '년 (1~' + last + '월)';
+    }
+    return '최근 ' + s.months + '개월';
+  }
+  function periodKey(){
+    var s = st();
+    return (s.mode === 'year' && s.year) ? ('y' + s.year) : ('r' + s.months);
+  }
+  //  기간 고르개에 넣을 연도 목록 — 실거래 공개가 2006년부터라 그 아래로는 안 내려간다
+  function yearList(){
+    var y = nowYm().y, out = [];
+    for(var i=0; i<6 && (y-i) >= 2006; i++) out.push(y - i);
+    return out;
+  }
   function recent(){ try{ return JSON.parse(localStorage.getItem(RECENT)||'[]'); }catch(e){ return []; } }
   function recentAdd(nm, sgg){
     var l = recent().filter(function(x){ return x.nm !== nm; });
@@ -23856,8 +23909,9 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
   function oursOf(nm){
     var O = OURS || { props:[], cts:[], custs:[], failed:[] };
     return {
-      props: O.props.filter(function(p){
-        return !p.naverImport && sameDanji(p.complexName, nm); }),
+      /*  자사만 거르지 않는다 — 손님에게 브리핑할 때 자사냐 타사냐는 중요하지 않다.
+          타사 매물도 공동중개로 거의 다 계약이 된다. 가진 것을 다 보여 준다. */
+      props: O.props.filter(function(p){ return sameDanji(p.complexName, nm); }),
       cts:   O.cts.filter(function(c){ return sameDanji(c.bldg, nm); }),
       custs: O.custs.filter(function(c){
         return sameDanji(c.cx, nm) || sameDanji(c.propCx, nm) || sameDanji(c.ctCx, nm); }),
@@ -23865,8 +23919,84 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     };
   }
 
+  // ── 나와 있는 매물 (APT · OP/생숙 · 상가/사무실 전부) ────────────────
+  /*  이 세 갈래는 데이터관리가 이미 들고 있다 — 다시 받지 않는다.
+      G.naverData / G.naverOpData / G.naverSanggaData
+      자사·타사가 섞여 있고, 그게 맞다. 중개사 이름으로 자사만 표시만 해 준다. */
+  function listingSets(){
+    var G = window.G || {};
+    return [
+      { k:'apt', n:'아파트',        rows:G.naverData        || null, tab:6 },
+      { k:'op',  n:'오피스텔·생숙', rows:G.naverOpData      || null, tab:7 },
+      { k:'sg',  n:'상가·사무실',   rows:G.naverSanggaData  || null, tab:8 }
+    ];
+  }
+  function isOurs(agent){ return /송도제일/.test(String(agent||'')); }
+  function dealKind(v){
+    var s = String(v||'').replace(/\s/g,'');
+    if(/매매|분양권/.test(s)) return '매매';
+    if(/월세|임대/.test(s))   return '월세';
+    if(/전세/.test(s))        return '전세';
+    return s || '기타';
+  }
+  /*  나와 있는 매물을 한 덩어리로 모은다.
+      loaded 가 false 인 갈래는 「0건」이 아니라 「안 읽음」이다 — 반드시 구별해서 말한다. */
+  function listingsOf(nm){
+    var out = { rows:[], missing:[], ours:0 };
+    listingSets().forEach(function(s){
+      if(!s.rows){ out.missing.push(s); return; }
+      s.rows.forEach(function(r){
+        var name = r.단지명 || r.건물명 || '';
+        if(!sameDanji(name, nm)) return;
+        var o = {
+          cat:  s.n,
+          deal: dealKind(r.거래유형 || r.거래구분),
+          sqm:  K().num(r.전용) || null,
+          py:   r.분양평형 || null,
+          amt:  K().num(r.호가) || null,          // 만원
+          mon:  K().num(r.월세) || null,          // 만원
+          floor:r.층 || '', dong:r.동 || '', dir: r.방향 || '',
+          agent:r.중개사 || '', dup: K().num(r.중복등록수) || 0,
+          at:   r.입력일 || '', memo: r.특이사항 || '',
+          mine: isOurs(r.중개사), src:'네이버'
+        };
+        if(o.mine) out.ours++;
+        out.rows.push(o);
+      });
+    });
+    //  사무소에 직접 접수해 아직 네이버에 안 올린 매물도 같이 센다
+    (OURS && OURS.props ? OURS.props : []).forEach(function(p){
+      if(p.naverImport) return;                  // 네이버에서 들여온 것은 위에서 이미 셌다
+      if(!sameDanji(p.complexName, nm)) return;
+      var amt = null, mon = null, deal = '기타';
+      if(p.pm){ amt = wonMan(p.pm); deal = '매매'; }
+      else if(p.ps){ amt = wonMan(p.ps); deal = '전세'; }
+      else if(p.gw){ mon = wonMan(p.gw); deal = '월세'; }
+      out.rows.push({
+        cat: String(p.propertyType||'').indexOf('상가')>=0 ? '상가·사무실'
+           : /오피스텔|생활숙박|생숙/.test(String(p.propertyType||'')) ? '오피스텔·생숙' : '아파트',
+        deal: deal, sqm: K().num(p.areaInfo) || null, py: null,
+        amt: amt, mon: mon, floor: p.floorInfo||'', dong: p.unitInfo||'', dir: p.direction||'',
+        agent: '송도제일(접수)', dup: 0, at: p.receiveDate||'', memo: p.memo||'',
+        mine: true, src:'사무소 접수'
+      });
+      out.ours++;
+    });
+    return out;
+  }
+  /*  「8억 3,000」·「4억」 같이 적힌 값을 만원 숫자로 바꾼다. */
+  function wonMan(v){
+    var s = String(v==null?'':v).replace(/\s|,/g,'');
+    if(!s) return null;
+    var m = s.match(/^(\d+(?:\.\d+)?)억(\d+)?/);
+    if(m) return Math.round(parseFloat(m[1])*10000) + (m[2] ? parseInt(m[2],10) : 0);
+    var n = parseFloat(s.replace(/[^0-9.]/g,''));
+    if(!n) return null;
+    return n >= 1000000 ? Math.round(n/10000) : n;
+  }
+
   // ── 실거래 받기 ─────────────────────────────────────────────────────
-  function cacheKey(){ return st().sgg + '|' + st().months; }
+  function cacheKey(){ return st().sgg + '|' + periodKey(); }
 
   async function ensure(force){
     var S = K(); if(!S) throw new Error('S실거래가 모듈이 아직 준비되지 않았습니다');
@@ -23874,8 +24004,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     if(CACHE[ck] && !force) return CACHE[ck];    // 이미 받아 뒀으면 인증키도 필요 없다
     if(!S.key()) throw new Error('국토부 인증키가 없습니다 — S실거래가 탭에서 먼저 넣어 주세요');
 
-    var to = S.thisYm(), from = S.addYm(to, -(st().months - 1));
-    var yms = S.ymRange(from, to);
+    var yms = periodYms();
     var sname = S.sggName(st().sgg);
     var done = 0, tot = yms.length * 2;
     function step(){ done++; msg('실거래를 받는 중… ' + done + '/' + tot, 'go'); }
@@ -23933,12 +24062,23 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
       + '</div>'
       + '<button class="dj-bp" onclick="djGo()">브리핑</button>'
       + '<div><label style="display:block;font-size:10.5px;color:var(--text3);margin-bottom:3px">기간</label>'
-      +   '<select id="dj-mo" class="dj-in" onchange="djMonths(this.value)" style="font-size:12px">'
-      +   [6,12,24,36].map(function(m){ return '<option value="'+m+'"'+(s.months===m?' selected':'')
-              +'>최근 '+m+'개월</option>'; }).join('')
-      +   '</select></div>'
+      +   '<select id="dj-mo" class="dj-in" onchange="djPeriod(this.value)" style="font-size:12px">'
+      +   '<optgroup label="최근">'
+      +   [6,12,24,36].map(function(m){
+              return '<option value="r'+m+'"'
+                + (s.mode !== 'year' && s.months === m ? ' selected' : '')
+                + '>최근 '+m+'개월</option>'; }).join('')
+      +   '</optgroup><optgroup label="연도">'
+      +   yearList().map(function(y){
+              var n = nowYm(), lab = y + '년' + (y >= n.y ? ' (1~'+n.m+'월)' : '');
+              return '<option value="y'+y+'"'
+                + (s.mode === 'year' && s.year === y ? ' selected' : '')
+                + '>'+lab+'</option>'; }).join('')
+      +   '</optgroup></select></div>'
+      + '<button class="dj-bs" onclick="djMap()" style="padding:8px 14px">🗺 지도에서 고르기</button>'
       + '</div>'
       + '<div id="dj-sugbox"></div>'
+      + '<div id="dj-mapwrap" style="display:none;margin-top:10px"></div>'
       + '<div id="dj-msg" style="font-size:11.5px;margin-top:8px;min-height:16px"></div>';
 
     if(rec.length){
@@ -23956,10 +24096,19 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
   window.djSido = function(v){
     var S = K(); if(!S) return;
     var first = (S.sgg[v] || [])[0];
-    st().sgg = first ? first[0] : v + '000'; stSave(); paint();
+    st().sgg = first ? first[0] : v + '000'; stSave(); MAPON = false; paint();
   };
-  window.djSgg    = function(v){ st().sgg = v; stSave(); paint(); };
-  window.djMonths = function(v){ st().months = +v; stSave(); if(CUR) djGoName(CUR.nm); };
+  window.djSgg    = function(v){ st().sgg = v; stSave(); MAPON = false; paint(); };
+  /*  「r12」 = 최근 12개월, 「y2026」 = 2026년. 한 고르개에서 둘 다 고른다. */
+  window.djPeriod = function(v){
+    var s = st();
+    if(String(v).charAt(0) === 'y'){ s.mode = 'year';   s.year = parseInt(v.slice(1),10); }
+    else                           { s.mode = 'recent'; s.months = parseInt(String(v).slice(1),10) || MONTHS; }
+    stSave();
+    if(MAPON) djMap(true);                       // 지도가 떠 있으면 그 기간으로 다시 그린다
+    if(CUR) djGoName(CUR.nm);
+  };
+  window.djMonths = function(v){ window.djPeriod('r' + v); };   // 예전 이름 (안내문 단추가 쓴다)
 
   window.djSuggest = function(){
     var box = document.getElementById('dj-sugbox'), q = document.getElementById('dj-q');
@@ -24040,7 +24189,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     body.innerHTML = '<div class="dj-card">'
       + '<div class="dj-h">🔎 ' + esc(nm) + ' 을(를) 찾지 못했습니다</div>'
       + '<div style="font-size:12.5px;color:var(--text2);line-height:1.7">'
-      +   '<b>' + esc(S.sggName(st().sgg)) + '</b> 의 최근 <b>' + st().months + '개월</b> 아파트 매매에서 '
+      +   '<b>' + esc(S.sggName(st().sgg)) + '</b> 의 <b>' + esc(periodLabel()) + '</b> 아파트 매매에서 '
       +   '이 이름으로 신고된 거래가 없습니다 (받은 거래 ' + fmtN(D.trade.length) + '건).<br>'
       +   '자료가 없는 것이지 단지가 없는 것이 아닙니다 — 거래가 뜸한 단지는 기간을 넓혀야 나옵니다.'
       + '</div>'
@@ -24056,6 +24205,150 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
       + '</div>';
   }
   window.djReload = function(){ delete CACHE[cacheKey()]; OURS = null; if(CUR) djGoName(CUR.nm); };
+
+  /* ══ 지도에서 단지 고르기 ═══════════════════════════════════════════
+     이름을 모르는 단지는 칠 수가 없다. 지도에서 짚는 길을 같이 둔다.
+     좌표 창고(sd_geo)는 S실거래가 탭과 같은 것을 쓴다 — 한쪽에서 찾아 두면
+     다른 쪽에서도 바로 쓴다. */
+  function danjiAgg(){
+    var S = K(), D = CACHE[cacheKey()]; if(!D) return [];
+    var g = {};
+    D.trade.forEach(function(r){
+      if(!r._name) return;
+      var o = g[r._name] = g[r._name] ||
+        { name:r._name, dong:r.umdNm||'', jibun:r.jibun||'', amts:[], cnt:0 };
+      o.cnt++;
+      if(r.cdealType !== 'O' && typeof r._amt === 'number') o.amts.push(r._amt);
+      if(!o.jibun && r.jibun) o.jibun = r.jibun;
+    });
+    return Object.keys(g).map(function(k){
+      var o = g[k]; o.med = S.med(o.amts); o.key = S.gkey(st().sgg, o.name); return o;
+    }).sort(function(a,b){ return b.cnt - a.cnt; });
+  }
+
+  window.djMap = async function(force){
+    var wrap = document.getElementById('dj-mapwrap'); if(!wrap) return;
+    if(MAPON && !force){                       // 다시 누르면 접는다
+      MAPON = false; wrap.style.display = 'none'; wrap.innerHTML = '';
+      DJMAP = null; DJOVER = []; return;
+    }
+    MAPON = true; wrap.style.display = 'block';
+    wrap.innerHTML = '<div style="height:200px;display:flex;align-items:center;justify-content:center;'
+      + 'color:var(--text3);font-size:12px">지도를 여는 중…</div>';
+    try{
+      var S = K();
+      await ensure(false);                     // 단지 목록은 실거래에서 나온다
+      await S.kakaoReady();
+      drawMap();
+    }catch(e){
+      wrap.innerHTML = '<div style="border:1px solid #ffcdd2;background:#ffebee;border-radius:10px;'
+        + 'padding:14px;font-size:12.5px;color:#c33">지도를 열지 못했습니다 — '
+        + esc(e && e.message || e) + '</div>';
+    }
+  };
+
+  function drawMap(){
+    var S = K(), wrap = document.getElementById('dj-mapwrap'); if(!wrap) return;
+    var list = danjiAgg(), GEO = S.geo();
+    var have = list.filter(function(o){ var g = GEO[o.key]; return g && g.lat; });
+    var none = list.length - list.filter(function(o){ return (o.key in GEO); }).length;
+
+    wrap.innerHTML =
+      '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;'
+      +   'flex-wrap:wrap;margin-bottom:7px">'
+      + '<span style="font-size:11.5px;color:var(--text3)">'
+      +   esc(S.sggName(st().sgg)) + ' · ' + esc(periodLabel()) + ' 거래가 있는 단지 '
+      +   '<b style="color:var(--text)">' + list.length + '</b>곳 중 '
+      +   '<b style="color:var(--text)">' + have.length + '</b>곳을 지도에 올렸습니다'
+      +   (none ? ' · 좌표를 아직 안 찾은 곳 ' + none + '곳' : '')
+      + '</span>'
+      + '<span style="display:flex;gap:6px">'
+      +   (list.length > have.length
+            ? '<button class="dj-bs" onclick="djGeo()">📍 좌표 찾기</button>' : '')
+      +   '<button class="dj-bs" onclick="djMap()">닫기</button>'
+      + '</span></div>'
+      + '<div id="dj-map" style="width:100%;height:520px;border-radius:10px;border:1px solid var(--border)"></div>'
+      + '<div style="font-size:10.5px;color:var(--text3);margin-top:5px">'
+      +   '핀을 누르면 그 단지 브리핑이 열립니다. 값은 해제 신고를 뺀 중위 거래가입니다.</div>';
+
+    if(!have.length){
+      document.getElementById('dj-map').innerHTML =
+        '<div style="height:100%;display:flex;align-items:center;justify-content:center;'
+        + 'color:var(--text3);font-size:12.5px;text-align:center;padding:0 24px">'
+        + '아직 이 지역 단지의 좌표가 없습니다.<br>「📍 좌표 찾기」를 한 번 누르면 '
+        + '카카오 지도에서 찾아 저장합니다 (다음부터는 바로 뜹니다).</div>';
+      return;
+    }
+
+    var box = document.getElementById('dj-map');
+    var c0 = GEO[have[0].key];                       // 좌표는 창고에 있지 단지 객체에 있지 않다
+    DJMAP = new kakao.maps.Map(box, {
+      center: new kakao.maps.LatLng(c0.lat, c0.lng), level: 6 });
+    DJOVER = [];
+    var bounds = new kakao.maps.LatLngBounds();
+
+    have.forEach(function(o){
+      var g = GEO[o.key];
+      var pos = new kakao.maps.LatLng(g.lat, g.lng);
+      bounds.extend(pos);
+      var d = document.createElement('div');
+      d.className = 'dj-pin';
+      d.innerHTML = '<div class="dj-pin-n">' + esc(o.name.length > 9 ? o.name.slice(0,9) : o.name)
+        + '</div><div class="dj-pin-v">' + (o.med ? S.eok(o.med) : o.cnt + '건') + '</div>';
+      d.title = o.name + ' · 거래 ' + o.cnt + '건';
+      d.onclick = (function(nm){ return function(){ djPick(nm); }; })(o.name);
+      DJOVER.push(new kakao.maps.CustomOverlay({
+        map: DJMAP, position: pos, content: d, yAnchor: 1, zIndex: 3 }));
+    });
+    DJMAP.setBounds(bounds);
+  }
+
+  /*  좌표 찾기 — 지번 주소를 먼저 쓰고, 이름으로 찾은 결과는 반드시
+      조회한 시·군·구 안인지 확인한다. (이름만으로 찾다가 「하나타운1차」가
+      대구로 잡힌 일이 있었다.) 찾은 것은 S실거래가와 같은 창고에 넣는다. */
+  window.djGeo = async function(){
+    if(BUSY) return;
+    var S = K(), GEO = S.geo(), sgg = st().sgg, region = S.sggName(sgg);
+    var todo = danjiAgg().filter(function(o){
+      if(!(o.key in GEO)) return true;
+      var g = GEO[o.key];
+      if(g === null) return false;                  // 찾아 봤는데 없던 곳
+      return S.geoBad(g, sgg);                      // 지역이 안 맞는 옛 기록
+    });
+    if(!todo.length){ msg('좌표를 모두 갖고 있습니다.', 'ok'); return; }
+    if(todo.length > 120) todo = todo.slice(0, 120);
+    BUSY = true;
+    var got = 0, miss = 0;
+    try{
+      await S.kakaoReady();
+      for(var i=0;i<todo.length;i++){
+        var o = todo[i], hit = null;
+        msg('좌표를 찾는 중… (' + (i+1) + '/' + todo.length + ') ' + o.name, 'go');
+        if(o.jibun){
+          var a = await S.kakaoAddr(region + ' ' + o.dong + ' ' + o.jibun);
+          if(a) hit = { lat:parseFloat(a.y), lng:parseFloat(a.x),
+                        addr:(a.address && a.address.address_name) || a.address_name || '', p:'지번' };
+        }
+        if(!hit){
+          var tries = [ region + ' ' + o.dong + ' ' + o.name, region + ' ' + o.name ];
+          for(var t=0; t<tries.length && !hit; t++){
+            var d = await S.kakaoFind(tries[t]);
+            if(!d) continue;
+            var ad = d.road_address_name || d.address_name || '';
+            if(!S.inRegion(ad, sgg)) continue;      // 엉뚱한 지역이면 버린다
+            hit = { lat:parseFloat(d.y), lng:parseFloat(d.x), addr:ad, p:d.place_name||'' };
+          }
+        }
+        if(hit){ GEO[o.key] = hit; got++; } else { GEO[o.key] = null; miss++; }
+        if(i % 20 === 19) await S.saveGeo();
+        await new Promise(function(r){ setTimeout(r, 60); });
+      }
+      await S.saveGeo();
+      msg('좌표 ' + got + '곳을 찾았습니다.' + (miss ? '  (못 찾은 곳 ' + miss + '곳)' : ''), 'ok');
+      drawMap();
+    }catch(e){ msg(e && e.message || String(e), 'no'); }
+    finally{ BUSY = false; }
+  };
 
   // ── 브리핑 그리기 ───────────────────────────────────────────────────
   function draw(){
@@ -24075,6 +24368,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
           + areaTable(ST, FM, HS, eok)
           + chartBox()
           + recentTable(ST, eok)
+          + listingsBox(nm, ST)
           + turnoverBox(ST, A, HS)
           + oursBox(nm, mine)
           + similarBox(nm, A);
@@ -24092,11 +24386,16 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
   function head(nm, r0, A, HS, mine){
     var S = K();
     var addr = [S.sggName(st().sgg), r0.umdNm||'', r0.jibun||''].filter(Boolean).join(' ');
+    /*  나와 있는 매물은 자사·타사를 합쳐 센다 — 손님에게는 그게 「살 수 있는 물건」이다.
+        자사 건수는 괄호로만 덧붙인다. */
+    var LS = listingsOf(nm);
     var badges = '';
-    if(mine.props.length) badges += '<span class="dj-tag" style="background:#e8f5e9;color:#2e7d32">우리 매물 '+mine.props.length+'건</span>';
-    if(mine.cts.length)   badges += '<span class="dj-tag" style="background:#e3f2fd;color:#1565c0">우리 계약 '+mine.cts.length+'건</span>';
+    if(LS.rows.length) badges += '<span class="dj-tag" style="background:#e3f2fd;color:#1565c0">'
+      + '나온 매물 ' + LS.rows.length + '건'
+      + (LS.ours ? ' <span style="opacity:.75">(자사 ' + LS.ours + ')</span>' : '') + '</span>';
+    if(mine.cts.length)   badges += '<span class="dj-tag" style="background:#e8f5e9;color:#2e7d32">우리 계약 '+mine.cts.length+'건</span>';
     if(mine.custs.length) badges += '<span class="dj-tag" style="background:#fff3e0;color:#e65100">관심 고객 '+mine.custs.length+'명</span>';
-    if(!badges) badges = '<span style="font-size:11px;color:var(--text3)">이 단지에 걸린 우리 자료가 아직 없습니다</span>';
+    if(!badges) badges = '<span style="font-size:11px;color:var(--text3)">이 단지에 걸린 매물·계약·고객이 아직 없습니다</span>';
     if(mine.failed && mine.failed.length)
       badges += '<span class="dj-tag" style="background:#ffebee;color:#c62828">일부 자료를 읽지 못했습니다</span>';
 
@@ -24116,7 +24415,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
       + '</div>'
       + '<div style="font-size:10.5px;color:var(--text3);margin-top:9px;padding-top:9px;'
       +   'border-top:0.5px dashed var(--border)">'
-      +   '국토교통부 실거래 · 최근 '+st().months+'개월'
+      +   '국토교통부 실거래 · '+esc(periodLabel())
       +   (D && D.at ? ' · 받은 시각 ' + D.at.toLocaleString('ko-KR') : '')
       + '</div></div>';
   }
@@ -24292,13 +24591,13 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
   function turnoverBox(ST, A, HS){
     var h = A && A.h ? A.h : (HS && HS.세대수 ? HS.세대수 : null);
     if(!h || !ST.live.length) return '';
-    var yrs = st().months / 12;
+    var yrs = periodMonths() / 12;      // 기간이 몇 달이든 연 기준으로 환산한다
     var rate = Math.round(ST.live.length / h / yrs * 1000) / 10;   // 연 회전율 %
     var judge = rate >= 5 ? ['활발','#2e7d32'] : rate >= 2 ? ['보통','#e65100'] : ['뜸함','#c62828'];
     return '<div class="dj-card"><div class="dj-h">🔁 거래 회전율</div><div class="dj-kpi">'
       + kv('연 회전율', rate + '%', fmtN(h)+'세대 중 연 '+Math.round(ST.live.length/yrs)+'건', judge[1])
       + kv('판정', judge[0], '5% 이상 활발 · 2% 미만 뜸함', judge[1])
-      + kv('기간 내 거래', ST.live.length + '건', '최근 '+st().months+'개월')
+      + kv('기간 내 거래', ST.live.length + '건', periodLabel())
       + '</div>'
       + '<div style="font-size:10.5px;color:var(--text3);margin-top:8px">'
       + '회전율이 높을수록 값이 잘 매겨지고 팔기 쉽습니다. 낮으면 시세 폭이 넓어 감정이 갈립니다.</div>'
@@ -24306,13 +24605,183 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
   }
 
   // ── 우리 자료 — MR.K 에 없는 것 ─────────────────────────────────────
-  function priceTxt(p){
-    var l = [];
-    if(p.pm) l.push('매매 ' + p.pm);
-    if(p.ps) l.push('전세 ' + p.ps);
-    if(p.gw) l.push('월세 ' + p.gw);
-    if(!l.length && p.tot) l.push(p.tot);
-    return l.join(' · ') || '—';
+  // ── 나와 있는 매물 칸 ───────────────────────────────────────────────
+  var DEALS = ['매매','전세','월세'];
+  function dealCol(d){ return { 매매:'#c62828', 전세:'#1565c0', 월세:'#6a1b9a' }[d] || 'var(--text2)'; }
+
+  function listingsBox(nm, ST){
+    var S = K(), L = listingsOf(nm), eok = S.eok;
+    var h = '<div class="dj-card" style="border-left:4px solid #1565c0">'
+      + '<div class="dj-h">🏷 지금 나와 있는 매물 '
+      + '<span style="font-size:10.5px;font-weight:400;color:var(--text3)">'
+      + '(아파트 · 오피스텔/생숙 · 상가/사무실 전부 — 자사·타사 가리지 않음)</span></div>';
+
+    //  못 읽은 갈래를 먼저 말한다. 0건과 안 읽음은 다르다.
+    if(L.missing.length){
+      h += '<div style="font-size:11.5px;color:#c80;background:#fff8e1;border-radius:8px;'
+        + 'padding:9px 12px;margin-bottom:10px">⚠ '
+        + L.missing.map(function(m){ return m.n; }).join(' · ')
+        + ' 매물 자료가 아직 안 올라와 있습니다 — 「매물 시황판」 계열 탭에서 한 번 불러오면 '
+        + '여기에도 같이 잡힙니다. <b>0건이라는 뜻이 아닙니다.</b></div>';
+    }
+    if(!L.rows.length){
+      return h + '<div style="font-size:12px;color:var(--text3)">'
+        + (L.missing.length === 3
+            ? '매물 자료를 아직 하나도 못 읽어서 셈할 수 없습니다.'
+            : '이 단지에 지금 나와 있는 매물이 없습니다.')
+        + '</div></div>';
+    }
+
+    //  ① 거래유형별 요약 — 브리핑에서 제일 먼저 말하는 것
+    var g = {};
+    L.rows.forEach(function(o){ (g[o.deal] = g[o.deal] || []).push(o); });
+    var order = DEALS.filter(function(d){ return g[d]; })
+      .concat(Object.keys(g).filter(function(d){ return DEALS.indexOf(d) < 0; }));
+
+    h += '<div class="dj-kpi" style="margin-bottom:12px">'
+      + order.map(function(d){
+          var rs = g[d];
+          var isMon = (d === '월세');
+          function rng(get, fmt){
+            var v = rs.map(get).filter(function(x){ return typeof x === 'number' && x > 0; });
+            if(!v.length) return null;
+            var lo = Math.min.apply(null, v), hi = Math.max.apply(null, v);
+            return { txt: fmt(lo) + (hi !== lo ? ' ~ ' + fmt(hi) : ''), mid: S.med(v) };
+          }
+          var man  = function(x){ return fmtN(x) + '만'; };
+          var dep  = rng(function(o){ return o.amt; }, isMon ? man : eok);   // 보증금·매매가
+          var mon  = isMon ? rng(function(o){ return o.mon; }, man) : null;  // 월 임대료
+          //  월세는 보증금과 월세를 같이 보여야 말이 된다
+          var big = isMon
+            ? (mon ? '월 ' + mon.txt : '—')
+            : (dep ? dep.txt : '—');
+          var sub = rs.length + '건'
+            + (isMon && dep ? ' · 보증금 ' + dep.txt : '')
+            + (!isMon && dep && dep.mid ? ' · 가운데 ' + eok(dep.mid) : '')
+            + (rs.filter(function(o){ return o.mine; }).length
+                ? ' · 자사 ' + rs.filter(function(o){ return o.mine; }).length : '');
+          return '<div class="dj-kv"><span>' + esc(d) + (isMon ? '' : ' 호가') + '</span>'
+            + '<b style="color:' + dealCol(d) + ';font-size:15px">' + big + '</b>'
+            + '<span style="display:block;margin-top:2px">' + esc(sub) + '</span></div>';
+        }).join('')
+      + '</div>';
+
+    /*  ② 호가와 실거래를 견준다 — 반드시 같은 면적형끼리.
+        전 면적형을 섞은 중위값과 견주면 59㎡ 매물이 「시세보다 20% 싸다」로 나온다.
+        손님 앞에서 낼 수 없는 숫자다. */
+    var cmp = [];
+    if(ST && ST.byArea && ST.byArea.length){
+      ST.byArea.forEach(function(a){
+        if(!a.med) return;
+        var rs = (g['매매'] || []).filter(function(o){
+          return o.sqm && Math.round(o.sqm) === a.sqm; });
+        var vs = rs.map(function(o){ return o.amt; })
+                   .filter(function(v){ return typeof v === 'number' && v > 0; });
+        if(!vs.length) return;
+        var lo = Math.min.apply(null, vs);
+        cmp.push({ sqm:a.sqm, py:a.py, lo:lo, med:a.med, cnt:rs.length,
+                   d: Math.round((lo - a.med) / a.med * 1000) / 10 });
+      });
+    }
+    if(cmp.length){
+      var best = cmp.slice().sort(function(x,y){ return x.d - y.d; })[0];
+      var bup = best.d >= 0;
+      h += '<div style="background:var(--bg3);border-radius:10px;padding:12px 14px;margin-bottom:12px">'
+        + '<div style="font-size:12.5px;line-height:1.65;margin-bottom:8px">'
+        +   '시세 대비 가장 싼 매물은 <b>전용 ' + best.sqm + '㎡ ' + eok(best.lo) + '</b> 으로, '
+        +   '같은 면적형 실거래 중위 <b>' + eok(best.med) + '</b> 보다 '
+        +   '<b style="color:' + (bup ? '#c62828' : '#1565c0') + '">'
+        +   (bup ? '+' : '') + best.d + '%</b> ' + (bup ? '높습니다' : '낮습니다') + '.'
+        + '</div>'
+        + '<table style="margin:0"><thead><tr><th>전용</th><th>최저 호가</th>'
+        +   '<th>실거래 중위</th><th>차이</th><th>매물</th></tr></thead><tbody>'
+        + cmp.map(function(c){
+            var up = c.d >= 0;
+            return '<tr><td>' + c.sqm + '㎡</td>'
+              + '<td><b>' + eok(c.lo) + '</b></td>'
+              + '<td>' + eok(c.med) + '</td>'
+              + '<td style="color:' + (up ? '#c62828' : '#1565c0') + ';font-weight:600">'
+              +   (up ? '+' : '') + c.d + '%</td>'
+              + '<td>' + c.cnt + '건</td></tr>'; }).join('')
+        + '</tbody></table>'
+        + '<div style="font-size:10.5px;color:var(--text3);margin-top:7px">'
+        +   '실거래 중위는 ' + esc(periodLabel()) + ' 신고분(해제 제외) 기준입니다. '
+        +   '호가는 층·향·수리 상태가 반영된 값이라 중위와 바로 견주기 어려운 경우도 있습니다.</div>'
+        + '</div>';
+    }
+
+    //  ③ 면적형별 × 거래유형 — 손님이 「우리 평수는 얼마?」 물을 때 바로 짚는 표
+    var byA = {};
+    L.rows.forEach(function(o){
+      if(!o.sqm) return;
+      var k = Math.round(o.sqm);
+      if(!byA[k]) byA[k] = {};
+      if(!byA[k][o.deal]) byA[k][o.deal] = [];
+      byA[k][o.deal].push(o);
+    });
+    var aks = Object.keys(byA).map(Number).sort(function(a,b){ return a-b; });
+    if(aks.length){
+      h += '<div style="font-size:11.5px;font-weight:700;margin:4px 0 5px">면적형별</div>'
+        + '<div style="overflow-x:auto"><table><thead><tr><th>전용</th><th>평형</th>'
+        + order.map(function(d){ return '<th style="color:'+dealCol(d)+'">'+esc(d)+'</th>'; }).join('')
+        + '</tr></thead><tbody>'
+        + aks.map(function(k){
+            return '<tr><td>' + k + '㎡</td><td>' + Math.round(k/3.3058) + '평</td>'
+              + order.map(function(d){
+                  var rs = byA[k][d];
+                  if(!rs || !rs.length) return '<td style="color:var(--text3)">—</td>';
+                  var isMon = (d === '월세');
+                  var vs = rs.map(function(o){ return isMon ? o.mon : o.amt; })
+                             .filter(function(v){ return typeof v === 'number' && v > 0; });
+                  if(!vs.length) return '<td>' + rs.length + '건</td>';
+                  var lo = Math.min.apply(null, vs), hi = Math.max.apply(null, vs);
+                  return '<td><b>' + (isMon ? fmtN(lo) + '만' : eok(lo))
+                    + (hi !== lo ? ' ~ ' + (isMon ? fmtN(hi) + '만' : eok(hi)) : '') + '</b>'
+                    + '<span style="color:var(--text3)"> ' + rs.length + '건</span></td>';
+                }).join('')
+              + '</tr>';
+          }).join('')
+        + '</tbody></table></div>';
+    }
+
+    //  ④ 목록 — 싼 것부터
+    h += '<div style="font-size:11.5px;font-weight:700;margin:14px 0 5px">'
+      + '매물 목록 <span style="font-weight:400;color:var(--text3)">(호가 낮은 순)</span></div>'
+      + '<div style="overflow-x:auto"><table><thead><tr>'
+      + '<th>구분</th><th>거래</th><th>전용</th><th>동/층/향</th><th>호가</th>'
+      + '<th>중개사</th><th>중복</th><th>입력일</th>'
+      + '</tr></thead><tbody>'
+      + L.rows.slice().sort(function(a,b){
+          var x = a.amt || a.mon || 1e12, y = b.amt || b.mon || 1e12; return x - y; })
+        .slice(0, 40)
+        .map(function(o){
+          var price = o.amt ? eok(o.amt) : '';
+          if(o.mon) price += (price ? ' / ' : '') + '월 ' + fmtN(o.mon) + '만';
+          return '<tr' + (o.mine ? ' style="background:rgba(46,125,50,.06)"' : '') + '>'
+            + '<td style="text-align:left">' + esc(o.cat) + '</td>'
+            + '<td style="text-align:left;color:' + dealCol(o.deal) + ';font-weight:600">'
+            +   esc(o.deal) + '</td>'
+            + '<td>' + (o.sqm ? o.sqm + '㎡' : '—') + '</td>'
+            + '<td>' + esc([o.dong, o.floor, o.dir].filter(function(x){
+                return x && x !== '-'; }).join(' / ') || '—') + '</td>'
+            + '<td><b>' + (price || '—') + '</b></td>'
+            + '<td style="text-align:left">' + esc(o.agent || '—')
+            +   (o.mine ? ' <span class="dj-tag" style="background:#e8f5e9;color:#2e7d32;'
+                  + 'padding:1px 6px;font-size:10px">자사</span>' : '') + '</td>'
+            + '<td>' + (o.dup || '—') + '</td>'
+            + '<td>' + esc(o.at || '—') + '</td></tr>';
+        }).join('')
+      + '</tbody></table></div>';
+    if(L.rows.length > 40)
+      h += '<div style="font-size:10.5px;color:var(--text3);margin-top:5px">'
+        + '전체 ' + L.rows.length + '건 중 싼 것부터 40건만 보입니다.</div>';
+
+    h += '<div style="font-size:10.5px;color:var(--text3);margin-top:10px;padding-top:9px;'
+      + 'border-top:0.5px dashed var(--border)">'
+      + '자사 ' + L.ours + '건 · 타사 ' + (L.rows.length - L.ours) + '건. '
+      + '타사 매물도 공동중개로 거의 다 계약할 수 있으므로 함께 셉니다. '
+      + '「중복」은 같은 물건을 올린 다른 업소 수입니다.</div>';
+    return h + '</div>';
   }
   /*  계약 금액의 단위가 자료마다 다르다 — 원으로 든 것과 만원으로 든 것이 섞여 있다.
       100만 넘으면 원으로 보고 만원으로 바꾼다 (전세금 100만원짜리 계약은 없다). */
@@ -24323,27 +24792,13 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
   }
   function oursBox(nm, mine){
     var h = '<div class="dj-card" style="border-left:4px solid #2e7d32">'
-      + '<div class="dj-h">🏠 이 단지의 우리 자료</div>';
+      + '<div class="dj-h">📝 이 단지 우리 계약·고객</div>';
     if(mine.failed && mine.failed.length)
       h += '<div style="font-size:11.5px;color:#c33;margin-bottom:9px">'
         + '⚠ ' + esc(mine.failed.join(', ')) + ' 을(를) 읽지 못했습니다 — '
         + '자료가 지워진 것이 아니라 읽기에 실패한 것입니다. '
         + '<button class="dj-bs" onclick="djReload()">🔄 다시 불러오기</button></div>';
 
-    if(mine.props.length){
-      h += '<div style="font-size:11.5px;font-weight:700;margin:10px 0 5px">📋 매물 '+mine.props.length+'건</div>'
-        + '<div style="overflow-x:auto"><table><thead><tr>'
-        + '<th>종류</th><th>동호</th><th>면적</th><th>층/향</th><th>가격</th><th>상태</th>'
-        + '</tr></thead><tbody>'
-        + mine.props.map(function(p){
-            return '<tr><td>'+esc(p.propertyType||'—')+'</td>'
-              + '<td>'+esc(p.unitInfo||'—')+'</td>'
-              + '<td>'+esc(p.areaInfo||'—')+'</td>'
-              + '<td>'+esc((p.floorInfo||'') + (p.direction?' / '+p.direction:''))+'</td>'
-              + '<td><b>'+esc(priceTxt(p))+'</b></td>'
-              + '<td>'+esc(p.status||'—')+'</td></tr>'; }).join('')
-        + '</tbody></table></div>';
-    }
     if(mine.cts.length){
       h += '<div style="font-size:11.5px;font-weight:700;margin:14px 0 5px">📝 계약 이력 '+mine.cts.length+'건</div>'
         + '<div style="overflow-x:auto"><table><thead><tr>'
@@ -24379,9 +24834,9 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
               + '<td style="text-align:left">'+esc(where.join(' · '))+'</td></tr>'; }).join('')
         + '</tbody></table></div>';
     }
-    if(!mine.props.length && !mine.cts.length && !mine.custs.length)
+    if(!mine.cts.length && !mine.custs.length)
       h += '<div style="font-size:12px;color:var(--text3)">'
-        + '이 단지에 걸린 매물·계약·고객이 아직 없습니다.</div>';
+        + '이 단지에 걸린 계약 이력이나 고객이 아직 없습니다.</div>';
 
     h += '<div style="font-size:10.5px;color:var(--text3);margin-top:10px;padding-top:9px;'
       + 'border-top:0.5px dashed var(--border)">'
@@ -24436,8 +24891,8 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     var r0 = CUR.rows[0] || {}, A = S.aptFind(CUR.nm, r0.umdNm, r0.jibun), HS = hsOf(CUR.nm);
     var L = [];
     L.push('■ ' + CUR.nm + ' 시세 브리핑');
-    L.push('(' + [S.sggName(st().sgg), r0.umdNm||''].filter(Boolean).join(' ') + ' · 국토교통부 실거래 최근 '
-      + st().months + '개월 기준)');
+    L.push('(' + [S.sggName(st().sgg), r0.umdNm||''].filter(Boolean).join(' ') + ' · 국토교통부 실거래 '
+      + periodLabel() + ' 기준)');
     L.push('');
     if(A){
       var sp = [];
@@ -24461,8 +24916,30 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
       if(a.jeon) t += ' · 전세 ' + eok(a.jeon) + ' (전세가율 ' + a.rate + '%)';
       L.push(t);
     });
+    //  지금 나와 있는 매물 — 업소 이름은 빼고 건수와 호가 폭만 (시장 정보)
+    var LS = listingsOf(CUR.nm);
+    if(LS.rows.length){
+      var gg = {};
+      LS.rows.forEach(function(o){ (gg[o.deal] = gg[o.deal] || []).push(o); });
+      L.push('');
+      L.push('[지금 나와 있는 매물 ' + LS.rows.length + '건]');
+      DEALS.concat(Object.keys(gg).filter(function(d){ return DEALS.indexOf(d) < 0; }))
+        .forEach(function(d){
+          var rs = gg[d]; if(!rs) return;
+          var isMon = (d === '월세');
+          var vs = rs.map(function(o){ return isMon ? o.mon : o.amt; })
+                     .filter(function(v){ return typeof v === 'number' && v > 0; });
+          if(!vs.length){ L.push('· ' + d + ' ' + rs.length + '건'); return; }
+          var lo = Math.min.apply(null, vs), hi = Math.max.apply(null, vs);
+          L.push('· ' + d + ' ' + rs.length + '건 — '
+            + (isMon ? '월 ' + fmtN(lo) + '만' + (hi !== lo ? '~' + fmtN(hi) + '만' : '')
+                     : eok(lo) + (hi !== lo ? ' ~ ' + eok(hi) : '')));
+        });
+    }
     L.push('');
     L.push('※ 국토교통부 실거래가 공개시스템 신고 자료입니다. 해제 신고분은 셈에서 뺐습니다.');
+    if(LS.rows.length)
+      L.push('※ 매물 호가는 조회 시점 기준이며 수시로 바뀝니다. 실제 거래 가능 여부는 확인이 필요합니다.');
     L.push('※ 실제 거래 가능 금액은 동·층·향·수리 상태에 따라 다릅니다. 반드시 확인이 필요합니다.');
     L.push('');
     L.push('송도제일공인중개사사무소 · 032-851-6688');
