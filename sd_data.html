@@ -19353,7 +19353,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.09.25-7';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.09.25-8';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_data.html';      // 이 파일 이름
   var SD_NAME = '실거래가';      // 사람이 부르는 이름
 
@@ -23766,6 +23766,8 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 #dj-root .dj-pin:hover{border-color:var(--accent);box-shadow:0 3px 10px rgba(0,0,0,.28);z-index:9}
 #dj-root .dj-pin-n{font-size:9px;color:#444;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #dj-root .dj-pin-v{font-size:10.5px;font-weight:800;color:#0891b2}
+#dj-root .dj-pin-off{background:#b8860b;border-color:#8b6508;box-shadow:0 3px 9px rgba(0,0,0,.3)}
+#dj-root .dj-pin-off .dj-pin-n,#dj-root .dj-pin-off .dj-pin-v{color:#fff!important}
 #dj-root .dj-kv{background:var(--bg3);border-radius:10px;padding:11px 13px}
 #dj-root .dj-kv b{display:block;font-size:18px;font-weight:700;margin-top:3px}
 #dj-root .dj-kv span{font-size:10.5px;color:var(--text3)}
@@ -23806,6 +23808,31 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
   var BUSY  = false;
   var CH    = null;                   // 흐름 그래프
   var MAPON = false, DJMAP = null, DJOVER = [];   // 단지 고르는 지도
+
+  /*  지도를 처음 열면 사무실을 가운데 놓는다 — 늘 보는 곳이 거기다.
+      좌표는 한 번만 찾아 파이어베이스에 담아 모든 PC 가 같이 쓴다. */
+  var OFFICE = { addr:'인천광역시 연수구 송도동 21-13',
+                 name:'송도제일공인중개사사무소', sgg:'28185', lat:null, lng:null };
+  var OFFKEY = 'sd_office_geo';
+  async function officeGeo(){
+    if(OFFICE.lat) return OFFICE;
+    var S = K();
+    try{
+      var r = await S.sget(OFFKEY);
+      if(r){ var o = JSON.parse(r);
+        if(o && o.lat){ OFFICE.lat = o.lat; OFFICE.lng = o.lng; return OFFICE; } }
+    }catch(e){}
+    try{
+      await S.kakaoReady();
+      var a = await S.kakaoAddr(OFFICE.addr);
+      if(a){
+        OFFICE.lat = parseFloat(a.y); OFFICE.lng = parseFloat(a.x);
+        try{ await S.sset(OFFKEY, JSON.stringify({ lat:OFFICE.lat, lng:OFFICE.lng })); }catch(e){}
+      }
+    }catch(e){}
+    return OFFICE;
+  }
+
 
   function K(){ return window.sdKR && window.sdKR.stats ? window.sdKR : null; }
   function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g, function(c){
@@ -23857,6 +23884,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
       if(!d.find)  d.find  = 'map';      // 지도를 기본으로 연다
       if(!d.mapH)  d.mapH  = 720;
       if(!d.mapLv) d.mapLv = 4;          // 카카오 축척 4 = 100m
+      if(d.mapLv < 2 || d.mapLv > 5) d.mapLv = 4;   // 예전에 고른 500m·1km 를 되돌린다
       return d;
     })();
   }
@@ -24234,7 +24262,9 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 
   /*  찾는 방식 — 지도에서 짚거나, 이름을 치거나. 기본은 지도다.
       이름을 모르는 단지가 훨씬 많고, 단추를 한 번 더 누르게 하는 것은 군더더기다. */
-  var MAPLV = [ [4,'100m'], [5,'250m'], [6,'500m'], [7,'1km'], [8,'2km'] ];
+  /*  카카오 축척 단계 : 1=20m · 2=30m · 3=50m · 4=100m · 5=250m
+      단지 핀을 겹치지 않게 보려면 이 네 단만 있으면 된다. */
+  var MAPLV = [ [2,'30m'], [3,'50m'], [4,'100m'], [5,'250m'] ];
   var MAPH  = [ [560,'보통'], [720,'크게'], [900,'아주 크게'], [1100,'꽉 차게'] ];
   function findRow(){
     var s = st();
@@ -24526,6 +24556,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
       var S = K();
       await ensure(false);                     // 단지 목록은 실거래에서 나온다
       await S.kakaoReady();
+      await officeGeo();                       // 사무실 자리를 먼저 챙긴다 (한 번만 찾는다)
       drawMap();
     }catch(e){
       wrap.innerHTML = '<div style="border:1px solid #ffcdd2;background:#ffebee;border-radius:10px;'
@@ -24543,6 +24574,85 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
   window.djMapH  = function(v){ st().mapH  = +v; stSave(); paint(); };
   /*  핀을 다 담을 만큼 넓혀 본다 — 고른 축척을 일부러 벗어나는 단추.
       평소에는 축척을 지켜야 핀이 안 겹친다. */
+  /*  주소에서 시군구 코드를 되짚는다 — 「인천 서구 원당동」 → 28260.
+      지역명으로 옮겼는데 자료가 없을 때 무엇을 바꿔야 하는지 말해 주려고 쓴다. */
+  function sggFromAddr(addr){
+    var S = K(), a = String(addr || ''); if(!a || !S) return '';
+    var best = '', bestLen = 0;
+    S.sido.forEach(function(sd){
+      var shortNm = sd[1].replace(/(특별시|광역시|특별자치시|특별자치도|도)$/, '');
+      if(a.indexOf(sd[1]) < 0 && a.indexOf(shortNm) < 0) return;
+      (S.sgg[sd[0]] || []).forEach(function(g){
+        if(a.indexOf(g[1]) >= 0 && g[1].length > bestLen){ best = g[0]; bestLen = g[1].length; }
+      });
+    });
+    return best;
+  }
+
+  /*  지역·주소로 지도를 옮긴다. 단지명이 아니어도 된다 —
+      「동춘동」·「검단」·「연수구 청학동」 처럼 치면 그쪽으로 간다. */
+  window.djGoPlace = async function(q){
+    var S = K();
+    q = String(q == null ? (document.getElementById('dj-place') || {}).value : q || '').trim();
+    if(!q){ msg('옮겨 갈 지역이나 주소를 넣어 주세요.', 'warn'); return; }
+    if(!DJMAP){ msg('먼저 지도를 열어 주세요.', 'warn'); return; }
+    try{
+      await S.kakaoReady();
+      var sidoNm = (S.sido.filter(function(x){ return x[0] === st().sgg.slice(0,2); })[0] || ['',''])[1];
+      var tries = [q, sidoNm + ' ' + q, S.sggName(st().sgg) + ' ' + q];
+      var hit = null, addr = '';
+      for(var i=0; i<tries.length && !hit; i++){
+        var a = await S.kakaoAddr(tries[i]);
+        if(a){ hit = { lat:parseFloat(a.y), lng:parseFloat(a.x) };
+               addr = (a.address && a.address.address_name) || a.address_name || tries[i]; break; }
+        var d = await S.kakaoFind(tries[i]);
+        if(d){ hit = { lat:parseFloat(d.y), lng:parseFloat(d.x) };
+               addr = d.road_address_name || d.address_name || tries[i]; }
+      }
+      if(!hit){ msg('「' + q + '」 을(를) 지도에서 찾지 못했습니다.', 'no'); return; }
+      DJMAP.setCenter(new kakao.maps.LatLng(hit.lat, hit.lng));
+      var code = sggFromAddr(addr);
+      if(code && code !== st().sgg){
+        //  옮겨는 갔지만 그 지역 자료는 아직 없다 — 무엇을 눌러야 하는지 말해 준다
+        msg('', '');
+        var el = document.getElementById('dj-place-note');
+        if(el) el.innerHTML = '<span style="color:#c80">' + esc(addr) + ' 로 옮겼습니다. '
+          + '이곳 거래를 보려면 시군구를 <b>' + esc(S.sggName(code)) + '</b> 로 바꿔야 합니다. </span>'
+          + '<button class="dj-bs" onclick="djSggGo(\'' + code + '\')">'
+          + esc(S.sggName(code)) + ' 자료 받기</button>';
+      }else{
+        var el2 = document.getElementById('dj-place-note');
+        if(el2) el2.innerHTML = '<span style="color:var(--text3)">' + esc(addr) + ' 로 옮겼습니다.</span>';
+      }
+    }catch(e){ msg(e && e.message || String(e), 'no'); }
+  };
+  window.djSggGo = function(code){
+    st().sgg = code; stSave(); MAPON = false; DJMAP = null; paint();
+  };
+  //  법정동 단추 — 자료에 있는 동으로 바로 옮긴다 (지오코딩이 필요 없다)
+  window.djGoDong = function(dong){
+    if(!DJMAP) return;
+    var S = K(), GEO = S.geo(), la = 0, ln = 0, n = 0;
+    danjiAgg().forEach(function(o){
+      if(o.dong !== dong) return;
+      var g = GEO[o.key]; if(!g || !g.lat) return;
+      la += g.lat; ln += g.lng; n++;
+    });
+    if(!n){ msg(dong + ' 에 좌표를 가진 단지가 없습니다 — 「📍 좌표 찾기」를 먼저 눌러 주세요.', 'warn'); return; }
+    DJMAP.setCenter(new kakao.maps.LatLng(la/n, ln/n));
+    var el = document.getElementById('dj-place-note');
+    if(el) el.innerHTML = '<span style="color:var(--text3)">' + esc(dong) + ' 로 옮겼습니다 ('
+      + n + '개 단지).</span>';
+  };
+  //  사무실로 돌아오기
+  window.djGoOffice = async function(){
+    var o = await officeGeo();
+    if(!o.lat){ msg('사무실 좌표를 찾지 못했습니다.', 'no'); return; }
+    if(DJMAP) DJMAP.setCenter(new kakao.maps.LatLng(o.lat, o.lng));
+    var el = document.getElementById('dj-place-note');
+    if(el) el.innerHTML = '<span style="color:var(--text3)">사무실(' + esc(OFFICE.addr) + ') 로 돌아왔습니다.</span>';
+  };
+
   window.djMapFit = function(){
     if(!DJMAP || !DJOVER.length) return;
     try{
@@ -24552,6 +24662,30 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
       st().mapLv = DJMAP.getLevel(); stSave(); paint();
     }catch(e){}
   };
+
+  /*  지도를 지역명으로 옮기는 줄.
+      단지 이름을 몰라도 「동춘동」·「검단」 처럼 쳐서 그쪽을 볼 수 있어야 한다. */
+  function placeRow(list){
+    //  자료에 있는 법정동 — 단지 많은 순
+    var g = {};
+    list.forEach(function(o){ if(o.dong) g[o.dong] = (g[o.dong]||0) + 1; });
+    var ds = Object.keys(g).sort(function(a,b){ return g[b]-g[a]; }).slice(0, 10);
+    return '<div style="display:flex;gap:7px;flex-wrap:wrap;align-items:center;margin-bottom:7px">'
+      + '<input id="dj-place" class="dj-in" style="font-size:12px;min-width:210px;padding:6px 10px" '
+      +   'placeholder="지역·주소로 옮기기 (예: 동춘동, 검단, 청학동)" '
+      +   'onkeydown="if(event.key===\'Enter\'){event.preventDefault();djGoPlace()}">'
+      + '<button class="dj-bs" onclick="djGoPlace()">이동</button>'
+      + '<button class="dj-bs" onclick="djGoOffice()">🏢 사무실로</button>'
+      + (ds.length
+          ? '<span style="font-size:10.5px;color:var(--text3);margin-left:4px">법정동</span>'
+            + ds.map(function(d){
+                return '<button class="dj-bs" style="padding:4px 9px;font-size:11px" '
+                  + 'onclick="djGoDong(\'' + esc(d).replace(/'/g, "\\'") + '\')">'
+                  + esc(d) + ' <span style="color:var(--text3)">' + g[d] + '</span></button>'; }).join('')
+          : '')
+      + '<span id="dj-place-note" style="font-size:11px;flex-basis:100%"></span>'
+      + '</div>';
+  }
 
   function drawMap(){
     var S = K(), sv = st(), wrap = document.getElementById('dj-mapwrap'); if(!wrap) return;
@@ -24577,6 +24711,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
       +   '<button class="dj-bs" onclick="djMapFit()">↔ 전체 보기</button>'
       +   '<button class="dj-bs" onclick="djMap(true)">🔄 다시 그리기</button>'
       + '</span></div>'
+      + placeRow(list)
       + '<div id="dj-map" style="width:100%;height:' + sv.mapH + 'px;border-radius:10px;'
       +   'border:1px solid var(--border)"></div>'
       + '<div style="font-size:10.5px;color:var(--text3);margin-top:5px">'
@@ -24599,15 +24734,29 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     }
 
     var box = document.getElementById('dj-map');
-    /*  가운데는 핀들의 한복판, 축척은 고른 값을 지킨다.
-        예전에는 setBounds 로 전부를 담느라 늘 멀찍이 물러나 핀이 서로 겹쳤다.
-        넓게 보고 싶을 때는 「↔ 전체 보기」를 누른다. */
+    /*  가운데는 사무실을 먼저 본다 — 늘 보는 곳이 거기다.
+        사무실이 이 시군구 밖이거나 좌표를 아직 못 찾았으면 핀들의 한복판.
+        축척은 고른 값을 지킨다. 예전에는 setBounds 로 전부를 담느라
+        늘 멀찍이 물러나 핀이 서로 겹쳤다. 넓게 볼 때만 「↔ 전체 보기」. */
     var la = 0, ln = 0;
     have.forEach(function(o){ var g = GEO[o.key]; la += g.lat; ln += g.lng; });
+    var cLat = la / have.length, cLng = ln / have.length;
+    if(OFFICE.lat && sv.sgg === OFFICE.sgg){ cLat = OFFICE.lat; cLng = OFFICE.lng; }
     DJMAP = new kakao.maps.Map(box, {
-      center: new kakao.maps.LatLng(la / have.length, ln / have.length),
-      level: sv.mapLv });
+      center: new kakao.maps.LatLng(cLat, cLng), level: sv.mapLv });
     DJOVER = [];
+
+    //  사무실 자리 — 단지 핀과 헷갈리지 않게 생김새를 달리한다
+    if(OFFICE.lat){
+      var od = document.createElement('div');
+      od.className = 'dj-pin dj-pin-off';
+      od.innerHTML = '<div class="dj-pin-n">🏢 송도제일</div><div class="dj-pin-v">사무실</div>';
+      od.title = OFFICE.name + ' · ' + OFFICE.addr;
+      od.onclick = function(){ djGoOffice(); };
+      DJOVER.push(new kakao.maps.CustomOverlay({
+        map: DJMAP, position: new kakao.maps.LatLng(OFFICE.lat, OFFICE.lng),
+        content: od, yAnchor: 1, zIndex: 900 }));
+    }
 
     //  값이 큰 단지를 위에 얹는다 — 겹칠 때 비싼 쪽이 가려지지 않게
     have.slice().sort(function(a,b){ return (a.med||0) - (b.med||0); })
