@@ -323,6 +323,7 @@ header.top{display:flex;align-items:center;gap:14px;padding:0 18px;height:52px;f
           <option value="간결">간결·정보 위주</option>
         </select>
         <div class="spacer" style="flex:1"></div>
+        <button class="btn" id="btnScript" title="원고·매물정보·유튜브 대본을 그대로 넣어 글로 만듭니다">📋 대본만 넣으세요</button>
         <button class="btn primary" id="btnGen">생성하기</button>
       </div>
       <div id="pickedBar"></div>
@@ -601,7 +602,7 @@ const DEF_AUTHOR = {
   name:'문형은', title:'공인중개사', office:'송도제일공인중개사사무소',
   area:'인천 송도국제도시', years:'21', phone:'032-851-6688',
   addr:'인천 연수구 해돋이로 168 혜인프라자 1층 103호',
-  blog:'', extra:'한국공인중개사협회 연수구지부 임원 · 전세사기 예방 강사 · 부동산 가격검증위원',
+  regno:'', blog:'', extra:'한국공인중개사협회 연수구지부 임원 · 전세사기 예방 강사 · 부동산 가격검증위원',
   sign:'궁금한 점은 댓글이나 사무소로 편하게 물어보세요.',
 };
 const DEF_SETTINGS = {
@@ -768,16 +769,21 @@ function refreshEngineChip(){
   $('#chipSettings').className = 'chip accent ' + (n ? 'on' : 'off');
 }
 
-async function callAI(prompt, { json = false, maxTokens = 8192 } = {}){
+/* dataURL → { mime, b64 } — 사진을 AI 에 실어 보낼 때 쓴다 */
+function dataUrlParts(u){
+  const m = /^data:([^;]+);base64,(.+)$/.exec(String(u||''));
+  return m ? { mime:m[1], b64:m[2] } : null;
+}
+async function callAI(prompt, { json = false, maxTokens = 8192, images = [] } = {}){
   const engine = state.settings.engine;
   const keys = keysOf(engine);
   if(!keys.length) throw new Error((engine==='claude'?'클로드':engine==='openai'?'챗GPT':'제미나이') + ' API 키가 없습니다. 오른쪽 위 [엔진 설정]에서 키를 넣어 주세요.');
   let lastErr;
   for(const key of keys){
     try{
-      return engine === 'claude' ? await callClaude(key, prompt, json, maxTokens)
-           : engine === 'openai' ? await callOpenAI(key, prompt, json, maxTokens)
-           : await callGemini(key, prompt, json, maxTokens);
+      return engine === 'claude' ? await callClaude(key, prompt, json, maxTokens, images)
+           : engine === 'openai' ? await callOpenAI(key, prompt, json, maxTokens, images)
+           : await callGemini(key, prompt, json, maxTokens, images);
     }catch(e){
       lastErr = e;
       /* 키 문제·한도 초과면 다음 키로 넘어간다 */
@@ -814,10 +820,15 @@ async function fetchGeminiModels(key){
     image: all.filter(m => /image/i.test(m.id)).map(m=>m.id),
   };
 }
-async function callOpenAI(key, prompt, json, maxTokens){
+async function callOpenAI(key, prompt, json, maxTokens, images){
   const model = state.settings.openaiModel || DEF_SETTINGS.openaiModel;
+  let content = prompt;
+  if((images||[]).length){
+    content = [{ type:'text', text: prompt }];
+    (images||[]).forEach(u => { if(dataUrlParts(u)) content.push({ type:'image_url', image_url:{ url:u } }); });
+  }
   async function ask(tokenField){
-    const body = { model, messages:[{ role:'user', content: prompt }] };
+    const body = { model, messages:[{ role:'user', content }] };
     body[tokenField] = Math.min(maxTokens, 16000);
     if(json) body.response_format = { type:'json_object' };
     const r = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -849,10 +860,15 @@ async function fetchOpenAIModels(key){
   if(!r.ok) throw new Error('모델 목록을 받지 못했습니다 ' + r.status + ': ' + (((d.error||{}).message)||'').slice(0,160));
   return (d.data||[]).map(m=>m.id).filter(id=>/^(gpt|o\d|chatgpt)/i.test(id) && !/audio|realtime|image|tts|whisper|embedding|moderation/i.test(id)).sort();
 }
-async function callGemini(key, prompt, json, maxTokens){
+async function callGemini(key, prompt, json, maxTokens, images){
   const model = state.settings.geminiModel || DEF_SETTINGS.geminiModel;
+  const reqParts = [{ text: prompt }];
+  (images||[]).forEach(u => {
+    const p = dataUrlParts(u);
+    if(p) reqParts.push({ inline_data:{ mime_type:p.mime, data:p.b64 } });
+  });
   const body = {
-    contents: [{ role:'user', parts:[{ text: prompt }] }],
+    contents: [{ role:'user', parts: reqParts }],
     generationConfig: { temperature: 0.85, maxOutputTokens: maxTokens },
   };
   if(json) body.generationConfig.responseMimeType = 'application/json';
@@ -868,14 +884,24 @@ async function callGemini(key, prompt, json, maxTokens){
   if(!txt) throw new Error('제미나이가 빈 응답을 보냈습니다. 잠시 후 다시 해 주세요.');
   return txt;
 }
-async function callClaude(key, prompt, json, maxTokens){
+async function callClaude(key, prompt, json, maxTokens, images){
   const model = state.settings.claudeModel || 'claude-sonnet-4-5';
+  const ask = prompt + (json ? '\n\nJSON 한 덩어리만 출력하세요. 설명이나 코드블록 표시는 붙이지 마세요.' : '');
+  let content = ask;
+  if((images||[]).length){
+    content = [];
+    (images||[]).forEach(u => {
+      const p = dataUrlParts(u);
+      if(p) content.push({ type:'image', source:{ type:'base64', media_type:p.mime, data:p.b64 } });
+    });
+    content.push({ type:'text', text: ask });
+  }
   const r = await fetch('https://api.anthropic.com/v1/messages', {
     method:'POST',
     headers:{ 'content-type':'application/json', 'x-api-key': key,
       'anthropic-version':'2023-06-01', 'anthropic-dangerous-direct-browser-access':'true' },
     body: JSON.stringify({ model, max_tokens: Math.min(maxTokens, 16000),
-      messages:[{ role:'user', content: prompt + (json ? '\n\nJSON 한 덩어리만 출력하세요. 설명이나 코드블록 표시는 붙이지 마세요.' : '') }] }),
+      messages:[{ role:'user', content }] }),
   });
   const d = await r.json().catch(()=>({}));
   if(!r.ok) throw new Error('클로드 오류 ' + r.status + ': ' + ((d.error && d.error.message) || '').slice(0, 200));
@@ -929,6 +955,7 @@ function authorBlock(){
     a.extra ? `이력: ${a.extra}` : '',
     a.phone ? `연락처: ${a.phone}` : '',
     a.addr ? `사무소 주소: ${a.addr}` : '',
+    a.regno ? `등록번호: ${a.regno}` : '',
     a.sign ? `맺음말로 쓸 문장: ${a.sign}` : '',
   ].filter(Boolean).join('\n');
 }
@@ -1001,6 +1028,278 @@ ${PLATFORM_NOTE[$('#optPlatform').value]}
 
 JSON만 출력하세요.`;
 }
+
+/* ══ 대본만 넣으세요 ══════════════════════════════════════════════
+   주제를 고르는 대신, 가진 재료(원고·매물정보·유튜브 대본)를 그대로
+   넣으면 블로그 글로 만들어 준다. 사진은 AI 가 읽어서 글에 쓰고,
+   그 사진이 그대로 본문 사진 자리에 들어간다.
+   ─ 여기서는 재료에 없는 사실을 지어내지 않는 것이 제일 중요하다. */
+const script = { text:'', files:[], imgs:[], addr:'', dong:'', ho:'', kind:'매물' };
+
+const SCRIPT_KINDS = {
+  '매물': '매물 광고 글. 이 물건을 찾는 손님이 읽고 연락하고 싶어지게. 다만 과장 없이.',
+  '정보': '정보·설명 글. 제도·절차·시세 흐름을 풀어 준다.',
+  '대본': '유튜브 대본을 글로 옮긴 것. 말투를 글말로 다듬되 내용은 그대로.',
+  '후기': '현장·상담 후기. 겪은 일을 이야기처럼.',
+};
+
+function scriptRows(){
+  const n = script.imgs.length, fn = script.files.length;
+  if(!n && !fn) return '<div class="hint">아직 넣은 것이 없습니다.</div>';
+  let h = '';
+  if(n) h += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px">'
+    + script.imgs.map((u,i) => '<div style="position:relative">'
+        + '<img src="' + u + '" style="width:62px;height:62px;object-fit:cover;border-radius:6px;border:1px solid var(--line)">'
+        + '<button onclick="scriptDelImg(' + i + ')" style="position:absolute;top:-6px;right:-6px;width:18px;height:18px;'
+        + 'border-radius:9px;border:0;background:#c92a4a;color:#fff;font-size:11px;line-height:1;cursor:pointer">×</button>'
+        + '<div style="position:absolute;left:2px;bottom:2px;background:rgba(0,0,0,.6);color:#fff;font-size:9px;'
+        + 'padding:0 4px;border-radius:3px">' + (i+1) + '</div></div>').join('')
+    + '</div>';
+  if(fn) h += script.files.map((x,i) => '<div class="hint">📄 ' + esc(x.name)
+    + ' <span style="opacity:.6">' + x.chars.toLocaleString() + '자</span> '
+    + '<a href="#" onclick="scriptDelFile(' + i + ');return false">빼기</a></div>').join('');
+  return h;
+}
+function scriptPaint(){
+  const box = document.getElementById('scriptRows');
+  if(box) box.innerHTML = scriptRows();
+  const c = document.getElementById('scriptCount');
+  if(c) c.textContent = (document.getElementById('scriptText').value || '').length.toLocaleString() + '자';
+}
+window.scriptDelImg  = i => { script.imgs.splice(i,1); scriptPaint(); };
+window.scriptDelFile = i => { script.files.splice(i,1); scriptPaint(); };
+
+async function scriptTakeFiles(list){
+  for(const f of Array.from(list||[])){
+    try{
+      if(/^image\//.test(f.type)){
+        if(script.imgs.length >= 12){ toast('사진은 12장까지 넣을 수 있습니다.', true); continue; }
+        script.imgs.push(await shrink(f, 1400));
+      }else if(/^text\/|json|csv/.test(f.type) || /\.(txt|md|csv|json)$/i.test(f.name)){
+        const t = await f.text();
+        script.files.push({ name:f.name, text:t.slice(0, 40000), chars:t.length });
+      }else{
+        toast(f.name + ' — 이 형식은 브라우저에서 읽지 못합니다. 내용을 복사해 붙여넣어 주세요.', true);
+      }
+    }catch(e){ toast(f.name + ' 을 읽지 못했습니다: ' + e.message, true); }
+  }
+  scriptPaint();
+}
+
+function openScript(){
+  const a = state.author;
+  const kinds = Object.keys(SCRIPT_KINDS).map(k =>
+    '<label><input type="radio" name="skind" value="' + k + '"' + (script.kind===k?' checked':'') + '><span>'
+    + ({ '매물':'매물 광고', '정보':'정보·설명', '대본':'유튜브 대본', '후기':'현장 후기' }[k]) + '</span></label>').join('');
+
+  const close = modal('대본만 넣으세요', `
+    <div class="notice ok">가진 재료를 그대로 넣으면 블로그 글로 만들어 드립니다.
+      <b>원고 · 매물 정보 · 유튜브 대본 · 사진</b> 무엇이든 됩니다.
+      재료에 없는 사실은 <b>지어내지 않습니다</b>.</div>
+
+    <div class="field"><label>어떤 글인가요</label><div class="radios">${kinds}</div></div>
+
+    <div class="field"><label>매물 주소 <span style="font-weight:400;opacity:.6">(매물 광고일 때만)</span></label>
+      <input id="scriptAddr" value="${esc(script.addr)}" placeholder="예: 인천 연수구 송도동 18-6 송도더샵그린워크1차">
+      <div class="grid2" style="margin-top:6px">
+        <input id="scriptDong" value="${esc(script.dong)}" placeholder="동 (예: 101)">
+        <input id="scriptHo" value="${esc(script.ho)}" placeholder="호 (예: 1203)">
+      </div>
+      <div class="hint">주소를 넣으면 글 안에서 위치·주변 설명에 씁니다. 동·호는 광고에 그대로 쓰지 않고 층 정도로만 씁니다.</div>
+    </div>
+
+    <div class="field"><label>여기에 붙여넣으세요</label>
+      <textarea id="scriptText" rows="9" placeholder="네이버 매물 화면을 통째로 복사해 붙여도 됩니다.&#10;원고·메모·유튜브 대본 무엇이든 그대로 넣으세요.&#10;스크린샷은 Ctrl+V 로 바로 붙습니다.">${esc(script.text)}</textarea>
+      <div class="hint" style="text-align:right"><span id="scriptCount">0자</span></div>
+    </div>
+
+    <div class="field"><label>사진 · 파일</label>
+      <div id="scriptDrop" style="border:1.5px dashed var(--line);border-radius:10px;padding:12px;text-align:center;cursor:pointer">
+        <b>📎 눌러서 고르기</b> <span style="opacity:.6">— 또는 이 칸에 끌어다 놓기</span>
+        <div class="hint" style="margin-top:4px">사진은 AI 가 읽어 글에 쓰고, <b>그 사진이 그대로 본문에 들어갑니다</b> (최대 12장).
+          텍스트·CSV 파일도 읽습니다. PDF·한글·워드는 브라우저가 못 읽으니 내용을 복사해 붙여넣어 주세요.</div>
+      </div>
+      <div id="scriptRows" style="margin-top:8px">${scriptRows()}</div>
+    </div>
+
+    <div class="notice ${a.regno ? 'ok' : 'warn'}">
+      ${a.regno
+        ? '매물 광고 글에는 <b>' + esc(a.office) + ' · 등록번호 ' + esc(a.regno) + '</b> 가 법정 표기로 글 끝에 들어갑니다.'
+        : '<b>중개사무소 등록번호가 비어 있습니다.</b> 매물 광고는 표시·광고 규정상 사무소 명칭·소재지·연락처·등록번호·개업공인중개사 성명을 적어야 합니다. 오른쪽 위 [작성자 정보]에서 등록번호를 넣어 주세요.'}
+    </div>
+  `, `<button class="btn" data-cancel>닫기</button><button class="btn primary" data-go>검수하고 블로그 생성</button>`);
+
+  const host = $('#modalHost');
+  const ta = host.querySelector('#scriptText');
+  const drop = host.querySelector('#scriptDrop');
+
+  ta.oninput = scriptPaint;
+  ta.onpaste = e => {                       // 스크린샷을 Ctrl+V 로
+    const its = (e.clipboardData || {}).items || [];
+    const fs = [];
+    for(const it of its) if(it.kind === 'file'){ const f = it.getAsFile(); if(f) fs.push(f); }
+    if(fs.length){ e.preventDefault(); scriptTakeFiles(fs); }
+  };
+  drop.onclick = ()=>{
+    const inp = document.createElement('input');
+    inp.type = 'file'; inp.multiple = true;
+    inp.accept = 'image/*,text/*,.txt,.md,.csv,.json';
+    inp.onchange = ()=> scriptTakeFiles(inp.files);
+    inp.click();
+  };
+  drop.ondragover = e => { e.preventDefault(); drop.style.borderColor = 'var(--brand)'; };
+  drop.ondragleave = ()=> drop.style.borderColor = '';
+  drop.ondrop = e => { e.preventDefault(); drop.style.borderColor = '';
+                       scriptTakeFiles(e.dataTransfer.files); };
+  scriptPaint();
+
+  function grab(){
+    script.text = ta.value;
+    script.addr = host.querySelector('#scriptAddr').value.trim();
+    script.dong = host.querySelector('#scriptDong').value.trim();
+    script.ho   = host.querySelector('#scriptHo').value.trim();
+    const k = host.querySelector('[name=skind]:checked');
+    script.kind = k ? k.value : '매물';
+  }
+  host.querySelector('[data-cancel]').onclick = ()=>{ grab(); close(); };
+  host.querySelector('[data-go]').onclick = ()=>{
+    grab();
+    if(!script.text.trim() && !script.imgs.length && !script.files.length)
+      return toast('재료를 넣어 주세요 — 글을 붙여넣거나 사진을 올리면 됩니다.', true);
+    close(); generateFromScript();
+  };
+}
+
+function scriptPrompt(){
+  const a = state.author;
+  const len = $('#optLength').value, tone = $('#optTone').value;
+  const toneNote = { '친근':'이웃에게 말하듯 편안하고 따뜻하게.',
+    '전문':'차분하고 신뢰감 있게. 경력자가 정리해 주는 어조.',
+    '간결':'군더더기 없이 정보 위주로. 짧은 문장.' }[tone];
+  const n = script.imgs.length;
+  const files = script.files.map(f => '--- ' + f.name + ' ---\n' + f.text).join('\n\n');
+  const isAd = script.kind === '매물';
+
+  return `당신은 대한민국 부동산 블로그 글을 대신 써 주는 전문 작가입니다.
+아래 작성자가 가진 **재료**를 블로그 글 한 편으로 만들어 주세요.
+
+[작성자]
+${authorBlock()}
+
+[글의 성격]
+${SCRIPT_KINDS[script.kind]}
+
+${script.addr ? `[매물 주소] ${script.addr}${script.dong ? ' / ' + script.dong + '동' : ''}${script.ho ? ' ' + script.ho + '호' : ''}` : ''}
+
+[재료 — 작성자가 넣은 글]
+${script.text.trim() || '(글로 넣은 것은 없음)'}
+
+${files ? `[재료 — 첨부 파일]\n${files}` : ''}
+
+${n ? `[재료 — 사진 ${n}장]
+이 메시지에 사진 ${n}장이 함께 들어 있습니다. 순서대로 1번, 2번 … ${n}번입니다.
+사진에 글자가 있으면 읽어서 내용에 반영하세요.
+본문에 image 블록을 ${n}개 넣되, "slot" 값으로 몇 번 사진인지 지정하세요(1부터 ${n}까지, 순서대로).
+각 사진 아래 caption 에는 그 사진이 실제로 무엇인지 한 줄로 쓰세요.` : '[사진] 없음 — image 블록은 넣지 마세요.'}
+
+[분량] 본문 약 ${len}자
+[어조] ${toneNote}
+
+[무엇보다 지킬 것 — 어기면 못 쓰는 글이 됩니다]
+1. **재료에 없는 사실을 지어내지 마세요.** 면적·금액·층·연식·향·준공연도·세대수·학군·교통 시간 같은 수치는
+   재료에 적힌 것만 씁니다. 재료에 없으면 그 항목을 아예 빼거나 "확인 필요"로 남깁니다.
+2. 재료에서 확인되지 않아 뺀 항목은 checkFacts 에 "무엇이 빠졌는지"로 적어 주세요.
+3. 추측을 사실처럼 쓰지 마세요. "~로 보입니다", "~일 수 있습니다" 같은 표현도 근거가 재료에 있어야 합니다.
+${isAd ? `4. 매물 광고입니다. 과장 광고 표현(최고·최저가·무조건·확실·급매 남발)을 쓰지 마세요.
+5. 동·호수는 그대로 쓰지 말고 "중층", "고층" 정도로만 쓰세요. 개인정보와 보안 때문입니다.
+6. 글 맨 끝에 아래 법정 표기를 그대로 담은 p 블록을 하나 두세요 — 표시·광고 규정 사항입니다.
+   「${a.office}${a.regno ? ' | 등록번호 ' + a.regno : ''}${a.addr ? ' | ' + a.addr : ''}${a.phone ? ' | ' + a.phone : ''} | 개업공인중개사 ${a.name}」
+   ${a.regno ? '' : '(등록번호가 비어 있으니 「등록번호 [ ]」 로 자리를 비워 두고, checkFacts 에 "등록번호를 채워야 합니다" 를 넣으세요.)'}` :
+`4. 과장하거나 단정적으로 투자를 권유하지 마세요.`}
+
+[글 짜임]
+- 첫 문단은 손님이 실제로 묻는 질문이나 현장의 장면에서 시작합니다. 사전식 정의로 시작하지 않습니다.
+- 소제목(h2)은 4~7개. 재료의 흐름을 따르되 읽는 사람이 찾기 쉬운 말로.
+- 작성자가 1인칭으로 말합니다("제가", "저희 사무소에서는").
+- 비교할 것이 있으면 표(table)를 넣습니다. 없으면 억지로 넣지 마세요.
+- 글 끝에 "자주 묻는 질문" h2 와 질문 3개(h3 + 문단).
+- 맨 마지막은 작성자 맺음말 한 문단.
+
+[출력 형식 — 이 JSON 구조 그대로]
+{
+  "titles": ["제목 후보 8개. 각 32자 이내. 검색어가 앞쪽에. 낚시성 금지"],
+  "meta": "메타설명 150자 이내",
+  "blocks": [
+    {"t":"p","text":"문단. 강조는 **별표 두 개**"},
+    {"t":"h2","text":"소제목"},
+    {"t":"h3","text":"작은 제목"},
+    {"t":"ul","items":["항목"]},
+    {"t":"ol","items":["단계"]},
+    {"t":"quote","text":"한 문장 강조"},
+    {"t":"table","head":["구분","A","B"],"rows":[["행","값","값"]]}${n ? `,
+    {"t":"image","slot":1,"caption":"이 사진이 무엇인지 한 줄"}` : ''}
+  ],
+  "tags": ["네이버 태그 15개. # 없이"],
+  "titleKinds": ["위 titles 8개의 유형. SEO형|후킹형|손해회피형|숫자형"],
+  "coreKeywords": ["핵심 키워드 3개"],
+  "longTail": ["롱테일 키워드 4개"],
+  "nextPosts": [{"t":"다음에 이어 쓸 글 제목 3개","k":"키워드 2개를 쉼표로"}],
+  "checkFacts": ["발행 전에 작성자가 직접 확인할 것 3~6개. 재료에 없어서 뺀 항목을 먼저 적을 것"]
+}
+
+JSON만 출력하세요.`;
+}
+
+async function generateFromScript(){
+  if(state.busy) return;
+  state.busy = true; $('#btnGen').disabled = true;
+  $('#pubbar').style.display = 'none';
+  const n = script.imgs.length;
+  $('#work').innerHTML = `<div class="card"><div class="progress">
+      <div class="big"><span class="spin"></span> 넣어 주신 재료로 글을 쓰고 있습니다</div>
+      <div class="sm">${esc(script.kind === '매물' ? '매물 광고' : script.kind === '대본' ? '유튜브 대본 정리' : script.kind === '후기' ? '현장 후기' : '정보·설명 글')}${n ? ' · 사진 ' + n + '장 읽는 중' : ''}<br>
+        보통 30~90초 걸립니다. 창을 닫지 마세요.</div></div></div>`;
+  try{
+    const raw = await callAI(scriptPrompt(), { json:true, maxTokens:16000, images: script.imgs });
+    const d = parseJSON(raw);
+    if(!d.blocks || !d.blocks.length) throw new Error('본문이 비어 있습니다. 한 번 더 눌러 주세요.');
+
+    /* 넣은 사진을 본문 사진 자리에 그대로 앉힌다 */
+    state.images = {}; state.imgSrc = {};
+    let slot = 0;
+    d.blocks.forEach(b => {
+      if(b && b.t === 'image'){
+        const want = Math.max(1, Math.min(n, parseInt(b.slot, 10) || (slot + 1))) - 1;
+        if(script.imgs[want]){ state.images[slot] = script.imgs[want]; state.imgSrc[slot] = 'up'; }
+        slot++;
+      }
+    });
+
+    state.picked = { t: (d.titles||[])[0] || '대본으로 만든 글', k:'', cat:'script' };
+    state.post = {
+      titles: (d.titles||[]).filter(Boolean).slice(0, 8),
+      title: (d.titles||[])[0] || '대본으로 만든 글',
+      meta: d.meta || '',
+      blocks: d.blocks,
+      tags: (d.tags||[]).map(t => String(t).replace(/^#/, '').trim()).filter(Boolean).slice(0, 25),
+      checkFacts: d.checkFacts || [],
+      titleKinds: (d.titleKinds||[]).map(x=>String(x)),
+      coreKeywords: (d.coreKeywords||[]).map(x=>String(x)).filter(Boolean).slice(0,5),
+      longTail: (d.longTail||[]).map(x=>String(x)).filter(Boolean).slice(0,6),
+      nextPosts: (d.nextPosts||[]).filter(x=>x&&x.t).slice(0,3),
+      at: Date.now(),
+    };
+    renderPost(); refreshPreviewImages();
+    toast(n ? '글이 나왔습니다. 넣어 주신 사진이 본문에 들어갔습니다.' : '글이 나왔습니다.');
+  }catch(e){
+    $('#work').innerHTML = `<div class="card"><div class="body">
+      <div class="notice warn"><b>글을 만들지 못했습니다.</b><br>${esc(e.message)}</div>
+      <button class="btn primary" onclick="openScript()">재료 다시 보기</button></div></div>`;
+  }finally{
+    state.busy = false; $('#btnGen').disabled = false;
+  }
+}
+window.openScript = openScript;
 
 async function generate(){
   if(!state.picked) return toast('왼쪽에서 주제를 먼저 고르거나 직접 입력해 주세요.', true);
@@ -1517,6 +1816,7 @@ function openAuthor(){
     <div class="grid2">${f('office','사무소명')}${f('years','경력(년)','21')}</div>
     <div class="grid2">${f('area','활동 지역','인천 송도국제도시')}${f('phone','연락처','032-000-0000')}</div>
     ${f('addr','사무소 주소','', '글 끝에 지도를 넣을 때 이 주소로 검색합니다')}
+    ${f('regno','중개사무소 등록번호','', '매물 광고 글 끝에 법정 표기로 들어갑니다 (표시·광고 규정)')}
     ${f('extra','이력·자격','', '협회 직책, 강사 경력 등 — 글의 신뢰도에 쓰입니다')}
     ${f('sign','맺음말 문장','', '모든 글 마지막 문단에 자연스럽게 들어갑니다')}
   `, `<button class="btn" data-cancel>취소</button><button class="btn primary" data-save>저장</button>`);
@@ -1697,6 +1997,7 @@ function init(){
       : '도우미가 꺼져 있습니다. 폴더의 start.bat을 실행해 주세요.', !state.helper.on));
   };
   $('#btnGen').onclick = generate;
+  $('#btnScript').onclick = openScript;
   $('#btnAiTopics').onclick = aiTopics;
   $('#search').oninput = e => { state.search = e.target.value.trim(); state.aiTopics = null; renderTopics(); };
   $('#btnUseOwn').onclick = ()=>{
@@ -2595,7 +2896,7 @@ function vdPaintLen(){ var e=document.getElementById('vdLen'); if(e) e.textConte
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.09.23-4';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.09.25-1';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_blog.html';      // 이 파일 이름
   var SD_NAME = '블로그 스튜디오';      // 사람이 부르는 이름
 
