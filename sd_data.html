@@ -18437,6 +18437,13 @@ document.addEventListener('DOMContentLoaded', function(){
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-storage-compat.js"></script>
+<!-- ═══ window.storage 어댑터 ═══════════════════════════════════
+     이게 없어서 데이터관리는 여태 이 PC 의 localStorage 만 썼다.
+     카카오맵 키·국토부 인증키·좌표 사전·건물명 사전이 모두 이 컴퓨터에만
+     남아, PC 를 바꾸면 처음부터 다시였다. 매물관리는 이미 이 줄이 있다.
+     ═══════════════════════════════════════════════════════════ -->
+<script src="firebase-storage.js"></script>
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getDatabase, ref, set, get, child } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
@@ -19346,7 +19353,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.09.25-1';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.09.25-2';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_data.html';      // 이 파일 이름
   var SD_NAME = '실거래가';      // 사람이 부르는 이름
 
@@ -21260,10 +21267,15 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     return map[nm] || '';
   }
 
+  //  파이어베이스 값이 있으면 그것을 쓰고, 이 컴퓨터에도 남겨 둔다.
+  //  (PC 를 바꿔도 한 번 열면 그 뒤로는 바로 읽힌다)
   async function sget(k){
     var v=null;
     try{ v = localStorage.getItem(k); }catch(e){}
-    try{ var r = await window.storage.get(k); if(r && r.value) v = r.value; }catch(e){}
+    try{
+      var r = await window.storage.get(k);
+      if(r && r.value){ v = r.value; try{ localStorage.setItem(k, v); }catch(e){} }
+    }catch(e){}
     return v;
   }
   async function sset(k, v){
@@ -21295,7 +21307,19 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     var key = '';
     try{ var r = await window.storage.get('sd_kakao_key'); if(r && r.value) key = String(r.value).trim(); }catch(e){}
     if(!key){ try{ key = (localStorage.getItem('sd_kakao_key')||'').trim(); }catch(e){} }
-    if(!key) throw new Error('카카오맵 키가 없습니다 — 지도 탐색 탭에서 한 번 등록해 주세요');
+    if(!key){
+      //  다른 화면으로 보내지 말고 여기서 바로 받는다.
+      //  넣은 키는 파이어베이스에도 올려 다른 PC 에서도 그대로 쓴다.
+      var v = prompt('카카오맵 JavaScript 키를 넣어 주세요.\n'
+        + '(카카오 디벨로퍼스 → 내 애플리케이션 → 앱 키 → JavaScript 키)\n\n'
+        + '한 번 넣으면 사무소 모든 컴퓨터에서 같이 씁니다.');
+      v = String(v||'').trim();
+      if(!/^[0-9a-f]{20,}$/i.test(v))
+        throw new Error('카카오맵 키가 없습니다 — 키를 넣어야 지도를 그릴 수 있습니다');
+      await sset('sd_kakao_key', v);
+      key = v;
+      msg('카카오맵 키를 저장했습니다.', 'ok');
+    }
     var ex = document.getElementById('sd-kakao-sdk');
     if(!ex){
       var sc = document.createElement('script');
