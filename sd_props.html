@@ -2112,8 +2112,94 @@ var _formPhotoPropId=null;        // 이 폼의 사진 그룹 ID (신규=새 ID,
 var _phUploading=false;           // 업로드 중 플래그
 
 async function toStore(){try{await window.storage.set('sd_props',JSON.stringify(props));}catch(e){}}
-async function fromStore(){try{var r=await window.storage.get('sd_props');if(r&&r.value)props=JSON.parse(r.value);}catch(e){props=[];}}
-fromStore().then(function(){sw(0);loadListingsFromFirebase();initPhotoDrop();});
+/* ── 매물 자료 읽기 ────────────────────────────────────────────────
+   예전에는 이랬다.
+     async function fromStore(){ try{ ... }catch(e){ props=[]; } }
+   부팅 때 파이어베이스 인증이 끝나기 전에 읽으러 가면 거절당하는데,
+   그 예외를 catch 가 조용히 삼키고 props 를 비웠다. 화면에는
+   「등록된 매물이 없습니다」 — 338건이 그대로 있는데도.
+   자료가 날아간 것처럼 보이는, 가장 나쁜 실패 방식이었다.
+
+   이제 세 겹으로 막는다.
+     ① 저장소(window.storage)가 생길 때까지 기다린다
+     ② 인증 게이트(sdAuthWait)가 열릴 때까지 기다린다
+     ③ 그래도 실패하면 물러서며 세 번까지 다시 해 본다
+   끝내 못 읽으면 「없음」 이라 하지 않고 못 읽었다고 화면에 적는다. */
+function waitStorage(tries){
+  return new Promise(function(res){
+    var n=0;
+    (function tick(){
+      if(window.storage && typeof window.storage.get==='function') return res(true);
+      if(++n > (tries||200)) return res(false);            // 최대 20초
+      setTimeout(tick,100);
+    })();
+  });
+}
+function waitAuth(){
+  if(typeof window.sdAuthWait !== 'function') return Promise.resolve();
+  return Promise.race([
+    window.sdAuthWait(),
+    new Promise(function(r){ setTimeout(r, 12000); })      // 게이트가 안 열려도 12초면 진행
+  ]);
+}
+var _propsLoadFailed = false;
+async function fromStore(){
+  _propsLoadFailed = false;
+  if(!(await waitStorage(200))){
+    _propsLoadFailed = true; props = [];
+    console.error('[매물] 저장소가 준비되지 않았습니다');
+    showLoadFail(); return;
+  }
+  await waitAuth();
+  var lastErr = null;
+  for(var i=0; i<3; i++){
+    try{
+      var r = await window.storage.get('sd_props');
+      if(r && r.value){ props = JSON.parse(r.value); showLoadFail(); return; }
+      lastErr = new Error('값이 비어 있음');
+    }catch(e){ lastErr = e; }
+    await new Promise(function(res){ setTimeout(res, 800 * (i+1)); });   // 물러서며 다시
+  }
+  //  세 번 다 실패 — 정말 비어 있을 수도, 못 읽은 것일 수도 있다.
+  //  둘을 구별할 수 없으니 「못 읽었다」 쪽으로 말한다. 안전한 쪽이다.
+  props = [];
+  _propsLoadFailed = true;
+  console.error('[매물] 자료를 읽지 못했습니다:', lastErr);
+  showLoadFail();
+}
+/*  「없음」 과 「못 읽음」 은 다른 일이다. 화면에 그렇게 적는다. */
+function showLoadFail(){
+  var np = document.getElementById('no-prop'); if(!np) return;
+  if(!_propsLoadFailed){ np.innerHTML = '등록된 매물이 없습니다.'; return; }
+  np.innerHTML =
+    '<div style="color:#c62828;font-weight:700;margin-bottom:6px">⚠ 매물 자료를 불러오지 못했습니다</div>'
+    + '<div style="font-size:12px;color:#666;line-height:1.7">자료가 지워진 것이 <b>아닙니다</b> — 읽기에 실패한 것입니다.<br>'
+    + '아래 단추를 눌러 보시고, 그래도 안 되면 새로고침(Ctrl+Shift+R) 해 주세요.</div>'
+    + '<button onclick="propsRetry()" style="margin-top:11px;padding:8px 18px;border:0;background:#1a7f3c;'
+    + 'color:#fff;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer">🔄 다시 불러오기</button>';
+  np.style.display = 'block';
+}
+window.propsRetry = async function(){
+  var np = document.getElementById('no-prop');
+  if(np) np.innerHTML = '불러오는 중…';
+  await fromStore();
+  if(typeof rtbl==='function') rtbl();
+  if(typeof popSels==='function') popSels();
+  if(typeof updFT==='function') updFT();
+  if(typeof refreshHub==='function') refreshHub();
+};
+fromStore().then(function(){ sw(0); loadListingsFromFirebase(); initPhotoDrop(); });
+/*  로그인이 뒤늦게 끝나 처음 읽기를 놓쳤을 때를 위한 두 번째 기회 */
+(function(){
+  var done = false;
+  function retryOnce(){
+    if(done) return; done = true;
+    if((props||[]).length) return;                 // 이미 잘 읽혔으면 가만둔다
+    window.propsRetry();
+  }
+  if(typeof window.sdAuthWait === 'function') window.sdAuthWait().then(function(){ setTimeout(retryOnce, 1200); });
+  setTimeout(retryOnce, 10000);
+})();
 
 // ═══ 사진 업로드 — 드래그앤드롭 초기화 ═══
 function initPhotoDrop(){
@@ -8020,7 +8106,7 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.09.23-8';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.09.25-1';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_props.html';      // 이 파일 이름
   var SD_NAME = '매물관리';      // 사람이 부르는 이름
 
