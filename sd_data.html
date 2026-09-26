@@ -19353,7 +19353,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.09.26-4';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.09.26-5';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_data.html';      // 이 파일 이름
   var SD_NAME = '실거래가';      // 사람이 부르는 이름
 
@@ -23767,6 +23767,25 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 #dj-root .dj-pin-n{font-size:9px;color:#444;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #dj-root .dj-pin-v{font-size:10.5px;font-weight:800;color:#0891b2}
 #dj-root .dj-pin-off{background:#b8860b;border-color:#8b6508;box-shadow:0 3px 9px rgba(0,0,0,.3)}
+#dj-root .dj-maprow{display:grid;grid-template-columns:minmax(0,1fr) 330px;gap:10px}
+@media (max-width:1100px){ #dj-root .dj-maprow{grid-template-columns:1fr;height:auto!important}
+  #dj-root #dj-map{height:520px!important} #dj-root .dj-rank{max-height:520px} }
+#dj-root .dj-rank{border:1px solid var(--border);border-radius:10px;background:var(--card);
+  overflow:auto;display:flex;flex-direction:column}
+#dj-root .dj-rank-hd{padding:11px 12px;border-bottom:1px solid var(--border);
+  position:sticky;top:0;background:var(--card);z-index:2}
+#dj-root .dj-rank-list{flex:1}
+#dj-root .dj-rank-row{display:flex;gap:9px;align-items:center;padding:8px 11px;
+  border-bottom:0.5px solid var(--border);cursor:pointer}
+#dj-root .dj-rank-row:hover{background:var(--bg3)}
+#dj-root .dj-rank-no{width:20px;text-align:center;font-size:11px;color:var(--text3);flex:none}
+#dj-root .dj-rank-nm{font-size:12px;font-weight:700;white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis}
+#dj-root .dj-rank-sub{font-size:10px;color:var(--text3);margin-top:1px;white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis}
+#dj-root .dj-rank-v{font-size:13px;font-weight:800}
+#dj-root .dj-pin-hi{outline:2px solid var(--accent);outline-offset:1px;z-index:50!important;
+  transform:translateX(-50%) scale(1.12)}
 #dj-areabar{position:absolute;left:50%;transform:translateX(-50%);top:12px;z-index:20;
   display:flex;gap:9px;align-items:center;background:rgba(255,255,255,.96);
   border:1px solid #ffb74d;border-radius:10px;padding:8px 13px;
@@ -23813,7 +23832,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
   var CUR   = null;                   // 지금 보고 있는 단지
   var BUSY  = false;
   var CH    = null;                   // 흐름 그래프
-  var MAPON = false, DJMAP = null, DJOVER = [];   // 단지 고르는 지도
+  var MAPON = false, DJMAP = null, DJOVER = [], PINEL = {};   // 단지 고르는 지도
   var PEND_CENTER = null;    // 지도를 옮긴 자리 — 다시 그려도 그 자리를 지킨다
   var LAST_REGION = '';      // 지도 한가운데가 어느 시군구인지 (자료와 다르면 알려 준다)
   var GEO_TRIED = {};        // 스스로 좌표를 찾아 본 지역·기간 — 한 번만 한다
@@ -24167,8 +24186,9 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
   var DJC_PRE = 'sd_djc_', DJC_IDX = 'sd_djc_idx';
   var DJC_MAX = 24;                 // 담아 둘 지역·기간 수
   var DJC_CAP = 3000000;            // 한 덩어리 상한 (약 3MB)
+  //  칸을 뒤에 덧붙이는 것은 괜찮다 — 예전에 담아 둔 것은 그 칸이 비어 올 뿐이다
   var FIELDS = ['_name','_date','_amt','_area','_py','_ppy','floor','umdNm','jibun',
-                'cdealType','deposit','monthlyRent','contractType'];
+                'cdealType','deposit','monthlyRent','contractType','buildYear'];
   var REFRESHING = {};              // 뒤에서 새로 받는 중인 것
 
   function djcKey(kind){ return DJC_PRE + st().sgg + '_' + kind + '_' + periodKey(); }
@@ -24183,10 +24203,11 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
       return FIELDS.map(function(f){ return r[f] === undefined ? null : r[f]; });
     });
   }
-  function unpackRows(arr, kind){
+  function unpackRows(arr, kind, fields){
+    var F = (fields && fields.length) ? fields : FIELDS;   // 담을 때 쓴 칸 목록대로
     return (arr || []).map(function(a){
       var o = {};
-      for(var i=0;i<FIELDS.length;i++) if(a[i] !== null && a[i] !== undefined) o[FIELDS[i]] = a[i];
+      for(var i=0;i<F.length;i++) if(a[i] !== null && a[i] !== undefined) o[F[i]] = a[i];
       o.__kindK = kind;
       return o;
     });
@@ -24222,7 +24243,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
       if(!r || !r.value) return null;
       var j = JSON.parse(r.value);
       if(!j || j.v !== 1 || !Array.isArray(j.t)) return null;
-      return { trade: unpackRows(j.t, kind), rent: unpackRows(j.r, kind),
+      return { trade: unpackRows(j.t, kind, j.f), rent: unpackRows(j.r, kind, j.f),
                at: new Date(j.at), stale: (j.day !== today()) };
     }catch(e){ return null; }
   }
@@ -24727,19 +24748,74 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
       }
       var o = g[r._name] = g[r._name] ||
         { name:r._name, dong:r.umdNm||'', jibun:r.jibun||'', amts:[], cnt:0,
-          kind:(r.__kindK || 'apt') };
+          kind:(r.__kindK || 'apt'), byA:{}, year:'', last:'' };
       o.cnt++;
       var v = r._amt;
       if(s.deal === 'wolse'){
         var dep = S.num(r.deposit) || 0, mon = S.num(r.monthlyRent) || 0;
         v = (s.wAxis === 'rent') ? mon : convDeposit(dep, mon, s.rate);
       }
-      if(r.cdealType !== 'O' && typeof v === 'number') o.amts.push(v);
+      if(r.cdealType !== 'O' && typeof v === 'number'){
+        o.amts.push(v);
+        //  면적형별로도 나눠 담는다 — 순위는 평형을 맞춰 견주어야 말이 된다
+        var ak = Math.round(r._area || 0);
+        if(ak){
+          var b = o.byA[ak] = o.byA[ak] || { sqm:ak, py:Math.round(ak/3.3058), v:[], d:[] };
+          b.v.push(v); b.d.push(r._date || '');
+        }
+      }
       if(!o.jibun && r.jibun) o.jibun = r.jibun;
+      if(!o.year && r.buildYear) o.year = r.buildYear;
+      if(r._date && (!o.last || r._date > o.last)) o.last = r._date;
     });
-    return Object.keys(g).map(function(k){
-      var o = g[k]; o.med = S.med(o.amts); o.key = S.gkey(st().sgg, o.name); return o;
-    }).sort(function(a,b){ return b.cnt - a.cnt; });
+    var out = Object.keys(g).map(function(k){
+      var o = g[k];
+      o.med = S.med(o.amts);
+      o.key = S.gkey(st().sgg, o.name);
+      //  대표 면적형 = 거래가 가장 많은 면적형. 여러 평형을 섞은 중위는 견줄 수가 없다.
+      var aks = Object.keys(o.byA);
+      var rep = null;
+      aks.forEach(function(a){
+        var b = o.byA[a];
+        if(!rep || b.v.length > rep.v.length) rep = b;
+      });
+      if(rep){
+        o.rep   = rep.sqm;
+        o.repPy = rep.py;
+        o.repMed = S.med(rep.v);
+        o.repN  = rep.v.length;
+        o.ppy   = (o.repMed && rep.py) ? Math.round(o.repMed / rep.py) : null;
+        o.yoy   = yoyOf(rep);          // 최근 1년 vs 직전 1년
+      }
+      return o;
+    });
+    return out.sort(function(a,b){ return b.cnt - a.cnt; });
+  }
+
+  /*  1년 상승률 — 최근 1년 중위와 직전 1년 중위를 견준다.
+      자료가 24개월어치는 있어야 잴 수 있다. 없으면 null 로 두고 화면에 「–」.
+      (MR.K 도 「견줄 직전 1년 거래가 없다」를 「–」로 적는다) */
+  function yoyWindows(){
+    var yms = periodYms();
+    if(yms.length < 24) return null;
+    var last = yms[yms.length-1];                 // 가장 최근 달 (YYYYMM)
+    function minus(ym, k){ return K().addYm(ym, -k); }
+    return { aFrom: minus(last, 11), aTo: last,             // 최근 1년
+             bFrom: minus(last, 23), bTo: minus(last, 12) }; // 직전 1년
+  }
+  function ymOf(d){ return String(d||'').slice(0,4) + String(d||'').slice(5,7); }
+  function yoyOf(band){
+    var W = yoyWindows(); if(!W) return null;
+    var S = K(), a = [], b = [];
+    for(var i=0;i<band.v.length;i++){
+      var ym = ymOf(band.d[i]); if(!ym) continue;
+      if(ym >= W.aFrom && ym <= W.aTo) a.push(band.v[i]);
+      else if(ym >= W.bFrom && ym <= W.bTo) b.push(band.v[i]);
+    }
+    if(!a.length || !b.length) return null;
+    var ma = S.med(a), mb = S.med(b);
+    if(!ma || !mb) return null;
+    return { pct: Math.round((ma - mb) / mb * 1000) / 10, aN: a.length, bN: b.length };
   }
 
   window.djMap = async function(force){
@@ -24947,11 +25023,130 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     box.appendChild(d);
   }
 
+  /* ══ 이 지역 단지 순위 ════════════════════════════════════════════════
+     지도 오른쪽에 세워 둔다. 지도에 뜬 단지를 값으로 줄 세워 보는 자리다.
+     평형을 섞은 중위로 줄을 세우면 소형이 많은 단지가 위로 올라와 말이 안 된다.
+     그래서 단지마다 「거래가 가장 많은 면적형」을 대표로 잡고 그 값으로 견준다. */
+  var RANKS = [
+    { k:'med',  n:'시세 높은순' },
+    { k:'yoy',  n:'1년 상승률' },
+    { k:'ppy',  n:'평당가' },
+    { k:'cnt',  n:'거래 많은순' }
+  ];
+  var RANKN = 20;      // 처음 보여 줄 수
+  function rankState(){
+    var s = st();
+    if(!s.rank) s.rank = 'med';
+    if(!s.rankN) s.rankN = RANKN;
+    return s;
+  }
+  window.djRank = function(k){ rankState().rank = k; st().rankN = RANKN; stSave(); paintRank(); };
+  window.djRankMore = function(){ rankState().rankN += 30; stSave(); paintRank(); };
+  //  줄에 마우스를 올리면 지도에서 그 핀을 돋운다
+  window.djRankHi = function(nm, on){
+    var el = PINEL[nm]; if(!el) return;
+    el.classList.toggle('dj-pin-hi', !!on);
+  };
+
+  function paintRank(){
+    var box = document.getElementById('dj-rank'); if(!box) return;
+    var sv = rankState(), list = danjiAgg().filter(function(o){ return o.repMed; });
+    var W = yoyWindows();
+
+    function val(o){
+      return sv.rank === 'ppy' ? (o.ppy || 0)
+           : sv.rank === 'cnt' ? o.cnt
+           : sv.rank === 'yoy' ? (o.yoy ? o.yoy.pct : -1e9)
+           : (o.repMed || 0);
+    }
+    var rows = list.slice().sort(function(a,b){ return val(b) - val(a); });
+    var shown = rows.slice(0, sv.rankN);
+
+    var h = '<div class="dj-rank-hd">'
+      + '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:6px">'
+      +   '<b style="font-size:13px">이 지역 단지 순위</b>'
+      +   '<span style="font-size:11px;color:var(--text3)">' + rows.length + '곳</span>'
+      + '</div>'
+      + '<div style="font-size:10.5px;color:var(--text3);margin-top:3px;line-height:1.45">'
+      +   '지도에 뜬 ' + list.length + '곳 · ' + esc(DSEL(sv.deal).n)
+      +   ' 대표 면적형 기준 (거래가 가장 많은 평형)'
+      + '</div>'
+      + '<div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:7px">'
+      + RANKS.map(function(r){
+          var on = (sv.rank === r.k);
+          var off = (r.k === 'yoy' && !W);
+          return '<button onclick="djRank(\''+r.k+'\')" ' + (off ? 'disabled ' : '')
+            + 'title="' + (off ? '1년 상승률은 기간이 24개월 이상이어야 잴 수 있습니다' : '') + '" '
+            + 'style="font-size:10.5px;padding:4px 9px;border-radius:12px;'
+            + 'cursor:'+(off?'default':'pointer')+';opacity:'+(off?'.4':'1')+';'
+            + 'border:1px solid '+(on?'transparent':'var(--border)')+';'
+            + 'background:'+(on?'var(--accent)':'transparent')+';color:'+(on?'#fff':'inherit')+'">'
+            + esc(r.n) + '</button>'; }).join('')
+      + '</div>';
+    if(sv.rank === 'yoy' && !W)
+      h += '<div style="font-size:10.5px;color:#c80;margin-top:6px;line-height:1.5">'
+        + '1년 상승률은 <b>24개월 이상</b>을 받아야 잽니다 (최근 1년과 직전 1년을 견줍니다).'
+        + '<button class="dj-bs" style="margin-top:5px;padding:3px 9px;font-size:10.5px" '
+        + 'onclick="djPeriod(\'r24\')">📅 24개월로 넓히기</button></div>';
+    h += '</div>';
+
+    if(!shown.length){
+      box.innerHTML = h + '<div style="padding:16px;font-size:12px;color:var(--text3)">'
+        + '줄 세울 단지가 없습니다.</div>';
+      return;
+    }
+
+    h += '<div class="dj-rank-list">' + shown.map(function(o, i){
+      var main, sub2;
+      if(sv.rank === 'ppy')      { main = o.ppy ? fmtN(o.ppy) + '만' : '—'; }
+      else if(sv.rank === 'cnt') { main = o.cnt + '건'; }
+      else                       { main = amtTxt(o.repMed); }
+      var y = o.yoy;
+      sub2 = y ? ('<span style="color:' + (y.pct >= 0 ? '#c62828' : '#1565c0') + '">'
+                  + (y.pct >= 0 ? '▲' : '▼') + Math.abs(y.pct) + '%</span>')
+               : '<span style="color:var(--text3)">–</span>';
+      var kd = KIND(o.kind || 'apt');
+      return '<div class="dj-rank-row" onclick="djPick(\'' + esc(o.name).replace(/'/g, "\\'") + '\')" '
+        + 'onmouseenter="djRankHi(\'' + esc(o.name).replace(/'/g, "\\'") + '\',1)" '
+        + 'onmouseleave="djRankHi(\'' + esc(o.name).replace(/'/g, "\\'") + '\',0)">'
+        + '<div class="dj-rank-no">' + (i+1) + '</div>'
+        + '<div style="min-width:0;flex:1">'
+        +   '<div class="dj-rank-nm">'
+        +     (sv.kinds.length > 1 && kd.s
+              ? '<span style="color:' + kd.c + ';font-weight:700">' + kd.s + '</span> ' : '')
+        +     esc(o.name) + '</div>'
+        +   '<div class="dj-rank-sub">' + esc(o.dong || '')
+        +     (o.year ? ' · ' + esc(o.year) + '년' : '')
+        +     (o.repPy ? ' · ' + o.repPy + '평' : '')
+        +     ' · ' + o.repN + '건'
+        +   '</div>'
+        + '</div>'
+        + '<div style="text-align:right;white-space:nowrap">'
+        +   '<div class="dj-rank-v">' + main + '</div>'
+        +   '<div style="font-size:10.5px">' + sub2 + '</div>'
+        + '</div></div>';
+    }).join('') + '</div>';
+
+    if(rows.length > shown.length)
+      h += '<div style="text-align:center;padding:9px">'
+        + '<button class="dj-bs" onclick="djRankMore()">더보기 ('
+        + (rows.length - shown.length) + '곳 더)</button></div>';
+
+    h += '<div style="font-size:10px;color:var(--text3);padding:9px 11px;line-height:1.5;'
+      + 'border-top:0.5px solid var(--border)">'
+      + '오른쪽 작은 값은 최근 1년 중위와 직전 1년을 견준 등락입니다. '
+      + '「–」는 견줄 직전 1년 거래가 없다는 뜻입니다.'
+      + (W ? '' : ' 지금 기간으로는 잴 수 없어 모두 「–」로 둡니다.')
+      + '</div>';
+    box.innerHTML = h;
+  }
+
   function drawMap(){
     var S = K(), sv = st(), wrap = document.getElementById('dj-mapwrap'); if(!wrap) return;
     var list = danjiAgg(), GEO = S.geo();
     var have = list.filter(function(o){ var g = GEO[o.key]; return g && g.lat; });
     var none = list.filter(function(o){ return !(o.key in GEO); }).length;
+    PINEL = {};
     var lvTxt = (MAPLV.filter(function(x){ return x[0] === sv.mapLv; })[0] || [0,''])[1];
 
     wrap.innerHTML =
@@ -24974,8 +25169,11 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
       +   '<button class="dj-bs" onclick="djMap(true)">🔄 다시 그리기</button>'
       + '</span></div>'
       + placeRow(list)
-      + '<div id="dj-map" style="width:100%;height:' + sv.mapH + 'px;border-radius:10px;'
-      +   'border:1px solid var(--border);position:relative"></div>'
+      + '<div class="dj-maprow" style="height:' + sv.mapH + 'px">'
+      +   '<div id="dj-map" style="height:100%;border-radius:10px;'
+      +     'border:1px solid var(--border);position:relative"></div>'
+      +   '<div id="dj-rank" class="dj-rank"></div>'
+      + '</div>'
       + '<div style="font-size:10.5px;color:var(--text3);margin-top:5px">'
       +   '핀을 누르면 그 단지 브리핑이 열립니다. 값은 해제 신고를 뺀 중위 '
       +   esc(DSEL(sv.deal).n) + '입니다.'
@@ -25008,6 +25206,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
         GEO_TRIED[gk] = 1;
         setTimeout(function(){ djGeo(true); }, 60);
       }
+      paintRank();                 // 핀이 없어도 순위는 셀 수 있다
       return;
     }
 
@@ -25069,10 +25268,12 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
           + (o.med ? amtTxt(o.med) : o.cnt + '건') + '</div>';
         d.title = o.name + ' · ' + kd.n + ' · 거래 ' + o.cnt + '건';
         d.onclick = (function(nm){ return function(){ djPick(nm); }; })(o.name);
+        PINEL[o.name] = d;                       // 순위표에서 돋울 때 쓴다
         DJOVER.push(new kakao.maps.CustomOverlay({
           map: DJMAP, position: new kakao.maps.LatLng(g.lat, g.lng),
           content: d, yAnchor: 1, zIndex: 3 + idx }));
       });
+    paintRank();
   }
 
   /*  좌표 찾기 — 지번 주소를 먼저 쓰고, 이름으로 찾은 결과는 반드시
