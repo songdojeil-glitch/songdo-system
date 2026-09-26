@@ -19353,7 +19353,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.09.26-9';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.09.26-10';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_data.html';      // 이 파일 이름
   var SD_NAME = '실거래가';      // 사람이 부르는 이름
 
@@ -23955,9 +23955,26 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     if(!x || !y) return false;
     return x === y || x.indexOf(y) === 0 || y.indexOf(x) === 0;
   }
+  /*  꼬리의 블록 번호 — 「D14」·「14단지」·「14」는 모두 같은 14블록을 가리킨다.
+      국토부는 「송도더샵하버뷰(D14)」, 공급현황은 「더샵하버뷰14단지」,
+      K-apt 는 「송도더샵하버뷰14단지」로 적는다. 셋 다 같은 단지다.
+      번호를 떼어 따로 견주지 않으면 잇지 못한다.
+
+      더 나쁜 쪽도 있다 — 앞글자 일치만 보면 「하버뷰1」이 「하버뷰13」·「하버뷰14」에
+      걸려 엉뚱한 단지의 공급현황을 끌어온다. 둘 다 번호가 있으면 번호까지 같아야 한다. */
+  var NUMTAIL = /(?:D|BL|블럭|블록)?(\d{1,2})(?:단지|BL|블럭|블록)?$/;
+  function splitNum(t){
+    var m = t.match(NUMTAIL);
+    if(!m || !m.index) return { base:t, num:0 };
+    return { base: t.slice(0, m.index), num: parseInt(m[1], 10) };
+  }
   function sameDanji(a, b){
     var x = norm(a), y = norm(b);
     if(!x || !y) return false;
+    var X = splitNum(stripLoc(x)), Y = splitNum(stripLoc(y));
+    //  둘 다 블록 번호가 있으면 번호가 같아야 같은 단지다
+    if(X.num && Y.num) return (X.num === Y.num) && pfx(X.base, Y.base);
+    //  한쪽만 번호가 있는 경우는 예전 그대로 둔다 — 여기까지 좁히면 매물·계약이 안 붙는다
     if(pfx(x, y)) return true;
     return pfx(stripLoc(x), y) || pfx(x, stripLoc(y)) || pfx(stripLoc(x), stripLoc(y));
   }
@@ -24642,7 +24659,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     var isW = (s.deal === 'wolse');
     var out = rows.map(function(r){
       var o = { '계약일':r._date||'', '단지·건물':r._name||'', '법정동':r.umdNm||'',
-                '지번':r.jibun||'', '전용㎡':r._area||'', '평형':r._py||'',
+                '지번':r.jibun||'', '전용㎡':r._area||'', '전용평형':r._py||'',
                 '층':r.floor||'', '준공':r.buildYear||'' };
       if(isW){ o['보증금(만원)'] = S.num(r.deposit) || '';
                o['월세(만원)']   = S.num(r.monthlyRent) || '';
@@ -25236,7 +25253,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
       + '</div>'
       + '<div style="font-size:10.5px;color:var(--text3);margin-top:3px;line-height:1.45">'
       +   '지도에 뜬 ' + list.length + '곳 · ' + esc(DSEL(sv.deal).n)
-      +   ' 대표 면적형 기준 (거래가 가장 많은 평형)'
+      +   ' 대표 면적형 기준 (거래가 가장 많은 평형) · 여러 단지를 견주는 자리라 평은 전용평'
       + '</div>'
       + '<div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:7px">'
       + RANKS.map(function(r){
@@ -25284,7 +25301,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
         +     esc(o.name) + '</div>'
         +   '<div class="dj-rank-sub">' + esc(o.dong || '')
         +     (o.year ? ' · ' + esc(o.year) + '년' : '')
-        +     (o.repPy ? ' · ' + o.repPy + '평' : '')
+        +     (o.repPy ? ' · 전용 ' + o.repPy + '평' : '')
         +     ' · ' + o.repN + '건'
         +   '</div>'
         + '</div>'
@@ -25592,6 +25609,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     //  전세가율은 매매 화면에서만 말이 된다 (전세 화면에서 전세÷전세를 낼 수는 없다)
     var ST = S.stats(CUR.rows, st().deal === 'sale' ? CUR.rent : null);
     var HS = hsOf(nm);
+    pyBuild(nm, HS);                  // 이 단지를 분양평으로 적을 수 있는지 먼저 정한다
     var mine = oursOf(nm);
     var eok = amtTxt;                 // 고른 거래에 맞는 표기 (월세 금액 축이면 만원)
 
@@ -25609,6 +25627,118 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     body.innerHTML = h;
     drawChart(ST);
     miniRender(ST);        // 값 표시 고르개(djFlowVals)가 draw() 를 다시 부르므로 함께 따라온다
+  }
+
+  /* ══ 평형 기준 — 송도동은 분양평, 그 밖은 전용평 ═══════════════════
+     손님이 「34평」이라고 부르는 것은 분양평(공급면적)이다. 그런데 국토부
+     실거래는 전용면적㎡ 만 준다. 전용률은 단지마다 다르고(70%대~80%대),
+     같은 단지 안에서도 타입마다 다르다. 그래서 전용률로 되짚어 셈하면
+     1~2평이 어긋난다 — 손님 앞에서 낼 수 없는 숫자다.
+
+     되짚지 않는다. 짝을 자료에서 그대로 꺼낸다.
+       ① 송도주택공급현황  — 단지마다 타입표가 있고 전용㎡ 와 공급평이 한 줄에 있다
+       ② 매매현황판   G.saleData
+       ③ 전월세현황판 G.rentData  — 엑셀 변환이 보정해 둔 「분양평수정밀」이 줄마다 있다
+     셋 다 송도 자료다. 그래서 송도동 단지만 분양평이 되고, 다른 지역은 짝이
+     없으니 전용평으로 적는다. 없는 값을 전용률로 지어내지 않는다.
+
+     평 값을 내리는 방식(Math.floor)은 매매현황판의 normalizeBP 와 같게 맞췄다 —
+     같은 단지가 두 화면에서 33평·34평로 달리 보이면 안 된다. */
+  var PY = { nm:'', mode:'전용', map:{}, alt:{}, hit:0, src:'' };
+  function pyNum(v){
+    var n = parseFloat(String(v == null ? '' : v).replace(/[^0-9.]/g, ''));
+    return isNaN(n) ? 0 : n;
+  }
+  function pyBuild(nm, HS){
+    if(PY.nm === nm) return PY;
+    var bag = {}, src = [];
+    function add(ex, bp, w){
+      if(!(ex > 0) || !(bp > 0)) return 1;
+      var k = Math.round(ex), b = bag[k] = bag[k] || {};
+      var p = Math.round(bp * 10) / 10;
+      b[p] = (b[p] || 0) + (w || 1);
+      return 1;
+    }
+    //  ① 공급현황 타입표
+    var n1 = 0;
+    try{
+      if(HS && HS.types) HS.types.forEach(function(t){
+        n1 += add(pyNum(t['전용㎡']), pyNum(t['평']) || pyNum(t['평형']), (t['세대수'] || 0) + 1);
+      });
+    }catch(e){}
+    if(n1) src.push('송도주택공급현황');
+    //  ②③ 매매·전월세 현황판
+    function board(rows, label){
+      var n = 0;
+      try{
+        (rows || []).forEach(function(r){
+          var dn = r['단지명']; if(!dn || !sameDanji(dn, nm)) return;
+          n += add(pyNum(r['전용(㎡)'] || r['전용㎡'] || r['전용']),
+                   pyNum(r['분양평수정밀']) || pyNum(r['분양평형']), 1);
+        });
+      }catch(e){}
+      if(n) src.push(label);
+    }
+    try{ board(window.G && G.saleData, '매매현황판'); }catch(e){}
+    try{ board(window.G && G.rentData, '전월세현황판'); }catch(e){}
+
+    var map = {}, alt = {}, hit = 0;
+    Object.keys(bag).forEach(function(k){
+      var b = bag[k], best = null, bw = -1, list = [];
+      Object.keys(b).forEach(function(p){
+        list.push(+p);
+        if(b[p] > bw){ bw = b[p]; best = +p; }
+      });
+      if(best == null) return;
+      map[k] = Math.floor(best); hit++;
+      /*  같은 전용㎡ 에 분양평이 둘 이상일 때 — 84A 는 34.0평, 84B 는 33.2평 같은 일이 흔하다.
+          원값 차이(0.8평)가 아니라 「화면에 찍히는 값」이 갈리는지를 본다.
+          34평과 33평으로 갈리면 손님에게 말하는 평수가 달라진다 — 그때만 별표를 단다. */
+      var fl = {};
+      list.forEach(function(v){ fl[Math.floor(v)] = 1; });
+      var fls = Object.keys(fl).map(Number).sort(function(x, y){ return x - y; });
+      if(fls.length > 1) alt[k] = fls;
+    });
+    PY = { nm:nm, mode: hit ? '분양' : '전용', map:map, alt:alt, hit:hit,
+           src: src.join(' · ') };
+    return PY;
+  }
+  //  전용㎡ 하나에 대한 평 — 짝이 있으면 분양평, 없으면 전용평으로 내린다
+  function pyOf(sqm){
+    var k = Math.round(sqm);
+    if(PY.mode === '분양' && PY.map[k] != null) return { n:PY.map[k], bun:true };
+    return { n: Math.round(sqm / 3.3058), bun:false };
+  }
+  function pyN(sqm){ return pyOf(sqm).n; }
+  //  글로 적을 때 — 분양평 화면에서 짝을 못 찾은 줄은 「전용」이라고 티를 낸다
+  function pyPlain(sqm){
+    var p = pyOf(sqm);
+    return p.n + '평' + ((PY.mode === '분양' && !p.bun) ? '(전용)' : '');
+  }
+  function pyTxt(sqm){
+    var p = pyOf(sqm), k = Math.round(sqm);
+    var h = p.n + '평';
+    if(PY.mode === '분양' && !p.bun)
+      h += ' <span title="공급현황·현황판에 짝이 되는 타입이 없어 전용평으로 적었습니다" '
+        +  'style="font-size:9px;color:var(--text3);border:1px solid var(--border);'
+        +  'border-radius:4px;padding:0 3px">전용</span>';
+    else if(PY.mode === '분양' && PY.alt[k])
+      h += ' <span title="이 전용면적에 분양평이 ' + PY.alt[k].join('평 · ') + '평 으로 여럿입니다 — 세대가 가장 많은 타입으로 적었습니다" '
+        +  'style="font-size:9px;color:#c80">*</span>';
+    return h;
+  }
+  //  어느 기준으로 적었는지 한 줄로 밝힌다 — 말없이 바꾸면 손님 앞에서 숫자가 어긋난다
+  function pyNote(ST){
+    var miss = 0, tot = 0;
+    ((ST && ST.byArea) || []).forEach(function(a){ tot++; if(!pyOf(a.sqm).bun) miss++; });
+    if(PY.mode !== '분양')
+      return '평형은 <b>전용평</b>(전용면적 ÷ 3.3058)입니다 — 이 단지는 분양평 자료'
+        + '(송도주택공급현황·매매현황판)가 없어 분양평으로는 적을 수 없습니다. '
+        + '손님이 부르는 평수보다 대개 7~9평 작습니다.';
+    return '평형은 <b>분양평</b>(공급면적)입니다 — 손님이 부르는 평수와 같습니다. '
+      + '<span style="color:var(--text3)">출처: ' + esc(PY.src) + '</span>'
+      + (miss ? ' · 짝이 되는 타입이 없는 ' + miss + '개 면적형은 「전용」으로 표시하고 전용평으로 적었습니다.' : '')
+      + ' 평당가는 기준이 흔들리면 안 되어 <b>전용 평당</b> 그대로 둡니다.';
   }
 
   function hsOf(nm){
@@ -25735,16 +25865,20 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     }
     var h = '<div class="dj-card"><div class="dj-h">📐 면적형별 시세</div>'
       + '<div style="overflow-x:auto"><table><thead><tr>'
-      + '<th>전용</th><th>평형</th><th>매매 중위</th><th>평당</th><th>건수</th>'
+      + '<th>전용</th>'
+      + '<th>' + (PY.mode === '분양' ? '분양평형' : '전용평형') + '</th>'
+      + '<th>매매 중위</th>'
+      + '<th>평당<span style="font-weight:400;font-size:9px;color:var(--text3)"> 전용</span></th>'
+      + '<th>건수</th>'
       + (hasJeon ? '<th>전세 중위</th><th>갭</th><th>전세가율</th>' : '')
       + (FM ? '<th>관리비(월)</th>' : '')
       + (HS ? '<th>분양가</th><th>분양 대비</th>' : '')
       + '</tr></thead><tbody>';
     ST.byArea.slice().sort(function(a,b){ return a.sqm - b.sqm; }).forEach(function(a){
       var fee = FM ? S.aptFeeOf(FM, a.sqm) : null;
-      var B   = bunOf(a.py);
+      var B   = bunOf(pyN(a.sqm));
       var vsB = (B && a.med) ? Math.round((a.med - B.분양가최저) / B.분양가최저 * 1000)/10 : null;
-      h += '<tr><td>'+a.sqm+'㎡</td><td>'+a.py+'평</td>'
+      h += '<tr><td>'+a.sqm+'㎡</td><td>'+pyTxt(a.sqm)+'</td>'
         + '<td><b>'+eok(a.med)+'</b></td>'
         + '<td>'+(a.ppy ? fmtN(a.ppy)+'만' : '—')+'</td>'
         + '<td>'+a.cnt+'</td>'
@@ -25757,7 +25891,9 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
               + (vsB!=null ? (vsB>=0?'+':'')+vsB+'%' : '—')+'</td>' : '')
         + '</tr>';
     });
-    h += '</tbody></table></div>';
+    h += '</tbody></table></div>'
+      + '<div style="font-size:10.5px;color:var(--text3);margin-top:7px;line-height:1.55">'
+      + pyNote(ST) + '</div>';
     if(FM) h += '<div style="font-size:10.5px;color:var(--text3);margin-top:7px">'
       + '관리비는 ' + esc(FM.ym||'') + ' 공동주택관리정보시스템(K-apt) 부과액으로 셈한 값입니다 '
       + '(공용관리비 + 장기수선충당금, 개별 사용료 제외).</div>';
@@ -25939,7 +26075,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     var sets = F.pick.map(function(a){
       var b = F.byA[a], c = serColor(b.slot);
       return {
-        label: a + '㎡ (' + b.py + '평)',
+        label: a + '㎡ (' + pyPlain(a) + ')',
         data: F.months.map(function(k){ return b.m[k] ? S.med(b.m[k]) : null; }),
         _cnt: F.months.map(function(k){ return b.m[k] ? b.m[k].length : 0; }),
         borderColor: c, backgroundColor: c,
@@ -25996,7 +26132,8 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     var rows = F.all.slice();                          // 선에 없는 면적형도 표에는 넣는다
     var h = '<div style="overflow-x:auto;margin-top:11px;max-height:290px;overflow-y:auto">'
       + '<table style="font-size:11px"><thead><tr>'
-      + '<th style="position:sticky;left:0;background:var(--card);z-index:1">면적형</th>'
+      + '<th style="position:sticky;left:0;background:var(--card);z-index:1">'
+      +   '전용㎡ · ' + (PY.mode === '분양' ? '분양평' : '전용평') + '</th>'
       + ms.map(function(m){ return '<th>' + esc(m.slice(2).replace('-', '.')) + '</th>'; }).join('')
       + '</tr></thead><tbody>'
       + rows.map(function(a){
@@ -26004,7 +26141,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
           return '<tr><td style="position:sticky;left:0;background:var(--card);white-space:nowrap">'
             + (on ? '<span style="display:inline-block;width:8px;height:8px;border-radius:2px;'
                     + 'background:' + serColor(b.slot) + ';margin-right:5px"></span>' : '')
-            + '<b>' + a + '㎡</b> <span style="color:var(--text3)">' + b.py + '평</span></td>'
+            + '<b>' + a + '㎡</b> <span style="color:var(--text3)">' + pyPlain(a) + '</span></td>'
             + ms.map(function(m){
                 var v = b.m[m];
                 if(!v) return '<td style="color:var(--text3)">·</td>';
@@ -26113,7 +26250,8 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 
     var h = '<div class="dj-card"><div class="dj-h">🔎 면적형별 1년 견줌 '
       + '<span style="font-size:10.5px;font-weight:400;color:var(--text3)">'
-      +   '한 판에 한 면적형 · 작은 면적형부터 · 최근 ' + W.span + '개월</span>'
+      +   '한 판에 한 면적형 · 작은 면적형부터 · 최근 ' + W.span + '개월 · 평은 '
+      +   (PY.mode === '분양' ? '분양평' : '전용평') + '</span>'
       + '<span style="margin-left:auto;font-size:10.5px;font-weight:400;color:var(--text3)">'
       +   '값 표시는 위 「시세 흐름」 고르개(' + (all ? '전부' : '끝점만') + ')를 따릅니다</span>'
       + '</div>';
@@ -26141,7 +26279,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
         +   '<span style="display:inline-block;width:9px;height:9px;border-radius:2px;'
         +     'background:' + c + '"></span>'
         +   '<b style="font-size:13px">' + o.sqm + '㎡</b>'
-        +   '<span style="font-size:11px;color:var(--text3)">' + o.py + '평</span>'
+        +   '<span style="font-size:11px;color:var(--text3)">' + pyPlain(o.sqm) + '</span>'
         +   (yo == null ? '<span class="dj-tag" style="background:var(--bg3);color:var(--text3)">'
               + (o.prev.n ? '올해 거래 없음' : '지난해 자료 없음') + '</span>'
             : '<span class="dj-tag" style="background:' + (yo >= 0 ? '#ffebee' : '#e3f2fd')
@@ -26341,16 +26479,19 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
       var bup = best.d >= 0;
       h += '<div style="background:var(--bg3);border-radius:10px;padding:12px 14px;margin-bottom:12px">'
         + '<div style="font-size:12.5px;line-height:1.65;margin-bottom:8px">'
-        +   '시세 대비 가장 싼 매물은 <b>전용 ' + best.sqm + '㎡ ' + eok(best.lo) + '</b> 으로, '
+        +   '시세 대비 가장 싼 매물은 <b>전용 ' + best.sqm + '㎡ ' + pyPlain(best.sqm) + ' '
+        +   eok(best.lo) + '</b> 으로, '
         +   '같은 면적형 실거래 중위 <b>' + eok(best.med) + '</b> 보다 '
         +   '<b style="color:' + (bup ? '#c62828' : '#1565c0') + '">'
         +   (bup ? '+' : '') + best.d + '%</b> ' + (bup ? '높습니다' : '낮습니다') + '.'
         + '</div>'
-        + '<table style="margin:0"><thead><tr><th>전용</th><th>최저 호가</th>'
+        + '<table style="margin:0"><thead><tr><th>전용</th>'
+        +   '<th>' + (PY.mode === '분양' ? '분양평형' : '전용평형') + '</th><th>최저 호가</th>'
         +   '<th>실거래 중위</th><th>차이</th><th>매물</th></tr></thead><tbody>'
         + cmp.map(function(c){
             var up = c.d >= 0;
             return '<tr><td>' + c.sqm + '㎡</td>'
+              + '<td>' + pyTxt(c.sqm) + '</td>'
               + '<td><b>' + eok(c.lo) + '</b></td>'
               + '<td>' + eok(c.med) + '</td>'
               + '<td style="color:' + (up ? '#c62828' : '#1565c0') + ';font-weight:600">'
@@ -26375,11 +26516,12 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     var aks = Object.keys(byA).map(Number).sort(function(a,b){ return a-b; });
     if(aks.length){
       h += '<div style="font-size:11.5px;font-weight:700;margin:4px 0 5px">면적형별</div>'
-        + '<div style="overflow-x:auto"><table><thead><tr><th>전용</th><th>평형</th>'
+        + '<div style="overflow-x:auto"><table><thead><tr><th>전용</th>'
+        + '<th>' + (PY.mode === '분양' ? '분양평형' : '전용평형') + '</th>'
         + order.map(function(d){ return '<th style="color:'+dealCol(d)+'">'+esc(d)+'</th>'; }).join('')
         + '</tr></thead><tbody>'
         + aks.map(function(k){
-            return '<tr><td>' + k + '㎡</td><td>' + Math.round(k/3.3058) + '평</td>'
+            return '<tr><td>' + k + '㎡</td><td>' + pyTxt(k) + '</td>'
               + order.map(function(d){
                   var rs = byA[k][d];
                   if(!rs || !rs.length) return '<td style="color:var(--text3)">—</td>';
@@ -26536,6 +26678,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     if(!CUR) return;
     var S = K(), ST = S.stats(CUR.rows, st().deal === 'sale' ? CUR.rent : null), eok = amtTxt;
     var r0 = CUR.rows[0] || {}, A = S.aptFind(CUR.nm, r0.umdNm, r0.jibun), HS = hsOf(CUR.nm);
+    pyBuild(CUR.nm, HS);        // 화면과 같은 평형 기준으로 적는다 (화면 33평, 글 26평이면 안 된다)
     var L = [];
     L.push('■ ' + CUR.nm + ' ' + curKindLabel() + ' ' + DSEL(st().deal).n + ' 시세 브리핑');
     L.push('(' + [sggNm(st().sgg), r0.umdNm||''].filter(Boolean).join(' ') + ' · 국토교통부 실거래 '
@@ -26560,9 +26703,9 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     if(ST.vsPeak != null) L.push('· 전고점 대비: ' + (ST.vsPeak>0?'+':'') + ST.vsPeak + '%');
     if(ST.last)  L.push('· 가장 최근 거래: ' + eok(ST.last) + ' (' + ST.lastAt + ')');
     L.push('');
-    L.push('[면적형별 시세]');
+    L.push('[면적형별 시세] — 평은 ' + (PY.mode === '분양' ? '분양평(공급면적)' : '전용평') + ' 기준');
     ST.byArea.slice().sort(function(a,b){ return a.sqm - b.sqm; }).forEach(function(a){
-      var t = '· 전용 ' + a.sqm + '㎡(' + a.py + '평) — 매매 ' + eok(a.med) + ' / ' + a.cnt + '건';
+      var t = '· 전용 ' + a.sqm + '㎡(' + pyPlain(a.sqm) + ') — 매매 ' + eok(a.med) + ' / ' + a.cnt + '건';
       if(a.jeon) t += ' · 전세 ' + eok(a.jeon) + ' (전세가율 ' + a.rate + '%)';
       L.push(t);
     });
@@ -26655,6 +26798,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     cache:function(){ return CACHE; },
     //  점검이 「무엇이 그려졌는지」를 눈이 아니라 자료로 물어볼 수 있게 열어 둔다
     chart:function(){ return CH; }, minis:function(){ return MINIS; },
+    py:function(){ return PY; }, same:sameDanji,
     wins:function(){ return miniWins(); } };
 })();
 </script>
