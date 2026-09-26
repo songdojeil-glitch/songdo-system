@@ -19353,7 +19353,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.09.26-24';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.09.26-25';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_data.html';      // 이 파일 이름
   var SD_NAME = '실거래가';      // 사람이 부르는 이름
 
@@ -27620,6 +27620,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
   }
 
   //  ── 그리기 ───────────────────────────────────────────────────────
+  var LASTG = {}, LASTL = {};      // 동 번호 → 등급 · 이름표 (그림이 표와 같은 값을 쓰게)
   function sunDraw(){
     var cv = document.getElementById('dj-suncv');
     if(!cv || !SUN) return;
@@ -27681,20 +27682,32 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
       g.beginPath();
       f.ring.forEach(function(p,i){ i ? g.lineTo(X(p[0]),Y(p[1])) : g.moveTo(X(p[0]),Y(p[1])); });
       g.closePath();
-      g.fillStyle = f.mine ? (dark ? '#2a4d7a' : '#bcd7f5') : (dark ? '#2a2e38' : '#ffffff');
+      var gr = f.mine ? (LASTG[f.no] || null) : null;
+      g.fillStyle = f.mine ? (gr ? gr.bg : (dark ? '#2a4d7a' : '#bcd7f5'))
+                           : (dark ? '#2a2e38' : '#ffffff');
       g.fill();
-      g.lineWidth = f.mine ? 1.6 : 0.7;
-      g.strokeStyle = f.mine ? '#1565c0' : (dark ? '#4a505e' : '#b9c0cc');
+      g.lineWidth = f.mine ? 1.8 : 0.7;
+      g.strokeStyle = f.mine ? (gr ? gr.c : '#1565c0') : (dark ? '#4a505e' : '#b9c0cc');
       g.stroke();
-      if(f.mine && f.no){
-        var cc = ringCenter(f.ring);
-        g.fillStyle = '#0d47a1';
-        g.font = '700 12px ' + (getComputedStyle(document.body).fontFamily || 'sans-serif');
-        g.textAlign = 'center'; g.textBaseline = 'middle';
-        g.fillText(String(f.no), X(cc[0]), Y(cc[1]));
-        g.textAlign = 'start'; g.textBaseline = 'alphabetic';
-      }
+      if(f === SUNEDIT){ g.lineWidth = 2.4; g.strokeStyle = '#0d47a1'; g.stroke(); }
     });
+    /*  이름표는 건물을 다 그린 뒤에 얹는다 — 옆 건물에 가려지지 않게.
+        번호만 적던 것을 동명 + 일조시간으로 바꿨다. 표와 눈이 왕복하지 않게. */
+    g.font = '700 10.5px ' + (getComputedStyle(document.body).fontFamily || 'sans-serif');
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    SUN.feats.forEach(function(f){
+      if(!f.mine || !f.no) return;
+      var gr = LASTG[f.no], lab = LASTL[f.no] || String(f.no);
+      var cc = ringCenter(f.ring), x = X(cc[0]), y = Y(cc[1]);
+      var w = g.measureText(lab).width + 9;
+      g.fillStyle = dark ? 'rgba(20,22,28,.9)' : 'rgba(255,255,255,.92)';
+      g.fillRect(x - w/2, y - 8, w, 16);
+      g.strokeStyle = gr ? gr.c : '#1565c0'; g.lineWidth = 1;
+      g.strokeRect(x - w/2, y - 8, w, 16);
+      g.fillStyle = gr ? gr.c : '#0d47a1';
+      g.fillText(lab, x, y);
+    });
+    g.textAlign = 'start'; g.textBaseline = 'alphabetic';
 
     //  해가 어디 있는지
     g.fillStyle = dark ? '#e8e3d0' : '#3b3f47';
@@ -27718,58 +27731,108 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
       나눠 각 점이 볕을 받는지 센다. 판례가 쓰는 두 가지를 같이 낸다.
         · 총 일조  : 08~16시 사이 볕 든 시간의 합
         · 연속 일조: 09~15시 사이 끊기지 않고 볕 든 가장 긴 토막 */
+  /*  ── 동별 일조 ────────────────────────────────────────────────────
+      한 동마다 세 높이를 잰다 — 1층·중간층·최상층. 1층이 늘 불리하고 실무
+      판단도 1층으로 하지만, 「몇 층부터 트이는가」가 손님이 제일 궁금해하는
+      대목이다. 세 줄을 나란히 놓으면 그 답이 바로 보인다.
+
+      가린 건물도 같이 센다. 「몇 시간 부족합니다」보다 「207동이 가립니다」가
+      쓸모 있는 말이다.
+
+      8~16시를 10분씩 나눠 잰다. 연속은 판례가 보는 9~15시 안에서만 센다. */
+  var GRADES = [
+    { min:240, k:'매우 양호', c:'#1b7f3b', bg:'#e8f5e9' },
+    { min:120, k:'양호',      c:'#4caf50', bg:'#f1f8e9' },
+    { min:60,  k:'부족',      c:'#ef8c00', bg:'#fff8e1' },
+    { min:0,   k:'매우 부족', c:'#d32f2f', bg:'#fdeeea' }
+  ];
+  function gradeOf(run){
+    for(var i=0;i<GRADES.length;i++) if(run >= GRADES[i].min) return GRADES[i];
+    return GRADES[GRADES.length-1];
+  }
+  function sunSteps(){
+    var out = [];
+    for(var t=8*60; t<=16*60; t+=10) out.push(t);
+    return out;
+  }
+  //  한 점이 각 시각에 볕을 받는가 + 누가 가렸는가
+  function litRow(p, z, f, others, steps, sunp, mx, my){
+    var R = Math.PI/180, lit = [], who = {};
+    for(var k=0;k<steps.length;k++){
+      var S2 = sunp[k];
+      if(S2.alt <= 0.5){ lit.push(false); continue; }
+      var L = 1/Math.tan(S2.alt*R);
+      var ux = Math.sin(S2.az*R), uy = Math.cos(S2.az*R);      // 태양 쪽
+      var hit = null;
+      for(var b=0;b<others.length;b++){
+        var o = others[b];
+        if(o === f) continue;
+        var h = effH(o);
+        if(h <= z) continue;
+        var d = (h - z) * L;
+        if(raySeg(p[0], p[1], p[0] + d*ux/mx, p[1] + d*uy/my, o.ring, o._bb)){ hit = o; break; }
+      }
+      lit.push(!hit);
+      if(hit){ var key = hit.dongNm || hit.nm || ('건물@' + Math.round(ringArea(hit.ring)) + '㎡');
+               who[key] = (who[key] || 0) + 10; }
+    }
+    return { lit:lit, who:who };
+  }
+  function runTot(lit, steps){
+    var tot = 0, run = 0, best = 0;
+    lit.forEach(function(v, k){
+      if(v) tot += 10;
+      var t = steps[k];
+      if(t >= 9*60 && t <= 15*60){
+        if(v){ run += 10; if(run > best) best = run; } else run = 0;
+      }
+    });
+    return { tot:tot, run:best };
+  }
+
   function sunHours(){
     if(!SUN) return null;
     var c = SUN.c, R = Math.PI/180;
     var mx = 111320*Math.cos(c.lat*R), my = 111320;
-    var z = (SUNST.floor - 1) * 3 + 1.5;          // 그 층 바닥에서 1.5m
-    var steps = [];
-    for(var t=8*60; t<=16*60; t+=10) steps.push(t);
+    var steps = sunSteps();
     var sunp = steps.map(function(t){ return sunPos(sunDate(SUNST.day, t), c.lat, c.lng); });
     SUN.feats.forEach(function(f){ if(!f._bb) f._bb = ringBox(f.ring); });
     var mine = SUN.feats.filter(function(f){ return f.mine; });
     var others = SUN.feats;
 
     return mine.map(function(f, idx){
-      //  외곽선 위를 고르게 (최대 32점)
-      var pts = [], stp = Math.max(1, Math.floor(f.ring.length/32));
+      var fl = f.flFix || f.fl || Math.max(1, Math.round(effH(f)/3));
+      //  외곽선 위를 고르게 (최대 16점 — 세 높이를 재니 점을 줄인다)
+      var pts = [], stp = Math.max(1, Math.floor(f.ring.length/16));
       for(var i=0;i<f.ring.length;i+=stp) pts.push(f.ring[i]);
-      var best = null, all = [];
-      pts.forEach(function(p){
-        var lit = steps.map(function(t, k){
-          var S2 = sunp[k];
-          if(S2.alt <= 0.5) return false;
-          var L = 1/Math.tan(S2.alt*R);
-          var ux = Math.sin(S2.az*R), uy = Math.cos(S2.az*R);   // 태양 쪽
-          for(var b=0;b<others.length;b++){
-            var o = others[b];
-            if(o === f) continue;
-            var h = effH(o);
-            if(h <= z) continue;
-            //  광선이 이 건물 꼭대기 높이에 닿기까지의 거리 — 그 사이 어디든 가리면 그늘이다
-            var d = (h - z) * L;
-            if(raySeg(p[0], p[1], p[0] + d*ux/mx, p[1] + d*uy/my, o.ring, o._bb)) return false;
-          }
-          return true;
+
+      var lv = [ { key:'f1', z:1.5, fl:1 },
+                 { key:'fm', z:(Math.max(1, Math.round(fl/2))-1)*3 + 1.5, fl:Math.max(1, Math.round(fl/2)) },
+                 { key:'ft', z:(fl-1)*3 + 1.5, fl:fl } ];
+      var out = { i:f.no || (idx+1), nm:f.dongNm || f.nm || '', f:f,
+                  h:effH(f), fl:fl, src:hSrc(f), gap:f.gap, lv:{} };
+      lv.forEach(function(L){
+        var best = null, who = {};
+        pts.forEach(function(p){
+          var r = litRow(p, L.z, f, others, steps, sunp, mx, my);
+          var rt = runTot(r.lit, steps);
+          if(!best || rt.run > best.run || (rt.run === best.run && rt.tot > best.tot))
+            best = { run:rt.run, tot:rt.tot, lit:r.lit };
+          Object.keys(r.who).forEach(function(k){ who[k] = (who[k]||0) + r.who[k]; });
         });
-        var tot = 0, run = 0, bestRun = 0;
-        lit.forEach(function(v, k){
-          if(v) tot += 10;
-          var t = steps[k];
-          if(t >= 9*60 && t <= 15*60){
-            if(v){ run += 10; if(run > bestRun) bestRun = run; } else run = 0;
-          }
-        });
-        var o = { tot:tot, run:bestRun };
-        all.push(o);
-        if(!best || o.run > best.run || (o.run === best.run && o.tot > best.tot)) best = o;
+        //  가장 많이 가린 건물
+        var top = '', tn = 0;
+        Object.keys(who).forEach(function(k){ if(who[k] > tn){ tn = who[k]; top = k; } });
+        best.by = top; best.byMin = Math.round(tn / pts.length);
+        best.fl = L.fl;
+        out.lv[L.key] = best;
       });
-      var tots = all.map(function(o){ return o.tot; }).sort(function(a,b){ return a-b; });
-      return { i:f.no || (idx+1), nm:f.dongNm || f.nm || '', f:f,
-               h: effH(f), src: hSrc(f), gap: f.gap,
-               best: best, med: tots[Math.floor(tots.length/2)] || 0, pts: pts.length };
+      out.best = out.lv.f1;              // 판정은 1층 기준 (제일 불리한 자리)
+      out.grade = gradeOf(out.best.run);
+      return out;
     }).sort(function(a,b){ return a.best.run - b.best.run; });
   }
+
   function hm(mins){
     if(!mins) return '0분';
     var h = Math.floor(mins/60), m = mins % 60;
@@ -27958,6 +28021,44 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     paintSun();
   };
 
+  /*  시간 막대 — 노랑이 볕, 회색이 그늘. 1층·중간층·최상층 세 줄.
+      「몇 시부터 몇 시까지 드는가」와 「몇 층부터 트이는가」가 한눈에 보인다. */
+  function sunBars(r){
+    if(!r) return '';
+    var steps = sunSteps();
+    function row(lab, L){
+      var cells = L.lit.map(function(v, k){
+        var t = steps[k], dim = (t < 9*60 || t > 15*60);
+        return '<span title="' + hhmm(t) + '" style="display:inline-block;width:8px;height:15px;'
+          + 'margin-right:1px;border-radius:2px;background:'
+          + (v ? (dim ? '#ffe082' : '#ffb300') : (dim ? '#e8e8e6' : '#c9ccd2')) + '"></span>';
+      }).join('');
+      return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">'
+        + '<span style="font-size:11px;min-width:52px;color:var(--text3)">' + lab
+        + ' <b style="color:var(--text)">' + L.fl + '층</b></span>'
+        + '<span style="white-space:nowrap">' + cells + '</span>'
+        + '<b style="font-size:11.5px;min-width:64px">' + hm(L.run) + '</b></div>';
+    }
+    return '<div style="margin-top:13px;border:1px solid var(--border);border-radius:10px;padding:11px 13px">'
+      + '<div style="font-size:12px;font-weight:700;margin-bottom:8px">'
+      +   '🕘 ' + esc(r.nm || ('#' + r.i)) + ' 시간별 볕 '
+      +   '<span style="font-weight:400;font-size:10.5px;color:var(--text3)">'
+      +   esc(dayName(SUNST.day)) + ' · 08~16시 10분 단위 · 표에서 다른 동을 누르면 바뀝니다</span></div>'
+      + '<div style="display:flex;gap:8px;font-size:10.5px;color:var(--text3);margin-bottom:6px">'
+      +   '<span style="min-width:52px"></span><span>08</span>'
+      +   '<span style="flex:1;text-align:center">09~15시 (판례가 보는 구간)</span><span>16</span></div>'
+      + row('1층', r.lv.f1) + row('중간', r.lv.fm) + row('최상', r.lv.ft)
+      + '<div style="font-size:10.5px;color:var(--text3);margin-top:5px">'
+      +   '<span style="display:inline-block;width:9px;height:9px;background:#ffb300;border-radius:2px"></span> 볕 · '
+      +   '<span style="display:inline-block;width:9px;height:9px;background:#c9ccd2;border-radius:2px"></span> 그늘 · '
+      +   '흐린 칸은 09~15시 바깥이라 연속 일조에 안 넣습니다.</div>'
+      + '</div>';
+  }
+  window.djSunRow = function(no){
+    var f = SUN && SUN.feats.filter(function(x){ return x.no === no; })[0];
+    if(f){ SUNEDIT = f; paintSun(); }
+  };
+
   function sunEditBox(){
     var f = SUNEDIT; if(!f) return '';
     var fl = f.flFix || f.fl || '';
@@ -28032,9 +28133,6 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
       + '<input type="range" min="480" max="960" step="10" value="' + SUNST.mins + '" '
       +   'oninput="djSunSet(\'mins\',this.value)" style="width:190px">'
       + '<b id="dj-suntime" style="font-size:12.5px;min-width:42px">' + hhmm(SUNST.mins) + '</b>'
-      + '<span style="font-size:11.5px;color:var(--text3);margin-left:6px">기준 층</span>'
-      + '<input class="dj-in" style="width:52px;padding:4px 7px;font-size:12px" value="' + SUNST.floor + '" '
-      +   'onchange="djSunSet(\'floor\',this.value)">'
       + '<span style="font-size:11.5px;color:var(--text3)">모르는 건물 층수</span>'
       + '<input class="dj-in" style="width:52px;padding:4px 7px;font-size:12px" value="' + SUNST.base + '" '
       +   'onchange="djSunSet(\'base\',this.value)">'
@@ -28054,48 +28152,87 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 
     //  동별 일조
     var rows = sunHours();
-    h += '<div class="dj-h" style="margin:15px 0 8px">🏙 동별 일조시간 '
+    LASTG = {}; LASTL = {};
+    (rows || []).forEach(function(r){
+      LASTG[r.i] = r.grade;
+      LASTL[r.i] = (r.nm || ('#' + r.i)) + '  ' + (Math.round(r.best.run/6)/10) + 'h';
+    });
+
+    h += '<div class="dj-h" style="margin:15px 0 8px">🏙 동별 일조 '
       + '<span style="font-size:10.5px;font-weight:400;color:var(--text3)">'
-      + esc(dayName(SUNST.day)) + ' · ' + SUNST.floor + '층 기준 · 건물 외곽선을 훑어 잰 값'
-      + ' · 번호는 위 그림의 번호와 같습니다</span></div>';
+      + esc(dayName(SUNST.day)) + ' · 09~15시 연속 · <b>1층 기준</b>(가장 불리한 자리) · '
+      + '번호·색은 위 그림과 같습니다</span></div>';
+
     if(!rows || !rows.length){
       h += '<div style="font-size:12px;color:var(--text3)">우리 단지 건물을 가려내지 못했습니다 — '
-        + '브이월드 건물 레이어가 이름을 주지 않는 경우입니다. 반경을 좁혀 다시 받아 보세요.</div>';
+        + '「건축물대장에서 동·층수 받기」를 먼저 눌러 보세요.</div>';
     }else{
+      //  요약 한 줄 — 손님 앞에서 제일 먼저 나오는 말
+      var okN = rows.filter(function(r){ return r.best.run >= 120; }).length;
+      var avg = rows.reduce(function(a,r){ return a + r.best.run; }, 0) / rows.length;
+      var lo = rows[0], hi = rows[rows.length-1];
+      h += '<div style="background:var(--bg3);border-radius:10px;padding:11px 13px;margin-bottom:10px;'
+        + 'font-size:12.5px;line-height:1.7">'
+        + '<b>' + rows.length + '개 동</b> 중 ' + esc(dayName(SUNST.day).split(' ')[0])
+        + ' 09~15시 <b>연속 2시간 이상</b> '
+        + '<b style="color:' + (okN ? '#1b7f3b' : '#d32f2f') + '">' + okN + '개</b>'
+        + ' · 평균 <b>' + (Math.round(avg/6)/10) + 'h</b>'
+        + ' · 최고 <b>' + esc(hi.nm || ('#'+hi.i)) + ' ' + (Math.round(hi.best.run/6)/10) + 'h</b>'
+        + ' · 최저 <b style="color:#d32f2f">' + esc(lo.nm || ('#'+lo.i)) + ' '
+        + (Math.round(lo.best.run/6)/10) + 'h</b>'
+        + '</div>'
+        + '<div style="display:flex;gap:10px;flex-wrap:wrap;font-size:11px;margin-bottom:8px">'
+        + GRADES.map(function(G){
+            return '<span><span style="display:inline-block;width:9px;height:9px;border-radius:2px;'
+              + 'background:' + G.c + ';margin-right:4px"></span>' + G.k
+              + (G.min ? ' (' + (G.min/60) + 'h 이상)' : ' (1h 미만)') + '</span>'; }).join('')
+        + '</div>';
+
       h += '<div style="overflow-x:auto"><table id="dj-suntbl"><thead><tr>'
-        + '<th>동</th><th>높이 · 층수</th><th>연속 일조<br><span style="font-weight:400">09~15시</span></th>'
-        + '<th>총 일조<br><span style="font-weight:400">08~16시</span></th>'
-        + '<th>판정(참고)</th></tr></thead><tbody>';
+        + '<th>동</th><th>층수</th>'
+        + '<th>연속 일조<br><span style="font-weight:400">1층 · 09~15시</span></th>'
+        + '<th>총 일조<br><span style="font-weight:400">1층 · 08~16시</span></th>'
+        + '<th>중간층</th><th>최상층</th><th>주로 가리는 동</th><th>등급</th>'
+        + '</tr></thead><tbody>';
       rows.forEach(function(r){
-        //  판례가 흔히 쓰는 수인한도 — 연속 2시간 또는 총 4시간
-        var ok = (r.best.run >= 120) || (r.best.tot >= 240);
-        h += '<tr><td style="text-align:left">'
-          + '<span style="display:inline-block;min-width:19px;height:19px;line-height:19px;'
-          +   'text-align:center;border-radius:5px;background:#e3f2fd;color:#0d47a1;'
-          +   'font-weight:700;font-size:11px;margin-right:6px">' + r.i + '</span>'
-          + '<b>' + esc(r.nm || '이름 없음') + '</b></td>'
-          + '<td>' + Math.round(r.h) + 'm'
-          + (r.f.flFix || r.f.fl ? ' <span style="color:var(--text3)">'
-              + (r.f.flFix || r.f.fl) + '층</span>' : '')
-          + (r.src === '대장' ? ' <span style="color:#2e7d32;font-size:10px">대장</span>'
-             : r.src === '입력' ? ' <span style="color:#1565c0;font-size:10px">입력</span>'
-             : ' <span style="color:#c80;font-size:10px">추정</span>')
-          + (r.gap != null && r.gap > 25 ? ' <span title="건축면적이 ' + r.gap
-              + '% 차이납니다 — 동이 잘못 맞춰졌을 수 있습니다" style="color:#c80">⚠</span>' : '')
+        var G = r.grade;
+        h += '<tr style="cursor:pointer" onclick="djSunRow(' + r.i + ')">'
+          + '<td style="text-align:left">'
+          +   '<span style="display:inline-block;min-width:19px;height:19px;line-height:19px;'
+          +     'text-align:center;border-radius:5px;background:' + G.bg + ';color:' + G.c + ';'
+          +     'font-weight:700;font-size:11px;margin-right:6px">' + r.i + '</span>'
+          +   '<b>' + esc(r.nm || '이름 없음') + '</b></td>'
+          + '<td>' + r.fl + '층 <span style="color:var(--text3)">' + Math.round(r.h) + 'm</span>'
+          +   (r.src === '대장' ? ' <span style="color:#2e7d32;font-size:10px">대장</span>'
+              : r.src === '입력' ? ' <span style="color:#1565c0;font-size:10px">입력</span>'
+              : ' <span style="color:#c80;font-size:10px">추정</span>')
+          +   (r.gap != null && r.gap > 25 ? ' <span title="건축면적이 ' + r.gap
+                + '% 차이납니다 — 동이 잘못 맞춰졌을 수 있습니다" style="color:#c80">⚠</span>' : '')
           + '</td>'
-          + '<td><b>' + hm(r.best.run) + '</b></td>'
+          + '<td><b style="color:' + G.c + '">' + hm(r.best.run) + '</b></td>'
           + '<td>' + hm(r.best.tot) + '</td>'
-          + '<td style="color:' + (ok ? '#2e7d32' : '#c62828') + ';font-weight:600">'
-          + (ok ? '기준 넘음' : '기준 못 미침') + '</td></tr>';
+          + '<td style="color:var(--text3)">' + hm(r.lv.fm.run) + '</td>'
+          + '<td style="color:var(--text3)">' + hm(r.lv.ft.run) + '</td>'
+          + '<td style="text-align:left;font-size:11.5px">'
+          +   (r.best.by ? esc(r.best.by) + ' <span style="color:var(--text3)">'
+                + hm(r.best.byMin) + '</span>' : '—') + '</td>'
+          + '<td style="color:' + G.c + ';font-weight:700">' + G.k + '</td></tr>';
       });
       h += '</tbody></table></div>';
+
+      //  고른 동의 시간 막대
+      var sel = rows.filter(function(r){ return r.f === SUNEDIT; })[0] || rows[0];
+      h += sunBars(sel);
     }
 
     h += '<div style="font-size:10.5px;color:var(--text3);margin-top:8px;line-height:1.7">'
-      + '<b>참고용입니다.</b> 「판정」은 법원이 일조 침해를 볼 때 흔히 쓰는 기준'
+      + '<b>참고용입니다.</b> 「등급」은 법원이 일조 침해를 볼 때 흔히 쓰는 기준'
       + '(동지 기준 <b>09~15시 연속 2시간</b> 또는 <b>08~16시 총 4시간</b>)에 견준 것입니다. '
       + '실제 분쟁은 세대별 창 위치·발코니·지형·기존 일조량까지 따지므로 이 표만으로 '
       + '<b>손님께 일조권 침해 여부를 단정해 말씀하지 마십시오.</b><br>'
+      + '재는 방법: 08~16시를 <b>10분</b>씩 나눠 건물 외곽선 위 16곳을 훑고, 그 중 가장 잘 드는 '
+      + '자리를 그 동의 값으로 삼습니다. 수광점은 바닥에서 1.5m, 층 높이는 3m로 봅니다. '
+      + '시각은 한국표준시이고 <b>균시차를 넣어</b> 셈했습니다(동지 남중 12:31). '
       + (SUN.bld
           ? '우리 단지 ' + mineN + '동은 '
             + (SUN.bld.how === '지적'
