@@ -19353,7 +19353,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.09.26-27';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.09.26-28';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_data.html';      // 이 파일 이름
   var SD_NAME = '실거래가';      // 사람이 부르는 이름
 
@@ -26966,6 +26966,8 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
   var KBNOTE = '';          // 파일에서 무엇을 무엇으로 읽었는지 — 다시 그려도 남는다
   var KBFOR  = '';          // KB 가 어느 단지 것인지
   var KBIDXOK = false;      // 색인을 한 번 읽었는가
+  var KBSKIP  = null;       // 문턱 때문에 뺀 단지 — 말없이 빠지면 안 된다
+  var KBAMB   = null;       // 이름이 비슷한 단지가 여럿일 때 무엇을 골랐는지
 
   function kbSlug(nm){ return norm(nm).replace(/[^0-9A-Za-z가-힣]/g,'').slice(0, 40); }
   /*  열쇠에 시군구를 붙인다 — 시·도를 통째로 담으면 「e편한세상」처럼 여러 구에
@@ -27018,7 +27020,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
   async function kbLoad(nm){
     var tag = String(st().sgg) + '|' + nm;
     if(KBFOR === tag) return KB;
-    KBFOR = tag; KB = null;
+    KBFOR = tag; KB = null; KBAMB = null;
     var S = K();
     //  색인은 인천 전체면 1,500줄이다 — 단지를 옮길 때마다 다시 읽지 않는다
     if(!KBIDXOK){
@@ -27029,10 +27031,25 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
       }catch(e){ KBIDXL = []; }
       KBIDXOK = true;
     }
-    /*  같은 이름이 여러 구에 있을 수 있다 — 지금 고른 시군구 것을 먼저 고른다. */
+    /*  후보 고르기 —
+        ① 같은 이름이 여러 구에 있다 (「e편한세상」은 인천 9개 구에).
+        ② 앞부분이 같은 단지가 한 동네에 있다. 실제 송도동 자료에
+           「송도더샵그린워크3차(18-1블럭)」 과 「(17-1블럭)」 이 따로 있는데,
+           실거래 이름이 괄호 없이 오면 둘 다 걸린다 — 아무거나 잡으면
+           780호짜리 대신 358호짜리를 보여 주고도 아무도 모른다.
+        그래서 ⓐ 지금 고른 구 → ⓑ 이름이 똑같은 것 → ⓒ 호수가 큰 것 순으로
+        좁히고, 그래도 여럿이면 무엇을 골랐는지 화면에 밝힌다. */
     var pool = KBIDXL.filter(function(o){ return sameDanji(o.nm, nm); });
+    if(!pool.length) return null;
     var here = st().sgg;
-    var hit = pool.filter(function(o){ return o.sgg === here; })[0] || pool[0];
+    var mine = pool.filter(function(o){ return o.sgg === here; });
+    if(mine.length) pool = mine;
+    var same = pool.filter(function(o){ return norm(o.nm) === norm(nm); });
+    if(same.length) pool = same;
+    pool = pool.slice().sort(function(a, b){ return (b.n||0) - (a.n||0); });
+    KBAMB = pool.length > 1 ? pool.slice(0, 4).map(function(o){
+              return o.nm + '(' + (o.n||0) + '호)'; }) : null;
+    var hit = pool[0];
     if(!hit) return null;
     try{
       var v = await kbGet(hit.key);
@@ -27083,6 +27100,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
       return -1;
     }
     return {
+      yr:    pick(['기준연도','기준 연도','공시기준연도','연도'], ['기준월']),
       bjd:   pick(['법정동코드','법정동 코드','행정구역코드','지역코드']),
       sido:  pick(['시도','시·도','광역시','특별시'], ['시군구']),
       sgg:   pick(['시군구','시·군·구','자치구']),
@@ -27097,8 +27115,8 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
   }
   function kbColNote(head, C, sample){
     var LBL = { danji:'단지명', dong:'동', ho:'호', floor:'층', area:'전용면적',
-                price:'공시가격', bjd:'법정동코드', sido:'시도', sgg:'시군구',
-                dong0:'법정동' };
+                price:'공시가격', yr:'기준연도', bjd:'법정동코드', sido:'시도',
+                sgg:'시군구', dong0:'법정동' };
     var miss = ['danji','ho','price'].filter(function(k){ return C[k] < 0; });
     var h = '<div style="font-size:11px;line-height:1.8;background:var(--bg3);border-radius:9px;'
       + 'padding:10px 12px;margin-top:9px"><b>파일에서 이렇게 읽었습니다</b><br>'
@@ -27123,7 +27141,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
       scope 'sido' 면 시·도 전체를 단지별로 나눠 담는다. 어차피 파일 전체를 훑으므로
       읽는 값은 같은데, 한 번만 올리면 그 시·도 안에서는 단지를 옮겨도 다시 안 읽는다. */
   function kbStart(opt){
-    KBP = { rows:[], byD:{}, nD:0, nRow:0, scanned:0,
+    KBP = { rows:[], byD:{}, nD:0, nRow:0, scanned:0, year:0,
             head:null, C:null, sample:null, other:0, opt:opt || {} };
   }
   function kbFeed(arr){
@@ -27164,6 +27182,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     }
 
     var price = kbMan(arr[C.price]); if(price == null) return;
+    if(C.yr >= 0 && !P.year){ var y = kbNum(arr[C.yr]); if(y > 1990 && y < 2100) P.year = y; }
     var fl = C.floor >= 0 ? kbNum(arr[C.floor]) : null;
     var hp = kbHo(C.ho >= 0 ? arr[C.ho] : '', fl);
     var row = {
@@ -27204,6 +27223,15 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     return out.map(function(x){ return x.trim(); });
   }
 
+  /*  시·도 통째로 담을 때의 최소 호수.
+      실제 파일을 재 보니 인천은 24,514단지 1,047,643호인데, 그 중 21,260단지
+      (87%)가 20호 미만인 빌라·다세대였다. 호수로는 21% 뿐이다. 전부 담으면
+      거의 안 쓰는 빌라가 색인의 87%를 차지하고 쓰기도 24,514번이 된다.
+      빌라 손님이 오시면 그 단지만 「이 단지만」으로 올리시면 되므로 길은 막지 않는다. */
+  var KBMIN = 20;
+  window.djKbMin = function(v){
+    KBMIN = Math.max(0, parseInt(v, 10) || 0); paintKb();
+  };
   var KBSCOPE = '';                 // '' 면 고른 시군구를 보고 정한다
   function kbScope(){
     if(KBSCOPE) return KBSCOPE;
@@ -27306,7 +27334,9 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
   }
   function kbBlob(nm, sgg, rows){
     return { v:2, danji:nm, sgg:sgg || '', rows:kbPack(rows),
-             at:new Date().toISOString(), year:new Date().getFullYear() };
+             at:new Date().toISOString(),
+             //  기준연도는 파일에 적혀 있다 — 올린 해를 적으면 2025년 자료가 2026년이 된다
+             year:(KBP && KBP.year) || new Date().getFullYear() };
   }
 
   async function kbDone(){
@@ -27326,7 +27356,8 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     }
     var rows = kbDedup(P.rows), key = kbKey(O.sgg, nm);
     KB = { v:1, danji:nm, sgg:O.sgg, key:key, rows:rows,
-           at:new Date().toISOString(), year:new Date().getFullYear() };
+           at:new Date().toISOString(),
+           year:P.year || new Date().getFullYear() };
     KBFOR = String(O.sgg) + '|' + nm;
     var ok = await kbPut(key, kbBlob(nm, O.sgg, rows));
     if(ok){
@@ -27351,8 +27382,19 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
       호 단위로 담으면 88만 번을 써야 하고, 한 덩어리로 담으면 볼 때마다
       인천 전체를 내려받아야 한다. 단지 단위가 둘 사이의 자리다. */
   async function kbDoneSido(P, O, prog){
-    var keys = Object.keys(P.byD);
-    if(!keys.length){
+    var all = Object.keys(P.byD), skipD = 0, skipH = 0;
+    var keys = all.filter(function(k){
+      var n = P.byD[k].rows.length;
+      if(n >= KBMIN) return true;
+      skipD++; skipH += n; return false;
+    });
+    if(!keys.length && all.length){
+      KB = null; paintKb();
+      msg('최소 호수를 ' + KBMIN + '호로 두셔서 담을 단지가 없습니다 — '
+        + fmtN(all.length) + '개 단지가 모두 그보다 작습니다.', 'warn');
+      return;
+    }
+    if(!all.length){
       KB = null; paintKb();
       msg(sidoNm(O.sidoCd) + ' 자료를 한 줄도 못 찾았습니다 — 줄 ' + fmtN(P.scanned)
         + '개를 읽었습니다. 읽은 칸이 맞는지 봐 주세요.', 'no');
@@ -27386,8 +27428,10 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 
     KBFOR = ''; KB = null;
     if(O.nm) await kbLoad(O.nm);
+    KBSKIP = skipD ? { d:skipD, h:skipH, min:KBMIN } : null;
     msg(sidoNm(O.sidoCd) + ' ' + fmtN(idx.length) + '개 단지 · ' + fmtN(nRow) + '호를 담았습니다'
-      + (fail ? ' (' + fmtN(fail) + '단지는 담지 못했습니다)' : '')
+      + (skipD ? ' (' + KBMIN + '호 미만 ' + fmtN(skipD) + '개 단지는 뺐습니다)' : '')
+      + (fail ? ' · ' + fmtN(fail) + '단지는 담지 못했습니다' : '')
       + ' — 이제 이 지역은 다시 올리지 않으셔도 됩니다.', fail ? 'warn' : 'ok');
     paintKb();
   }
@@ -27483,7 +27527,18 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     }else{
       h += '<div style="font-size:11px;color:var(--text3);margin-bottom:9px">'
         + esc(String(KB.year||'')) + '년 · ' + fmtN(KB.rows.length) + '호 · '
-        + esc(String(KB.at||'').slice(0,10)) + ' 올림</div>';
+        + esc(String(KB.at||'').slice(0,10)) + ' 올림'
+        + (KB.danji && CUR && norm(KB.danji) !== norm(CUR.nm)
+            ? ' · 파일에는 <b>' + esc(KB.danji) + '</b> 로 있습니다' : '')
+        + '</div>'
+        + (KBAMB
+            ? '<div style="font-size:11px;line-height:1.7;background:#fff8e1;'
+              + 'border:1px solid #ffe082;border-radius:9px;padding:9px 11px;'
+              + 'margin-bottom:9px;color:#5d4037">이름이 비슷한 단지가 여럿입니다 — '
+              + '호수가 가장 많은 <b>' + esc(KBAMB[0]) + '</b> 을(를) 골랐습니다. '
+              + '다른 후보: ' + KBAMB.slice(1).map(esc).join(' · ')
+              + '. 호수가 아래 배치도와 맞는지 봐 주십시오.</div>'
+            : '');
     }
     /*  ── 담을 범위 ───────────────────────────────────────────────────
         어차피 전국 파일을 통째로 훑는다. 그러니 한 단지만 남기고 버리면
@@ -27496,12 +27551,25 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
           return '<button class="dj-bs" onclick="djKbScope(\'' + x[0] + '\')" style="'
             + (sc === x[0] ? 'border-color:transparent;background:var(--accent);color:#fff' : '')
             + '">' + esc(x[1]) + '</button>'; }).join('')
+      + (sc === 'sido'
+          ? '<span style="font-size:11.5px;color:var(--text3);margin-left:6px">최소 호수</span>'
+            + '<input class="dj-in" style="width:52px;padding:4px 7px;font-size:12px" '
+            + 'value="' + KBMIN + '" onchange="djKbMin(this.value)" title="0 으로 두면 전부">'
+          : '')
       + '</div>'
+      + (KBSKIP
+          ? '<div style="font-size:11px;color:var(--text3);line-height:1.7;margin-top:6px">'
+            + '· 지난번 담을 때 <b>' + KBSKIP.min + '호 미만 ' + fmtN(KBSKIP.d) + '개 단지'
+            + '</b>(' + fmtN(KBSKIP.h) + '호)는 뺐습니다.</div>'
+          : '')
       + '<div style="font-size:11px;color:var(--text3);line-height:1.7;margin:6px 0 2px">'
       + (sc === 'sido'
-          ? '한 번 올리면 <b>' + esc(sdNm) + ' 안의 모든 단지</b>를 단지별로 나눠 담습니다 — '
+          ? '한 번 올리면 <b>' + esc(sdNm) + ' 안의 단지</b>를 단지별로 나눠 담습니다 — '
             + '그 뒤로는 이 지역 어느 단지를 보셔도 <b>다시 올리지 않으셔도 됩니다.</b> '
-            + '읽는 데 몇 분, 담는 데 1~2분쯤 걸립니다.'
+            + '읽는 데 몇 분, 담는 데 1~2분쯤 걸립니다. '
+            + '<b>' + KBMIN + '호 미만</b>인 빌라·다세대는 뺍니다(인천은 이런 단지가 '
+            + '전체의 87%인데 호수로는 21%뿐입니다) — 빌라가 필요하시면 그 단지만 '
+            + '<b>「이 단지만」</b>으로 올리시면 됩니다.'
           : '지금 고른 <b>' + esc(sggNm(st().sgg)) + ' · ' + esc(CUR ? CUR.nm : '')
             + '</b> 만 담습니다 — 다른 단지를 보시려면 파일을 <b>다시 올리셔야</b> 합니다.')
       + '</div>';
