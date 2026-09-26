@@ -19353,7 +19353,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.09.26-6';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.09.26-7';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_data.html';      // 이 파일 이름
   var SD_NAME = '실거래가';      // 사람이 부르는 이름
 
@@ -23760,7 +23760,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 #dj-root .dj-card{background:var(--card);border:1px solid var(--border);border-radius:12px;
   padding:16px;margin-bottom:12px}
 #dj-root .dj-h{font-size:13px;font-weight:700;color:var(--text);margin:0 0 10px;
-  display:flex;align-items:center;gap:6px}
+  display:flex;align-items:center;gap:6px;flex-wrap:wrap}
 #dj-root table{width:100%;border-collapse:collapse;background:var(--card)}
 #dj-root th{font-size:11px;font-weight:600;color:var(--text3);text-align:right;
   padding:7px 8px;border-bottom:1px solid var(--border);white-space:nowrap}
@@ -24835,7 +24835,15 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
       }
       var rows = pickRows(D, hit);                 // 고른 거래에 맞는 줄 + 값 다시 매김
       var rent = jeonseRows(D, hit);               // 매매 화면의 전세가율용
-      CUR = { nm:hit, sgg:st().sgg, rows:rows, rent:rent };
+      /*  이 단지가 가진 면적형 전부 — 매매·전월세를 가리지 않고 모은다.
+          그래프 선 색을 여기에 맨다. 거르기 뒤의 목록에 매면 한 면적형이
+          빠질 때마다 남은 선의 색이 밀린다 (시험에서 잡혔다). */
+      var _ar = {};
+      (D.trade || []).concat(D.rent || []).forEach(function(r){
+        if(r._name === hit && r._area) _ar[Math.round(r._area)] = 1;
+      });
+      var areas = Object.keys(_ar).map(Number).sort(function(a,b){ return a - b; });
+      CUR = { nm:hit, sgg:st().sgg, rows:rows, rent:rent, areas:areas };
       recentAdd(hit, st().sgg);
       draw();
       msg('');
@@ -25587,7 +25595,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
           + spec(A, HS)
           + summary(ST, eok)
           + areaTable(ST, FM, HS, eok)
-          + chartBox()
+          + chartBox(ST)
           + recentTable(ST, eok)
           + listingsBox(nm, ST)
           + turnoverBox(ST, A, HS)
@@ -25752,18 +25760,92 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     return h + '</div>';
   }
 
-  function chartBox(){
-    return '<div class="dj-card"><div class="dj-h">📈 시세 흐름</div>'
-      + '<div id="dj-chartwrap" style="height:260px;position:relative">'
-      +   '<canvas id="dj-chart"></canvas></div>'
-      + '<div style="font-size:10.5px;color:var(--text3);margin-top:6px">'
-      + '월별 중위 거래가 (해제 신고 제외). 거래가 없는 달은 이어 그립니다.</div></div>';
+  /* ══ 시세 흐름 ════════════════════════════════════════════════════════
+     면적형을 섞은 한 줄짜리 그래프는 평형 구성이 바뀔 때마다 출렁여서
+     시세를 읽을 수가 없다. 면적형마다 선을 따로 긋는다.
+
+     색은 면적형에 붙박이로 맨다 — 그 단지의 전용면적을 작은 것부터 줄 세운
+     자리로 정한다. 그래야 한 면적형을 껐다 켜도 남은 선의 색이 안 바뀐다.
+     (자리를 「거래 많은 순」으로 잡으면 필터마다 색이 뒤바뀐다)
+
+     색은 검산을 거친 것이다 — 밝은 모드 최악 인접쌍 ΔE 9.1(protan)·19.6(normal),
+     어두운 모드 8.4·19.3. 밝은 모드에서 바탕 대비가 3:1 아래인 색이 셋 있어,
+     끝점 이름표와 아래 숫자표로 갚는다. */
+  var SER_L = ['#2a78d6','#eb6834','#1baf7a','#eda100','#e87ba4','#008300','#4a3aa7','#e34948'];
+  var SER_D = ['#3987e5','#d95926','#199e70','#c98500','#d55181','#008300','#9085e9','#e66767'];
+  var SER_MAX = 6;                    // 선은 여섯 개까지 — 넘으면 거래 많은 것부터
+  function isDark(){
+    try{
+      var t = document.documentElement.getAttribute('data-theme');
+      if(t === 'dark') return true;
+      if(t === 'light') return false;
+      return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    }catch(e){ return false; }
   }
+  function serColor(i){ var P = isDark() ? SER_D : SER_L; return P[i % P.length]; }
+  function inkC(k){
+    try{ return getComputedStyle(document.documentElement).getPropertyValue('--' + k) || ''; }
+    catch(e){ return ''; }
+  }
+
+  /*  면적형 × 월 로 갈라 중위를 낸다. 색 자리(slot)는 면적 오름차순으로 못박는다. */
+  function flowData(ST){
+    var S = K();
+    var byA = {}, months = {};
+    ST.live.forEach(function(r){
+      if(typeof r._amt !== 'number' || !r._date || !r._area) return;
+      var a = Math.round(r._area), ym = String(r._date).slice(0,7);
+      months[ym] = 1;
+      var b = byA[a] = byA[a] || { sqm:a, py:Math.round(a/3.3058), n:0, m:{} };
+      (b.m[ym] = b.m[ym] || []).push(r._amt);
+      b.n++;
+    });
+    var all = Object.keys(byA).map(Number).sort(function(x,y){ return x - y; });
+    /*  색 자리는 「이 단지가 가진 면적형 전부」를 면적 오름차순으로 줄 세운 자리다.
+        지금 그릴 목록으로 정하면 한 면적형이 빠질 때 남은 선의 색이 밀린다. */
+    var anchor = (CUR && CUR.areas && CUR.areas.length) ? CUR.areas : all;
+    all.forEach(function(a){
+      var i = anchor.indexOf(a);
+      byA[a].slot = (i >= 0) ? i : (anchor.length + all.indexOf(a));
+    });
+    var ks = Object.keys(months).sort();
+    //  선이 너무 많으면 읽을 수가 없다 — 거래 많은 것부터 여섯
+    var pick = all.slice().sort(function(x,y){ return byA[y].n - byA[x].n; }).slice(0, SER_MAX)
+                  .sort(function(x,y){ return x - y; });
+    return { byA:byA, all:all, pick:pick, months:ks,
+             hidden: all.filter(function(a){ return pick.indexOf(a) < 0; }) };
+  }
+
+  function chartBox(ST){
+    var F = ST && ST.live.length ? flowData(ST) : null;
+    var many = F && F.hidden.length;
+    return '<div class="dj-card"><div class="dj-h">📈 시세 흐름 '
+      + '<span style="font-size:10.5px;font-weight:400;color:var(--text3)">'
+      +   '면적형별 월 중위 거래가</span>'
+      + '<label style="margin-left:auto;font-size:11px;color:var(--text2);display:flex;'
+      +   'gap:4px;align-items:center;cursor:pointer;font-weight:400">'
+      +   '<input type="checkbox" onchange="djFlowVals(this.checked)"'
+      +   (st().flowVals ? ' checked' : '') + '> 모든 값 표시</label>'
+      + '</div>'
+      + '<div id="dj-chartwrap" style="height:320px;position:relative">'
+      +   '<canvas id="dj-chart"></canvas></div>'
+      + '<div id="dj-flowtbl"></div>'
+      + '<div style="font-size:10.5px;color:var(--text3);margin-top:7px;line-height:1.55">'
+      +   '해제 신고는 뺐습니다. 거래가 없는 달은 이어 그립니다. '
+      +   '범례를 누르면 그 면적형만 껐다 켤 수 있습니다.'
+      +   (many ? ' 거래가 많은 ' + SER_MAX + '개 면적형만 선으로 그렸고, 나머지('
+              + F.hidden.map(function(a){ return a + '㎡'; }).join(', ')
+              + ')는 아래 표에 있습니다.' : '')
+      + '</div></div>';
+  }
+  window.djFlowVals = function(v){ st().flowVals = !!v; stSave(); if(CUR) draw(); };
+
   function chartNote(t){
     var w = document.getElementById('dj-chartwrap'); if(!w) return;
     w.innerHTML = '<div style="height:100%;display:flex;align-items:center;justify-content:center;'
       + 'color:var(--text3);font-size:12px;text-align:center;padding:0 20px">' + esc(t) + '</div>';
   }
+
   function drawChart(ST){
     var cv = document.getElementById('dj-chart');
     if(!cv) return;
@@ -25772,29 +25854,115 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
       chartNote('그래프 라이브러리(Chart.js)를 불러오지 못했습니다 — 인터넷 연결을 확인해 주세요.'); return; }
     if(!ST.live.length){ chartNote('이 기간에 그릴 거래가 없습니다.'); return; }
     if(CH){ try{ CH.destroy(); }catch(e){} CH = null; }
-    var S = K(), g = {};
-    ST.live.forEach(function(r){
-      if(typeof r._amt !== 'number' || !r._date) return;
-      var ym = String(r._date).slice(0,7);
-      (g[ym] = g[ym] || []).push(r._amt);
+
+    var S = K(), F = flowData(ST);
+    if(F.months.length < 2){
+      chartNote('거래가 있는 달이 ' + F.months.length + '개뿐이라 흐름을 그릴 수 없습니다. 기간을 넓혀 보세요.');
+      flowTable(F); return;
+    }
+
+    var showAll = !!st().flowVals;
+    var sets = F.pick.map(function(a){
+      var b = F.byA[a], c = serColor(b.slot);
+      return {
+        label: a + '㎡ (' + b.py + '평)',
+        data: F.months.map(function(k){ return b.m[k] ? S.med(b.m[k]) : null; }),
+        _cnt: F.months.map(function(k){ return b.m[k] ? b.m[k].length : 0; }),
+        borderColor: c, backgroundColor: c,
+        borderWidth: 2, tension: .25, fill: false,
+        pointRadius: 3.5, pointHoverRadius: 6, spanGaps: true
+      };
     });
-    var ks = Object.keys(g).sort();
-    if(ks.length < 2){ chartNote('거래가 있는 달이 ' + ks.length + '개뿐이라 흐름을 그릴 수 없습니다. '
-      + '기간을 넓혀 보세요.'); return; }
+
+    /*  값 적기 — 늘 모든 점에 적으면 숫자 범벅이 된다.
+        기본은 각 선의 마지막 점에만, 「모든 값 표시」를 켜면 전부. */
+    var labelPlugin = {
+      id: 'djVals',
+      afterDatasetsDraw: function(ch){
+        var ctx = ch.ctx;
+        ctx.save();
+        ctx.font = '700 10px ' + (getComputedStyle(document.body).fontFamily || 'sans-serif');
+        ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+        ch.data.datasets.forEach(function(ds, di){
+          var meta = ch.getDatasetMeta(di); if(meta.hidden) return;
+          var lastI = -1;
+          ds.data.forEach(function(v, i){ if(v != null) lastI = i; });
+          meta.data.forEach(function(pt, i){
+            var v = ds.data[i]; if(v == null) return;
+            if(!showAll && i !== lastI) return;
+            var t = S.eok(v);
+            var w = ctx.measureText(t).width + 6;
+            ctx.fillStyle = isDark() ? 'rgba(26,26,25,.82)' : 'rgba(252,252,251,.86)';
+            ctx.fillRect(pt.x - w/2, pt.y - 17, w, 13);
+            ctx.fillStyle = inkC('text') || (isDark() ? '#fff' : '#0b0b0b');
+            ctx.fillText(t, pt.x, pt.y - 5);
+          });
+        });
+        ctx.restore();
+      }
+    };
+
     CH = new Chart(cv, {
-      type:'line',
-      data:{ labels:ks, datasets:[{
-        label:'중위 거래가(만원)',
-        data: ks.map(function(k){ return S.med(g[k]); }),
-        borderColor:'#0891b2', backgroundColor:'rgba(8,145,178,.12)',
-        borderWidth:2, tension:.3, fill:true, pointRadius:3, spanGaps:true
-      }]},
-      options:{ responsive:true, maintainAspectRatio:false,
-        plugins:{ legend:{ display:false },
-          tooltip:{ callbacks:{ label:function(c){ return S.eok(c.parsed.y) + ' (' + g[c.label].length + '건)'; } } } },
-        scales:{ y:{ ticks:{ callback:function(v){ return S.eok(v); }, font:{ size:10 } } },
-                 x:{ ticks:{ font:{ size:10 } } } } }
+      type: 'line',
+      data: { labels: F.months, datasets: sets },
+      plugins: [labelPlugin],
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: { display: true, position: 'bottom',
+            labels: { boxWidth: 10, boxHeight: 10, usePointStyle: true,
+                      font: { size: 11 }, padding: 12 } },
+          tooltip: {
+            callbacks: {
+              label: function(c){
+                var n = (c.dataset._cnt || [])[c.dataIndex] || 0;
+                return c.dataset.label + '  ' + S.eok(c.parsed.y) + ' (' + n + '건)';
+              }
+            }
+          }
+        },
+        scales: {
+          y: { ticks: { callback: function(v){ return S.eok(v); }, font: { size: 10 } },
+               grid: { color: 'rgba(128,128,128,.16)' } },
+          x: { ticks: { font: { size: 10 }, maxRotation: 0, autoSkipPadding: 12 },
+               grid: { display: false } }
+        }
+      }
     });
+    flowTable(F);
+  }
+
+  /*  숫자표 — 그래프로는 정확한 값을 읽을 수 없다. 손님께 불러 드리려면 숫자가 있어야 한다.
+      (밝은 모드에서 바탕 대비가 낮은 색이 있어, 이 표는 있어야 한다) */
+  function flowTable(F){
+    var box = document.getElementById('dj-flowtbl'); if(!box) return;
+    if(!F || !F.months.length){ box.innerHTML = ''; return; }
+    var S = K(), ms = F.months.slice().reverse();      // 최근 달부터
+    var rows = F.all.slice();                          // 선에 없는 면적형도 표에는 넣는다
+    var h = '<div style="overflow-x:auto;margin-top:11px;max-height:290px;overflow-y:auto">'
+      + '<table style="font-size:11px"><thead><tr>'
+      + '<th style="position:sticky;left:0;background:var(--card);z-index:1">면적형</th>'
+      + ms.map(function(m){ return '<th>' + esc(m.slice(2).replace('-', '.')) + '</th>'; }).join('')
+      + '</tr></thead><tbody>'
+      + rows.map(function(a){
+          var b = F.byA[a], on = F.pick.indexOf(a) >= 0;
+          return '<tr><td style="position:sticky;left:0;background:var(--card);white-space:nowrap">'
+            + (on ? '<span style="display:inline-block;width:8px;height:8px;border-radius:2px;'
+                    + 'background:' + serColor(b.slot) + ';margin-right:5px"></span>' : '')
+            + '<b>' + a + '㎡</b> <span style="color:var(--text3)">' + b.py + '평</span></td>'
+            + ms.map(function(m){
+                var v = b.m[m];
+                if(!v) return '<td style="color:var(--text3)">·</td>';
+                return '<td><b>' + amtTxt(S.med(v)) + '</b>'
+                  + '<span style="color:var(--text3);font-size:10px"> ' + v.length + '</span></td>';
+              }).join('')
+            + '</tr>';
+        }).join('')
+      + '</tbody></table></div>'
+      + '<div style="font-size:10px;color:var(--text3);margin-top:4px">'
+      + '칸 안의 작은 수는 그 달의 거래 건수입니다. 「·」는 거래가 없는 달입니다.</div>';
+    box.innerHTML = h;
   }
 
   function recentTable(ST, eok){
