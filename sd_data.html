@@ -19353,7 +19353,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.09.26-2';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.09.26-3';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_data.html';      // 이 파일 이름
   var SD_NAME = '실거래가';      // 사람이 부르는 이름
 
@@ -24834,7 +24834,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
       + '</span>'
       + '<span style="display:flex;gap:6px">'
       +   (list.length > have.length
-            ? '<button class="dj-bs" onclick="djGeo()">📍 좌표 찾기</button>' : '')
+            ? '<button class="dj-bs" onclick="djGeo(false,true)">📍 좌표 다시 찾기</button>' : '')
       +   '<button class="dj-bs" onclick="djMapFit()">↔ 전체 보기</button>'
       +   '<button class="dj-bs" onclick="djMap(true)">🔄 다시 그리기</button>'
       + '</span></div>'
@@ -24856,8 +24856,13 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
             ? '이 조건으로 거래가 있는 단지가 없습니다.<br>종류·거래·기간을 바꿔 보세요.'
             : GEO_TRIED[cacheKey()]
               ? '이 지역 단지 ' + list.length + '곳의 좌표를 한 곳도 찾지 못했습니다.<br>'
-                + '<span style="font-size:11px">카카오 지도에서 이 지역 주소를 못 찾는 경우입니다. '
-                + '「📍 좌표 찾기」로 다시 시도하거나, 단지 이름으로 브리핑을 여실 수 있습니다.</span>'
+                + '<span style="font-size:11px">새로 생긴 구는 카카오 주소록에 아직 없을 수 있습니다. '
+                + '단지 이름을 직접 쳐서 브리핑은 보실 수 있습니다.</span><br>'
+                + '<button class="dj-bs" style="margin-top:9px" onclick="djGeo(false,true)">'
+                + '📍 좌표 다시 찾기</button>'
+                + (LASTDIAG ? ' <button class="dj-bs" style="margin-top:9px" onclick="djDiag()">'
+                    + '🔎 무엇을 찾아봤는지 보기</button>' : '')
+                + '<div id="dj-diagbox"></div>'
               : '이 지역 단지 ' + list.length + '곳의 좌표를 찾는 중입니다…<br>'
                 + '<span style="font-size:11px">처음 보는 지역은 한 번만 찾으면 됩니다.</span>')
         + '</div>';
@@ -24938,70 +24943,143 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
   /*  좌표 찾기 — 지번 주소를 먼저 쓰고, 이름으로 찾은 결과는 반드시
       조회한 시·군·구 안인지 확인한다. (이름만으로 찾다가 「하나타운1차」가
       대구로 잡힌 일이 있었다.) 찾은 것은 S실거래가와 같은 창고에 넣는다. */
-  window.djGeo = async function(quiet){
+  /* ── 좌표 찾기 ────────────────────────────────────────────────────────
+     실패 기록이 굳어 버리는 것을 막는다.
+     지난 판은 「28290 마전동 123」 으로 찾다가 147곳을 전부 놓치고 그 「없음」을
+     파이어베이스에 저장했다. 그러면 찾는 방법을 고쳐도 다시 찾아 보지 않아
+     영영 0곳이다 — 실제로 겪은 일이다.
+     그래서 「없음」에 찾던 방법의 판 번호를 함께 적어 두고, 방법이 나아지면
+     한 번 더 찾아 본다. 사람이 단추를 누르면 판 번호와 상관없이 다시 찾는다. */
+  var GEOV = 2, MISSV = {}, MISSKEY = 'sd_geo_missv';
+  async function loadMiss(){
+    try{ var r = await K().sget(MISSKEY); if(r) MISSV = JSON.parse(r) || {}; }
+    catch(e){ MISSV = {}; }
+    return MISSV;
+  }
+
+  window.djGeo = async function(quiet, force){
     if(BUSY) return;
     var S = K(), GEO = S.geo(), sgg = st().sgg;
+    await loadMiss();
     var todo = danjiAgg().filter(function(o){
+      if(force) return true;                          // 사람이 누르면 전부 다시 찾는다
       if(!(o.key in GEO)) return true;
       var g = GEO[o.key];
-      if(g === null) return false;                  // 찾아 봤는데 없던 곳
+      if(g === null) return (MISSV[o.key] || 0) < GEOV;   // 방법이 나아졌으면 한 번 더
       return !g.lat || !inRegionSafe(g.addr, sgg, o.dong);   // 지역이 안 맞는 옛 기록
     });
-    if(!todo.length){ if(!quiet) msg('좌표를 모두 갖고 있습니다.', 'ok'); return; }
-    //  이미 핀이 하나라도 서 있으면 지도를 진행 글로 덮지 않는다
+    if(!todo.length){
+      if(!quiet) msg('좌표를 모두 갖고 있습니다. (다시 찾으려면 「📍 좌표 다시 찾기」)', 'ok');
+      return;
+    }
     var have0 = danjiAgg().some(function(o){ var g = GEO[o.key]; return g && g.lat; });
     if(todo.length > 120) todo = todo.slice(0, 120);
     BUSY = true;
-    var got = 0, miss = 0;
+    var got = 0, miss = 0, diag = [];
+
+    var known = (sggNm(sgg) !== sgg);
+    var gu    = known ? sggNm(sgg) : '';             // 「인천광역시 검단구」
+    var sido  = sidoNm(sgg);                         // 「인천광역시」
+    /*  찾는 말 만들기. 새로 생긴 구는 카카오 주소록에 아직 없을 수 있어,
+        구를 뺀 꼴과 동만 쓴 꼴까지 차례로 넣는다. */
+    function addrQs(o){
+      var q = [];
+      if(!o.jibun || !o.dong) return q;
+      if(gu) q.push(gu + ' ' + o.dong + ' ' + o.jibun);
+      q.push(sido + ' ' + o.dong + ' ' + o.jibun);
+      q.push(o.dong + ' ' + o.jibun);
+      return q;
+    }
+    function nameQs(o){
+      var q = [];
+      if(gu) q.push(gu + ' ' + o.dong + ' ' + o.name);
+      q.push(sido + ' ' + o.dong + ' ' + o.name);
+      q.push(o.dong + ' ' + o.name);
+      q.push(sido + ' ' + o.name);
+      return q;
+    }
+    //  먼저 통한 꼴을 다음 단지에서 맨 앞으로 — 960번 부르지 않으려는 꾀
+    var winA = -1, winN = -1;
+    function order(list, win){
+      if(win < 0 || win >= list.length) return list;
+      return [list[win]].concat(list.filter(function(_, i){ return i !== win; }));
+    }
+
     try{
       await S.kakaoReady();
-      /*  구 이름을 모르면 「인천광역시 마전동 123」 처럼 시도 + 법정동으로 찾는다.
-          예전에는 「28290 마전동 123」 으로 찾아 한 곳도 못 건졌다. */
-      var known = (sggNm(sgg) !== sgg);
-      var head = known ? sggNm(sgg) : sidoNm(sgg);
       for(var i=0;i<todo.length;i++){
-        var o = todo[i], hit = null;
+        var o = todo[i], hit = null, tried = [];
         msg('좌표를 찾는 중… (' + (i+1) + '/' + todo.length + ') ' + o.name, 'go');
         var pb = document.getElementById('dj-map');
         if(pb && !have0) pb.innerHTML = '<div style="height:100%;display:flex;align-items:center;'
           + 'justify-content:center;color:var(--text3);font-size:12.5px;text-align:center;padding:0 24px">'
-          + '이 지역 단지 좌표를 찾는 중입니다… ' + (i+1) + ' / ' + todo.length + '<br>'
+          + '이 지역 단지 좌표를 찾는 중입니다… ' + (i+1) + ' / ' + todo.length
+          + ' <span style="color:#0a7">(' + got + '곳 찾음)</span><br>'
           + '<span style="font-size:11px">' + esc(o.name) + '</span></div>';
-        if(o.jibun && o.dong){
-          var qs = [ head + ' ' + o.dong + ' ' + o.jibun ];
-          if(known) qs.push(sidoNm(sgg) + ' ' + o.dong + ' ' + o.jibun);   // 구 이름 없이 한 번 더
-          for(var q=0; q<qs.length && !hit; q++){
-            var a = await S.kakaoAddr(qs[q]);
-            if(!a) continue;
-            var aa = (a.address && a.address.address_name) || a.address_name || '';
-            if(aa && !inRegionSafe(aa, sgg, o.dong)) continue;
-            hit = { lat:parseFloat(a.y), lng:parseFloat(a.x), addr:aa, p:'지번' };
-          }
+
+        //  ① 지번 주소 — 가장 정확하다
+        var A = order(addrQs(o), winA);
+        for(var q=0; q<A.length && !hit; q++){
+          tried.push(A[q]);
+          var a = await S.kakaoAddr(A[q]);
+          if(!a) continue;
+          var aa = (a.address && a.address.address_name) || a.address_name || '';
+          if(aa && !inRegionSafe(aa, sgg, o.dong)) continue;
+          hit = { lat:parseFloat(a.y), lng:parseFloat(a.x), addr:aa, p:'지번' };
+          winA = addrQs(o).indexOf(A[q]);
         }
+        //  ② 이름 — 반드시 지역을 확인하고 받아들인다
         if(!hit){
-          var tries = [ head + ' ' + o.dong + ' ' + o.name, head + ' ' + o.name ];
-          if(known) tries.push(sidoNm(sgg) + ' ' + o.dong + ' ' + o.name);
-          for(var t=0; t<tries.length && !hit; t++){
-            var d = await S.kakaoFind(tries[t]);
+          var N = order(nameQs(o), winN);
+          for(var t=0; t<N.length && !hit; t++){
+            tried.push(N[t]);
+            var d = await S.kakaoFind(N[t]);
             if(!d) continue;
             var ad = d.road_address_name || d.address_name || '';
-            if(!inRegionSafe(ad, sgg, o.dong)) continue;   // 엉뚱한 지역이면 버린다
+            if(!inRegionSafe(ad, sgg, o.dong)) continue;
             hit = { lat:parseFloat(d.y), lng:parseFloat(d.x), addr:ad, p:d.place_name||'' };
+            winN = nameQs(o).indexOf(N[t]);
           }
         }
-        if(hit){ GEO[o.key] = hit; got++; } else { GEO[o.key] = null; miss++; }
-        if(i % 20 === 19) await S.saveGeo();
+        if(hit){ GEO[o.key] = hit; delete MISSV[o.key]; got++; }
+        else{
+          GEO[o.key] = null; MISSV[o.key] = GEOV; miss++;
+          if(diag.length < 3) diag.push({ nm:o.name, q:tried });
+        }
+        if(i % 20 === 19){ await S.saveGeo(); try{ await S.sset(MISSKEY, JSON.stringify(MISSV)); }catch(e){} }
         await new Promise(function(r){ setTimeout(r, 60); });
       }
       await S.saveGeo();
-      if(!quiet) msg('좌표 ' + got + '곳을 찾았습니다.' + (miss ? '  (못 찾은 곳 ' + miss + '곳)' : ''), 'ok');
+      try{ await S.sset(MISSKEY, JSON.stringify(MISSV)); }catch(e){}
+      if(!quiet) msg('좌표 ' + got + '곳을 찾았습니다.' + (miss ? '  (못 찾은 곳 ' + miss + '곳)' : ''),
+        got ? 'ok' : 'bad');
       else msg('');
+      LASTDIAG = (got === 0 && diag.length) ? diag : null;
       drawMap();
     }catch(e){ msg(e && e.message || String(e), 'no'); }
     finally{ BUSY = false; }
   };
 
-  // ── 브리핑 그리기 ───────────────────────────────────────────────────
+  /*  한 곳도 못 찾았을 때 무엇을 어떻게 찾아봤는지 보여 준다.
+      말없이 빈 지도만 내놓는 것이 제일 나쁜 실패다. */
+  var LASTDIAG = null;
+  window.djDiag = function(){
+    if(!LASTDIAG) return;
+    var h = LASTDIAG.map(function(d){
+      return '<div style="margin-bottom:7px"><b>' + esc(d.nm) + '</b><br>'
+        + d.q.map(function(q){ return '<span style="color:var(--text3)">· ' + esc(q) + '</span>'; })
+             .join('<br>') + '</div>';
+    }).join('');
+    var el = document.getElementById('dj-diagbox');
+    if(el) el.innerHTML = '<div style="text-align:left;font-size:11px;margin-top:10px;'
+      + 'background:var(--bg3);border-radius:8px;padding:10px 12px;max-width:520px">'
+      + '<div style="font-weight:700;margin-bottom:6px">카카오 지도에 이렇게 물어봤습니다</div>'
+      + h + '<div style="color:var(--text3);margin-top:6px">'
+      + '이 주소들이 카카오에 아직 없으면 못 찾습니다. '
+      + '단지 이름을 직접 쳐서 브리핑은 볼 수 있습니다.</div></div>';
+  };
+
+  // ── 브리핑 그리기 ───────────────────────────────────────────────────  // ── 브리핑 그리기 ───────────────────────────────────────────────────
   function draw(){
     var S = K(), body = document.getElementById('dj-body'); if(!body || !CUR) return;
     var nm = CUR.nm;
