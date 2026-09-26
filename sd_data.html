@@ -19353,7 +19353,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.09.26-3';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.09.26-4';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_data.html';      // 이 파일 이름
   var SD_NAME = '실거래가';      // 사람이 부르는 이름
 
@@ -24142,19 +24142,94 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 
   //  고른 종류들을 한 덩어리로 합쳐 본다
   function merged(){
-    var trade = [], rent = [], at = null, miss = [];
+    var trade = [], rent = [], at = null, miss = [], stale = false;
     st().kinds.forEach(function(k){
       var d = CACHE[ckOf(k)];
       if(!d){ miss.push(k); return; }
       trade = trade.concat(d.trade); rent = rent.concat(d.rent);
       if(!at || d.at > at) at = d.at;
+      if(d.stale) stale = true;
     });
-    return { trade:trade, rent:rent, at:at, miss:miss };
+    return { trade:trade, rent:rent, at:at, miss:miss, stale:stale };
   }
 
-  async function fetchKind(kind){
-    var S = K(), kd = KIND(kind), ck = ckOf(kind);
-    if(CACHE[ck]) return CACHE[ck];
+  /* ══ 받아 둔 실거래를 담아 둔다 ═══════════════════════════════════════
+     예전에는 메모리에만 두어, 새로고침할 때마다 국토부를 24번씩 다시 불렀다.
+     이제 파이어베이스에 담아 두어 새로고침해도 바로 뜬다.
+
+     · 줄을 통째로 담지 않고 쓰는 칸만 골라 배열로 눕힌다.
+       이름을 붙인 꼴로 담으면 덩치가 서너 배가 된다.
+     · 국토부는 신고분을 하루 한 번 반영한다. 그래서 담아 둔 날이 오늘이면
+       그대로 쓰고, 어제 것이면 「일단 보여 주고 뒤에서 새로 받는다」.
+       기다리게 하지 않으면서도 자료는 최신이 된다.
+     · 파이어베이스에만 담는다. 이 PC 의 localStorage 는 5MB 언저리라
+       큰 덩어리를 넣으면 다른 설정까지 밀려난다. */
+  var DJC_PRE = 'sd_djc_', DJC_IDX = 'sd_djc_idx';
+  var DJC_MAX = 24;                 // 담아 둘 지역·기간 수
+  var DJC_CAP = 3000000;            // 한 덩어리 상한 (약 3MB)
+  var FIELDS = ['_name','_date','_amt','_area','_py','_ppy','floor','umdNm','jibun',
+                'cdealType','deposit','monthlyRent','contractType'];
+  var REFRESHING = {};              // 뒤에서 새로 받는 중인 것
+
+  function djcKey(kind){ return DJC_PRE + st().sgg + '_' + kind + '_' + periodKey(); }
+  function today(){
+    var d = new Date();
+    return d.getFullYear() + '-' + n2(d.getMonth()+1) + '-' + n2(d.getDate());
+  }
+  function n2(v){ return (v < 10 ? '0' : '') + v; }
+
+  function packRows(rows){
+    return (rows || []).map(function(r){
+      return FIELDS.map(function(f){ return r[f] === undefined ? null : r[f]; });
+    });
+  }
+  function unpackRows(arr, kind){
+    return (arr || []).map(function(a){
+      var o = {};
+      for(var i=0;i<FIELDS.length;i++) if(a[i] !== null && a[i] !== undefined) o[FIELDS[i]] = a[i];
+      o.__kindK = kind;
+      return o;
+    });
+  }
+
+  async function djcSave(kind, d){
+    var S = K();
+    var body = JSON.stringify({ v:1, day: today(), at: new Date().toISOString(),
+                                f: FIELDS, t: packRows(d.trade), r: packRows(d.rent) });
+    if(body.length > DJC_CAP){
+      console.info('[단지 브리핑] 자료가 너무 커서 담지 않았습니다 ('
+        + Math.round(body.length/1024) + 'KB)');
+      return;
+    }
+    try{
+      await window.storage.set(djcKey(kind), body);
+      //  담아 둔 목록을 간수한다 — 오래된 것부터 버린다
+      var idx = {};
+      try{ var r = await window.storage.get(DJC_IDX); if(r && r.value) idx = JSON.parse(r.value) || {}; }catch(e){}
+      idx[djcKey(kind)] = { at: Date.now(), kb: Math.round(body.length/1024) };
+      var ks = Object.keys(idx).sort(function(a,b){ return idx[b].at - idx[a].at; });
+      for(var i=DJC_MAX;i<ks.length;i++){
+        try{ await window.storage.delete(ks[i]); }catch(e){}
+        delete idx[ks[i]];
+      }
+      await window.storage.set(DJC_IDX, JSON.stringify(idx));
+    }catch(e){ console.warn('[단지 브리핑] 자료를 담지 못했습니다', e); }
+  }
+
+  async function djcLoad(kind){
+    try{
+      var r = await window.storage.get(djcKey(kind));
+      if(!r || !r.value) return null;
+      var j = JSON.parse(r.value);
+      if(!j || j.v !== 1 || !Array.isArray(j.t)) return null;
+      return { trade: unpackRows(j.t, kind), rent: unpackRows(j.r, kind),
+               at: new Date(j.at), stale: (j.day !== today()) };
+    }catch(e){ return null; }
+  }
+
+  //  국토부에서 새로 받는다
+  async function pullKind(kind){
+    var S = K(), kd = KIND(kind);
     var yms = periodYms(), sname = sggNm(st().sgg);
     var done = 0, tot = yms.length * (kd.r ? 2 : 1);
     function step(){ done++; msg(kd.n + ' 실거래를 받는 중… ' + done + '/' + tot, 'go'); }
@@ -24167,22 +24242,77 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
       raw.forEach(function(r){ r.__sggNm = sname; });
       return raw.map(S.shape).map(function(o){ o.__kindK = kind; return o; });
     }
-    CACHE[ck] = { trade: prep(pair[0]), rent: prep(pair[1]), at: new Date() };
+    return { trade: prep(pair[0]), rent: prep(pair[1]), at: new Date(), stale: false };
+  }
+
+  async function fetchKind(kind){
+    var ck = ckOf(kind);
+    if(CACHE[ck]) return CACHE[ck];
+    CACHE[ck] = await pullKind(kind);
+    djcSave(kind, CACHE[ck]);                 // 담아 두기는 기다리지 않는다
     return CACHE[ck];
+  }
+
+  /*  어제 것을 보여 주고 있는 동안 뒤에서 새로 받아 갈아 끼운다.
+      사람을 기다리게 하지 않으면서 자료는 오늘 것이 된다. */
+  function refreshBehind(kind){
+    var ck = ckOf(kind);
+    if(REFRESHING[ck]) return;
+    REFRESHING[ck] = 1;
+    var sggAt = st().sgg, perAt = periodKey();
+    staleBadge(true);
+    pullKind(kind).then(function(d){
+      //  받는 사이에 사람이 다른 지역·기간으로 옮겨 갔으면 덮어쓰지 않는다
+      if(st().sgg !== sggAt || periodKey() !== perAt){ delete REFRESHING[ck]; staleBadge(false); return; }
+      CACHE[ck] = d;
+      djcSave(kind, d);
+      delete REFRESHING[ck];
+      staleBadge(false);
+      if(st().find === 'map' && DJMAP) drawMap();
+      if(CUR) djGoName(CUR.nm);
+      msg('새 자료로 바꿨습니다.', 'ok');
+      setTimeout(function(){ msg(''); }, 2500);
+    }).catch(function(e){
+      delete REFRESHING[ck]; staleBadge(false);
+      console.warn('[단지 브리핑] 뒤에서 새로 받기 실패', e);
+    });
+  }
+  function staleBadge(on){
+    var el = document.getElementById('dj-stale');
+    if(el) el.innerHTML = on
+      ? '<span style="color:#c80">· 새 자료를 받는 중…</span>' : '';
   }
 
   async function ensure(force){
     var S = K(); if(!S) throw new Error('S실거래가 모듈이 아직 준비되지 않았습니다');
-    if(force) st().kinds.forEach(function(k){ delete CACHE[ckOf(k)]; });
+    if(force){
+      for(var f=0; f<st().kinds.length; f++){
+        delete CACHE[ckOf(st().kinds[f])];
+        try{ await window.storage.delete(djcKey(st().kinds[f])); }catch(e){}
+      }
+    }
     var need = st().kinds.filter(function(k){ return !CACHE[ckOf(k)]; });
-    if(!need.length) return merged();     // 이미 받아 뒀으면 인증키도 필요 없다
+
+    //  ① 담아 둔 것을 먼저 꺼낸다 — 인증키도 필요 없고 국토부도 안 부른다
+    for(var i=0;i<need.length;i++){
+      var got = await djcLoad(need[i]);
+      if(got) CACHE[ckOf(need[i])] = got;
+    }
+    //  ② 오래된 것은 보여 주면서 뒤에서 새로 받는다
+    st().kinds.forEach(function(k){
+      var d = CACHE[ckOf(k)];
+      if(d && d.stale && K().key()) refreshBehind(k);
+    });
+
+    need = st().kinds.filter(function(k){ return !CACHE[ckOf(k)]; });
+    if(!need.length){ msg(''); return merged(); }
     if(!S.key()) throw new Error('국토부 인증키가 없습니다 — S실거래가 탭에서 먼저 넣어 주세요');
-    for(var i=0;i<need.length;i++) await fetchKind(need[i]);
+    for(var j=0;j<need.length;j++) await fetchKind(need[j]);
     msg('');
     return merged();
   }
 
-  /* ── 지금 고른 거래에 맞는 줄을 골라 값을 다시 매긴다 ───────────────────
+  /* ── 지금 고른 거래에 맞는 줄을 골라 값을 다시 매긴다  /* ── 지금 고른 거래에 맞는 줄을 골라 값을 다시 매긴다 ───────────────────
      매매 : 거래금액 그대로
      전세 : 보증금 (월세 0 인 줄만)
      월세 : 환산보증금 또는 월세 금액 — 고른 축에 따라
@@ -24567,10 +24697,13 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
           + '</div>' : '')
       + '</div>';
   }
-  window.djReload = function(){
-    st().kinds.forEach(function(k){ delete CACHE[ckOf(k)]; });
+  window.djReload = async function(){
     OURS = null;
-    if(MAPON) djMap(true);
+    for(var i=0;i<st().kinds.length;i++){
+      delete CACHE[ckOf(st().kinds[i])];
+      try{ await window.storage.delete(djcKey(st().kinds[i])); }catch(e){}
+    }
+    if(st().find === 'map') djMap(true);
     if(CUR) djGoName(CUR.nm);
   };
 
@@ -24831,6 +24964,8 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
       +   '<b style="color:var(--text)">' + have.length + '</b>곳을 지도에 올렸습니다'
       +   (none ? ' · 좌표를 아직 안 찾은 곳 ' + none + '곳' : '')
       +   ' · 축척 ' + esc(lvTxt)
+      +   (merged().stale ? ' · <span style="color:#c80">담아 둔 자료</span>' : '')
+      +   '<span id="dj-stale"></span>'
       + '</span>'
       + '<span style="display:flex;gap:6px">'
       +   (list.length > have.length
@@ -25149,6 +25284,8 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
       +   ' · ' + esc(periodLabel())
       +   (st().deal !== 'sale' && st().newOnly ? ' · 신규 계약만' : '')
       +   (D && D.at ? ' · 받은 시각 ' + D.at.toLocaleString('ko-KR') : '')
+      +   (D && D.stale ? ' · <span style="color:#c80">담아 둔 자료 (새로 받는 중)</span>' : '')
+      +   '<span id="dj-stale"></span>'
       + '</div></div>';
   }
 
