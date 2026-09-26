@@ -19353,7 +19353,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.09.26-8';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.09.26-9';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_data.html';      // 이 파일 이름
   var SD_NAME = '실거래가';      // 사람이 부르는 이름
 
@@ -23813,6 +23813,10 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 #dj-root .dj-kv span{font-size:10.5px;color:var(--text3)}
 #dj-root .dj-tag{display:inline-block;padding:3px 9px;border-radius:12px;font-size:11px;
   font-weight:600;margin-right:5px}
+/* 면적형별 작은 판 — 가로로 둘씩. 좁은 화면에서는 한 줄에 하나씩 내린다 */
+#dj-root .dj-grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:10px}
+#dj-root .dj-mini{border:1px solid var(--border);border-radius:10px;padding:10px 11px}
+@media (max-width:860px){ #dj-root .dj-grid2{grid-template-columns:1fr} }
 @media print{
   .tab-nav,.tab-arrow,#dj-search,.dj-noprint{display:none!important}
   #dj-root .dj-card{break-inside:avoid;border:1px solid #ccc}
@@ -25596,6 +25600,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
           + summary(ST, eok)
           + areaTable(ST, FM, HS, eok)
           + chartBox(ST)
+          + miniBox()
           + recentTable(ST, eok)
           + listingsBox(nm, ST)
           + turnoverBox(ST, A, HS)
@@ -25603,6 +25608,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
           + similarBox(nm, A);
     body.innerHTML = h;
     drawChart(ST);
+    miniRender(ST);        // 값 표시 고르개(djFlowVals)가 draw() 를 다시 부르므로 함께 따라온다
   }
 
   function hsOf(nm){
@@ -25816,6 +25822,64 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
              hidden: all.filter(function(a){ return pick.indexOf(a) < 0; }) };
   }
 
+  /* ── 점 위에 값 적기 ─────────────────────────────────────────────────
+     큰 판(시세 흐름)과 작은 판(면적형별 1년 견줌)이 같은 함수·같은 고르개를 쓴다.
+     · 숫자가 겹치면 둘 다 못 읽는다. 자리를 재어 피하고, 그래도 막히면 접는다.
+       (접힌 값은 아래 숫자표에 그대로 있다)
+     · 작은 판은 선이 둘뿐이라 올해는 점 위, 지난해는 점 아래로 갈라 놓는다.
+       그러면 열두 달을 다 적어도 좀처럼 안 부딪힌다.
+       _side  -1 위 · +1 아래,  _ink 글자색(없으면 본문색) */
+  function valsPlugin(all, fmt){
+    var f = fmt || amtTxt;
+    return {
+      id: 'djVals',
+      afterDatasetsDraw: function(ch){
+        var ctx = ch.ctx, taken = [];
+        function free(x, y, w, h){
+          for(var i=0;i<taken.length;i++){
+            var t = taken[i];
+            if(x < t.x + t.w && x + w > t.x && y < t.y + t.h && y + h > t.y) return false;
+          }
+          return true;
+        }
+        /*  판 밖으로 나가면 잘린다 — 맨 윗점 값이 반쯤 잘려 나가던 일이 있었다.
+            좌우도 마찬가지다. 왼쪽 끝 값이 세로 눈금 글자 위에 겹쳐 앉았었다.
+            그래서 글자 상자를 그리는 자리 안으로 밀어 넣는다. */
+        var A = ch.chartArea;
+        function clampX(x, w){ return Math.max(A.left + 1, Math.min(x, A.right - w - 1)); }
+        function fits(y, hh){ return y >= A.top && (y + hh) <= A.bottom; }
+        ctx.save();
+        ctx.font = '700 10px ' + (getComputedStyle(document.body).fontFamily || 'sans-serif');
+        ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+        ch.data.datasets.forEach(function(ds, di){
+          var meta = ch.getDatasetMeta(di); if(meta.hidden) return;
+          var up = (ds._side || -1) < 0;
+          var lastI = -1;
+          ds.data.forEach(function(v, i){ if(v != null) lastI = i; });
+          meta.data.forEach(function(pt, i){
+            var v = ds.data[i]; if(v == null) return;
+            if(!all && i !== lastI) return;
+            var t = f(v);
+            var w = ctx.measureText(t).width + 6, hh = 13;
+            var x = clampX(pt.x - w/2, w);
+            var y0 = pt.y - 17, y1 = pt.y + 5;         // 점 위 / 점 아래
+            var a = up ? y0 : y1, b = up ? y1 : y0;
+            var y = null;
+            if(fits(a, hh) && free(x, a, w, hh)) y = a;
+            else if(fits(b, hh) && free(x, b, w, hh)) y = b;   // 한쪽이 막혔으면 반대쪽
+            if(y == null) return;                      // 둘 다 막혔으면 접는다 (숫자표에 있다)
+            taken.push({ x:x, y:y, w:w, h:hh });
+            ctx.fillStyle = isDark() ? 'rgba(26,26,25,.84)' : 'rgba(252,252,251,.88)';
+            ctx.fillRect(x, y, w, hh);
+            ctx.fillStyle = ds._ink || inkC('text') || (isDark() ? '#fff' : '#0b0b0b');
+            ctx.fillText(t, x + w/2, y + hh - 2);
+          });
+        });
+        ctx.restore();
+      }
+    };
+  }
+
   function chartBox(ST){
     var F = ST && ST.live.length ? flowData(ST) : null;
     var many = F && F.hidden.length;
@@ -25823,7 +25887,8 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
       + '<span style="font-size:10.5px;font-weight:400;color:var(--text3)">'
       +   '면적형별 월 중위 거래가</span>'
       + '<span style="margin-left:auto;display:flex;gap:4px;align-items:center;font-weight:400">'
-      +   '<span style="font-size:10.5px;color:var(--text3)">값 표시</span>'
+      +   '<span style="font-size:10.5px;color:var(--text3)" '
+      +     'title="이 고르개는 아래 「면적형별 1년 견줌」의 작은 판에도 함께 걸립니다">값 표시</span>'
       +   [[0,'끝점만'],[1,'전부']].map(function(x){
             var on = (!!st().flowVals === !!x[0]);
             return '<button onclick="djFlowVals(' + x[0] + ')" '
@@ -25838,7 +25903,8 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
       + '<div id="dj-flowtbl"></div>'
       + '<div style="font-size:10.5px;color:var(--text3);margin-top:7px;line-height:1.55">'
       +   '값은 <b>각 선의 마지막 점에만</b> 적습니다 — 모든 점에 적으면 숫자가 겹쳐 읽기 어렵습니다. '
-      +   '전부 보시려면 오른쪽 위 「값 표시 · 전부」를 누르시거나 아래 숫자표를 보십시오. '
+      +   '전부 보시려면 오른쪽 위 「값 표시 · 전부」를 누르시거나 아래 숫자표를 보십시오 '
+      +   '— 이 고르개는 <b>아래 「면적형별 1년 견줌」의 작은 판에도 함께</b> 걸립니다. '
       +   '해제 신고는 뺐습니다. 거래가 없는 달은 이어 그립니다. '
       +   '범례를 누르면 그 면적형만 껐다 켤 수 있습니다.'
       +   (many ? ' 거래가 많은 ' + SER_MAX + '개 면적형만 선으로 그렸고, 나머지('
@@ -25882,48 +25948,8 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
       };
     });
 
-    /*  값 적기 — 늘 모든 점에 적으면 숫자 범벅이 된다.
-        기본은 각 선의 마지막 점에만, 「모든 값 표시」를 켜면 전부. */
-    var labelPlugin = {
-      id: 'djVals',
-      afterDatasetsDraw: function(ch){
-        var ctx = ch.ctx, taken = [];
-        /*  자리를 겹치지 않게 둔다. 「전부」로 켜면 숫자가 서로 밟고 올라서는데,
-            겹치면 둘 다 못 읽는다. 위아래 다 막혔으면 그 값은 접고 숫자표에 맡긴다. */
-        function free(x, y, w, h){
-          for(var i=0;i<taken.length;i++){
-            var t = taken[i];
-            if(x < t.x + t.w && x + w > t.x && y < t.y + t.h && y + h > t.y) return false;
-          }
-          return true;
-        }
-        ctx.save();
-        ctx.font = '700 10px ' + (getComputedStyle(document.body).fontFamily || 'sans-serif');
-        ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
-        ch.data.datasets.forEach(function(ds, di){
-          var meta = ch.getDatasetMeta(di); if(meta.hidden) return;
-          var lastI = -1;
-          ds.data.forEach(function(v, i){ if(v != null) lastI = i; });
-          meta.data.forEach(function(pt, i){
-            var v = ds.data[i]; if(v == null) return;
-            if(!showAll && i !== lastI) return;
-            var t = S.eok(v);
-            var w = ctx.measureText(t).width + 6, hh = 13;
-            var y = pt.y - 17, x = pt.x - w/2;
-            if(!free(x, y, w, hh)){
-              y = pt.y + 5;                      // 위가 막혔으면 아래로
-              if(!free(x, y, w, hh)) return;     // 둘 다 막혔으면 접는다
-            }
-            taken.push({ x:x, y:y, w:w, h:hh });
-            ctx.fillStyle = isDark() ? 'rgba(26,26,25,.82)' : 'rgba(252,252,251,.86)';
-            ctx.fillRect(x, y, w, hh);
-            ctx.fillStyle = inkC('text') || (isDark() ? '#fff' : '#0b0b0b');
-            ctx.fillText(t, pt.x, y + hh - 2);
-          });
-        });
-        ctx.restore();
-      }
-    };
+    //  값 적기 — 기본은 각 선의 마지막 점에만, 「값 표시 · 전부」를 켜면 전부
+    var labelPlugin = valsPlugin(showAll, S.eok);
 
     CH = new Chart(cv, {
       type: 'line',
@@ -25947,6 +25973,8 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
         },
         scales: {
           y: { ticks: { callback: function(v){ return S.eok(v); }, font: { size: 10 } },
+               //  위아래로 숨 쉴 자리 — 맨 윗점·아랫점의 값 글자가 판 밖으로 잘리지 않게
+               grace: '12%',
                grid: { color: 'rgba(128,128,128,.16)' } },
           x: { ticks: { font: { size: 10 }, maxRotation: 0, autoSkipPadding: 12 },
                grid: { display: false } }
@@ -25992,6 +26020,201 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     //  최근 달이 바로 보이도록 오른쪽 끝으로 밀어 둔다
     var sc = box.querySelector('div[style*="overflow-x"]');
     if(sc) sc.scrollLeft = sc.scrollWidth;
+  }
+
+  /* ══ 면적형별 1년 견줌 ═══════════════════════════════════════════════
+     위의 「시세 흐름」은 면적형을 한 판에 겹쳐 그린다 — 단지 전체의 결을 보는 그림이다.
+     그런데 손님은 대개 「우리 평수」 하나만 본다. 선이 여섯이면 내 선을 눈으로
+     좇기가 어렵고, 옆 면적형 값과 헷갈리기까지 한다.
+
+     그래서 면적형마다 작은 판을 따로 둔다. 작은 면적형부터 가로로 둘씩.
+     한 판에는 최근 열두 달과, 지난해 같은 달(회색 점선)만 겹쳐 놓는다.
+     같은 달끼리 견줘야 계절을 타는 거래량·값에 속지 않는다.
+
+     값 표시(전부/끝값)는 따로 두지 않는다 — 위 「시세 흐름」의 고르개 하나가
+     이 판들까지 함께 다스린다. 같은 뜻의 단추가 둘이면 어느 쪽이 걸린 것인지 헷갈린다.
+
+     회색 선은 받아 둔 기간 안에서만 그릴 수 있다 — 12개월만 받았으면 지난해가
+     아예 없다. 그때는 말없이 빼지 말고 까닭과 넓히는 단추를 낸다. */
+  var MINIS = [];                     // 작은 그래프들 — 다시 그릴 때 지운다
+  var MINI_MAX = 12;                  // 면적형이 스무 개 넘는 단지도 있다
+  function grayC(){ return isDark() ? '#84847f' : '#9b9b97'; }
+  function grayInk(){ return isDark() ? '#b6b6b0' : '#6b6b66'; }   // 회색 글씨는 좀 더 진하게
+
+  /*  달 축은 「거래가 있는 달」이 아니라 「기간 전체」로 잡는다.
+      그래야 올해 i번째 달과 지난해 i번째 달이 같은 달로 맞물린다.
+      (자리를 잘라 맞추면 18개월처럼 어정쩡한 기간에서 여섯 달씩 어긋난다) */
+  function miniWins(){
+    var S = K(), ys = periodYms(), have = {};
+    ys.forEach(function(v){ have[v] = 1; });
+    var cur  = ys.slice(-12);
+    var prev = cur.map(function(v){ return S.addYm(v, -12); });
+    var ok = 0;
+    prev.forEach(function(v){ if(have[v]) ok++; });
+    function dash(v){ return v.slice(0,4) + '-' + v.slice(4); }
+    return { cur:cur.map(dash), prev:prev.map(dash), ready:ok, span:cur.length };
+  }
+
+  function miniSeries(ST){
+    var S = K(), W = miniWins(), byA = {};
+    ST.live.forEach(function(r){
+      if(typeof r._amt !== 'number' || !r._date || !r._area) return;
+      var a = Math.round(r._area), ym = String(r._date).slice(0,7);
+      var b = byA[a] = byA[a] || { sqm:a, py:Math.round(a/3.3058), m:{} };
+      (b.m[ym] = b.m[ym] || []).push(r._amt);
+    });
+    /*  색은 위 큰 판과 똑같이 맨다 — 같은 면적형이 두 그림에서 다른 색이면 안 된다. */
+    var anchor = (CUR && CUR.areas && CUR.areas.length) ? CUR.areas : [];
+    var keys = Object.keys(byA).map(Number).sort(function(x,y){ return x - y; });
+    var out = [];
+    keys.forEach(function(a){
+      var b = byA[a];
+      function lane(ms){
+        var v = [], c = [], n = 0;
+        ms.forEach(function(m){
+          var g = b.m[m];
+          if(g){ v.push(S.med(g)); c.push(g.length); n += g.length; }
+          else { v.push(null); c.push(0); }
+        });
+        return { v:v, c:c, n:n };
+      }
+      var cu = lane(W.cur), pv = lane(W.prev);
+      if(!cu.n && !pv.n) return;                    // 두 해 다 거래가 없으면 그릴 게 없다
+      var i = anchor.indexOf(a);
+      out.push({ sqm:a, py:b.py, cur:cu, prev:pv,
+                 slot: (i >= 0) ? i : (anchor.length + keys.indexOf(a)),
+                 cm: S.med(cu.v.filter(notNull)), pm: S.med(pv.v.filter(notNull)) });
+    });
+    return { list:out, win:W };
+  }
+  function notNull(v){ return v != null; }
+
+  function miniBox(){ return '<div id="dj-minibox"></div>'; }
+
+  function miniRender(ST){
+    var box = document.getElementById('dj-minibox'); if(!box) return;
+    MINIS.forEach(function(c){ try{ c.destroy(); }catch(e){} });
+    MINIS = [];
+    if(!ST || !ST.live.length){ box.innerHTML = ''; return; }
+
+    var S = K(), D = miniSeries(ST), W = D.win;
+    if(!D.list.length){ box.innerHTML = ''; return; }
+
+    /*  면적형이 아주 많으면 판이 끝없이 늘어진다. 거래가 많은 것부터 열둘만
+        고르고(작은 것부터 자르면 정작 주력 평형이 빠진다) 다시 면적 오름차순으로 세운다. */
+    var shown = D.list.slice(), many = 0;
+    if(shown.length > MINI_MAX){
+      many = shown.length;
+      shown = shown.slice().sort(function(x,y){ return (y.cur.n + y.prev.n) - (x.cur.n + x.prev.n); })
+                   .slice(0, MINI_MAX).sort(function(x,y){ return x.sqm - y.sqm; });
+    }
+    //  값 표시는 위 「시세 흐름」의 고르개를 그대로 따른다 (단추를 또 두지 않는다)
+    var all = !!st().flowVals;
+
+    var h = '<div class="dj-card"><div class="dj-h">🔎 면적형별 1년 견줌 '
+      + '<span style="font-size:10.5px;font-weight:400;color:var(--text3)">'
+      +   '한 판에 한 면적형 · 작은 면적형부터 · 최근 ' + W.span + '개월</span>'
+      + '<span style="margin-left:auto;font-size:10.5px;font-weight:400;color:var(--text3)">'
+      +   '값 표시는 위 「시세 흐름」 고르개(' + (all ? '전부' : '끝점만') + ')를 따릅니다</span>'
+      + '</div>';
+
+    //  회색 선을 그릴 수 있는지 — 못 그리면 까닭을 말한다. 말없이 빼는 것이 제일 나쁘다.
+    if(!W.ready)
+      h += '<div style="font-size:10.5px;color:#c80;background:var(--bg3);border-radius:8px;'
+        + 'padding:9px 11px;line-height:1.55">'
+        + '<b>회색 점선(지난해 같은 달)</b>은 <b>24개월 이상</b>을 받아 두어야 그립니다 — '
+        + '지금은 ' + esc(periodLabel()) + '만 받아 두어 지난해 자료가 없습니다. '
+        + '<button class="dj-bs" style="margin-top:5px;padding:3px 9px;font-size:10.5px" '
+        + 'onclick="djPeriod(\'r24\')">📅 24개월로 넓히기</button></div>';
+    else if(W.ready < W.span)
+      h += '<div style="font-size:10.5px;color:var(--text3);margin-top:2px;line-height:1.55">'
+        + '지난해 자료는 ' + W.ready + '/' + W.span + '개월만 받아 두어 그만큼만 회색으로 그립니다. '
+        + '<button class="dj-bs" style="padding:2px 8px;font-size:10.5px" '
+        + 'onclick="djPeriod(\'r24\')">24개월로 넓히기</button></div>';
+
+    h += '<div class="dj-grid2">';
+    shown.forEach(function(o, i){
+      var c = serColor(o.slot);
+      var yo = (o.cm != null && o.pm) ? Math.round((o.cm / o.pm - 1) * 1000) / 10 : null;
+      h += '<div class="dj-mini">'
+        + '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:6px">'
+        +   '<span style="display:inline-block;width:9px;height:9px;border-radius:2px;'
+        +     'background:' + c + '"></span>'
+        +   '<b style="font-size:13px">' + o.sqm + '㎡</b>'
+        +   '<span style="font-size:11px;color:var(--text3)">' + o.py + '평</span>'
+        +   (yo == null ? '<span class="dj-tag" style="background:var(--bg3);color:var(--text3)">'
+              + (o.prev.n ? '올해 거래 없음' : '지난해 자료 없음') + '</span>'
+            : '<span class="dj-tag" style="background:' + (yo >= 0 ? '#ffebee' : '#e3f2fd')
+              + ';color:' + (yo >= 0 ? '#c62828' : '#1565c0') + '">1년 전 대비 '
+              + (yo > 0 ? '+' : '') + yo + '%</span>')
+        +   '<span style="margin-left:auto;font-size:10.5px;color:var(--text3)">최근 1년 '
+        +     o.cur.n + '건' + (o.prev.n ? ' · 지난해 ' + o.prev.n + '건' : '') + '</span>'
+        + '</div>'
+        + '<div style="height:215px;position:relative">'
+        +   '<canvas id="dj-mini-' + i + '"></canvas></div>'
+        + '</div>';
+    });
+    h += '</div>';
+
+    h += '<div style="font-size:10.5px;color:var(--text3);margin-top:8px;line-height:1.55">'
+      + '진한 색 선이 <b>최근 1년</b>, 회색 점선이 <b>지난해 같은 달</b>입니다 '
+      + '— 가로 자리가 같으면 같은 달입니다. '
+      + '값은 올해는 점 <b>위</b>, 지난해는 점 <b>아래</b>에 적습니다. '
+      + '자리가 겹치는 값은 접으니, 정확한 수치는 위 숫자표를 보십시오. '
+      + '「1년 전 대비」는 최근 1년 중위와 지난해 1년 중위를 견준 것입니다. '
+      + '판마다 세로 눈금이 따로라 판끼리는 높이로 견주지 마십시오.'
+      + (many ? ' 면적형 ' + many + '개 가운데 거래가 많은 ' + MINI_MAX
+              + '개만 그렸습니다 — 나머지는 위 숫자표에 있습니다.' : '')
+      + '</div></div>';
+
+    box.innerHTML = h;
+    if(typeof Chart === 'undefined') return;     // 까닭은 위 큰 판이 이미 말했다
+
+    var labels = W.cur.map(function(m){ return m.slice(2).replace('-', '.'); });
+    shown.forEach(function(o, i){
+      var cv = document.getElementById('dj-mini-' + i); if(!cv) return;
+      var col = serColor(o.slot), sets = [];
+      if(o.prev.n) sets.push({
+        label:'지난해 같은 달', data:o.prev.v, _cnt:o.prev.c, _ms:W.prev,
+        _side:1, _ink:grayInk(),
+        borderColor:grayC(), backgroundColor:grayC(), borderWidth:1.6, borderDash:[5,4],
+        tension:.25, fill:false, pointRadius:2.6, pointHoverRadius:6, spanGaps:true
+      });
+      sets.push({
+        label:'최근 1년', data:o.cur.v, _cnt:o.cur.c, _ms:W.cur, _side:-1,
+        borderColor:col, backgroundColor:col, borderWidth:2.2,
+        tension:.25, fill:false, pointRadius:3.2, pointHoverRadius:6, spanGaps:true
+      });
+      try{
+        MINIS.push(new Chart(cv, {
+          type:'line', data:{ labels:labels, datasets:sets },
+          plugins:[ valsPlugin(all) ],
+          options:{
+            responsive:true, maintainAspectRatio:false,
+            interaction:{ mode:'index', intersect:false },
+            plugins:{
+              legend:{ display:true, position:'bottom',
+                labels:{ boxWidth:10, boxHeight:10, usePointStyle:true,
+                         font:{ size:10 }, padding:8 } },
+              tooltip:{ callbacks:{
+                label: function(cx){
+                  var ds = cx.dataset, n = (ds._cnt || [])[cx.dataIndex] || 0;
+                  var m  = (ds._ms  || [])[cx.dataIndex] || '';
+                  return ds.label + ' ' + m + '  ' + amtTxt(cx.parsed.y) + ' (' + n + '건)';
+                }
+              } }
+            },
+            scales:{
+              y:{ ticks:{ callback:function(v){ return amtTxt(v); }, font:{ size:9.5 } },
+                  grace:'14%',          // 값 글자가 앉을 자리를 위아래로 벌려 둔다
+                  grid:{ color:'rgba(128,128,128,.16)' } },
+              x:{ ticks:{ font:{ size:9.5 }, maxRotation:0, autoSkipPadding:8 },
+                  grid:{ display:false } }
+            }
+          }
+        }));
+      }catch(e){ console.warn('[단지 브리핑] 작은 판 그리기 실패 ' + o.sqm + '㎡', e); }
+    });
   }
 
   function recentTable(ST, eok){
@@ -26428,8 +26651,11 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     if(tries++ < 120) setTimeout(tick, 250);
   })();
 
-  window.sdDanjiTab = { ver:'1.0', tab:TAB, go:function(nm){ return window.sdDanji(nm); },
-    cache:function(){ return CACHE; } };
+  window.sdDanjiTab = { ver:'1.1', tab:TAB, go:function(nm){ return window.sdDanji(nm); },
+    cache:function(){ return CACHE; },
+    //  점검이 「무엇이 그려졌는지」를 눈이 아니라 자료로 물어볼 수 있게 열어 둔다
+    chart:function(){ return CH; }, minis:function(){ return MINIS; },
+    wins:function(){ return miniWins(); } };
 })();
 </script>
 
