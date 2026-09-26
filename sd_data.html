@@ -19353,7 +19353,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.09.26-5';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.09.26-6';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_data.html';      // 이 파일 이름
   var SD_NAME = '실거래가';      // 사람이 부르는 이름
 
@@ -21496,11 +21496,17 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     var host = document.getElementById('tc0');
     if(!nav || !host || !host.parentNode) return false;
 
-    var b = document.createElement('button');
-    b.className = 'tab-btn';
-    b.setAttribute('onclick','sw('+TAB+')');
-    b.innerHTML = '🇰🇷 S실거래가';
-    nav.insertBefore(b, nav.firstChild);
+    /*  2026-09-26 — S실거래가 탭 단추를 뗐다.
+        「S실거래가 & 단지 브리핑」 탭이 이 탭의 일을 다 가져갔다
+        (인증키·관심지역 훑기·거래 목록·엑셀까지 옮겼다).
+        모듈과 화면은 그대로 둔다 — 브리핑이 이 모듈의 셈과 자료 받기를 빌려 쓰고,
+        관심지역 자동 훑기도 여기서 돈다. 단추만 없앤 것이라 언제든 되돌릴 수 있다.
+        되돌리려면 아래 두 줄의 주석을 풀면 된다. */
+    // var b = document.createElement('button');
+    // b.className = 'tab-btn';
+    // b.setAttribute('onclick','sw('+TAB+')');
+    // b.innerHTML = '🇰🇷 S실거래가';
+    // nav.insertBefore(b, nav.firstChild);
 
     var panel = document.createElement('div');
     panel.id = 'tc'+TAB; panel.className = 'tc';
@@ -23627,10 +23633,17 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     box.innerHTML = h;
   }
 
+  /*  새 신고 수를 탭 단추에 적는다.
+      S실거래가 탭 단추를 뗐으므로(2026-09-26) 「S실거래가 & 단지 브리핑」 단추에 적는다.
+      그 탭이 아직 없으면 예전 자리를 찾아 본다. */
   async function badge(){
     var list = await getNew();
-    var b = document.querySelector('.tab-btn[onclick="sw('+TAB+')"]'); if(!b) return;
-    b.innerHTML = '🇰🇷 S실거래가' + (list.length
+    var tab = (window.sdDanjiTab && window.sdDanjiTab.tab) || TAB;
+    var nm  = (tab === TAB) ? '🇰🇷 S실거래가' : '🇰🇷 S실거래가 &amp; 단지 브리핑';
+    var b = document.querySelector('.tab-btn[onclick="sw('+tab+')"]');
+    if(!b) b = document.querySelector('.tab-btn[onclick="sw('+TAB+')"]');
+    if(!b) return;
+    b.innerHTML = nm + (list.length
       ? ' <span style="background:var(--red);color:#fff;border-radius:9px;font-size:9.5px;padding:1px 6px">'+list.length+'</span>' : '');
   }
 
@@ -23705,6 +23718,8 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     hav:hav, turnover:turnover,
     // 단지 사전 (sd_apt.json)
     aptLoad:aptLoad, aptFind:aptFind, aptFeeM2:aptFeeM2, aptFeeOf:aptFeeOf,
+    // 관심지역 훑기·새 신고 — 단지 브리핑 탭이 이 화면을 그대로 쓴다
+    watchBox:watchBox, fillNew:fillNew, badge:badge,
     // 지도·좌표 (단지 브리핑 탭이 같은 좌표 창고를 함께 쓴다)
     kakaoReady:kakaoReady, kakaoAddr:kakaoAddr, kakaoFind:kakaoFind,
     inRegion:inRegion, geoBad:geoBad, gkey:gkey, saveGeo:saveGeo,
@@ -23819,7 +23834,9 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     { k:'apt',  n:'아파트',        t:'aptT', r:'aptR', c:'#0891b2', s:''   },
     { k:'off',  n:'오피스텔',      t:'offT', r:'offR', c:'#2e7d32', s:'오' },
     { k:'rh',   n:'연립·다세대',   t:'rhT',  r:'rhR',  c:'#e65100', s:'연' },
-    { k:'silv', n:'아파트 분양권', t:'silv', r:null,   c:'#6a1b9a', s:'분' }
+    { k:'silv', n:'아파트 분양권', t:'silv', r:null,   c:'#6a1b9a', s:'분' },
+    { k:'sh',   n:'단독·다가구',   t:'shT',  r:'shR',  c:'#795548', s:'단' },
+    { k:'nrg',  n:'상업업무용',    t:'nrg',  r:null,   c:'#00838f', s:'상' }
   ];
   function KIND(k){ for(var i=0;i<KINDS.length;i++) if(KINDS[i].k===k) return KINDS[i]; return KINDS[0]; }
   var DEALSEL = [
@@ -24035,7 +24052,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     var b = document.createElement('button');
     b.className = 'tab-btn';
     b.setAttribute('onclick','sw('+TAB+')');
-    b.innerHTML = '🏢 단지 브리핑';
+    b.innerHTML = '🇰🇷 S실거래가 &amp; 단지 브리핑';
     nav.insertBefore(b, nav.firstChild);          // 맨 앞 — 이 탭이 정문이다
 
     var panel = document.createElement('div');
@@ -24510,6 +24527,137 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     return h + '</div>';
   }
 
+  /* ══ S실거래가에서 옮겨 온 것들 ═══════════════════════════════════════
+     단지 브리핑이 단지 보는 일은 넘어섰지만, 단지 중심이 아닌 일 몇 가지는
+     S실거래가에만 있었다. 탭을 없애기 전에 여기로 옮긴다. */
+
+  //  ① 국토부 인증키 — 이게 없으면 아무것도 못 받는다. 넣을 자리가 반드시 있어야 한다.
+  function keyRow(){
+    var S = K();
+    if(S && S.key()) return '';
+    return '<div style="border:1px solid #ffe082;background:#fff8e1;border-radius:10px;'
+      + 'padding:13px;margin-bottom:11px">'
+      + '<div style="font-size:12.5px;font-weight:700;color:#f57f17;margin-bottom:5px">'
+      +   '🔑 국토교통부 인증키를 넣어 주세요</div>'
+      + '<div style="font-size:11px;color:var(--text2);margin-bottom:8px;line-height:1.55">'
+      +   '공공데이터포털(data.go.kr)에서 「아파트 매매 실거래가 자료」를 활용신청하면 받는 키입니다. '
+      +   '한 번 넣으면 사무소 모든 컴퓨터에서 같이 씁니다.</div>'
+      + '<div style="display:flex;gap:7px;flex-wrap:wrap">'
+      +   '<input id="kr-key" type="password" placeholder="인증키(Decoding) 붙여넣기" '
+      +     'style="flex:1;min-width:260px;max-width:420px;padding:7px 11px;font-size:12px;'
+      +     'border:1px solid var(--border);border-radius:7px;background:var(--card);color:var(--text)">'
+      +   '<button class="dj-bp" onclick="djSaveKey()" style="padding:7px 18px">저장</button>'
+      + '</div></div>';
+  }
+  window.djSaveKey = async function(){
+    if(typeof window.krSaveKey !== 'function') return;
+    await window.krSaveKey();          // 저장은 S실거래가 모듈이 맡는다 (같은 창고)
+    paint();
+    if(st().find === 'map') djMap(true);
+  };
+
+  //  ② 관심지역 자동 훑기 + 새 신고 — 화면을 통째로 빌려 온다
+  window.djWatch = function(){
+    var s = st(); s.watchOn = !s.watchOn; stSave(); paint();
+    if(s.watchOn && K() && K().fillNew) setTimeout(function(){ K().fillNew(); }, 60);
+  };
+  function watchRow(){
+    var S = K(), s = st();
+    if(!S || !S.watchBox) return '';
+    var n = '<div style="margin-top:9px;padding-top:9px;border-top:0.5px dashed var(--border)">'
+      + '<button class="dj-bs" onclick="djWatch()">'
+      + (s.watchOn ? '▲ 관심지역 새 신고 접기' : '🔔 관심지역 새 신고 보기') + '</button>';
+    if(s.watchOn) n += '<div style="margin-top:8px">' + S.watchBox() + '</div>';
+    return n + '</div>';
+  }
+
+  //  ③ 이 지역 거래 목록 + 엑셀 — 원장을 통째로 보고 빼는 일
+  window.djList = function(){ var s = st(); s.listOn = !s.listOn; stSave(); paintList(); };
+  window.djListMore = function(){ st().listN = (st().listN || 100) + 200; stSave(); paintList(); };
+  function listRows(){
+    var D = merged(), s = st();
+    var src = (s.deal === 'sale') ? (D.trade || []) : (D.rent || []);
+    return src.filter(function(r){
+      if(s.deal === 'sale') return true;
+      var w = isWolse(r);
+      if(s.deal === 'jeonse' && w) return false;
+      if(s.deal === 'wolse' && !w) return false;
+      return !(s.newOnly && isRenew(r));
+    }).sort(function(a,b){ return (a._date < b._date) ? 1 : -1; });
+  }
+  function paintList(){
+    var box = document.getElementById('dj-listbox'); if(!box) return;
+    var s = st();
+    if(!s.listOn){ box.innerHTML = ''; return; }
+    var rows = listRows(), n = s.listN || 100, shown = rows.slice(0, n);
+    var S = K(), isW = (s.deal === 'wolse');
+    var h = '<div class="dj-card" style="margin-top:12px">'
+      + '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;'
+      +   'flex-wrap:wrap;margin-bottom:9px">'
+      + '<div class="dj-h" style="margin:0">🧾 이 지역 거래 목록 '
+      +   '<span style="font-size:10.5px;font-weight:400;color:var(--text3)">'
+      +   esc(sggNm(s.sgg)) + ' · ' + esc(kindsLabel()) + ' ' + esc(DSEL(s.deal).n)
+      +   ' · ' + esc(periodLabel()) + ' · ' + fmtN(rows.length) + '건</span></div>'
+      + '<span style="display:flex;gap:6px">'
+      +   '<button class="dj-bs" onclick="djXlsx()">📥 엑셀로 내려받기</button>'
+      +   '<button class="dj-bs" onclick="djList()">접기</button>'
+      + '</span></div>';
+    if(!rows.length) return void (box.innerHTML = h
+      + '<div style="font-size:12px;color:var(--text3)">이 조건에 맞는 거래가 없습니다.</div></div>');
+    h += '<div style="overflow-x:auto;max-height:520px;overflow-y:auto"><table><thead><tr>'
+      + '<th>계약일</th><th>단지·건물</th><th>법정동</th><th>전용</th><th>층</th>'
+      + (isW ? '<th>보증금</th><th>월세</th>' : '<th>거래가</th>')
+      + '<th>평당</th><th>비고</th></tr></thead><tbody>'
+      + shown.map(function(r){
+          var off = (r.cdealType === 'O'), rn = isRenew(r);
+          return '<tr style="' + (off ? 'opacity:.5' : '') + '">'
+            + '<td>' + esc(r._date || '') + '</td>'
+            + '<td style="text-align:left"><b>' + esc(r._name || '') + '</b></td>'
+            + '<td style="text-align:left">' + esc(r.umdNm || '') + '</td>'
+            + '<td>' + (r._area || '—') + '㎡</td>'
+            + '<td>' + esc(r.floor || '—') + '</td>'
+            + (isW ? '<td>' + S.eok(S.num(r.deposit)) + '</td>'
+                   + '<td>' + fmtN(S.num(r.monthlyRent)) + '만</td>'
+                   : '<td><b>' + S.eok(r._amt) + '</b></td>')
+            + '<td>' + (r._ppy ? fmtN(r._ppy) + '만' : '—') + '</td>'
+            + '<td style="text-align:left">'
+            +   (off ? '<span style="color:#c33">해제</span> ' : '')
+            +   (rn ? '<span style="color:#c80">갱신</span>' : '') + '</td></tr>';
+        }).join('')
+      + '</tbody></table></div>';
+    if(rows.length > shown.length)
+      h += '<div style="text-align:center;margin-top:8px">'
+        + '<button class="dj-bs" onclick="djListMore()">더보기 ('
+        + fmtN(rows.length - shown.length) + '건 더)</button></div>';
+    box.innerHTML = h + '</div>';
+  }
+  window.djXlsx = function(){
+    if(typeof XLSX === 'undefined'){ msg('엑셀 기능을 불러오지 못했습니다.', 'no'); return; }
+    var rows = listRows(), S = K(), s = st();
+    if(!rows.length){ msg('내려받을 자료가 없습니다.', 'no'); return; }
+    var isW = (s.deal === 'wolse');
+    var out = rows.map(function(r){
+      var o = { '계약일':r._date||'', '단지·건물':r._name||'', '법정동':r.umdNm||'',
+                '지번':r.jibun||'', '전용㎡':r._area||'', '평형':r._py||'',
+                '층':r.floor||'', '준공':r.buildYear||'' };
+      if(isW){ o['보증금(만원)'] = S.num(r.deposit) || '';
+               o['월세(만원)']   = S.num(r.monthlyRent) || '';
+               o['환산보증금(만원)'] = convDeposit(S.num(r.deposit)||0, S.num(r.monthlyRent)||0, s.rate); }
+      else   { o['거래금액(만원)'] = r._amt || ''; }
+      o['평당가(만원)'] = r._ppy || '';
+      o['계약구분'] = r.contractType || '';
+      o['해제']     = (r.cdealType === 'O') ? '해제' : '';
+      o['종류']     = KIND(r.__kindK || 'apt').n;
+      return o;
+    });
+    var wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(out), '실거래');
+    var nm = 'S실거래_' + sggNm(s.sgg).replace(/\s/g,'') + '_' + DSEL(s.deal).n
+           + '_' + periodLabel().replace(/[^0-9가-힣]/g,'') + '.xlsx';
+    XLSX.writeFile(wb, nm);
+    msg(fmtN(rows.length) + '건을 엑셀로 내려받았습니다.', 'ok');
+  };
+
   // ── 화면: 검색 ──────────────────────────────────────────────────────
   function paint(){
     var el = document.getElementById('dj-root'); if(!el) return;
@@ -24518,7 +24666,8 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     var sggs  = (S && S.sgg) ? (S.sgg[s.sgg.slice(0,2)] || []) : [];
     var rec = recent();
 
-    var h = '<div id="dj-search" class="dj-card" style="position:relative">'
+    var h = keyRow()
+      + '<div id="dj-search" class="dj-card" style="position:relative">'
       + '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">'
       + '<div><label style="display:block;font-size:10.5px;color:var(--text3);margin-bottom:3px">지역</label>'
       +   '<select id="dj-sido" class="dj-in" onchange="djSido(this.value)" style="font-size:12px">'
@@ -24570,8 +24719,14 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
               + esc(r.nm).replace(/'/g,"\\'") + '\',\'' + esc(r.sgg) + '\')">'+esc(r.nm)+'</button>'; }).join('')
         + '</div>';
     }
-    h += '</div><div id="dj-body"></div>';
+    h += watchRow();
+    h += '</div>'
+      + '<div style="margin-top:10px"><button class="dj-bs" onclick="djList()">'
+      +   '🧾 이 지역 거래 목록 · 엑셀</button></div>'
+      + '<div id="dj-listbox"></div>'
+      + '<div id="dj-body"></div>';
     el.innerHTML = h;
+    paintList();
     /*  paint 는 dj-mapwrap 까지 새로 만든다 — 지도 모드면 다시 그려 줘야 한다.
         (축척·높이 단추를 누를 때마다 지도가 사라지던 까닭) */
     if(st().find === 'map') setTimeout(function(){ djMap(true); }, 0);
