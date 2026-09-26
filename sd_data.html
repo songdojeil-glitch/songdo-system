@@ -19353,7 +19353,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.09.26-21';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.09.26-24';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_data.html';      // 이 파일 이름
   var SD_NAME = '실거래가';      // 사람이 부르는 이름
 
@@ -21369,6 +21369,38 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     return a.indexOf(gu) >= 0 && a.indexOf(sido) >= 0;
   }
   function geoBad(g, sgg){ return !g || !g.addr || !inRegion(g.addr, sgg); }
+
+  /*  건축물대장 표제부를 통째로 내준다 — 동마다 한 줄이고 동명·지상층수·
+      높이·건축면적이 들어 있다. 일조 시뮬레이션이 이걸로 동을 세운다.
+      브이월드 건물 레이어는 층수도 이름도 주지 않아서, 높이를 여기서 얻어야 한다. */
+  async function bldRows(sgg, umdNm, jibun){
+    var jb = splitJibun(jibun);
+    if(!jb) throw new Error('지번을 알 수 없습니다');
+    var bj = await umdCode(sgg, umdNm);
+    if(!bj) throw new Error('법정동코드를 찾지 못했습니다 (' + umdNm + ')');
+    var u = BLD + '?serviceKey=' + encodeURIComponent(KEY)
+          + '&sigunguCd=' + sgg + '&bjdongCd=' + bj
+          + '&platGbCd=0&bun=' + jb.bun + '&ji=' + jb.ji
+          + '&numOfRows=200&pageNo=1&_type=json';
+    var r = await fetch(u);
+    var t = await r.text(), j;
+    try{ j = JSON.parse(t); }catch(e){ throw new Error('응답을 읽지 못했습니다'); }
+    if(j.OpenAPI_ServiceResponse){
+      var em = String((j.OpenAPI_ServiceResponse.cmmMsgHeader||{}).errMsg||'');
+      if(/NOT_REGISTERED_FOR|NO_OPENAPI/.test(em))
+        throw new Error('건축물대장이 활용신청되어 있지 않습니다 — 공공데이터포털에서 「국토교통부_건축물대장정보 서비스」를 신청해 주세요');
+      if(/LIMITED_NUMBER/.test(em)) throw new Error('오늘 호출 한도를 넘었습니다');
+      throw new Error(em || '건축물대장 오류');
+    }
+    var list = (((j.response||{}).body||{}).items||{}).item || [];
+    if(!Array.isArray(list)) list = list ? [list] : [];
+    function n(v){ var x = parseFloat(String(v==null?'':v).replace(/[^0-9.]/g,'')); return isNaN(x)?0:x; }
+    return list.map(function(x){
+      return { dong: String(x.dongNm||'').trim(), bld: String(x.bldNm||'').trim(),
+               fl: n(x.grndFlrCnt), heit: n(x.heit), area: n(x.archArea),
+               use: String(x.mainPurpsCdNm||'').trim() };
+    }).filter(function(o){ return o.fl > 0 || o.area > 0; });
+  }
 
   // 건축물대장 표제부에서 건물명을 받아 온다
   async function askBld(k){
@@ -23718,6 +23750,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     hav:hav, turnover:turnover,
     // 단지 사전 (sd_apt.json)
     aptLoad:aptLoad, aptFind:aptFind, aptFeeM2:aptFeeM2, aptFeeOf:aptFeeOf,
+    bldRows:bldRows, umd:umdCode,    // 건축물대장 표제부·법정동코드 (일조가 쓴다)
     // 관심지역 훑기·새 신고 — 단지 브리핑 탭이 이 화면을 그대로 쓴다
     watchBox:watchBox, fillNew:fillNew, badge:badge,
     // 지도·좌표 (단지 브리핑 탭이 같은 좌표 창고를 함께 쓴다)
@@ -27621,7 +27654,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
       og.setTransform(dpr,0,0,dpr,0,0);
       og.fillStyle = dark ? '#3a4152' : '#8e97a8';
       SUN.feats.forEach(function(f){
-        var h = f.h || SUNST.base*3;
+        var h = effH(f);
         var d = h * Lm;
         var dx = d*ux/mx, dy = d*uy/my;
         og.beginPath();
@@ -27711,7 +27744,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
           for(var b=0;b<others.length;b++){
             var o = others[b];
             if(o === f) continue;
-            var h = o.h || SUNST.base*3;
+            var h = effH(o);
             if(h <= z) continue;
             //  광선이 이 건물 꼭대기 높이에 닿기까지의 거리 — 그 사이 어디든 가리면 그늘이다
             var d = (h - z) * L;
@@ -27732,8 +27765,8 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
         if(!best || o.run > best.run || (o.run === best.run && o.tot > best.tot)) best = o;
       });
       var tots = all.map(function(o){ return o.tot; }).sort(function(a,b){ return a-b; });
-      return { i:f.no || (idx+1), nm:f.nm || '',
-               h: f.h || SUNST.base*3, src: f.src,
+      return { i:f.no || (idx+1), nm:f.dongNm || f.nm || '', f:f,
+               h: effH(f), src: hSrc(f), gap: f.gap,
                best: best, med: tots[Math.floor(tots.length/2)] || 0, pts: pts.length };
     }).sort(function(a,b){ return a.best.run - b.best.run; });
   }
@@ -27743,6 +27776,180 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     return (h ? h + '시간' : '') + (m ? ' ' + m + '분' : '');
   }
 
+  /*  ── 동을 제대로 세우기 ────────────────────────────────────────────
+      브이월드 건물 레이어(LT_C_SPBD)는 층수도 이름도 주지 않는다. 60동을
+      받아도 60동이 「높이 모름」이다. 그대로 두면 전부 5층으로 세워져
+      그림자가 통째로 거짓이 된다 — 실제로 그렇게 나왔다.
+
+      그래서 높이는 국토교통부 건축물대장 표제부에서 받는다. 동마다 한 줄이고
+      동명·지상층수·높이·건축면적이 들어 있다. 폴리곤과는 건축면적이 가까운
+      것끼리 짝지은다 — 자리 정보가 없으니 이게 최선이고, 어디까지나 추측이라
+      표에서 손으로 고칠 수 있게 두었다.
+
+      주변 건물은 대장을 부를 지번이 없다. 그림자를 실제로 만드는 건 큰 건물
+      몇 개뿐이므로, 지도에서 그 건물을 눌러 층수를 넣게 했다. */
+  var SUNEDIT = null;      // 지금 고르고 있는 건물
+  function bldKey(f){ return Math.round(ringCenter(f.ring)[0]*1e6) + ',' + Math.round(ringCenter(f.ring)[1]*1e6); }
+  function effH(f){
+    if(f.hFix) return f.hFix;                 // 손으로 넣은 것이 가장 세다
+    if(f.h) return f.h;
+    return SUNST.base * 3;
+  }
+  function hSrc(f){ return f.hFix ? '입력' : (f.src ? (f.dongNm ? '대장' : f.src) : null); }
+
+  /*  지적도에서 우리 대지 필지를 받는다. PNU = 시군구(5)+법정동(5)+대지구분(1)
+      +본번(4)+부번(4). 브이월드 LP_PA_CBND_BUBUN 을 이 열쇠로 곧장 부른다. */
+  async function lotRings(sgg, umdNm, jibun){
+    try{
+      var key = await K().sget(VWKEY); if(!key) return null;
+      var m = String(jibun||'').match(/^(\d+)(?:-(\d+))?/); if(!m) return null;
+      var bj = await K().umd(sgg, umdNm); if(!bj) return null;
+      var pnu = String(sgg) + String(bj) + '1'
+        + String(m[1]).padStart(4,'0') + String(m[2]||0).padStart(4,'0');
+      var u = 'https://api.vworld.kr/req/data?service=data&request=GetFeature&format=json'
+        + '&size=10&page=1&data=LP_PA_CBND_BUBUN&geometry=true&attribute=false'
+        + '&attrFilter=pnu:=:' + pnu
+        + '&key=' + encodeURIComponent(key)
+        + '&domain=' + encodeURIComponent(location.hostname || '');
+      var j = await vwJsonp(u, 15000);
+      if(vwStat(j) !== 'OK') return null;
+      var fs = (((j.response.result||{}).featureCollection)||{}).features || [];
+      var out = [];
+      fs.forEach(function(f){
+        var g = f.geometry || {};
+        if(g.type === 'Polygon') out.push(g.coordinates[0]);
+        else if(g.type === 'MultiPolygon')
+          (g.coordinates||[]).forEach(function(p){ if(p && p[0]) out.push(p[0]); });
+      });
+      return out.length ? out : null;
+    }catch(e){ return null; }
+  }
+
+  window.djSunBld = async function(){
+    if(!SUN || !CUR) return;
+    var S = K(), r0 = CUR.rows[0] || {};
+    var out = vwOut();
+    if(out) out.innerHTML = '<span style="font-size:11.5px;color:#1565c0">건축물대장을 부르는 중…</span>';
+    try{
+      var rows = await S.bldRows(st().sgg, r0.umdNm, r0.jibun);
+      if(!rows.length) throw new Error('이 지번의 표제부가 없습니다');
+      //  주된 용도가 주택인 동만 (부속·근생은 뺀다). 다 빠지면 그냥 다 쓴다.
+      var main = rows.filter(function(o){ return /공동주택|아파트|주택/.test(o.use) || o.fl >= 5; });
+      if(!main.length) main = rows;
+
+      /*  어느 폴리곤이 우리 단지인가 — 이게 제일 틀리기 쉬운 자리다.
+          처음에는 「가운데서 220m 안, 120㎡ 넘는 것」으로 골랐다. 그러면 옆
+          단지 건물·상가까지 통째로 우리 동이 된다 (시험이 잡았다).
+          제대로 된 길은 지적도다. 우리 대지 필지 안에 선 건물만 우리 동이다.
+          필지를 못 받으면 그때만 면적 짝짓기로 물러나고, 그 사실을 화면에 적는다. */
+      var c = SUN.c, R = Math.PI/180;
+      var mx = 111320*Math.cos(c.lat*R), my = 111320;
+      /*  대장을 다시 받아도 브이월드가 준 높이는 지우지 않는다.
+          예전에는 전부 null 로 밀어 버려, 높이 90m 로 받아 둔 앞 건물이
+          기본 층수로 되돌아갔다 — 그림자가 통째로 사라졌다 (시험이 잡았다).
+          처음 받은 값을 한 번만 챙겨 두고 거기서 되돌린다. */
+      SUN.feats.forEach(function(f){
+        if(f.h0 === undefined){ f.h0 = f.h || null; f.src0 = f.src || null; }
+        f.mine = false; f.dongNm = ''; f.gap = null; f.fl = null;
+        f.h = f.h0; f.src = f.src0;
+      });
+
+      var lots = await lotRings(st().sgg, r0.umdNm, r0.jibun);
+      var cand, how;
+      if(lots && lots.length){
+        how = '지적';
+        cand = SUN.feats.map(function(f){
+          return { f:f, a:ringArea(f.ring), p:ringCenter(f.ring) };
+        }).filter(function(o){
+          if(o.a < 100) return false;
+          for(var i=0;i<lots.length;i++) if(inRing(o.p[0], o.p[1], lots[i])) return true;
+          return false;
+        });
+      }
+      if(!cand || !cand.length){
+        how = '면적';
+        cand = SUN.feats.map(function(f){
+          var p = ringCenter(f.ring);
+          var dx = (p[0]-c.lng)*mx, dy = (p[1]-c.lat)*my;
+          return { f:f, a:ringArea(f.ring), d:Math.sqrt(dx*dx+dy*dy) };
+        }).filter(function(o){ return o.d < 180 && o.a > 120; });
+      }
+
+      /*  대장 동 ↔ 폴리곤 짝짓기. 면적이 가장 가까운 것끼리 붙이되,
+          너무 동떨어지면(45% 넘게) 붙이지 않는다 — 엉뚱한 이름이 붙는 것보다
+          「모름」이 낫다. */
+      var byA = main.slice().sort(function(a,b){ return b.area - a.area; });
+      var poly = cand.slice().sort(function(a,b){ return b.a - a.a; });
+      var used = {}, pair = 0;
+      byA.forEach(function(d){
+        var best = -1, bg = 1e9;
+        poly.forEach(function(o, i){
+          if(used[i]) return;
+          var gap = d.area ? Math.abs(o.a - d.area) / d.area : 1;
+          if(gap < bg){ bg = gap; best = i; }
+        });
+        if(best < 0) return;
+        if(bg > 0.45 && how === '면적') return;        // 지적으로 가른 것은 이름만 못 붙여도 우리 동이다
+        used[best] = 1; pair++;
+        var f = poly[best].f;
+        f.mine = true;
+        f.dongNm = d.dong || d.bld || '';
+        f.h = d.heit > 0 ? d.heit : (d.fl * 3);
+        f.fl = d.fl; f.src = '대장';
+        f.gap = Math.round(bg * 100);
+      });
+      //  지적으로 가른 것은 짝이 안 맞아도 우리 동이다 (이름·층수만 비워 둔다)
+      if(how === '지적') cand.forEach(function(o){ o.f.mine = true; });
+      SUN.bld = { n:main.length, poly:cand.length, pair:pair, how:how,
+                  at:new Date().toISOString() };
+      numberMine();
+      try{ await S.sset(SUNPRE + kbSlug(CUR.nm), JSON.stringify(SUN)); }catch(e){}
+      msg('건축물대장에서 ' + main.length + '개 동을 받아 ' + pair + '동을 맞췄습니다.', 'ok');
+      paintSun();
+    }catch(e){
+      if(out) out.innerHTML = vwBox('no', '<b>건축물대장을 부르지 못했습니다.</b><br>'
+        + esc(String(e && e.message || e))
+        + '<br><span style="opacity:.85">층수는 아래 표에서 직접 넣으셔도 됩니다.</span>');
+    }
+  };
+  function numberMine(){
+    var ord = SUN.feats.filter(function(f){ return f.mine; }).map(function(f){
+      return { f:f, p:ringCenter(f.ring) };
+    }).sort(function(a, b){
+      return (Math.abs(a.p[1] - b.p[1]) > 0.0002) ? (b.p[1] - a.p[1]) : (a.p[0] - b.p[0]);
+    });
+    SUN.feats.forEach(function(f){ f.no = 0; });
+    ord.forEach(function(o, i){ o.f.no = i + 1; });
+  }
+
+  //  지도에서 건물 누르기 — 층수를 넣거나 우리 동으로 지정
+  window.djSunPick = function(ev){
+    var cv = document.getElementById('dj-suncv'); if(!cv || !SUN) return;
+    var r = cv.getBoundingClientRect();
+    var px = ev.clientX - r.left, py = ev.clientY - r.top;
+    var c = SUN.c, R = Math.PI/180;
+    var mx = 111320*Math.cos(c.lat*R), my = 111320;
+    var W = r.width, H = r.height, sc = Math.min(W, H) / (SUNST.rad*2.1);
+    var lng = c.lng + (px - W/2)/(mx*sc), lat = c.lat - (py - H/2)/(my*sc);
+    var hit = null;
+    SUN.feats.forEach(function(f){ if(!hit && inRing(lng, lat, f.ring)) hit = f; });
+    SUNEDIT = hit;
+    paintSun();
+  };
+  window.djSunFix = function(kind, v){
+    if(!SUNEDIT) return;
+    if(kind === 'fl'){
+      var n = parseFloat(v);
+      SUNEDIT.hFix = (n > 0) ? n*3 : null;
+      SUNEDIT.flFix = (n > 0) ? n : null;
+    }else if(kind === 'mine'){
+      SUNEDIT.mine = !SUNEDIT.mine;
+      numberMine();
+    }else if(kind === 'close'){ SUNEDIT = null; }
+    if(CUR) K().sset(SUNPRE + kbSlug(CUR.nm), JSON.stringify(SUN)).catch(function(){});
+    paintSun();
+  };
+
   window.djSunSet = function(k, v){
     if(k === 'mins' || k === 'floor' || k === 'base' || k === 'rad') SUNST[k] = parseInt(v,10) || 0;
     else SUNST[k] = v;
@@ -27750,6 +27957,30 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
       if(lb) lb.textContent = hhmm(SUNST.mins); return; }
     paintSun();
   };
+
+  function sunEditBox(){
+    var f = SUNEDIT; if(!f) return '';
+    var fl = f.flFix || f.fl || '';
+    return '<div style="position:absolute;right:10px;top:10px;z-index:5;background:var(--card);'
+      + 'border:1px solid var(--border);border-radius:10px;padding:10px 12px;'
+      + 'box-shadow:0 4px 16px rgba(0,0,0,.18);min-width:190px">'
+      + '<div style="font-size:12px;font-weight:700;margin-bottom:6px">'
+      +   esc(f.dongNm || f.nm || '이름 없는 건물')
+      +   (f.no ? ' <span style="color:#0d47a1">#' + f.no + '</span>' : '') + '</div>'
+      + '<div style="font-size:11px;color:var(--text3);margin-bottom:7px">'
+      +   '바닥 ' + Math.round(ringArea(f.ring)) + '㎡ · 지금 ' + Math.round(effH(f)) + 'm'
+      +   ' (' + (hSrc(f) || '추정') + ')</div>'
+      + '<div style="display:flex;gap:5px;align-items:center;margin-bottom:7px">'
+      +   '<span style="font-size:11px">층수</span>'
+      +   '<input class="dj-in" style="width:56px;padding:4px 7px;font-size:12px" value="' + fl + '" '
+      +     'onchange="djSunFix(\'fl\',this.value)" placeholder="예 30">'
+      + '</div>'
+      + '<div style="display:flex;gap:5px">'
+      +   '<button class="dj-bs" style="font-size:11px" onclick="djSunFix(\'mine\')">'
+      +     (f.mine ? '우리 동에서 빼기' : '우리 동으로') + '</button>'
+      +   '<button class="dj-bs" style="font-size:11px" onclick="djSunFix(\'close\')">닫기</button>'
+      + '</div></div>';
+  }
 
   // ── 일조 화면 ───────────────────────────────────────────────────────
   function paintSun(){
@@ -27789,7 +28020,8 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     }
 
     //  고르개
-    var unk = SUN.feats.filter(function(f){ return !f.h; }).length;
+    var unk = SUN.feats.filter(function(f){ return !f.h && !f.hFix; }).length;
+    var mineN = SUN.feats.filter(function(f){ return f.mine; }).length;
     h += '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:9px">'
       + [['winter','동지'],['spring','춘·추분'],['summer','하지']].map(function(x){
           var on = SUNST.day === x[0];
@@ -27806,10 +28038,19 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
       + '<span style="font-size:11.5px;color:var(--text3)">모르는 건물 층수</span>'
       + '<input class="dj-in" style="width:52px;padding:4px 7px;font-size:12px" value="' + SUNST.base + '" '
       +   'onchange="djSunSet(\'base\',this.value)">'
-      + '<button class="dj-bs" style="margin-left:auto" onclick="djSunLoad()">↻ 다시 받기</button>'
+      + '<button class="dj-bp" style="margin-left:auto" onclick="djSunBld()">'
+      +   '📋 건축물대장에서 동·층수 받기</button>'
+      + '<button class="dj-bs" onclick="djSunLoad()">↻ 건물 다시 받기</button>'
       + '</div>'
+      + (SUN.bld ? '' :
+          '<div style="font-size:11.5px;line-height:1.7;background:#fff8e1;border:1px solid #ffe082;'
+          + 'border-radius:9px;padding:10px 12px;margin-bottom:9px;color:#5d4037">'
+          + '<b>먼저 「건축물대장에서 동·층수 받기」를 눌러 주세요.</b> 브이월드 건물 자료에는 '
+          + '층수도 동 이름도 없습니다 — 그대로 두면 <b>모든 건물이 ' + SUNST.base + '층</b>으로 '
+          + '세워져 그림자가 실제와 아주 다릅니다.</div>')
       + '<div style="position:relative;border:1px solid var(--border);border-radius:10px;overflow:hidden">'
-      +   '<canvas id="dj-suncv"></canvas></div>';
+      +   '<canvas id="dj-suncv" onclick="djSunPick(event)" style="cursor:crosshair">'
+      +   '</canvas>' + sunEditBox() + '</div>';
 
     //  동별 일조
     var rows = sunHours();
@@ -27822,7 +28063,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
         + '브이월드 건물 레이어가 이름을 주지 않는 경우입니다. 반경을 좁혀 다시 받아 보세요.</div>';
     }else{
       h += '<div style="overflow-x:auto"><table id="dj-suntbl"><thead><tr>'
-        + '<th>동</th><th>높이</th><th>연속 일조<br><span style="font-weight:400">09~15시</span></th>'
+        + '<th>동</th><th>높이 · 층수</th><th>연속 일조<br><span style="font-weight:400">09~15시</span></th>'
         + '<th>총 일조<br><span style="font-weight:400">08~16시</span></th>'
         + '<th>판정(참고)</th></tr></thead><tbody>';
       rows.forEach(function(r){
@@ -27834,7 +28075,14 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
           +   'font-weight:700;font-size:11px;margin-right:6px">' + r.i + '</span>'
           + '<b>' + esc(r.nm || '이름 없음') + '</b></td>'
           + '<td>' + Math.round(r.h) + 'm'
-          + (r.src ? '' : ' <span style="color:#c80;font-size:10px">추정</span>') + '</td>'
+          + (r.f.flFix || r.f.fl ? ' <span style="color:var(--text3)">'
+              + (r.f.flFix || r.f.fl) + '층</span>' : '')
+          + (r.src === '대장' ? ' <span style="color:#2e7d32;font-size:10px">대장</span>'
+             : r.src === '입력' ? ' <span style="color:#1565c0;font-size:10px">입력</span>'
+             : ' <span style="color:#c80;font-size:10px">추정</span>')
+          + (r.gap != null && r.gap > 25 ? ' <span title="건축면적이 ' + r.gap
+              + '% 차이납니다 — 동이 잘못 맞춰졌을 수 있습니다" style="color:#c80">⚠</span>' : '')
+          + '</td>'
           + '<td><b>' + hm(r.best.run) + '</b></td>'
           + '<td>' + hm(r.best.tot) + '</td>'
           + '<td style="color:' + (ok ? '#2e7d32' : '#c62828') + ';font-weight:600">'
@@ -27848,8 +28096,19 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
       + '(동지 기준 <b>09~15시 연속 2시간</b> 또는 <b>08~16시 총 4시간</b>)에 견준 것입니다. '
       + '실제 분쟁은 세대별 창 위치·발코니·지형·기존 일조량까지 따지므로 이 표만으로 '
       + '<b>손님께 일조권 침해 여부를 단정해 말씀하지 마십시오.</b><br>'
-      + '건물 ' + SUN.feats.length + '동 중 ' + unk + '동은 자료에 높이가 없어 '
-      + '<b>' + SUNST.base + '층(' + (SUNST.base*3) + 'm)</b> 으로 세웠습니다 — 위 칸에서 고치실 수 있습니다. '
+      + (SUN.bld
+          ? '우리 단지 ' + mineN + '동은 '
+            + (SUN.bld.how === '지적'
+                ? '<b>지적도 필지 안</b>에 선 건물로 가렸고, '
+                : '<b>가운데서 가깝고 큰 건물</b>로 어림잡았습니다(지적도 필지를 못 받았습니다). ')
+            + '<b>건축물대장</b>(표제부 ' + SUN.bld.n + '개 동)의 동명·층수를 '
+            + '<b>건축면적이 가까운 것끼리</b> ' + SUN.bld.pair + '동에 붙였습니다 — '
+            + '이름이 바뀌어 붙었을 수 있으니 <b>지도에서 건물을 누르면</b> 층수를 넣거나 '
+            + '우리 동에서 빼실 수 있습니다. '
+          : '')
+      + '나머지 ' + unk + '동은 층수 자료가 없어 <b>' + SUNST.base + '층('
+      + (SUNST.base*3) + 'm)</b> 으로 세웠습니다 — 그림자를 만드는 큰 건물은 '
+      + '<b>지도에서 눌러</b> 층수를 넣어 주시면 훨씬 정확해집니다. '
       + '지형 높낮이는 셈에 넣지 않았습니다. '
       + '자료: 브이월드 건물 · ' + esc(String(SUN.at||'').slice(0,10)) + ' 받음'
       + '</div>'
