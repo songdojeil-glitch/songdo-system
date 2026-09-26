@@ -19353,7 +19353,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.09.26-17';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.09.26-21';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_data.html';      // 이 파일 이름
   var SD_NAME = '실거래가';      // 사람이 부르는 이름
 
@@ -25700,7 +25700,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     miniRender(ST);        // 값 표시 고르개(djFlowVals)가 draw() 를 다시 부르므로 함께 따라온다
     //  펼쳐 둔 채 단지를 옮겼으면 그 단지 자료로 다시 그린다
     if(st().kbOn) kbLoad(nm).then(paintKb); else paintKb();
-    paintSun();
+    if(st().sunOn) sunLoadCache(nm).then(paintSun); else paintSun();
   }
 
   /* ══ 평형 기준 — 송도동은 분양평, 그 밖은 전용평 ═══════════════════
@@ -26976,7 +26976,10 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     var t = st(); t.kbOn = !t.kbOn; stSave();
     if(t.kbOn && CUR) kbLoad(CUR.nm).then(paintKb); else paintKb();
   };
-  window.djSun = function(){ var t = st(); t.sunOn = !t.sunOn; stSave(); paintSun(); };
+  window.djSun = function(){
+    var t = st(); t.sunOn = !t.sunOn; stSave();
+    if(t.sunOn && CUR) sunLoadCache(CUR.nm).then(paintSun); else paintSun();
+  };
 
   function advBox(){
     return '<div class="dj-card" id="dj-kbcard">'
@@ -27357,39 +27360,505 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     return h;
   }
 
-  // ── 일조 ────────────────────────────────────────────────────────────
+
+  /* ══ 일조 시뮬레이션 ═════════════════════════════════════════════════
+     브이월드에서 주변 건물 외곽선을 받아 평면에 세우고, 그 날 그 시각의
+     태양 자리로 그림자를 떨어뜨린다. 그리고 우리 단지 동마다 몇 시간이나
+     볕이 드는지 센다.
+
+     셈의 뼈대 — 어렵지 않다.
+       · 태양 고도 α, 방위 A 를 그 날짜·시각·위도·경도로 구한다 (NOAA 근사식).
+       · 높이 h 인 건물의 그림자 길이 = h / tan(α), 방향은 태양 반대쪽.
+       · 어떤 점 P(높이 z)가 그늘인가? → P 에서 태양 쪽으로 (h−z)/tan(α) 만큼
+         간 자리가 그 건물 바닥 안에 들면 그 건물이 가린 것이다.
+         (그림자를 그려 놓고 겹치는지 보는 것보다 이 편이 정확하고 빠르다)
+
+     높이를 어디서 얻는가 — 이게 제일 약한 고리다.
+       브이월드 건물 레이어가 층수·높이를 주면 그걸 쓰고, 안 주면 화면에서
+       정한 「기본 층수」로 세운다. 어느 쪽인지 화면에 그대로 적는다.
+       우리 단지 동은 국토교통부 건축물대장 층수가 있으면 그것을 먼저 쓴다.
+
+     ※ 참고용이다. 실제 일조 분쟁은 세대 창 위치·지형·발코니까지 따진다.
+       이 화면은 「대충 어느 동이 불리한가」를 짚는 데까지다. */
+  var SUNPRE = 'sd_sun_';
+  var SUN    = null;     // { nm, at, feats:[{ring, h, nm, mine, src}], cx, cy }
+  var SUNFOR = '';
+  var SUNBUSY = false;
+  var SUNST  = { day:'winter', mins:12*60, floor:1, base:5, rad:300, lit:null };
+
+  //  ── 태양 자리 (NOAA 저정밀) ──────────────────────────────────────
+  function sunPos(dt, lat, lng){
+    var R = Math.PI/180;
+    var d = (dt.getTime() - Date.UTC(2000,0,1,12,0,0)) / 86400000;
+    var g = (357.529 + 0.98560028*d) * R;
+    var q = (280.459 + 0.98564736*d) * R;
+    var L = q + (1.915*Math.sin(g) + 0.020*Math.sin(2*g)) * R;
+    var e = (23.439 - 0.00000036*d) * R;
+    var ra = Math.atan2(Math.cos(e)*Math.sin(L), Math.cos(L));
+    var dec = Math.asin(Math.sin(e)*Math.sin(L));
+    var gmst = (18.697374558 + 24.06570982441908*d) % 24;
+    if(gmst < 0) gmst += 24;
+    var H = (gmst*15*R) + lng*R - ra;
+    var la = lat*R;
+    var alt = Math.asin(Math.sin(la)*Math.sin(dec) + Math.cos(la)*Math.cos(dec)*Math.cos(H));
+    var az  = Math.atan2(-Math.sin(H), Math.tan(dec)*Math.cos(la) - Math.sin(la)*Math.cos(H));
+    return { alt: alt/R, az: ((az/R) % 360 + 360) % 360 };
+  }
+  //  동지·춘분·하지 (그 해 기준). 시각은 우리나라 표준시(UTC+9).
+  function sunDate(day, mins){
+    var y = new Date().getFullYear();
+    var md = { winter:[11,21], spring:[2,21], summer:[5,21] }[day] || [11,21];
+    //  KST 를 UTC 로 바꿔 Date 를 만든다 (브라우저 시간대에 안 흔들리게)
+    return new Date(Date.UTC(y, md[0], md[1], Math.floor(mins/60) - 9, mins % 60, 0));
+  }
+  function dayName(k){
+    return { winter:'동지 (12/21)', spring:'춘분 (3/21)', summer:'하지 (6/21)' }[k] || k;
+  }
+  function hhmm(m){ return n2(Math.floor(m/60)) + ':' + n2(m % 60); }
+  function n2(v){ return (v < 10 ? '0' : '') + v; }
+
+  //  ── 브이월드에서 건물 받기 ───────────────────────────────────────
+  function sunCenter(){
+    var g = null;
+    try{ var o = danjiAgg().filter(function(x){ return CUR && x.name === CUR.nm; })[0];
+         if(o) g = K().geo()[o.key] || null; }catch(e){}
+    return g && g.lat ? { lat:g.lat, lng:g.lng } : null;
+  }
+  function featHeight(pr){
+    //  층수·높이로 볼 만한 칸을 이름으로 찾는다 — 레이어마다 이름이 다르다
+    var ks = Object.keys(pr || {});
+    for(var i=0;i<ks.length;i++){
+      if(!/높이|HEIGHT|HGHT|_HG|HG$/i.test(ks[i])) continue;
+      var v = parseFloat(String(pr[ks[i]]).replace(/[^0-9.]/g,''));
+      if(v > 1 && v < 500) return { h:v, src:'높이' };
+    }
+    for(var j=0;j<ks.length;j++){
+      if(!/층수|층$|FLOOR|FLR|GRND/i.test(ks[j])) continue;
+      var f = parseFloat(String(pr[ks[j]]).replace(/[^0-9.]/g,''));
+      if(f >= 1 && f < 130) return { h:f*3, fl:f, src:'층수' };
+    }
+    return null;
+  }
+  window.djSunLoad = async function(){
+    if(SUNBUSY || !CUR) return;
+    var key = await K().sget(VWKEY);
+    if(!key){ msg('브이월드 인증키를 먼저 넣어 주세요.', 'no'); return; }
+    var c = sunCenter();
+    if(!c){ msg('이 단지의 좌표를 아직 못 찾았습니다 — 지도에서 한 번 띄워 주세요.', 'no'); return; }
+    SUNBUSY = true;
+    var out = document.getElementById('dj-sunout');
+    function say(t){ if(out) out.innerHTML = '<span style="font-size:11.5px;color:#1565c0">'+t+'</span>'; }
+    try{
+      var m = SUNST.rad;
+      var dLat = m/111320, dLng = m/(111320*Math.cos(c.lat*Math.PI/180));
+      var feats = [], page = 1, got = 0;
+      while(page <= 3){
+        say('건물 자료를 받는 중… ' + page + '/3 (받은 건물 ' + feats.length + '동)');
+        var url = 'https://api.vworld.kr/req/data?service=data&request=GetFeature&format=json'
+          + '&size=1000&page=' + page + '&data=LT_C_SPBD&geometry=true&attribute=true'
+          + '&geomFilter=BOX(' + (c.lng-dLng) + ',' + (c.lat-dLat) + ','
+          + (c.lng+dLng) + ',' + (c.lat+dLat) + ')'
+          + '&key=' + encodeURIComponent(key)
+          + '&domain=' + encodeURIComponent(location.hostname || '');
+        var j = await vwJsonp(url, 20000);
+        var st2 = vwStat(j);
+        if(st2 !== 'OK'){
+          if(page === 1) throw new Error('브이월드가 「' + (st2 || '?') + '」 로 답했습니다');
+          break;
+        }
+        var fc = ((j.response.result || {}).featureCollection) || {};
+        var arr = fc.features || [];
+        arr.forEach(function(f){
+          var gm = f.geometry || {}, rings = [];
+          if(gm.type === 'Polygon') rings = [gm.coordinates[0]];
+          else if(gm.type === 'MultiPolygon')
+            (gm.coordinates||[]).forEach(function(p){ if(p && p[0]) rings.push(p[0]); });
+          var pr = f.properties || {}, hh = featHeight(pr);
+          var nm = pr.BLD_NM || pr.bld_nm || pr.NAME || '';
+          rings.forEach(function(r){
+            if(!r || r.length < 3) return;
+            feats.push({ ring:r, h: hh ? hh.h : null, fl: hh ? hh.fl : null,
+                         src: hh ? hh.src : null, nm:String(nm) });
+          });
+        });
+        got += arr.length;
+        if(arr.length < 1000) break;
+        page++;
+      }
+      if(!feats.length) throw new Error('이 범위에 건물이 없습니다');
+
+      //  우리 단지 건물 고르기 — 이름이 맞거나, 이름이 없으면 가운데서 가까운 것
+      feats.forEach(function(f){
+        f.mine = !!(f.nm && sameDanji(f.nm, CUR.nm));
+      });
+      if(!feats.filter(function(f){ return f.mine; }).length){
+        //  이름을 안 주는 레이어다 — 가운데 80m 안의 큰 건물을 우리 것으로 본다
+        feats.forEach(function(f){
+          var p = ringCenter(f.ring);
+          var dx = (p[0]-c.lng)*111320*Math.cos(c.lat*Math.PI/180);
+          var dy = (p[1]-c.lat)*111320;
+          f.mine = (Math.sqrt(dx*dx+dy*dy) < 80) && (ringArea(f.ring) > 150);
+        });
+      }
+      /*  우리 동에 번호를 매긴다 — 북쪽부터, 같은 줄이면 서쪽부터.
+          브이월드 건물 레이어는 동 이름을 잘 안 준다. 표에 같은 이름이 줄줄이
+          서면 어느 동인지 알 수가 없으므로, 그림과 표가 같은 번호를 쓰게 한다. */
+      var ord = feats.filter(function(f){ return f.mine; }).map(function(f){
+        return { f:f, p:ringCenter(f.ring) };
+      }).sort(function(a, b){
+        return (Math.abs(a.p[1] - b.p[1]) > 0.0002) ? (b.p[1] - a.p[1]) : (a.p[0] - b.p[0]);
+      });
+      ord.forEach(function(o, i){ o.f.no = i + 1; });
+      SUN = { nm:CUR.nm, at:new Date().toISOString(), feats:feats, c:c, n:got };
+      SUNFOR = CUR.nm;
+      try{ await K().sset(SUNPRE + kbSlug(CUR.nm), JSON.stringify(SUN)); }catch(e){}
+      msg('건물 ' + feats.length + '동을 받았습니다.', 'ok');
+      paintSun();
+    }catch(e){
+      if(out) out.innerHTML = vwBox('no', '<b>건물 자료를 받지 못했습니다.</b><br>'
+        + esc(String(e && e.message || e)));
+    }finally{ SUNBUSY = false; }
+  };
+  async function sunLoadCache(nm){
+    if(SUNFOR === nm) return SUN;
+    SUNFOR = nm; SUN = null;
+    try{
+      var v = await K().sget(SUNPRE + kbSlug(nm));
+      var j = v ? JSON.parse(v) : null;
+      if(j && j.feats && j.feats.length) SUN = j;
+    }catch(e){}
+    return SUN;
+  }
+
+  //  ── 자잘한 기하 ──────────────────────────────────────────────────
+  function ringCenter(r){
+    var x = 0, y = 0;
+    for(var i=0;i<r.length;i++){ x += r[i][0]; y += r[i][1]; }
+    return [x/r.length, y/r.length];
+  }
+  function ringArea(r){      // 대략 ㎡
+    var a = 0;
+    for(var i=0,j=r.length-1;i<r.length;j=i++)
+      a += (r[j][0]*r[i][1] - r[i][0]*r[j][1]);
+    var la = ringCenter(r)[1] * Math.PI/180;
+    return Math.abs(a/2) * (111320*111320*Math.cos(la));
+  }
+  function ringBox(r){
+    var x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;
+    for(var i=0;i<r.length;i++){
+      if(r[i][0]<x0)x0=r[i][0]; if(r[i][0]>x1)x1=r[i][0];
+      if(r[i][1]<y0)y0=r[i][1]; if(r[i][1]>y1)y1=r[i][1];
+    }
+    return [x0,y0,x1,y1];
+  }
+  function segX(ax,ay,bx,by,cx,cy,dx,dy){      // 선분 ab 와 cd 가 만나는가
+    function cr(x1,y1,x2,y2){ return x1*y2 - y1*x2; }
+    var r1=bx-ax, r2=by-ay, s1=dx-cx, s2=dy-cy;
+    var den = cr(r1,r2,s1,s2);
+    if(Math.abs(den) < 1e-18) return false;
+    var t = cr(cx-ax, cy-ay, s1, s2) / den;
+    var u = cr(cx-ax, cy-ay, r1, r2) / den;
+    return t >= 0 && t <= 1 && u >= 0 && u <= 1;
+  }
+  /*  점 P 에서 태양 쪽으로 D 만큼 간 선분이 이 건물 바닥을 스치는가.
+      ── 예전에는 「그 건물 꼭대기 높이에 광선이 닿는 그 한 점」만 봤다.
+         그러면 바로 앞의 벽이 통째로 안 잡힌다. 90m 벽이 60m 앞에 있어도
+         광선은 그 벽을 훌쩍 넘어간 161m 자리에서만 검사돼 「안 가림」이 됐다
+         (시험이 잡았다). 가림은 0 부터 그 거리 사이 어디서든 일어난다.
+         그래서 점이 아니라 「선분이 바닥을 지나는가」를 본다 — 정확하고 빠르다. */
+  function raySeg(px, py, qx, qy, r, bb){
+    if(bb){
+      var lx = Math.min(px,qx), hx = Math.max(px,qx);
+      var ly = Math.min(py,qy), hy = Math.max(py,qy);
+      if(hx < bb[0] || lx > bb[2] || hy < bb[1] || ly > bb[3]) return false;
+    }
+    if(inRing(px, py, r) || inRing(qx, qy, r)) return true;
+    for(var i=0,j=r.length-1;i<r.length;j=i++)
+      if(segX(px,py,qx,qy, r[j][0],r[j][1], r[i][0],r[i][1])) return true;
+    return false;
+  }
+  function inRing(px, py, r){
+    var on = false;
+    for(var i=0,j=r.length-1;i<r.length;j=i++){
+      var xi = r[i][0], yi = r[i][1], xj = r[j][0], yj = r[j][1];
+      if(((yi > py) !== (yj > py)) && (px < (xj-xi)*(py-yi)/((yj-yi)||1e-12) + xi)) on = !on;
+    }
+    return on;
+  }
+
+  //  ── 그리기 ───────────────────────────────────────────────────────
+  function sunDraw(){
+    var cv = document.getElementById('dj-suncv');
+    if(!cv || !SUN) return;
+    var wrap = cv.parentNode;
+    var W = Math.max(320, wrap.clientWidth), H = 460;
+    var dpr = window.devicePixelRatio || 1;
+    cv.width = W*dpr; cv.height = H*dpr; cv.style.width = W+'px'; cv.style.height = H+'px';
+    var g = cv.getContext('2d');
+    g.setTransform(dpr,0,0,dpr,0,0);
+    g.clearRect(0,0,W,H);
+
+    var c = SUN.c, R = Math.PI/180;
+    var mx = 111320*Math.cos(c.lat*R), my = 111320;
+    var half = SUNST.rad;
+    var sc = Math.min(W, H) / (half*2.1);              // 화면 픽셀 / m
+    function X(lng){ return W/2 + (lng - c.lng)*mx*sc; }
+    function Y(lat){ return H/2 - (lat - c.lat)*my*sc; }
+
+    var S = sunPos(sunDate(SUNST.day, SUNST.mins), c.lat, c.lng);
+    var dark = isDark();
+    g.fillStyle = dark ? '#14161c' : '#f2f4f7';
+    g.fillRect(0,0,W,H);
+
+    //  그림자 — 한 겹에 몰아 그려 겹쳐도 더 어두워지지 않게
+    if(S.alt > 0.5){
+      var Lm = 1 / Math.tan(S.alt*R);                 // 높이 1m 당 그림자 길이
+      var azS = (S.az + 180) % 360;
+      var ux = Math.sin(azS*R), uy = Math.cos(azS*R); // 동, 북 방향 성분
+      var off = document.createElement('canvas');
+      off.width = cv.width; off.height = cv.height;
+      var og = off.getContext('2d');
+      og.setTransform(dpr,0,0,dpr,0,0);
+      og.fillStyle = dark ? '#3a4152' : '#8e97a8';
+      SUN.feats.forEach(function(f){
+        var h = f.h || SUNST.base*3;
+        var d = h * Lm;
+        var dx = d*ux/mx, dy = d*uy/my;
+        og.beginPath();
+        f.ring.forEach(function(p,i){ i ? og.lineTo(X(p[0]),Y(p[1])) : og.moveTo(X(p[0]),Y(p[1])); });
+        og.closePath(); og.fill();
+        og.beginPath();
+        f.ring.forEach(function(p,i){
+          var x = X(p[0]+dx), y = Y(p[1]+dy);
+          i ? og.lineTo(x,y) : og.moveTo(x,y); });
+        og.closePath(); og.fill();
+        for(var i=0,j=f.ring.length-1;i<f.ring.length;j=i++){
+          var a = f.ring[j], b = f.ring[i];
+          og.beginPath();
+          og.moveTo(X(a[0]), Y(a[1])); og.lineTo(X(b[0]), Y(b[1]));
+          og.lineTo(X(b[0]+dx), Y(b[1]+dy)); og.lineTo(X(a[0]+dx), Y(a[1]+dy));
+          og.closePath(); og.fill();
+        }
+      });
+      g.globalAlpha = 0.5; g.drawImage(off, 0, 0, W, H); g.globalAlpha = 1;
+    }
+
+    //  건물 — 우리 단지는 도드라지게
+    SUN.feats.forEach(function(f){
+      g.beginPath();
+      f.ring.forEach(function(p,i){ i ? g.lineTo(X(p[0]),Y(p[1])) : g.moveTo(X(p[0]),Y(p[1])); });
+      g.closePath();
+      g.fillStyle = f.mine ? (dark ? '#2a4d7a' : '#bcd7f5') : (dark ? '#2a2e38' : '#ffffff');
+      g.fill();
+      g.lineWidth = f.mine ? 1.6 : 0.7;
+      g.strokeStyle = f.mine ? '#1565c0' : (dark ? '#4a505e' : '#b9c0cc');
+      g.stroke();
+      if(f.mine && f.no){
+        var cc = ringCenter(f.ring);
+        g.fillStyle = '#0d47a1';
+        g.font = '700 12px ' + (getComputedStyle(document.body).fontFamily || 'sans-serif');
+        g.textAlign = 'center'; g.textBaseline = 'middle';
+        g.fillText(String(f.no), X(cc[0]), Y(cc[1]));
+        g.textAlign = 'start'; g.textBaseline = 'alphabetic';
+      }
+    });
+
+    //  해가 어디 있는지
+    g.fillStyle = dark ? '#e8e3d0' : '#3b3f47';
+    g.font = '600 11px ' + (getComputedStyle(document.body).fontFamily || 'sans-serif');
+    g.fillText(dayName(SUNST.day) + ' ' + hhmm(SUNST.mins)
+      + ' · 고도 ' + S.alt.toFixed(1) + '° · 방위 ' + S.az.toFixed(0) + '°', 10, 18);
+    if(S.alt <= 0.5) g.fillText('해가 지평선 아래입니다 — 그림자를 그릴 수 없습니다.', 10, 34);
+    //  축척 막대
+    var barM = 50, barPx = barM*sc;
+    g.strokeStyle = dark ? '#8a9099' : '#5a6068'; g.lineWidth = 2;
+    g.beginPath(); g.moveTo(10, H-14); g.lineTo(10+barPx, H-14); g.stroke();
+    g.fillText(barM + 'm', 12+barPx, H-10);
+    //  북쪽
+    g.beginPath(); g.moveTo(W-22, H-40); g.lineTo(W-22, H-18); g.stroke();
+    g.beginPath(); g.moveTo(W-26, H-34); g.lineTo(W-22, H-42); g.lineTo(W-18, H-34); g.stroke();
+    g.fillText('N', W-26, H-46);
+  }
+
+  /*  ── 동별 일조시간 ────────────────────────────────────────────────
+      우리 단지 건물 외곽선 위를 고르게 훑어 점을 잡고, 8시~16시를 10분씩
+      나눠 각 점이 볕을 받는지 센다. 판례가 쓰는 두 가지를 같이 낸다.
+        · 총 일조  : 08~16시 사이 볕 든 시간의 합
+        · 연속 일조: 09~15시 사이 끊기지 않고 볕 든 가장 긴 토막 */
+  function sunHours(){
+    if(!SUN) return null;
+    var c = SUN.c, R = Math.PI/180;
+    var mx = 111320*Math.cos(c.lat*R), my = 111320;
+    var z = (SUNST.floor - 1) * 3 + 1.5;          // 그 층 바닥에서 1.5m
+    var steps = [];
+    for(var t=8*60; t<=16*60; t+=10) steps.push(t);
+    var sunp = steps.map(function(t){ return sunPos(sunDate(SUNST.day, t), c.lat, c.lng); });
+    SUN.feats.forEach(function(f){ if(!f._bb) f._bb = ringBox(f.ring); });
+    var mine = SUN.feats.filter(function(f){ return f.mine; });
+    var others = SUN.feats;
+
+    return mine.map(function(f, idx){
+      //  외곽선 위를 고르게 (최대 32점)
+      var pts = [], stp = Math.max(1, Math.floor(f.ring.length/32));
+      for(var i=0;i<f.ring.length;i+=stp) pts.push(f.ring[i]);
+      var best = null, all = [];
+      pts.forEach(function(p){
+        var lit = steps.map(function(t, k){
+          var S2 = sunp[k];
+          if(S2.alt <= 0.5) return false;
+          var L = 1/Math.tan(S2.alt*R);
+          var ux = Math.sin(S2.az*R), uy = Math.cos(S2.az*R);   // 태양 쪽
+          for(var b=0;b<others.length;b++){
+            var o = others[b];
+            if(o === f) continue;
+            var h = o.h || SUNST.base*3;
+            if(h <= z) continue;
+            //  광선이 이 건물 꼭대기 높이에 닿기까지의 거리 — 그 사이 어디든 가리면 그늘이다
+            var d = (h - z) * L;
+            if(raySeg(p[0], p[1], p[0] + d*ux/mx, p[1] + d*uy/my, o.ring, o._bb)) return false;
+          }
+          return true;
+        });
+        var tot = 0, run = 0, bestRun = 0;
+        lit.forEach(function(v, k){
+          if(v) tot += 10;
+          var t = steps[k];
+          if(t >= 9*60 && t <= 15*60){
+            if(v){ run += 10; if(run > bestRun) bestRun = run; } else run = 0;
+          }
+        });
+        var o = { tot:tot, run:bestRun };
+        all.push(o);
+        if(!best || o.run > best.run || (o.run === best.run && o.tot > best.tot)) best = o;
+      });
+      var tots = all.map(function(o){ return o.tot; }).sort(function(a,b){ return a-b; });
+      return { i:f.no || (idx+1), nm:f.nm || '',
+               h: f.h || SUNST.base*3, src: f.src,
+               best: best, med: tots[Math.floor(tots.length/2)] || 0, pts: pts.length };
+    }).sort(function(a,b){ return a.best.run - b.best.run; });
+  }
+  function hm(mins){
+    if(!mins) return '0분';
+    var h = Math.floor(mins/60), m = mins % 60;
+    return (h ? h + '시간' : '') + (m ? ' ' + m + '분' : '');
+  }
+
+  window.djSunSet = function(k, v){
+    if(k === 'mins' || k === 'floor' || k === 'base' || k === 'rad') SUNST[k] = parseInt(v,10) || 0;
+    else SUNST[k] = v;
+    if(k === 'mins'){ sunDraw(); var lb = document.getElementById('dj-suntime');
+      if(lb) lb.textContent = hhmm(SUNST.mins); return; }
+    paintSun();
+  };
+
+  // ── 일조 화면 ───────────────────────────────────────────────────────
   function paintSun(){
     var box = document.getElementById('dj-sunbox'); if(!box) return;
     var card = document.getElementById('dj-suncard');
     var btn = card && card.querySelector('button[onclick="djSun()"]');
     if(btn) btn.textContent = st().sunOn ? '▲ 접기' : '☀️ 열어 보기';
     if(!st().sunOn){ box.innerHTML = ''; return; }
-    box.innerHTML =
-      '<div style="font-size:12px;line-height:1.75;background:#fff8e1;border:1px solid #ffe082;'
-      +   'border-radius:9px;padding:11px 13px;color:#5d4037">'
-      +   '<b>만들기 전에 두 가지를 확인해야 합니다.</b><br>'
-      +   '① 브이월드 인증키는 <b>도메인 등록제</b>입니다 — 발급받으실 때 '
-      +   '<b>songdojeil-glitch.github.io</b> 를 서비스 URL로 등록하셔야 합니다.<br>'
-      +   '② 브이월드를 <b>브라우저에서 바로</b> 부를 수 있어야 합니다. 우리 시스템은 '
-      +   '깃허브 페이지 위의 정적 화면이라 대신 불러 줄 서버가 없습니다. '
-      +   '(MR.K 가 이 기능에 「로그인하고 보기」를 걸어 둔 것도 같은 까닭입니다 — 그쪽은 서버가 대신 부릅니다.)'
+
+    var have = SUN && SUN.feats && SUN.feats.length;
+    var h = '';
+
+    if(!have){
+      h += '<div style="font-size:12px;line-height:1.75;background:var(--bg3);border-radius:9px;'
+        +   'padding:11px 13px">'
+        +   '주변 건물을 브이월드에서 받아 평면에 세우고, 그 날 그 시각의 해 자리로 '
+        +   '그림자를 떨어뜨려 <b>동마다 몇 시간이나 볕이 드는지</b> 셉니다.'
+        + '</div>'
+        + '<div style="margin-top:11px;display:flex;gap:7px;align-items:center;flex-wrap:wrap">'
+        +   '<input id="dj-vwkey" type="password" class="dj-in" style="width:260px" '
+        +     'placeholder="브이월드 인증키 붙여넣기">'
+        +   '<button class="dj-bp" onclick="djVwSave()">저장</button>'
+        +   '<button class="dj-bs" onclick="djVwTest()">🔌 연결 시험</button>'
+        +   '<span style="font-size:11.5px;color:var(--text3)">반경</span>'
+        +   [200,300,500].map(function(m){
+              return '<button class="dj-bs" onclick="djSunSet(\'rad\',' + m + ')" style="'
+                + (SUNST.rad === m ? 'border-color:transparent;background:var(--accent);color:#fff' : '')
+                + '">' + m + 'm</button>'; }).join('')
+        +   '<button class="dj-bp" onclick="djSunLoad()">🏢 건물 자료 받기</button>'
+        + '</div>'
+        + '<div style="font-size:10.5px;color:var(--text3);margin-top:6px">'
+        +   '인증키는 파이어베이스에 담겨 사무소 컴퓨터끼리 함께 씁니다. '
+        +   '<b>채팅창에는 절대 붙여넣지 마십시오.</b> 받은 건물은 담아 두어 다음부터는 바로 뜹니다.</div>'
+        + '<div id="dj-sunout" style="margin-top:10px"></div>';
+      box.innerHTML = h;
+      return;
+    }
+
+    //  고르개
+    var unk = SUN.feats.filter(function(f){ return !f.h; }).length;
+    h += '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:9px">'
+      + [['winter','동지'],['spring','춘·추분'],['summer','하지']].map(function(x){
+          var on = SUNST.day === x[0];
+          return '<button class="dj-bs" onclick="djSunSet(\'day\',\'' + x[0] + '\')" style="'
+            + (on ? 'border-color:transparent;background:var(--accent);color:#fff' : '')
+            + '">' + x[1] + '</button>'; }).join('')
+      + '<span style="font-size:11.5px;color:var(--text3);margin-left:6px">시각</span>'
+      + '<input type="range" min="480" max="960" step="10" value="' + SUNST.mins + '" '
+      +   'oninput="djSunSet(\'mins\',this.value)" style="width:190px">'
+      + '<b id="dj-suntime" style="font-size:12.5px;min-width:42px">' + hhmm(SUNST.mins) + '</b>'
+      + '<span style="font-size:11.5px;color:var(--text3);margin-left:6px">기준 층</span>'
+      + '<input class="dj-in" style="width:52px;padding:4px 7px;font-size:12px" value="' + SUNST.floor + '" '
+      +   'onchange="djSunSet(\'floor\',this.value)">'
+      + '<span style="font-size:11.5px;color:var(--text3)">모르는 건물 층수</span>'
+      + '<input class="dj-in" style="width:52px;padding:4px 7px;font-size:12px" value="' + SUNST.base + '" '
+      +   'onchange="djSunSet(\'base\',this.value)">'
+      + '<button class="dj-bs" style="margin-left:auto" onclick="djSunLoad()">↻ 다시 받기</button>'
       + '</div>'
-      + '<div style="margin-top:11px;display:flex;gap:7px;align-items:center;flex-wrap:wrap">'
-      +   '<input id="dj-vwkey" type="password" class="dj-in" style="width:280px" '
-      +     'placeholder="브이월드 인증키 붙여넣기">'
-      +   '<button class="dj-bp" onclick="djVwSave()">저장</button>'
-      +   '<button class="dj-bs" onclick="djVwTest()">🔌 연결 시험</button>'
+      + '<div style="position:relative;border:1px solid var(--border);border-radius:10px;overflow:hidden">'
+      +   '<canvas id="dj-suncv"></canvas></div>';
+
+    //  동별 일조
+    var rows = sunHours();
+    h += '<div class="dj-h" style="margin:15px 0 8px">🏙 동별 일조시간 '
+      + '<span style="font-size:10.5px;font-weight:400;color:var(--text3)">'
+      + esc(dayName(SUNST.day)) + ' · ' + SUNST.floor + '층 기준 · 건물 외곽선을 훑어 잰 값'
+      + ' · 번호는 위 그림의 번호와 같습니다</span></div>';
+    if(!rows || !rows.length){
+      h += '<div style="font-size:12px;color:var(--text3)">우리 단지 건물을 가려내지 못했습니다 — '
+        + '브이월드 건물 레이어가 이름을 주지 않는 경우입니다. 반경을 좁혀 다시 받아 보세요.</div>';
+    }else{
+      h += '<div style="overflow-x:auto"><table id="dj-suntbl"><thead><tr>'
+        + '<th>동</th><th>높이</th><th>연속 일조<br><span style="font-weight:400">09~15시</span></th>'
+        + '<th>총 일조<br><span style="font-weight:400">08~16시</span></th>'
+        + '<th>판정(참고)</th></tr></thead><tbody>';
+      rows.forEach(function(r){
+        //  판례가 흔히 쓰는 수인한도 — 연속 2시간 또는 총 4시간
+        var ok = (r.best.run >= 120) || (r.best.tot >= 240);
+        h += '<tr><td style="text-align:left">'
+          + '<span style="display:inline-block;min-width:19px;height:19px;line-height:19px;'
+          +   'text-align:center;border-radius:5px;background:#e3f2fd;color:#0d47a1;'
+          +   'font-weight:700;font-size:11px;margin-right:6px">' + r.i + '</span>'
+          + '<b>' + esc(r.nm || '이름 없음') + '</b></td>'
+          + '<td>' + Math.round(r.h) + 'm'
+          + (r.src ? '' : ' <span style="color:#c80;font-size:10px">추정</span>') + '</td>'
+          + '<td><b>' + hm(r.best.run) + '</b></td>'
+          + '<td>' + hm(r.best.tot) + '</td>'
+          + '<td style="color:' + (ok ? '#2e7d32' : '#c62828') + ';font-weight:600">'
+          + (ok ? '기준 넘음' : '기준 못 미침') + '</td></tr>';
+      });
+      h += '</tbody></table></div>';
+    }
+
+    h += '<div style="font-size:10.5px;color:var(--text3);margin-top:8px;line-height:1.7">'
+      + '<b>참고용입니다.</b> 「판정」은 법원이 일조 침해를 볼 때 흔히 쓰는 기준'
+      + '(동지 기준 <b>09~15시 연속 2시간</b> 또는 <b>08~16시 총 4시간</b>)에 견준 것입니다. '
+      + '실제 분쟁은 세대별 창 위치·발코니·지형·기존 일조량까지 따지므로 이 표만으로 '
+      + '<b>손님께 일조권 침해 여부를 단정해 말씀하지 마십시오.</b><br>'
+      + '건물 ' + SUN.feats.length + '동 중 ' + unk + '동은 자료에 높이가 없어 '
+      + '<b>' + SUNST.base + '층(' + (SUNST.base*3) + 'm)</b> 으로 세웠습니다 — 위 칸에서 고치실 수 있습니다. '
+      + '지형 높낮이는 셈에 넣지 않았습니다. '
+      + '자료: 브이월드 건물 · ' + esc(String(SUN.at||'').slice(0,10)) + ' 받음'
       + '</div>'
-      + '<div style="font-size:10.5px;color:var(--text3);margin-top:6px">'
-      +   '인증키는 파이어베이스에 담겨 사무소 컴퓨터끼리 함께 씁니다. '
-      +   '<b>채팅창에는 절대 붙여넣지 마십시오.</b></div>'
-      + '<div id="dj-vwout" style="margin-top:10px"></div>';
-    K().sget(VWKEY).then(function(k){
-      var o = document.getElementById('dj-vwout');
-      if(k && o) o.innerHTML = '<span style="font-size:11.5px;color:#2e7d32">'
-        + '✔ 인증키가 담겨 있습니다. 「연결 시험」을 눌러 브라우저에서 바로 부를 수 있는지 확인해 주세요.</span>';
-    });
+      + '<div id="dj-sunout" style="margin-top:9px"></div>';
+
+    box.innerHTML = h;
+    setTimeout(sunDraw, 0);
   }
+
   window.djVwSave = async function(){
     var i = document.getElementById('dj-vwkey');
     var v = i ? i.value.trim() : '';
@@ -27439,6 +27908,11 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
   function vwStat(j){
     try{ return j && j.response && j.response.status; }catch(e){ return null; }
   }
+  /*  연결 시험 결과가 나올 자리. 화면을 고치면서 칸 이름이 바뀌면 결과가
+      갈 곳을 잃는다 — 실제로 한 번 그랬다(시험이 잡았다). 있는 쪽을 찾아 쓴다. */
+  function vwOut(){
+    return document.getElementById('dj-sunout') || document.getElementById('dj-vwout');
+  }
   function vwBox(kind, html){
     var c = { ok:['#e8f5e9','#a5d6a7','#1b5e20'], no:['#fdeeea','#eaa694','#a83b22'],
               warn:['#fff8e1','#ffe082','#5d4037'] }[kind] || ['var(--bg3)','var(--border)','var(--text)'];
@@ -27448,7 +27922,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
   }
 
   window.djVwTest = async function(){
-    var out = document.getElementById('dj-vwout'); if(!out) return;
+    var out = vwOut(); if(!out) return;
     var key = await K().sget(VWKEY);
     if(!key){ out.innerHTML = '<span style="color:#c62828;font-size:11.5px">'
       + '먼저 인증키를 저장해 주세요.</span>'; return; }
