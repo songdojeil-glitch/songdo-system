@@ -19353,7 +19353,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.09.25-8';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.09.26-1';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_data.html';      // 이 파일 이름
   var SD_NAME = '실거래가';      // 사람이 부르는 이름
 
@@ -23767,6 +23767,12 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 #dj-root .dj-pin-n{font-size:9px;color:#444;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #dj-root .dj-pin-v{font-size:10.5px;font-weight:800;color:#0891b2}
 #dj-root .dj-pin-off{background:#b8860b;border-color:#8b6508;box-shadow:0 3px 9px rgba(0,0,0,.3)}
+#dj-areabar{position:absolute;left:50%;transform:translateX(-50%);top:12px;z-index:20;
+  display:flex;gap:9px;align-items:center;background:rgba(255,255,255,.96);
+  border:1px solid #ffb74d;border-radius:10px;padding:8px 13px;
+  box-shadow:0 3px 12px rgba(0,0,0,.18);font-size:12px;color:#333;max-width:92%}
+#dj-areabar button{font-size:11.5px;font-weight:600;padding:5px 12px;border-radius:7px;
+  border:0;background:#e65100;color:#fff;cursor:pointer;white-space:nowrap}
 #dj-root .dj-pin-off .dj-pin-n,#dj-root .dj-pin-off .dj-pin-v{color:#fff!important}
 #dj-root .dj-kv{background:var(--bg3);border-radius:10px;padding:11px 13px}
 #dj-root .dj-kv b{display:block;font-size:18px;font-weight:700;margin-top:3px}
@@ -23808,6 +23814,9 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
   var BUSY  = false;
   var CH    = null;                   // 흐름 그래프
   var MAPON = false, DJMAP = null, DJOVER = [];   // 단지 고르는 지도
+  var PEND_CENTER = null;    // 지도를 옮긴 자리 — 다시 그려도 그 자리를 지킨다
+  var LAST_REGION = '';      // 지도 한가운데가 어느 시군구인지 (자료와 다르면 알려 준다)
+  var GEO_TRIED = {};        // 스스로 좌표를 찾아 본 지역·기간 — 한 번만 한다
 
   /*  지도를 처음 열면 사무실을 가운데 놓는다 — 늘 보는 곳이 거기다.
       좌표는 한 번만 찾아 파이어베이스에 담아 모든 PC 가 같이 쓴다. */
@@ -24369,7 +24378,11 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     var first = (S.sgg[v] || [])[0];
     st().sgg = first ? first[0] : v + '000'; stSave(); MAPON = false; paint();
   };
-  window.djSgg    = function(v){ st().sgg = v; stSave(); MAPON = false; paint(); };
+  window.djSgg = function(v){
+    st().sgg = v; stSave();
+    PEND_CENTER = null; LAST_REGION = '';   // 새 지역이니 자리 기억을 버린다
+    MAPON = false; paint();
+  };
   /*  「r12」 = 최근 12개월, 「y2026」 = 2026년. 한 고르개에서 둘 다 고른다. */
   window.djPeriod = function(v){
     var s = st();
@@ -24611,24 +24624,21 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
       }
       if(!hit){ msg('「' + q + '」 을(를) 지도에서 찾지 못했습니다.', 'no'); return; }
       DJMAP.setCenter(new kakao.maps.LatLng(hit.lat, hit.lng));
-      var code = sggFromAddr(addr);
+      PEND_CENTER = { lat:hit.lat, lng:hit.lng };
+      //  주소 글자보다 좌표로 되짚는 쪽이 정확하다. 실패하면 글자로 갈음한다.
+      var reg = await regionAt(hit.lat, hit.lng);
+      var code = (reg && reg.code) || sggFromAddr(addr);
+      var el = document.getElementById('dj-place-note');
       if(code && code !== st().sgg){
-        //  옮겨는 갔지만 그 지역 자료는 아직 없다 — 무엇을 눌러야 하는지 말해 준다
-        msg('', '');
-        var el = document.getElementById('dj-place-note');
-        if(el) el.innerHTML = '<span style="color:#c80">' + esc(addr) + ' 로 옮겼습니다. '
-          + '이곳 거래를 보려면 시군구를 <b>' + esc(S.sggName(code)) + '</b> 로 바꿔야 합니다. </span>'
-          + '<button class="dj-bs" onclick="djSggGo(\'' + code + '\')">'
-          + esc(S.sggName(code)) + ' 자료 받기</button>';
+        //  옮겨 간 곳이 딴 시군구다 — 묻지 말고 그 지역 자료까지 받아 온다
+        if(el) el.innerHTML = '<span style="color:var(--text3)">' + esc(addr) + ' 로 옮겼습니다.</span>';
+        await window.djLoadHere(code, (reg && reg.name) || addr);
       }else{
-        var el2 = document.getElementById('dj-place-note');
-        if(el2) el2.innerHTML = '<span style="color:var(--text3)">' + esc(addr) + ' 로 옮겼습니다.</span>';
+        if(el) el.innerHTML = '<span style="color:var(--text3)">' + esc(addr) + ' 로 옮겼습니다.</span>';
       }
     }catch(e){ msg(e && e.message || String(e), 'no'); }
   };
-  window.djSggGo = function(code){
-    st().sgg = code; stSave(); MAPON = false; DJMAP = null; paint();
-  };
+  window.djSggGo = function(code){ return window.djLoadHere(code); };
   //  법정동 단추 — 자료에 있는 동으로 바로 옮긴다 (지오코딩이 필요 없다)
   window.djGoDong = function(dong){
     if(!DJMAP) return;
@@ -24648,9 +24658,56 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
   window.djGoOffice = async function(){
     var o = await officeGeo();
     if(!o.lat){ msg('사무실 좌표를 찾지 못했습니다.', 'no'); return; }
+    PEND_CENTER = { lat:o.lat, lng:o.lng };            // 다시 그려도 사무실을 지킨다
     if(DJMAP) DJMAP.setCenter(new kakao.maps.LatLng(o.lat, o.lng));
     var el = document.getElementById('dj-place-note');
     if(el) el.innerHTML = '<span style="color:var(--text3)">사무실(' + esc(OFFICE.addr) + ') 로 돌아왔습니다.</span>';
+  };
+
+  /*  지도 한가운데가 어느 시군구인지 카카오에 물어본다.
+      주소 글자를 견주는 것보다 정확하다 — 지도를 끌어 옮겼을 때 쓴다. */
+  function regionAt(lat, lng){
+    return new Promise(function(res){
+      try{
+        var gc = new kakao.maps.services.Geocoder();
+        gc.coord2RegionCode(lng, lat, function(d, status){
+          if(status !== kakao.maps.services.Status.OK || !d || !d.length) return res(null);
+          var b = d.filter(function(x){ return x.region_type === 'B'; })[0] || d[0];
+          res({ code: String(b.code || '').slice(0, 5),
+                name: [b.region_1depth_name, b.region_2depth_name].filter(Boolean).join(' ') });
+        });
+      }catch(e){ res(null); }
+    });
+  }
+
+  /*  지금 보고 있는 자리의 자료를 받는다 — 시군구를 바꾸고, 실거래를 받고,
+      좌표까지 찾아 핀을 세운다. MR.K 처럼 「옮기면 보인다」가 되게 하는 곳. */
+  window.djLoadHere = async function(code, nm){
+    if(BUSY){ msg('지금 다른 일을 하는 중입니다. 잠시 뒤 다시 눌러 주세요.', 'warn'); return; }
+    var S = K();
+    if(DJMAP){ try{ var c = DJMAP.getCenter(); PEND_CENTER = { lat:c.getLat(), lng:c.getLng() }; }catch(e){} }
+    st().sgg = code; stSave();
+    LAST_REGION = '';                                   // 다시 알아보게 비운다
+    var bar = document.getElementById('dj-areabar'); if(bar) bar.remove();
+    var note = document.getElementById('dj-place-note');
+    if(note) note.innerHTML = '<span style="color:var(--text3)">'
+      + esc(nm || S.sggName(code)) + ' 자료를 받는 중입니다…</span>';
+    try{
+      await ensure(false);                       // 실거래
+      await djGeo(true);                         // 좌표 — 조용히
+      drawMap();
+      var n = danjiAgg().length;
+      var el = document.getElementById('dj-place-note');
+      if(el) el.innerHTML = '<span style="color:#0a7">' + esc(S.sggName(code))
+        + ' 자료를 받았습니다 — 단지 ' + n + '곳.</span>';
+      //  지역 고르개도 바뀐 시군구에 맞춰 다시 그린다
+      var sel = document.getElementById('dj-sgg');
+      if(sel && sel.value !== code) paint();
+    }catch(e){
+      var e2 = document.getElementById('dj-place-note');
+      if(e2) e2.innerHTML = '<span style="color:#c33">자료를 받지 못했습니다 — '
+        + esc(e && e.message || e) + '</span>';
+    }
   };
 
   window.djMapFit = function(){
@@ -24687,6 +24744,20 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
       + '</div>';
   }
 
+  /*  지도 위에 띄우는 알림띠 — 지금 보는 곳과 받아 둔 자료가 어긋날 때. */
+  function areaBar(reg){
+    var box = document.getElementById('dj-map'); if(!box) return;
+    var old = document.getElementById('dj-areabar'); if(old) old.remove();
+    if(!reg || reg.code === st().sgg) return;      // 같은 시군구면 띄울 것이 없다
+    var d = document.createElement('div');
+    d.id = 'dj-areabar';
+    d.innerHTML = '<span>지금 보는 곳은 <b>' + esc(reg.name) + '</b> 입니다 — '
+      + '받아 둔 자료는 ' + esc(K().sggName(st().sgg)) + ' 것입니다.</span>'
+      + '<button onclick="djLoadHere(\'' + reg.code + '\',\'' + esc(reg.name) + '\')">'
+      + '이 지역 자료 받기</button>';
+    box.appendChild(d);
+  }
+
   function drawMap(){
     var S = K(), sv = st(), wrap = document.getElementById('dj-mapwrap'); if(!wrap) return;
     var list = danjiAgg(), GEO = S.geo();
@@ -24713,7 +24784,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
       + '</span></div>'
       + placeRow(list)
       + '<div id="dj-map" style="width:100%;height:' + sv.mapH + 'px;border-radius:10px;'
-      +   'border:1px solid var(--border)"></div>'
+      +   'border:1px solid var(--border);position:relative"></div>'
       + '<div style="font-size:10.5px;color:var(--text3);margin-top:5px">'
       +   '핀을 누르면 그 단지 브리핑이 열립니다. 값은 해제 신고를 뺀 중위 '
       +   esc(DSEL(sv.deal).n) + '입니다.'
@@ -24726,10 +24797,17 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
         '<div style="height:100%;display:flex;align-items:center;justify-content:center;'
         + 'color:var(--text3);font-size:12.5px;text-align:center;padding:0 24px">'
         + (list.length
-            ? '이 지역 단지의 좌표가 아직 없습니다.<br>「📍 좌표 찾기」를 한 번 누르면 '
-              + '카카오 지도에서 찾아 저장합니다 (다음부터는 바로 뜹니다).'
+            ? '이 지역 단지 ' + list.length + '곳의 좌표를 찾는 중입니다…<br>'
+              + '<span style="font-size:11px">처음 보는 지역은 한 번만 찾으면 됩니다.</span>'
             : '이 조건으로 거래가 있는 단지가 없습니다.<br>종류·거래·기간을 바꿔 보세요.')
         + '</div>';
+      /*  안내만 하고 끝내지 않는다 — 좌표가 없으면 스스로 찾아 다시 그린다.
+          단 지역·기간마다 한 번만. 못 찾는 지역에서 끝없이 되풀이하면 안 된다. */
+      var gk = cacheKey();
+      if(list.length && !BUSY && !GEO_TRIED[gk]){
+        GEO_TRIED[gk] = 1;
+        setTimeout(function(){ djGeo(true); }, 60);
+      }
       return;
     }
 
@@ -24742,6 +24820,8 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     have.forEach(function(o){ var g = GEO[o.key]; la += g.lat; ln += g.lng; });
     var cLat = la / have.length, cLng = ln / have.length;
     if(OFFICE.lat && sv.sgg === OFFICE.sgg){ cLat = OFFICE.lat; cLng = OFFICE.lng; }
+    //  지역명으로 옮겼거나 손으로 끌어 옮긴 자리가 있으면 그 자리를 지킨다
+    if(PEND_CENTER){ cLat = PEND_CENTER.lat; cLng = PEND_CENTER.lng; }
     DJMAP = new kakao.maps.Map(box, {
       center: new kakao.maps.LatLng(cLat, cLng), level: sv.mapLv });
     DJOVER = [];
@@ -24757,6 +24837,22 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
         map: DJMAP, position: new kakao.maps.LatLng(OFFICE.lat, OFFICE.lng),
         content: od, yAnchor: 1, zIndex: 900 }));
     }
+
+    //  지도를 끌거나 확대·축소해 멈추면, 그 자리가 어느 시군구인지 알아본다.
+    //  자료를 안 받은 곳이면 지도 위에 「이 지역 자료 받기」를 띄운다.
+    try{
+      kakao.maps.event.addListener(DJMAP, 'idle', function(){
+        if(BUSY) return;
+        var c = DJMAP.getCenter();
+        PEND_CENTER = { lat:c.getLat(), lng:c.getLng() };
+        regionAt(c.getLat(), c.getLng()).then(function(reg){
+          if(!reg || !reg.code) return;
+          if(reg.code === LAST_REGION) return;
+          LAST_REGION = reg.code;
+          areaBar(reg);
+        });
+      });
+    }catch(e){}
 
     //  값이 큰 단지를 위에 얹는다 — 겹칠 때 비싼 쪽이 가려지지 않게
     have.slice().sort(function(a,b){ return (a.med||0) - (b.med||0); })
@@ -24782,7 +24878,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
   /*  좌표 찾기 — 지번 주소를 먼저 쓰고, 이름으로 찾은 결과는 반드시
       조회한 시·군·구 안인지 확인한다. (이름만으로 찾다가 「하나타운1차」가
       대구로 잡힌 일이 있었다.) 찾은 것은 S실거래가와 같은 창고에 넣는다. */
-  window.djGeo = async function(){
+  window.djGeo = async function(quiet){
     if(BUSY) return;
     var S = K(), GEO = S.geo(), sgg = st().sgg, region = S.sggName(sgg);
     var todo = danjiAgg().filter(function(o){
@@ -24791,7 +24887,9 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
       if(g === null) return false;                  // 찾아 봤는데 없던 곳
       return S.geoBad(g, sgg);                      // 지역이 안 맞는 옛 기록
     });
-    if(!todo.length){ msg('좌표를 모두 갖고 있습니다.', 'ok'); return; }
+    if(!todo.length){ if(!quiet) msg('좌표를 모두 갖고 있습니다.', 'ok'); return; }
+    //  이미 핀이 하나라도 서 있으면 지도를 진행 글로 덮지 않는다
+    var have0 = danjiAgg().some(function(o){ var g = GEO[o.key]; return g && g.lat; });
     if(todo.length > 120) todo = todo.slice(0, 120);
     BUSY = true;
     var got = 0, miss = 0;
@@ -24800,6 +24898,11 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
       for(var i=0;i<todo.length;i++){
         var o = todo[i], hit = null;
         msg('좌표를 찾는 중… (' + (i+1) + '/' + todo.length + ') ' + o.name, 'go');
+        var pb = document.getElementById('dj-map');
+        if(pb && !have0) pb.innerHTML = '<div style="height:100%;display:flex;align-items:center;'
+          + 'justify-content:center;color:var(--text3);font-size:12.5px;text-align:center;padding:0 24px">'
+          + '이 지역 단지 좌표를 찾는 중입니다… ' + (i+1) + ' / ' + todo.length + '<br>'
+          + '<span style="font-size:11px">' + esc(o.name) + '</span></div>';
         if(o.jibun){
           var a = await S.kakaoAddr(region + ' ' + o.dong + ' ' + o.jibun);
           if(a) hit = { lat:parseFloat(a.y), lng:parseFloat(a.x),
@@ -24820,7 +24923,8 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
         await new Promise(function(r){ setTimeout(r, 60); });
       }
       await S.saveGeo();
-      msg('좌표 ' + got + '곳을 찾았습니다.' + (miss ? '  (못 찾은 곳 ' + miss + '곳)' : ''), 'ok');
+      if(!quiet) msg('좌표 ' + got + '곳을 찾았습니다.' + (miss ? '  (못 찾은 곳 ' + miss + '곳)' : ''), 'ok');
+      else msg('');
       drawMap();
     }catch(e){ msg(e && e.message || String(e), 'no'); }
     finally{ BUSY = false; }
