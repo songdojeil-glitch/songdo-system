@@ -19353,7 +19353,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.09.26-11';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.09.26-14';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_data.html';      // 이 파일 이름
   var SD_NAME = '실거래가';      // 사람이 부르는 이름
 
@@ -23822,7 +23822,30 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
   font-weight:600;margin-right:5px}
 /* 면적형별 작은 판 — 가로로 둘씩. 좁은 화면에서는 한 줄에 하나씩 내린다 */
 #dj-root .dj-grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:10px}
-#dj-root .dj-mini{border:1px solid var(--border);border-radius:10px;padding:10px 11px}
+/* 호별 공시가격 배치도 — 세로가 층, 가로가 라인 */
+#dj-root table.kb-map{width:auto;min-width:0}
+#dj-root table.kb-map th{padding:3px 7px;font-size:10px;text-align:center}
+#dj-root table.kb-map td{padding:0;font-size:10px;text-align:center;border-bottom:0}
+#dj-root td.kb-f{background:var(--bg3);font-weight:600;color:var(--text3);
+  padding:2px 8px;font-size:10px;text-align:center}
+#dj-root td.kb-c{padding:3px 7px;min-width:50px;border:1px solid var(--card);
+  font-weight:700;cursor:default}
+#dj-root td.kb-x{background:var(--bg3);opacity:.45;border:1px solid var(--card);min-width:50px}
+#dj-root .dj-mini{border:1px solid var(--border);border-radius:10px;padding:10px 11px;
+  cursor:zoom-in;position:relative;transition:border-color .12s,box-shadow .12s}
+#dj-root .dj-mini:hover{border-color:var(--accent);box-shadow:0 3px 12px rgba(0,0,0,.13)}
+#dj-root .dj-mini-z{position:absolute;top:8px;right:10px;font-size:10px;color:var(--text3);
+  opacity:0;transition:opacity .12s;pointer-events:none}
+#dj-root .dj-mini:hover .dj-mini-z{opacity:1}
+/* 크게 보기 — 화면을 덮는 판 하나 */
+#dj-zoom{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9400;
+  display:flex;align-items:center;justify-content:center;padding:18px}
+#dj-zoom .dj-zbox{background:var(--card);border-radius:14px;padding:16px 18px 14px;
+  width:min(1100px,96vw);max-height:94vh;overflow:auto;box-shadow:0 18px 50px rgba(0,0,0,.34)}
+#dj-zoom .dj-zhd{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+#dj-zoom .dj-zb{font-size:11px;padding:4px 11px;border-radius:12px;cursor:pointer;
+  border:1px solid var(--border);background:transparent;color:inherit}
+#dj-zoom .dj-zb:disabled{opacity:.35;cursor:default}
 @media (max-width:860px){ #dj-root .dj-grid2{grid-template-columns:1fr} }
 @media print{
   .tab-nav,.tab-arrow,#dj-search,.dj-noprint{display:none!important}
@@ -24414,6 +24437,25 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
       return sameDanji(r._name, nm) && !isWolse(r) && !(s.newOnly && isRenew(r));
     });
   }
+  /*  세로 눈금 글자 — eok() 는 억을 소수 첫째 자리까지만 적는다.
+      값 폭이 좁은 단지(8.8억~9.3억)에서는 눈금이 「9.1억·9.1억·9억·9억」처럼
+      같은 글자로 줄줄이 찍혀 고장 난 것처럼 보인다.
+      눈금 간격을 보고 소수 자리를 정한다 (1억 = 10,000만원). */
+  function axisTxt(v, ticks){
+    var s = st();
+    if(s.deal === 'wolse' && s.wAxis === 'rent') return fmtN(v) + '만';
+    if(v == null) return '';
+    if(Math.abs(v) < 10000) return fmtN(v) + '만';
+    var step = 0;
+    if(ticks && ticks.length > 1 && ticks[0] && ticks[1])
+      step = Math.abs((ticks[1].value != null ? ticks[1].value : ticks[1])
+                    - (ticks[0].value != null ? ticks[0].value : ticks[0]));
+    var dp = (!step || step >= 1000) ? 1 : (step >= 100 ? 2 : 3);
+    var t = (v / 10000).toFixed(dp);
+    if(dp === 1) t = t.replace(/\.0$/, '');        // 「9.0억」은 「9억」으로
+    return t + '억';
+  }
+
   //  값 표기 — 월세를 「월세 금액」 축으로 보면 억이 아니라 만원이다
   function amtTxt(v){
     var S = K(), s = st();
@@ -24842,6 +24884,10 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
   async function djGoName(nm){
     if(BUSY) return;
     BUSY = true;
+    /*  크게 보기는 지금 화면에 있는 브리핑의 것이다. 다른 단지를 부르면 먼저 닫는다.
+        (뒤에서 새 자료를 받아 같은 단지를 다시 그리는 경우는 열어 둔 채로 둔다 —
+         읽고 있는데 판이 사라지면 놀란다) */
+    if(ZOOM && !(CUR && (CUR.nm === nm || sameDanji(CUR.nm, nm)))) djZoomClose();
     var body = document.getElementById('dj-body');
     if(body) body.innerHTML = '<div class="dj-card" style="text-align:center;color:var(--text3);font-size:12.5px">'
       + '자료를 모으는 중입니다…</div>';
@@ -24859,6 +24905,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
       var hit = names[nm] ? nm : Object.keys(names).filter(function(x){ return sameDanji(x, nm); })[0];
       if(!hit){
         BUSY = false;
+        djZoomClose();          // 브리핑이 사라지는데 큰 판만 허공에 남으면 안 된다
         return noHit(nm, D);
       }
       var rows = pickRows(D, hit);                 // 고른 거래에 맞는 줄 + 값 다시 매김
@@ -24877,6 +24924,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
       draw();
       msg('');
     }catch(e){
+      djZoomClose();            // 같은 까닭으로, 실패했으면 큰 판도 접는다
       msg(String(e && e.message || e), 'no');
       if(body) body.innerHTML = '<div class="dj-card" style="color:#c33;font-size:12.5px">'
         + '자료를 받지 못했습니다 — ' + esc(e && e.message || e) + '</div>';
@@ -25645,10 +25693,14 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
           + listingsBox(nm, ST)
           + turnoverBox(ST, A, HS)
           + oursBox(nm, mine)
+          + advBox()                 // 공시가격 · 일조 — 눌러야 펼쳐진다
           + similarBox(nm, A);
     body.innerHTML = h;
     drawChart(ST);
     miniRender(ST);        // 값 표시 고르개(djFlowVals)가 draw() 를 다시 부르므로 함께 따라온다
+    //  펼쳐 둔 채 단지를 옮겼으면 그 단지 자료로 다시 그린다
+    if(st().kbOn) kbLoad(nm).then(paintKb); else paintKb();
+    paintSun();
   }
 
   /* ══ 평형 기준 — 송도동은 분양평, 그 밖은 전용평 ═══════════════════
@@ -26130,7 +26182,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
           }
         },
         scales: {
-          y: { ticks: { callback: function(v){ return S.eok(v); }, font: { size: 10 } },
+          y: { ticks: { callback: function(v, i, ts){ return axisTxt(v, ts); }, font: { size: 10 } },
                //  위아래로 숨 쉴 자리 — 맨 윗점·아랫점의 값 글자가 판 밖으로 잘리지 않게
                grace: '12%',
                grid: { color: 'rgba(128,128,128,.16)' } },
@@ -26254,10 +26306,10 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     var box = document.getElementById('dj-minibox'); if(!box) return;
     MINIS.forEach(function(c){ try{ c.destroy(); }catch(e){} });
     MINIS = [];
-    if(!ST || !ST.live.length){ box.innerHTML = ''; return; }
+    if(!ST || !ST.live.length){ box.innerHTML = ''; MINI_D = null; djZoomClose(); return; }
 
     var S = K(), D = miniSeries(ST), W = D.win;
-    if(!D.list.length){ box.innerHTML = ''; return; }
+    if(!D.list.length){ box.innerHTML = ''; MINI_D = null; djZoomClose(); return; }
 
     /*  면적형이 아주 많으면 판이 끝없이 늘어진다. 거래가 많은 것부터 열둘만
         고르고(작은 것부터 자르면 정작 주력 평형이 빠진다) 다시 면적 오름차순으로 세운다. */
@@ -26296,7 +26348,9 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     shown.forEach(function(o, i){
       var c = serColor(o.slot);
       var yo = (o.cm != null && o.pm) ? Math.round((o.cm / o.pm - 1) * 1000) / 10 : null;
-      h += '<div class="dj-mini">'
+      h += '<div class="dj-mini" onclick="djZoom(' + i + ')" '
+        +   'title="누르면 크게 봅니다">'
+        + '<div class="dj-mini-z">⤢ 크게</div>'
         + '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:6px">'
         +   '<span style="display:inline-block;width:9px;height:9px;border-radius:2px;'
         +     'background:' + c + '"></span>'
@@ -26328,6 +26382,11 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
       + '</div></div>';
 
     box.innerHTML = h;
+    MINI_D = { shown:shown, win:W };             // 크게 보기가 이 자료를 쓴다
+    if(ZOOM){
+      //  값 표시를 바꾸면 크게 보기도 같이 바뀌어야 한다. 단지가 바뀌었으면 닫는다.
+      if(ZOOM.i >= shown.length) djZoomClose(); else zoomPaint();
+    }
     if(typeof Chart === 'undefined') return;     // 까닭은 위 큰 판이 이미 말했다
 
     var labels = W.cur.map(function(m){ return m.slice(2).replace('-', '.'); });
@@ -26365,7 +26424,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
               } }
             },
             scales:{
-              y:{ ticks:{ callback:function(v){ return amtTxt(v); }, font:{ size:9.5 } },
+              y:{ ticks:{ callback:function(v, i, ts){ return axisTxt(v, ts); }, font:{ size:9.5 } },
                   grace:'14%',          // 값 글자가 앉을 자리를 위아래로 벌려 둔다
                   grid:{ color:'rgba(128,128,128,.16)' } },
               x:{ ticks:{ font:{ size:9.5 }, maxRotation:0, autoSkipPadding:8 },
@@ -26375,6 +26434,162 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
         }));
       }catch(e){ console.warn('[단지 브리핑] 작은 판 그리기 실패 ' + o.sqm + '㎡', e); }
     });
+  }
+
+  /* ══ 크게 보기 ═══════════════════════════════════════════════════════
+     작은 판은 한눈에 훑기에는 좋지만 손님께 짚어 드리기에는 작다.
+     누르면 화면을 덮고 크게 연다. 그림만 키우는 것이 아니라 그 면적형의
+     열두 달을 숫자표로도 함께 낸다 — 손님께 불러 드리려면 숫자가 있어야 한다.
+
+     ← → 로 옆 면적형으로 건너뛴다. 닫았다 다시 여는 수고를 덜려고 둔 것이다.
+     값 표시 고르개도 안에 두되, 바꾸는 값은 「시세 흐름」의 것과 같은 하나다. */
+  var MINI_D = null;              // 크게 열 때 쓰려고 작은 판의 자료를 남겨 둔다
+  var ZOOM = null;                // { i, chart }
+
+  function zoomKey(e){
+    if(!ZOOM) return;
+    if(e.key === 'Escape'){ e.preventDefault(); djZoomClose(); }
+    else if(e.key === 'ArrowLeft'){ e.preventDefault(); djZoomGo(-1); }
+    else if(e.key === 'ArrowRight'){ e.preventDefault(); djZoomGo(1); }
+  }
+  window.djZoom = function(i){
+    if(!MINI_D || !MINI_D.shown || !MINI_D.shown[i]) return;
+    if(!ZOOM){
+      var ov = document.createElement('div');
+      ov.id = 'dj-zoom';
+      //  판 바깥을 눌렀을 때만 닫는다 — 안을 누르다 닫히면 성가시다
+      ov.onclick = function(e){ if(e.target === ov) djZoomClose(); };
+      document.getElementById('dj-root').appendChild(ov);
+      document.addEventListener('keydown', zoomKey);
+    }
+    ZOOM = ZOOM || { i:0, chart:null };
+    ZOOM.i = i;
+    zoomPaint();
+  };
+  window.djZoomClose = function(){
+    if(!ZOOM) return;
+    if(ZOOM.chart){ try{ ZOOM.chart.destroy(); }catch(e){} }
+    document.removeEventListener('keydown', zoomKey);
+    var ov = document.getElementById('dj-zoom');
+    if(ov && ov.parentNode) ov.parentNode.removeChild(ov);
+    ZOOM = null;
+  };
+  window.djZoomGo = function(d){
+    if(!ZOOM || !MINI_D) return;
+    var n = MINI_D.shown.length, i = ZOOM.i + d;
+    if(i < 0 || i >= n) return;
+    ZOOM.i = i; zoomPaint();
+  };
+  //  값 표시를 바꾸면 아래 작은 판들도 같이 바뀌어야 한다 — 고르개는 하나다
+  window.djZoomVals = function(v){
+    st().flowVals = !!(+v); stSave();
+    if(CUR) draw();                 // draw() 끝의 miniRender 가 이 판도 다시 그린다
+  };
+
+  function zoomPaint(){
+    var ov = document.getElementById('dj-zoom');
+    if(!ov || !ZOOM || !MINI_D) return;
+    var S = K(), o = MINI_D.shown[ZOOM.i], W = MINI_D.win;
+    if(!o) return;
+    if(ZOOM.chart){ try{ ZOOM.chart.destroy(); }catch(e){} ZOOM.chart = null; }
+
+    var col = serColor(o.slot), all = !!st().flowVals;
+    var yo = (o.cm != null && o.pm) ? Math.round((o.cm / o.pm - 1) * 1000) / 10 : null;
+    var n = MINI_D.shown.length;
+
+    var h = '<div class="dj-zbox">'
+      + '<div class="dj-zhd">'
+      +   '<span style="display:inline-block;width:11px;height:11px;border-radius:3px;'
+      +     'background:' + col + '"></span>'
+      +   '<b style="font-size:16px">' + o.sqm + '㎡</b>'
+      +   '<span style="font-size:12.5px;color:var(--text3)">' + pyPlain(o.sqm) + '</span>'
+      +   (yo == null ? ''
+          : '<span class="dj-tag" style="background:' + (yo >= 0 ? '#ffebee' : '#e3f2fd')
+            + ';color:' + (yo >= 0 ? '#c62828' : '#1565c0') + '">1년 전 대비 '
+            + (yo > 0 ? '+' : '') + yo + '%</span>')
+      +   '<span style="font-size:11.5px;color:var(--text3)">'
+      +     esc(CUR ? CUR.nm : '') + ' · 최근 1년 ' + o.cur.n + '건'
+      +     (o.prev.n ? ' · 지난해 ' + o.prev.n + '건' : '') + '</span>'
+      +   '<span style="margin-left:auto;display:flex;gap:5px;align-items:center">'
+      +     '<span style="font-size:10.5px;color:var(--text3)">값</span>'
+      +     [[0,'끝점만'],[1,'전부']].map(function(x){
+              var on = (all === !!x[0]);
+              return '<button class="dj-zb" onclick="djZoomVals(' + x[0] + ')" style="'
+                + (on ? 'border-color:transparent;background:var(--accent);color:#fff' : '')
+                + '">' + x[1] + '</button>'; }).join('')
+      +     '<button class="dj-zb" onclick="djZoomGo(-1)"' + (ZOOM.i <= 0 ? ' disabled' : '')
+      +       ' title="이전 면적형 (←)">←</button>'
+      +     '<span style="font-size:11px;color:var(--text3)">' + (ZOOM.i + 1) + '/' + n + '</span>'
+      +     '<button class="dj-zb" onclick="djZoomGo(1)"' + (ZOOM.i >= n-1 ? ' disabled' : '')
+      +       ' title="다음 면적형 (→)">→</button>'
+      +     '<button class="dj-zb" onclick="djZoomClose()" title="닫기 (Esc)">✕ 닫기</button>'
+      +   '</span>'
+      + '</div>'
+      + '<div style="height:min(52vh,430px);position:relative">'
+      +   '<canvas id="dj-zchart"></canvas></div>';
+
+    //  숫자표 — 달마다 올해·지난해·차이를 나란히
+    h += '<div style="overflow-x:auto;margin-top:12px"><table style="font-size:11.5px">'
+      + '<thead><tr><th>계약월</th><th>최근 1년</th><th>건수</th>'
+      + '<th>지난해 같은 달</th><th>건수</th><th>차이</th></tr></thead><tbody>';
+    W.cur.forEach(function(m, i){
+      var a = o.cur.v[i], b = o.prev.v[i];
+      var d = (a != null && b) ? Math.round((a / b - 1) * 1000) / 10 : null;
+      h += '<tr><td style="text-align:left">' + esc(m.replace('-', '.')) + '</td>'
+        + '<td><b>' + (a != null ? amtTxt(a) : '·') + '</b></td>'
+        + '<td style="color:var(--text3)">' + (o.cur.c[i] || '·') + '</td>'
+        + '<td>' + (b != null ? amtTxt(b) : '·') + '</td>'
+        + '<td style="color:var(--text3)">' + (o.prev.c[i] || '·') + '</td>'
+        + '<td style="color:' + (d == null ? 'var(--text3)' : (d >= 0 ? '#c62828' : '#1565c0'))
+        +   ';font-weight:600">' + (d == null ? '—' : (d > 0 ? '+' : '') + d + '%') + '</td></tr>';
+    });
+    h += '</tbody></table></div>'
+      + '<div style="font-size:10.5px;color:var(--text3);margin-top:8px;line-height:1.55">'
+      + '「·」는 그 달에 거래가 없었다는 뜻입니다 — 값이 0이라는 뜻이 아닙니다. '
+      + '차이는 같은 달끼리 견준 것이고, 한쪽이 비면 내지 않습니다. '
+      + '←  → 로 옆 면적형으로 건너뛰고, Esc 로 닫습니다.'
+      + '</div></div>';
+    ov.innerHTML = h;
+
+    if(typeof Chart === 'undefined') return;
+    var cv = document.getElementById('dj-zchart'); if(!cv) return;
+    var labels = W.cur.map(function(m){ return m.slice(2).replace('-', '.'); });
+    var sets = [];
+    if(o.prev.n) sets.push({
+      label:'지난해 같은 달', data:o.prev.v, _cnt:o.prev.c, _ms:W.prev,
+      _side:1, _ink:grayInk(),
+      borderColor:grayC(), backgroundColor:grayC(), borderWidth:2, borderDash:[6,4],
+      tension:.25, fill:false, pointRadius:3.4, pointHoverRadius:7, spanGaps:true });
+    sets.push({
+      label:'최근 1년', data:o.cur.v, _cnt:o.cur.c, _ms:W.cur, _side:-1,
+      borderColor:col, backgroundColor:col, borderWidth:2.8,
+      tension:.25, fill:false, pointRadius:4.2, pointHoverRadius:8, spanGaps:true });
+    try{
+      ZOOM.chart = new Chart(cv, {
+        type:'line', data:{ labels:labels, datasets:sets },
+        plugins:[ valsPlugin(all) ],
+        options:{
+          responsive:true, maintainAspectRatio:false,
+          interaction:{ mode:'index', intersect:false },
+          plugins:{
+            legend:{ display:true, position:'bottom',
+              labels:{ boxWidth:11, boxHeight:11, usePointStyle:true,
+                       font:{ size:11.5 }, padding:12 } },
+            tooltip:{ callbacks:{
+              label: function(cx){
+                var ds = cx.dataset, c = (ds._cnt || [])[cx.dataIndex] || 0;
+                var m = (ds._ms || [])[cx.dataIndex] || '';
+                return ds.label + ' ' + m + '  ' + amtTxt(cx.parsed.y) + ' (' + c + '건)';
+              } } }
+          },
+          scales:{
+            y:{ ticks:{ callback:function(v, i, ts){ return axisTxt(v, ts); }, font:{ size:11 } },
+                grace:'12%', grid:{ color:'rgba(128,128,128,.16)' } },
+            x:{ ticks:{ font:{ size:11 } }, grid:{ display:false } }
+          }
+        }
+      });
+    }catch(e){ console.warn('[단지 브리핑] 크게 보기 실패', e); }
   }
 
   function recentTable(ST, eok){
@@ -26695,6 +26910,534 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
       + '</tbody></table></div></div>';
   }
 
+  /* ══ 공시가격 · 일조 ═════════════════════════════════════════════════
+     브리핑 아래에 늘 펼쳐 두지 않는다. 공시가격은 호(戶)마다 한 줄이라 한 단지에
+     수백~수천 줄이고, 일조는 그릴 때마다 무겁다. 단추를 눌렀을 때만 펼친다 —
+     MR.K 가 「공시가격 불러오기」·「일조 시뮬레이션」을 단추로 둔 것과 같은 꼴이다.
+
+     자료가 어디서 오는가 — 이 칸의 전부다.
+       공시가격 : 공식 오픈API가 없다. 부동산공시가격알리미(realtyprice.kr)는 웹
+                  조회만 되고, 공공데이터포털에는 파일(CSV·엑셀)로만 올라온다.
+                  그래서 「올리면 읽는다」 — 매매현황판 엑셀과 같은 방식이고,
+                  공시가격은 연 1회만 바뀌니 이걸로 충분하다.
+       실거래   : 이미 브리핑이 받아 둔 것을 그대로 쓴다. 다시 부르지 않는다.
+       일조     : 브이월드(V-World) 공간정보 오픈API. 인증키가 도메인 등록제라
+                  깃허브 페이지 주소를 등록해야 하고, 브라우저에서 바로 부를 수
+                  있는지(CORS)를 먼저 확인해야 한다 — 우리는 대신 불러 줄 서버가
+                  없다. 그 시험 단추를 두었다. */
+  var VWKEY  = 'sd_vworld_key';
+  var KBIDX  = 'sd_kb_idx';
+  var KBPRE  = 'sd_kb_';
+  var KB     = null;        // { danji, rows:[{d,h,f,l,a,p}], at, year }
+  var KBIDXL = [];
+  var KBNOTE = '';          // 파일에서 무엇을 무엇으로 읽었는지 — 다시 그려도 남는다
+  var KBFOR  = '';          // KB 가 어느 단지 것인지
+
+  function kbSlug(nm){ return norm(nm).replace(/[^0-9A-Za-z가-힣]/g,'').slice(0, 40); }
+  function kbNum(v){
+    var n = parseFloat(String(v==null?'':v).replace(/[^0-9.\-]/g,''));
+    return isNaN(n) ? null : n;
+  }
+  /*  공시가격은 파일마다 원·만원·백만원으로 적힌다. 만원으로 통일한다. */
+  function kbMan(v){
+    var n = kbNum(v); if(n == null || n <= 0) return null;
+    if(n >= 10000000) return Math.round(n / 10000);
+    if(n >= 10000)    return Math.round(n);
+    return Math.round(n * 100);
+  }
+  //  「1203호」 → 층 12 · 라인 03
+  function kbHo(ho, fl){
+    var t = String(ho||'').replace(/[^0-9]/g,'');
+    if(!t) return { f: fl==null?null:fl, l:'' };
+    if(t.length <= 2) return { f: fl==null?null:fl, l:t };
+    return { f: parseInt(t.slice(0, t.length-2), 10), l: t.slice(-2) };
+  }
+
+  async function kbLoad(nm){
+    if(KBFOR === nm) return KB;
+    KBFOR = nm; KB = null;
+    var S = K();
+    try{
+      var r = await S.sget(KBIDX);
+      KBIDXL = r ? JSON.parse(r) : [];
+      if(!Array.isArray(KBIDXL)) KBIDXL = [];
+    }catch(e){ KBIDXL = []; }
+    var hit = KBIDXL.filter(function(o){ return sameDanji(o.nm, nm); })[0];
+    if(!hit) return null;
+    try{
+      var v = await S.sget(KBPRE + hit.key);
+      var j = v ? JSON.parse(v) : null;
+      if(j && Array.isArray(j.rows) && j.rows.length) KB = j;
+    }catch(e){}
+    return KB;
+  }
+
+  window.djKb = function(){
+    var t = st(); t.kbOn = !t.kbOn; stSave();
+    if(t.kbOn && CUR) kbLoad(CUR.nm).then(paintKb); else paintKb();
+  };
+  window.djSun = function(){ var t = st(); t.sunOn = !t.sunOn; stSave(); paintSun(); };
+
+  function advBox(){
+    return '<div class="dj-card" id="dj-kbcard">'
+      + '<div class="dj-h">🏢 공동주택 공시가격 '
+      +   '<span style="font-size:10.5px;font-weight:400;color:var(--text3)">'
+      +   '호(戶)별 공시가격을 층·라인 배치도로 — 재산세·로열층 확인용 (실거래가 아닙니다)</span>'
+      +   '<button class="dj-bs" style="margin-left:auto" onclick="djKb()">'
+      +     (st().kbOn ? '▲ 접기' : '📥 공시가격 불러오기') + '</button>'
+      + '</div><div id="dj-kbbox"></div></div>'
+      + '<div class="dj-card" id="dj-suncard">'
+      + '<div class="dj-h">☀️ 단지 일조 시뮬레이션 '
+      +   '<span class="dj-tag" style="background:#fff8e1;color:#e65100">준비 중</span>'
+      +   '<span style="font-size:10.5px;font-weight:400;color:var(--text3)">'
+      +   '주변 건물을 세워 동지·춘분·하지의 시각별 그림자와 동별 일조(9~15시)를 봅니다</span>'
+      +   '<button class="dj-bs" style="margin-left:auto" onclick="djSun()">'
+      +     (st().sunOn ? '▲ 접기' : '☀️ 열어 보기') + '</button>'
+      + '</div><div id="dj-sunbox"></div></div>';
+  }
+
+  /*  ── 컬럼 찾기 ────────────────────────────────────────────────────
+      공시가격 파일은 해마다·기관마다 머리글이 다르다. 고정 이름 목록으로는 놓친다.
+      이름에 무엇이 들어 있는지로 찾고, 무엇을 무엇으로 봤는지 화면에 적는다.
+      말없이 엉뚱한 칸을 집으면 값이 통째로 틀리는데 아무도 모른다. */
+  function kbCols(head){
+    function pick(tests, avoid){
+      for(var i=0;i<head.length;i++){
+        var k = String(head[i]||'');
+        if(avoid && avoid.some(function(a){ return k.indexOf(a) >= 0; })) continue;
+        if(tests.some(function(t){ return k.indexOf(t) >= 0; })) return i;
+      }
+      return -1;
+    }
+    return {
+      sgg:   pick(['시군구','시·군·구','자치구']),
+      dong0: pick(['법정동','읍면동'], ['동명','동 명']),
+      danji: pick(['단지명','아파트','공동주택명','건물명','단지'], ['동','호']),
+      dong:  pick(['동명','동 명','동번호'], ['법정동','읍면동']),
+      ho:    pick(['호명','호 명','호번호','호수'], []),
+      floor: pick(['층'], ['층수제한']),
+      area:  pick(['전용면적','전용','면적'], ['대지','공급','계약']),
+      price: pick(['공시가격','공동주택가격','산정가격','가격'], ['기준일','변동'])
+    };
+  }
+  function kbColNote(head, C, sample){
+    var LBL = { danji:'단지명', dong:'동', ho:'호', floor:'층', area:'전용면적',
+                price:'공시가격', sgg:'시군구', dong0:'법정동' };
+    var miss = ['danji','ho','price'].filter(function(k){ return C[k] < 0; });
+    var h = '<div style="font-size:11px;line-height:1.8;background:var(--bg3);border-radius:9px;'
+      + 'padding:10px 12px;margin-top:9px"><b>파일에서 이렇게 읽었습니다</b><br>'
+      + Object.keys(LBL).map(function(k){
+          var i = C[k];
+          return '· ' + LBL[k] + ' → '
+            + (i >= 0 ? '<b>' + esc(head[i]) + '</b>'
+                + (sample && sample[i] != null
+                    ? ' <span style="color:var(--text3)">(예: '
+                      + esc(String(sample[i]).slice(0,18)) + ')</span>' : '')
+                : '<span style="color:#c62828">못 찾음</span>');
+        }).join('<br>') + '</div>';
+    if(miss.length)
+      h += '<div style="font-size:11.5px;color:#c62828;margin-top:6px">'
+        + '꼭 있어야 하는 칸(' + miss.map(function(k){ return LBL[k]; }).join(', ')
+        + ')을 못 찾았습니다 — 머리글이 다른 파일일 수 있습니다.</div>';
+    return h;
+  }
+
+  var KBP = null;
+  function kbStart(){ KBP = { rows:[], scanned:0, head:null, C:null, sample:null, other:0 }; }
+  function kbFeed(arr, keep, nm){
+    var P = KBP;
+    if(!P.head){
+      P.head = arr.map(function(x){ return String(x==null?'':x).trim(); });
+      P.C = kbCols(P.head);
+      return;
+    }
+    P.scanned++;
+    var C = P.C;
+    if(!P.sample) P.sample = arr;
+    if(C.danji < 0 || C.price < 0) return;
+    if(keep){
+      var reg = (C.sgg >= 0 ? String(arr[C.sgg]||'') : '')
+              + ' ' + (C.dong0 >= 0 ? String(arr[C.dong0]||'') : '');
+      var gu = sggNm(keep).split(' ').pop();
+      if(gu && gu !== keep && reg.indexOf(gu) < 0){ P.other++; return; }
+    }
+    if(!sameDanji(arr[C.danji], nm)){ P.other++; return; }
+    var price = kbMan(arr[C.price]); if(price == null) return;
+    var fl = C.floor >= 0 ? kbNum(arr[C.floor]) : null;
+    var hp = kbHo(C.ho >= 0 ? arr[C.ho] : '', fl);
+    P.rows.push({
+      d: C.dong >= 0 ? String(arr[C.dong]||'').replace(/\s/g,'') : '',
+      h: C.ho   >= 0 ? String(arr[C.ho]||'').replace(/\s/g,'')   : '',
+      f: hp.f, l: hp.l,
+      a: C.area >= 0 ? kbNum(arr[C.area]) : null,
+      p: price
+    });
+  }
+  //  따옴표 안의 쉼표를 지킨다
+  function kbSplit(line){
+    var out = [], cur = '', q = false;
+    for(var i=0;i<line.length;i++){
+      var c = line[i];
+      if(q){
+        if(c === '"'){ if(line[i+1] === '"'){ cur += '"'; i++; } else q = false; }
+        else cur += c;
+      }else{
+        if(c === '"') q = true;
+        else if(c === ',' || c === '\t'){ out.push(cur); cur = ''; }
+        else cur += c;
+      }
+    }
+    out.push(cur);
+    return out.map(function(x){ return x.trim(); });
+  }
+
+  window.djKbFile = function(input){
+    var f = input.files && input.files[0]; if(!f) return;
+    input.value = '';
+    if(!CUR){ msg('먼저 단지를 고르세요.', 'warn'); return; }
+    var nm = CUR.nm, keep = st().sgg;
+    if(/\.xlsx?$/i.test(f.name)) kbXlsx(f, keep, nm);
+    else kbCsv(f, keep, nm);
+  };
+
+  //  CSV 는 줄 단위로 끊어 읽는다 — 큰 파일에도 브라우저가 멈추지 않게
+  function kbCsv(file, keep, nm){
+    kbStart();
+    var CH = 4*1024*1024, off = 0, tail = '', enc = 'utf-8', tried = false;
+    function prog(t){ var e = document.getElementById('dj-kbprog'); if(e) e.textContent = t; }
+    function step(){
+      if(off >= file.size) return void kbDone(nm);
+      var r = new FileReader();
+      r.onload = function(e){
+        var lines = (tail + e.target.result).split(/\r?\n/);
+        tail = lines.pop();
+        lines.forEach(function(ln){ if(ln.trim()) kbFeed(kbSplit(ln), keep, nm); });
+        //  머리글이 깨졌으면 CP949 파일이다 — 한 번만 바꿔 다시 읽는다
+        if(!tried && KBP.head && KBP.head.join('').indexOf('\uFFFD') >= 0){
+          tried = true; enc = 'euc-kr'; off = 0; tail = ''; kbStart();
+          prog('글자 코드를 EUC-KR 로 바꿔 다시 읽습니다…');
+          return setTimeout(step, 0);
+        }
+        off += CH;
+        prog('읽는 중… ' + Math.min(100, Math.round(off/file.size*100)) + '% · 이 단지 '
+          + fmtN(KBP.rows.length) + '호');
+        setTimeout(step, 0);
+      };
+      r.onerror = function(){ msg('파일을 읽지 못했습니다.', 'no'); };
+      r.readAsText(file.slice(off, off + CH), enc);
+    }
+    step();
+  }
+  function kbXlsx(file, keep, nm){
+    if(typeof XLSX === 'undefined'){ msg('엑셀 기능을 불러오지 못했습니다.', 'no'); return; }
+    var e0 = document.getElementById('dj-kbprog');
+    if(e0) e0.textContent = '엑셀을 여는 중… (큰 파일은 한참 걸립니다)';
+    var r = new FileReader();
+    r.onload = function(e){
+      try{
+        kbStart();
+        var wb = XLSX.read(e.target.result, { type:'array' });
+        var aoa = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],
+          { header:1, raw:true, defval:null });
+        aoa.forEach(function(row){ if(row && row.length) kbFeed(row, keep, nm); });
+        kbDone(nm);
+      }catch(err){ msg('엑셀을 읽지 못했습니다 — ' + (err && err.message || err), 'no'); }
+    };
+    r.readAsArrayBuffer(file);
+  }
+
+  async function kbDone(nm){
+    var P = KBP, S = K();
+    var e0 = document.getElementById('dj-kbprog'); if(e0) e0.textContent = '';
+    if(P.head) KBNOTE = kbColNote(P.head, P.C, P.sample);
+    if(!P.rows.length){
+      KB = null; paintKb();
+      msg('이 파일에서 「' + nm + '」 을(를) 못 찾았습니다 — 줄 ' + fmtN(P.scanned)
+        + '개를 읽었고 그 중 ' + fmtN(P.other) + '개는 다른 단지·지역이었습니다. '
+        + '읽은 칸이 맞는지 봐 주세요.', 'no');
+      return;
+    }
+    //  같은 호가 여러 번 나오면 마지막 것만 (연도가 겹쳐 적힌 파일이 있다)
+    var byHo = {};
+    P.rows.forEach(function(r){ byHo[(r.d||'') + '|' + (r.h||'')] = r; });
+    var rows = Object.keys(byHo).map(function(k){ return byHo[k]; });
+
+    KB = { danji:nm, sgg:st().sgg, rows:rows, at:new Date().toISOString(),
+           year:new Date().getFullYear() };
+    KBFOR = nm;
+    var key = kbSlug(nm), ok = false;
+    try{ ok = await S.sset(KBPRE + key, JSON.stringify(KB)); }catch(e){}
+    if(ok !== false){
+      if(!KBIDXL.filter(function(o){ return o.key === key; }).length){
+        KBIDXL.push({ key:key, nm:nm, sgg:st().sgg, n:rows.length });
+        try{ await S.sset(KBIDX, JSON.stringify(KBIDXL)); }catch(e){}
+      }
+      msg(fmtN(rows.length) + '호를 담았습니다 — 사무소 모든 컴퓨터에서 같이 봅니다.', 'ok');
+    }else{
+      msg(fmtN(rows.length) + '호를 읽었습니다 (담지는 못해 이 컴퓨터에서만 보입니다).', 'warn');
+    }
+    paintKb();
+  }
+
+  window.djKbDrop = async function(){
+    if(!KB) return;
+    var S = K(), key = kbSlug(KB.danji);
+    try{ await S.sset(KBPRE + key, ''); }catch(e){}
+    KBIDXL = KBIDXL.filter(function(o){ return o.key !== key; });
+    try{ await S.sset(KBIDX, JSON.stringify(KBIDXL)); }catch(e){}
+    KB = null; KBNOTE = ''; msg('비웠습니다.', 'ok');
+    paintKb();
+  };
+
+  /*  재산세는 「어림셈」이다. 공정시장가액비율·세율·특례는 해마다 바뀐다.
+      그래서 값을 화면에서 고칠 수 있게 두고, 무엇을 넣어 셈했는지 보인다.
+      손님께 세액을 단정해 말씀드리면 안 되는 자리다. */
+  var KBTAX = { ratio:60, city:0.14, edu:20, special:false };
+  window.djKbTax = function(k, v){
+    if(k === 'special') KBTAX.special = !KBTAX.special;
+    else KBTAX[k] = parseFloat(v) || 0;
+    paintKb();
+  };
+  function kbPropTax(gong){
+    var base = Math.round(gong * (KBTAX.ratio/100)), t;
+    if(KBTAX.special){
+      if(base <= 6000) t = base * 0.0005;
+      else if(base <= 15000) t = 3 + (base-6000) * 0.001;
+      else if(base <= 30000) t = 12 + (base-15000) * 0.002;
+      else t = 42 + (base-30000) * 0.0035;
+    }else{
+      if(base <= 6000) t = base * 0.001;
+      else if(base <= 15000) t = 6 + (base-6000) * 0.0015;
+      else if(base <= 30000) t = 19.5 + (base-15000) * 0.0025;
+      else t = 57 + (base-30000) * 0.004;
+    }
+    return t + base * (KBTAX.city/100) + t * (KBTAX.edu/100);
+  }
+
+  function paintKb(){
+    var box = document.getElementById('dj-kbbox'); if(!box) return;
+    //  단추 이름도 함께 맞춘다
+    var card = document.getElementById('dj-kbcard');
+    var btn = card && card.querySelector('button[onclick="djKb()"]');
+    if(btn) btn.textContent = st().kbOn ? '▲ 접기' : '📥 공시가격 불러오기';
+    if(!st().kbOn){ box.innerHTML = ''; return; }
+
+    var S = K(), have = KB && KB.rows && KB.rows.length;
+    var h = '';
+    if(!have){
+      h += '<div style="font-size:12px;line-height:1.75;color:var(--text2)">'
+        + '공동주택 공시가격은 <b>공식 오픈API가 없습니다.</b> 부동산공시가격알리미'
+        + '(realtyprice.kr)는 웹 조회만 되고, 공공데이터포털에는 <b>파일(CSV·엑셀)</b>로만 '
+        + '올라옵니다. 그래서 파일을 올리면 이 칸이 읽어 파이어베이스에 담습니다 — '
+        + '매매현황판 엑셀과 같은 방식이고, 공시가격은 <b>연 1회</b>만 바뀌니 이걸로 충분합니다.'
+        + '</div>'
+        + '<div style="font-size:11px;color:var(--text3);line-height:1.7;margin-top:8px">'
+        + '전국 파일은 1,500만 줄이 넘습니다 — <b>시·도(인천) 단위 파일</b>을 받으시면 가볍습니다. '
+        + 'CSV 는 줄 단위로 끊어 읽으므로 큰 파일도 화면이 멈추지 않고, 읽으면서 '
+        + '<b>' + esc(sggNm(st().sgg)) + ' · ' + esc(CUR ? CUR.nm : '') + '</b> 만 남깁니다.'
+        + '</div>';
+    }else{
+      h += '<div style="font-size:11px;color:var(--text3);margin-bottom:9px">'
+        + esc(String(KB.year||'')) + '년 · ' + fmtN(KB.rows.length) + '호 · '
+        + esc(String(KB.at||'').slice(0,10)) + ' 올림</div>';
+    }
+    h += '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:9px">'
+      + '<label class="dj-bp" style="cursor:pointer">'
+      +   (have ? '다시 올리기' : '📄 공시가격 파일 고르기')
+      +   '<input type="file" accept=".csv,.txt,.xlsx,.xls" style="display:none" '
+      +   'onchange="djKbFile(this)"></label>'
+      + (have ? '<button class="dj-bs" onclick="djKbDrop()">이 단지 자료 비우기</button>' : '')
+      + '<span id="dj-kbprog" style="font-size:11.5px;color:#1565c0"></span>'
+      + '</div>' + (KBNOTE || '');
+
+    if(have) h += kbTables();
+    box.innerHTML = h;
+  }
+
+  function kbTables(){
+    var S = K(), rows = KB.rows;
+    //  실거래는 브리핑이 이미 받아 둔 것을 쓴다 — 국토부를 다시 부르지 않는다
+    var real = {};
+    try{
+      var ST = S.stats(CUR.rows, null);
+      (ST.byArea || []).forEach(function(a){ real[a.sqm] = a; });
+    }catch(e){}
+
+    var byA = {};
+    rows.forEach(function(r){ var k = r.a ? Math.round(r.a) : 0; (byA[k] = byA[k] || []).push(r); });
+    var aks = Object.keys(byA).map(Number).sort(function(x,y){ return x-y; });
+
+    var h = '<div style="display:flex;gap:9px;align-items:center;flex-wrap:wrap;margin:13px 0 9px;'
+      + 'font-size:11.5px;background:var(--bg3);border-radius:9px;padding:9px 12px">'
+      + '<b>재산세 어림셈</b>'
+      + '<label>공정시장가액비율 <input class="dj-in" style="width:56px;display:inline-block;'
+      +   'padding:3px 6px;font-size:11.5px" value="'+KBTAX.ratio+'" '
+      +   'onchange="djKbTax(\'ratio\',this.value)">%</label>'
+      + '<label>도시지역분 <input class="dj-in" style="width:52px;display:inline-block;'
+      +   'padding:3px 6px;font-size:11.5px" value="'+KBTAX.city+'" '
+      +   'onchange="djKbTax(\'city\',this.value)">%</label>'
+      + '<label>지방교육세 <input class="dj-in" style="width:48px;display:inline-block;'
+      +   'padding:3px 6px;font-size:11.5px" value="'+KBTAX.edu+'" '
+      +   'onchange="djKbTax(\'edu\',this.value)">%</label>'
+      + '<label style="cursor:pointer"><input type="checkbox" onchange="djKbTax(\'special\')"'
+      +   (KBTAX.special?' checked':'') + '> 1세대1주택 특례세율</label></div>';
+
+    h += '<div style="overflow-x:auto"><table id="dj-kbsum"><thead><tr>'
+      + '<th>전용</th><th>' + (PY.mode === '분양' ? '분양평형' : '전용평형') + '</th>'
+      + '<th>호수</th><th>공시가격 중위</th><th>최저~최고</th>'
+      + '<th>실거래 중위</th><th>공시/실거래</th><th>재산세 어림(연)</th>'
+      + '</tr></thead><tbody>';
+    aks.forEach(function(k){
+      var g = byA[k], ps = g.map(function(r){ return r.p; });
+      var m = S.med(ps), lo = Math.min.apply(null, ps), hi = Math.max.apply(null, ps);
+      var d = real[k] || null;
+      var rate = (m && d && d.med) ? Math.round(m / d.med * 1000)/10 : null;
+      h += '<tr><td>' + (k ? k + '㎡' : '—') + '</td>'
+        + '<td>' + (k ? pyTxt(k) : '—') + '</td>'
+        + '<td>' + fmtN(g.length) + '</td>'
+        + '<td><b>' + S.eok(m) + '</b></td>'
+        + '<td style="color:var(--text3)">' + S.eok(lo) + ' ~ ' + S.eok(hi) + '</td>'
+        + '<td>' + (d && d.med ? S.eok(d.med) + ' <span style="color:var(--text3)">'
+              + d.cnt + '건</span>' : '—') + '</td>'
+        + '<td>' + (rate != null ? '<b>' + rate + '%</b>' : '—') + '</td>'
+        + '<td>' + (m ? fmtN(Math.round(kbPropTax(m))) + '만' : '—') + '</td></tr>';
+    });
+    h += '</tbody></table></div>'
+      + '<div style="font-size:10.5px;color:var(--text3);margin-top:7px;line-height:1.7">'
+      + '<b>재산세는 어림셈입니다.</b> 공정시장가액비율·세율·특례는 해마다 바뀌고 1세대1주택 '
+      + '여부, 세부담상한, 감면에 따라 달라집니다. 위 칸의 값으로 셈한 참고치일 뿐이니 '
+      + '<b>손님께 세액을 단정해 말씀하지 마시고</b> 고지서나 세무사 확인을 권해 주십시오. '
+      + '<b>공시가격은 실거래가가 아닙니다</b> — 재산세·건강보험료 산정의 바탕입니다. '
+      + '실거래 중위는 이 브리핑이 지금 보고 있는 기간(' + esc(periodLabel()) + ') 기준입니다.'
+      + '</div>';
+
+    // 호별 층·라인 배치도
+    var byD = {};
+    rows.forEach(function(r){ (byD[r.d || '—'] = byD[r.d || '—'] || []).push(r); });
+    var dks = Object.keys(byD).sort(function(a,b){ return (parseInt(a,10)||0) - (parseInt(b,10)||0); });
+    h += '<div class="dj-h" style="margin:16px 0 9px">🏢 호별 배치도 '
+      + '<span style="font-size:10.5px;font-weight:400;color:var(--text3)">'
+      + '세로 = 층 · 가로 = 라인 · 진할수록 높은 값 (동별)</span></div>';
+    dks.forEach(function(dk){
+      var g = byD[dk], ls = {}, fs = {};
+      g.forEach(function(r){ if(r.l) ls[r.l] = 1; if(r.f) fs[r.f] = 1; });
+      var lines = Object.keys(ls).sort();
+      var floors = Object.keys(fs).map(Number).sort(function(a,b){ return b-a; });
+      if(!lines.length || !floors.length) return;
+      var ps = g.map(function(r){ return r.p; });
+      var lo = Math.min.apply(null, ps), hi = Math.max.apply(null, ps), sp = hi - lo || 1;
+      var cell = {};
+      g.forEach(function(r){ if(r.f && r.l) cell[r.f + '|' + r.l] = r; });
+      h += '<div style="margin-bottom:14px"><div style="font-size:12px;font-weight:700;margin-bottom:5px">'
+        + esc(dk) + (/[0-9]$/.test(dk) ? '동' : '')
+        + ' <span style="font-weight:400;color:var(--text3)">' + g.length + '호 · '
+        + S.eok(lo) + ' ~ ' + S.eok(hi) + '</span></div>'
+        + '<div style="overflow-x:auto"><table class="kb-map"><thead><tr><th>층</th>'
+        + lines.map(function(l){ return '<th>' + esc(l) + '</th>'; }).join('')
+        + '</tr></thead><tbody>';
+      floors.forEach(function(f){
+        h += '<tr><td class="kb-f">' + f + '</td>';
+        lines.forEach(function(l){
+          var r = cell[f + '|' + l];
+          if(!r) return void (h += '<td class="kb-x"></td>');
+          var t = (r.p - lo) / sp;
+          h += '<td class="kb-c" style="background:rgba(69,39,160,' + (0.07 + t*0.4).toFixed(3) + ');'
+            + 'color:' + (isDark() ? '#e8e3ff' : '#241357') + '" '
+            + 'title="' + esc(dk) + ' ' + esc(r.h) + ' · ' + (r.a ? r.a + '㎡ · ' : '')
+            + S.eok(r.p) + '">' + S.eok(r.p) + '</td>';
+        });
+        h += '</tr>';
+      });
+      h += '</tbody></table></div></div>';
+    });
+    h += '<div style="font-size:10.5px;color:var(--text3);line-height:1.7">'
+      + '빈 칸은 그 층·라인에 호가 없거나 파일에 없는 것입니다. 칸에 마우스를 올리면 '
+      + '동·호·전용면적이 나옵니다. 같은 층에서 라인마다 값이 다르면 향·조망 차이일 때가 '
+      + '많습니다 — 로열층·로열동을 짚을 때 쓰십시오.</div>';
+    return h;
+  }
+
+  // ── 일조 ────────────────────────────────────────────────────────────
+  function paintSun(){
+    var box = document.getElementById('dj-sunbox'); if(!box) return;
+    var card = document.getElementById('dj-suncard');
+    var btn = card && card.querySelector('button[onclick="djSun()"]');
+    if(btn) btn.textContent = st().sunOn ? '▲ 접기' : '☀️ 열어 보기';
+    if(!st().sunOn){ box.innerHTML = ''; return; }
+    box.innerHTML =
+      '<div style="font-size:12px;line-height:1.75;background:#fff8e1;border:1px solid #ffe082;'
+      +   'border-radius:9px;padding:11px 13px;color:#5d4037">'
+      +   '<b>만들기 전에 두 가지를 확인해야 합니다.</b><br>'
+      +   '① 브이월드 인증키는 <b>도메인 등록제</b>입니다 — 발급받으실 때 '
+      +   '<b>songdojeil-glitch.github.io</b> 를 서비스 URL로 등록하셔야 합니다.<br>'
+      +   '② 브이월드를 <b>브라우저에서 바로</b> 부를 수 있어야 합니다. 우리 시스템은 '
+      +   '깃허브 페이지 위의 정적 화면이라 대신 불러 줄 서버가 없습니다. '
+      +   '(MR.K 가 이 기능에 「로그인하고 보기」를 걸어 둔 것도 같은 까닭입니다 — 그쪽은 서버가 대신 부릅니다.)'
+      + '</div>'
+      + '<div style="margin-top:11px;display:flex;gap:7px;align-items:center;flex-wrap:wrap">'
+      +   '<input id="dj-vwkey" type="password" class="dj-in" style="width:280px" '
+      +     'placeholder="브이월드 인증키 붙여넣기">'
+      +   '<button class="dj-bp" onclick="djVwSave()">저장</button>'
+      +   '<button class="dj-bs" onclick="djVwTest()">🔌 연결 시험</button>'
+      + '</div>'
+      + '<div style="font-size:10.5px;color:var(--text3);margin-top:6px">'
+      +   '인증키는 파이어베이스에 담겨 사무소 컴퓨터끼리 함께 씁니다. '
+      +   '<b>채팅창에는 절대 붙여넣지 마십시오.</b></div>'
+      + '<div id="dj-vwout" style="margin-top:10px"></div>';
+    K().sget(VWKEY).then(function(k){
+      var o = document.getElementById('dj-vwout');
+      if(k && o) o.innerHTML = '<span style="font-size:11.5px;color:#2e7d32">'
+        + '✔ 인증키가 담겨 있습니다. 「연결 시험」을 눌러 브라우저에서 바로 부를 수 있는지 확인해 주세요.</span>';
+    });
+  }
+  window.djVwSave = async function(){
+    var i = document.getElementById('dj-vwkey');
+    var v = i ? i.value.trim() : '';
+    if(!v){ msg('인증키를 넣어 주세요.', 'warn'); return; }
+    try{ await K().sset(VWKEY, v); if(i) i.value = '';
+      msg('브이월드 인증키를 담았습니다.', 'ok'); }
+    catch(e){ msg('담지 못했습니다 — ' + (e && e.message || e), 'no'); }
+  };
+  window.djVwTest = async function(){
+    var out = document.getElementById('dj-vwout'); if(!out) return;
+    var key = await K().sget(VWKEY);
+    if(!key){ out.innerHTML = '<span style="color:#c62828;font-size:11.5px">'
+      + '먼저 인증키를 저장해 주세요.</span>'; return; }
+    out.innerHTML = '<span style="font-size:11.5px;color:#1565c0">부르는 중…</span>';
+    //  건물 한 겹을 아주 작은 범위로 불러 본다 — 되는지만 보면 된다
+    var g = null;
+    try{ var o = danjiAgg().filter(function(x){ return x.name === CUR.nm; })[0];
+         if(o) g = K().geo()[o.key] || null; }catch(e){}
+    var lat = (g && g.lat) || 37.3835, lng = (g && g.lng) || 126.6570, d = 0.0015;
+    var u = 'https://api.vworld.kr/req/data?service=data&request=GetFeature&format=json'
+      + '&size=5&page=1&data=LT_C_SPBD&geomFilter=BOX(' + (lng-d) + ',' + (lat-d)
+      + ',' + (lng+d) + ',' + (lat+d) + ')&key=' + encodeURIComponent(key)
+      + '&domain=' + encodeURIComponent(location.hostname || 'localhost');
+    try{
+      var r = await fetch(u);
+      var t = await r.text(), j = null;
+      try{ j = JSON.parse(t); }catch(e){}
+      var stat = j && j.response && j.response.status;
+      out.innerHTML = '<div style="font-size:11.5px;line-height:1.75;background:var(--bg3);'
+        + 'border-radius:9px;padding:10px 12px">'
+        + '<b>브라우저에서 바로 불렀습니다 (HTTP ' + r.status + ')</b><br>'
+        + (stat === 'OK'
+            ? '<span style="color:#2e7d32">✔ 건물 자료가 왔습니다 — 이 방식으로 만들 수 있습니다.</span>'
+            : '<span style="color:#e65100">답은 왔지만 상태가 「' + esc(String(stat||'?'))
+              + '」 입니다 — 인증키나 도메인 등록을 확인해 주세요.</span>')
+        + '<div style="color:var(--text3);margin-top:5px;word-break:break-all">'
+        + esc(t.slice(0, 260)) + '</div></div>';
+    }catch(e){
+      out.innerHTML = '<div style="font-size:11.5px;line-height:1.75;background:#fdeeea;'
+        + 'border:1px solid #eaa694;border-radius:9px;padding:10px 12px;color:#5d4037">'
+        + '<b style="color:#a83b22">브라우저에서 바로 부르지 못했습니다.</b><br>'
+        + esc(String(e && e.message || e)) + '<br>'
+        + '<span style="color:#7b6b63">CORS 차단이면 정적 화면으로는 직접 못 부릅니다. '
+        + '그때는 건물 자료도 <b>파일로 올리는 방식</b>으로 만들겠습니다 — '
+        + '송도 건물은 잘 바뀌지 않으니 실용적입니다.</span></div>';
+    }
+  };
+
   // ── 블로그용 복사 ───────────────────────────────────────────────────
   window.djCopy = function(){
     if(!CUR) return;
@@ -26810,9 +27553,27 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     return true;
   }
 
+  /*  주소로 단지를 받아 연다 — 공시가격·일조 화면의 「↩ 브리핑으로」가 돌아오는 길.
+      한 번만 한다. 주소를 지워 두어야 새로고침할 때마다 다시 받지 않는다. */
+  function fromUrl(){
+    var nm = '', sgg = '';
+    try{
+      var q = new URLSearchParams(location.search);
+      nm = q.get('danji') || ''; sgg = q.get('sgg') || '';
+    }catch(e){}
+    if(!nm) return;
+    if(sgg) st().sgg = sgg;
+    st().q = nm; stSave();
+    try{ history.replaceState(null, '', location.pathname); }catch(e){}
+    setTimeout(function(){
+      try{ if(typeof window.sw === 'function') window.sw(TAB); djGoName(nm); }
+      catch(e){ console.warn('[단지 브리핑] 주소로 열기 실패', e); }
+    }, 700);
+  }
+
   var tries = 0;
   (function tick(){
-    if(build() && hookSw()) return;
+    if(build() && hookSw()){ fromUrl(); return; }
     if(tries++ < 120) setTimeout(tick, 250);
   })();
 
@@ -26822,6 +27583,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     chart:function(){ return CH; }, minis:function(){ return MINIS; },
     py:function(){ return PY; }, same:sameDanji,
     sel:function(){ return SELNM; }, pins:function(){ return PINEL; },
+    zoom:function(){ return ZOOM; }, miniD:function(){ return MINI_D; },
     wins:function(){ return miniWins(); } };
 })();
 </script>
