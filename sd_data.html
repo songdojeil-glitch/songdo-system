@@ -19353,7 +19353,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.09.26-7';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.09.26-8';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_data.html';      // 이 파일 이름
   var SD_NAME = '실거래가';      // 사람이 부르는 이름
 
@@ -25822,15 +25822,23 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     return '<div class="dj-card"><div class="dj-h">📈 시세 흐름 '
       + '<span style="font-size:10.5px;font-weight:400;color:var(--text3)">'
       +   '면적형별 월 중위 거래가</span>'
-      + '<label style="margin-left:auto;font-size:11px;color:var(--text2);display:flex;'
-      +   'gap:4px;align-items:center;cursor:pointer;font-weight:400">'
-      +   '<input type="checkbox" onchange="djFlowVals(this.checked)"'
-      +   (st().flowVals ? ' checked' : '') + '> 모든 값 표시</label>'
+      + '<span style="margin-left:auto;display:flex;gap:4px;align-items:center;font-weight:400">'
+      +   '<span style="font-size:10.5px;color:var(--text3)">값 표시</span>'
+      +   [[0,'끝점만'],[1,'전부']].map(function(x){
+            var on = (!!st().flowVals === !!x[0]);
+            return '<button onclick="djFlowVals(' + x[0] + ')" '
+              + 'style="font-size:10.5px;padding:3px 10px;border-radius:11px;cursor:pointer;'
+              + 'border:1px solid ' + (on ? 'transparent' : 'var(--border)') + ';'
+              + 'background:' + (on ? 'var(--accent)' : 'transparent') + ';'
+              + 'color:' + (on ? '#fff' : 'inherit') + '">' + x[1] + '</button>'; }).join('')
+      + '</span>'
       + '</div>'
       + '<div id="dj-chartwrap" style="height:320px;position:relative">'
       +   '<canvas id="dj-chart"></canvas></div>'
       + '<div id="dj-flowtbl"></div>'
       + '<div style="font-size:10.5px;color:var(--text3);margin-top:7px;line-height:1.55">'
+      +   '값은 <b>각 선의 마지막 점에만</b> 적습니다 — 모든 점에 적으면 숫자가 겹쳐 읽기 어렵습니다. '
+      +   '전부 보시려면 오른쪽 위 「값 표시 · 전부」를 누르시거나 아래 숫자표를 보십시오. '
       +   '해제 신고는 뺐습니다. 거래가 없는 달은 이어 그립니다. '
       +   '범례를 누르면 그 면적형만 껐다 켤 수 있습니다.'
       +   (many ? ' 거래가 많은 ' + SER_MAX + '개 면적형만 선으로 그렸고, 나머지('
@@ -25838,7 +25846,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
               + ')는 아래 표에 있습니다.' : '')
       + '</div></div>';
   }
-  window.djFlowVals = function(v){ st().flowVals = !!v; stSave(); if(CUR) draw(); };
+  window.djFlowVals = function(v){ st().flowVals = !!(+v); stSave(); if(CUR) draw(); };
 
   function chartNote(t){
     var w = document.getElementById('dj-chartwrap'); if(!w) return;
@@ -25879,7 +25887,16 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     var labelPlugin = {
       id: 'djVals',
       afterDatasetsDraw: function(ch){
-        var ctx = ch.ctx;
+        var ctx = ch.ctx, taken = [];
+        /*  자리를 겹치지 않게 둔다. 「전부」로 켜면 숫자가 서로 밟고 올라서는데,
+            겹치면 둘 다 못 읽는다. 위아래 다 막혔으면 그 값은 접고 숫자표에 맡긴다. */
+        function free(x, y, w, h){
+          for(var i=0;i<taken.length;i++){
+            var t = taken[i];
+            if(x < t.x + t.w && x + w > t.x && y < t.y + t.h && y + h > t.y) return false;
+          }
+          return true;
+        }
         ctx.save();
         ctx.font = '700 10px ' + (getComputedStyle(document.body).fontFamily || 'sans-serif');
         ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
@@ -25891,11 +25908,17 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
             var v = ds.data[i]; if(v == null) return;
             if(!showAll && i !== lastI) return;
             var t = S.eok(v);
-            var w = ctx.measureText(t).width + 6;
+            var w = ctx.measureText(t).width + 6, hh = 13;
+            var y = pt.y - 17, x = pt.x - w/2;
+            if(!free(x, y, w, hh)){
+              y = pt.y + 5;                      // 위가 막혔으면 아래로
+              if(!free(x, y, w, hh)) return;     // 둘 다 막혔으면 접는다
+            }
+            taken.push({ x:x, y:y, w:w, h:hh });
             ctx.fillStyle = isDark() ? 'rgba(26,26,25,.82)' : 'rgba(252,252,251,.86)';
-            ctx.fillRect(pt.x - w/2, pt.y - 17, w, 13);
+            ctx.fillRect(x, y, w, hh);
             ctx.fillStyle = inkC('text') || (isDark() ? '#fff' : '#0b0b0b');
-            ctx.fillText(t, pt.x, pt.y - 5);
+            ctx.fillText(t, pt.x, y + hh - 2);
           });
         });
         ctx.restore();
@@ -25938,7 +25961,10 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
   function flowTable(F){
     var box = document.getElementById('dj-flowtbl'); if(!box) return;
     if(!F || !F.months.length){ box.innerHTML = ''; return; }
-    var S = K(), ms = F.months.slice().reverse();      // 최근 달부터
+    /*  그래프와 같은 방향으로 — 왼쪽이 과거, 오른쪽이 최근.
+        그래프는 왼→오인데 표만 거꾸로면 눈이 꼬인다.
+        대신 그린 뒤 오른쪽 끝(최근)으로 밀어 둔다. */
+    var S = K(), ms = F.months.slice();
     var rows = F.all.slice();                          // 선에 없는 면적형도 표에는 넣는다
     var h = '<div style="overflow-x:auto;margin-top:11px;max-height:290px;overflow-y:auto">'
       + '<table style="font-size:11px"><thead><tr>'
@@ -25963,6 +25989,9 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
       + '<div style="font-size:10px;color:var(--text3);margin-top:4px">'
       + '칸 안의 작은 수는 그 달의 거래 건수입니다. 「·」는 거래가 없는 달입니다.</div>';
     box.innerHTML = h;
+    //  최근 달이 바로 보이도록 오른쪽 끝으로 밀어 둔다
+    var sc = box.querySelector('div[style*="overflow-x"]');
+    if(sc) sc.scrollLeft = sc.scrollWidth;
   }
 
   function recentTable(ST, eok){
