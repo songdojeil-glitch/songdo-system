@@ -19353,7 +19353,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.09.26-26';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.09.26-27';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_data.html';      // 이 파일 이름
   var SD_NAME = '실거래가';      // 사람이 부르는 이름
 
@@ -26965,8 +26965,35 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
   var KBIDXL = [];
   var KBNOTE = '';          // 파일에서 무엇을 무엇으로 읽었는지 — 다시 그려도 남는다
   var KBFOR  = '';          // KB 가 어느 단지 것인지
+  var KBIDXOK = false;      // 색인을 한 번 읽었는가
 
   function kbSlug(nm){ return norm(nm).replace(/[^0-9A-Za-z가-힣]/g,'').slice(0, 40); }
+  /*  열쇠에 시군구를 붙인다 — 시·도를 통째로 담으면 「e편한세상」처럼 여러 구에
+      같은 이름이 있어 이름만으로는 서로 덮어쓴다.
+      예전에 담은 것은 시군구 없이 들어 있으므로 읽을 때 둘 다 본다. */
+  function kbKey(sgg, nm){ return kbSlug(nm) + (sgg ? '@' + sgg : ''); }
+
+  /*  담을 때는 줄을 배열로 눕힌다 — 열쇠 이름(d,h,f,l,a,p)이 호마다 되풀이되면
+      인천 88만 호에서 그것만 20MB가 넘는다. 읽을 때 다시 세운다. */
+  var KBCOL = ['d','h','f','l','a','p'];
+  function kbPack(rows){
+    return rows.map(function(r){ return KBCOL.map(function(k){ return r[k]; }); });
+  }
+  function kbUnpack(j){
+    if(!j) return null;
+    if(j.v === 2 && Array.isArray(j.rows))
+      j.rows = j.rows.map(function(a){
+        var o = {}; KBCOL.forEach(function(k, i){ o[k] = a[i]; }); return o; });
+    return j;
+  }
+  /*  시·도 안의 「구 이름 → 코드」 (파일에 법정동코드가 없을 때 쓴다)
+      긴 이름부터 본다 — 「남동구」 안에 「동구」가 들어 있어서, 짧은 것부터
+      맞추면 남동구 자료가 통째로 동구로 간다. */
+  function kbGuList(sidoCd){
+    var L = (K().sgg || {})[String(sidoCd)] || [];
+    return L.map(function(x){ return [x[1], x[0]]; })
+            .sort(function(a, b){ return b[0].length - a[0].length; });
+  }
   function kbNum(v){
     var n = parseFloat(String(v==null?'':v).replace(/[^0-9.\-]/g,''));
     return isNaN(n) ? null : n;
@@ -26986,21 +27013,31 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     return { f: parseInt(t.slice(0, t.length-2), 10), l: t.slice(-2) };
   }
 
+  /*  「e편한세상」처럼 같은 이름이 여러 구에 있다. 이름만 기억해 두면
+      구를 옮겨도 앞 구 자료를 그대로 내놓는다 — 시험이 잡았다. */
   async function kbLoad(nm){
-    if(KBFOR === nm) return KB;
-    KBFOR = nm; KB = null;
+    var tag = String(st().sgg) + '|' + nm;
+    if(KBFOR === tag) return KB;
+    KBFOR = tag; KB = null;
     var S = K();
-    try{
-      var r = await S.sget(KBIDX);
-      KBIDXL = r ? JSON.parse(r) : [];
-      if(!Array.isArray(KBIDXL)) KBIDXL = [];
-    }catch(e){ KBIDXL = []; }
-    var hit = KBIDXL.filter(function(o){ return sameDanji(o.nm, nm); })[0];
+    //  색인은 인천 전체면 1,500줄이다 — 단지를 옮길 때마다 다시 읽지 않는다
+    if(!KBIDXOK){
+      try{
+        var r = await S.sget(KBIDX);
+        KBIDXL = r ? JSON.parse(r) : [];
+        if(!Array.isArray(KBIDXL)) KBIDXL = [];
+      }catch(e){ KBIDXL = []; }
+      KBIDXOK = true;
+    }
+    /*  같은 이름이 여러 구에 있을 수 있다 — 지금 고른 시군구 것을 먼저 고른다. */
+    var pool = KBIDXL.filter(function(o){ return sameDanji(o.nm, nm); });
+    var here = st().sgg;
+    var hit = pool.filter(function(o){ return o.sgg === here; })[0] || pool[0];
     if(!hit) return null;
     try{
-      var v = await S.sget(KBPRE + hit.key);
-      var j = v ? JSON.parse(v) : null;
-      if(j && Array.isArray(j.rows) && j.rows.length) KB = j;
+      var v = await kbGet(hit.key);
+      var j = kbUnpack(v ? JSON.parse(v) : null);
+      if(j && Array.isArray(j.rows) && j.rows.length){ j.key = hit.key; KB = j; }
     }catch(e){}
     return KB;
   }
@@ -27046,8 +27083,10 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
       return -1;
     }
     return {
+      bjd:   pick(['법정동코드','법정동 코드','행정구역코드','지역코드']),
+      sido:  pick(['시도','시·도','광역시','특별시'], ['시군구']),
       sgg:   pick(['시군구','시·군·구','자치구']),
-      dong0: pick(['법정동','읍면동'], ['동명','동 명']),
+      dong0: pick(['법정동','읍면동'], ['동명','동 명','코드']),
       danji: pick(['단지명','아파트','공동주택명','건물명','단지'], ['동','호']),
       dong:  pick(['동명','동 명','동번호'], ['법정동','읍면동']),
       ho:    pick(['호명','호 명','호번호','호수'], []),
@@ -27058,7 +27097,8 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
   }
   function kbColNote(head, C, sample){
     var LBL = { danji:'단지명', dong:'동', ho:'호', floor:'층', area:'전용면적',
-                price:'공시가격', sgg:'시군구', dong0:'법정동' };
+                price:'공시가격', bjd:'법정동코드', sido:'시도', sgg:'시군구',
+                dong0:'법정동' };
     var miss = ['danji','ho','price'].filter(function(k){ return C[k] < 0; });
     var h = '<div style="font-size:11px;line-height:1.8;background:var(--bg3);border-radius:9px;'
       + 'padding:10px 12px;margin-top:9px"><b>파일에서 이렇게 읽었습니다</b><br>'
@@ -27079,9 +27119,15 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
   }
 
   var KBP = null;
-  function kbStart(){ KBP = { rows:[], scanned:0, head:null, C:null, sample:null, other:0 }; }
-  function kbFeed(arr, keep, nm){
-    var P = KBP;
+  /*  opt = { scope:'sido'|'danji', sgg, nm, sidoCd, sidoS, guCd }
+      scope 'sido' 면 시·도 전체를 단지별로 나눠 담는다. 어차피 파일 전체를 훑으므로
+      읽는 값은 같은데, 한 번만 올리면 그 시·도 안에서는 단지를 옮겨도 다시 안 읽는다. */
+  function kbStart(opt){
+    KBP = { rows:[], byD:{}, nD:0, nRow:0, scanned:0,
+            head:null, C:null, sample:null, other:0, opt:opt || {} };
+  }
+  function kbFeed(arr){
+    var P = KBP, O = P.opt;
     if(!P.head){
       P.head = arr.map(function(x){ return String(x==null?'':x).trim(); });
       P.C = kbCols(P.head);
@@ -27091,23 +27137,54 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     var C = P.C;
     if(!P.sample) P.sample = arr;
     if(C.danji < 0 || C.price < 0) return;
-    if(keep){
-      var reg = (C.sgg >= 0 ? String(arr[C.sgg]||'') : '')
-              + ' ' + (C.dong0 >= 0 ? String(arr[C.dong0]||'') : '');
-      var gu = sggNm(keep).split(' ').pop();
-      if(gu && gu !== keep && reg.indexOf(gu) < 0){ P.other++; return; }
+    var dnm = String(arr[C.danji]||'').trim();
+    if(!dnm) return;
+
+    //  법정동코드가 있으면 그것으로 가른다 — 이름 맞추기보다 틀릴 일이 없다
+    var sgg5 = '';
+    if(C.bjd >= 0){
+      var cd = String(arr[C.bjd]||'').replace(/[^0-9]/g,'');
+      if(cd.length >= 5) sgg5 = cd.slice(0, 5);
     }
-    if(!sameDanji(arr[C.danji], nm)){ P.other++; return; }
+    var reg = (C.sido  >= 0 ? String(arr[C.sido] ||'') : '') + ' '
+            + (C.sgg   >= 0 ? String(arr[C.sgg]  ||'') : '') + ' '
+            + (C.dong0 >= 0 ? String(arr[C.dong0]||'') : '');
+
+    if(O.scope === 'sido'){
+      var okS = sgg5 ? (sgg5.slice(0,2) === O.sidoCd)
+                     : (O.sidoS && reg.indexOf(O.sidoS) >= 0);
+      if(!okS){ P.other++; return; }
+    }else{
+      if(O.sgg){
+        var gu = sggNm(O.sgg).split(' ').pop();
+        var okG = sgg5 ? (sgg5 === O.sgg) : (gu && gu !== O.sgg && reg.indexOf(gu) >= 0);
+        if(!okG){ P.other++; return; }
+      }
+      if(!sameDanji(dnm, O.nm)){ P.other++; return; }
+    }
+
     var price = kbMan(arr[C.price]); if(price == null) return;
     var fl = C.floor >= 0 ? kbNum(arr[C.floor]) : null;
     var hp = kbHo(C.ho >= 0 ? arr[C.ho] : '', fl);
-    P.rows.push({
+    var row = {
       d: C.dong >= 0 ? String(arr[C.dong]||'').replace(/\s/g,'') : '',
       h: C.ho   >= 0 ? String(arr[C.ho]||'').replace(/\s/g,'')   : '',
       f: hp.f, l: hp.l,
       a: C.area >= 0 ? kbNum(arr[C.area]) : null,
       p: price
-    });
+    };
+    P.nRow++;
+    if(O.scope !== 'sido'){ P.rows.push(row); return; }
+
+    var g5 = sgg5;
+    if(!g5 && O.guCd){                       // 코드가 없으면 구 이름으로 (긴 것부터)
+      for(var gi=0; gi<O.guCd.length; gi++){
+        if(reg.indexOf(O.guCd[gi][0]) >= 0){ g5 = O.guCd[gi][1]; break; }
+      }
+    }
+    var key = kbKey(g5, dnm), b = P.byD[key];
+    if(!b){ b = P.byD[key] = { key:key, nm:dnm, sgg:g5 || '', rows:[] }; P.nD++; }
+    b.rows.push(row);
   }
   //  따옴표 안의 쉼표를 지킨다
   function kbSplit(line){
@@ -27127,36 +27204,48 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     return out.map(function(x){ return x.trim(); });
   }
 
+  var KBSCOPE = '';                 // '' 면 고른 시군구를 보고 정한다
+  function kbScope(){
+    if(KBSCOPE) return KBSCOPE;
+    return '28' === String(st().sgg).slice(0,2) ? 'sido' : 'danji';
+  }
+  window.djKbScope = function(v){ KBSCOPE = v; paintKb(); };
+
   window.djKbFile = function(input){
     var f = input.files && input.files[0]; if(!f) return;
     input.value = '';
     if(!CUR){ msg('먼저 단지를 고르세요.', 'warn'); return; }
-    var nm = CUR.nm, keep = st().sgg;
-    if(/\.xlsx?$/i.test(f.name)) kbXlsx(f, keep, nm);
-    else kbCsv(f, keep, nm);
+    var sgg = st().sgg, sidoCd = String(sgg).slice(0,2);
+    var opt = { scope: kbScope(), sgg: sgg, nm: CUR.nm,
+                sidoCd: sidoCd, sidoS: (sidoNm(sidoCd) || '').slice(0,2),
+                guCd: kbGuList(sidoCd) };
+    if(/\.xlsx?$/i.test(f.name)) kbXlsx(f, opt);
+    else kbCsv(f, opt);
   };
 
   //  CSV 는 줄 단위로 끊어 읽는다 — 큰 파일에도 브라우저가 멈추지 않게
-  function kbCsv(file, keep, nm){
-    kbStart();
+  function kbCsv(file, opt){
+    kbStart(opt);
     var CH = 4*1024*1024, off = 0, tail = '', enc = 'utf-8', tried = false;
     function prog(t){ var e = document.getElementById('dj-kbprog'); if(e) e.textContent = t; }
     function step(){
-      if(off >= file.size) return void kbDone(nm);
+      if(off >= file.size) return void kbDone();
       var r = new FileReader();
       r.onload = function(e){
         var lines = (tail + e.target.result).split(/\r?\n/);
         tail = lines.pop();
-        lines.forEach(function(ln){ if(ln.trim()) kbFeed(kbSplit(ln), keep, nm); });
+        lines.forEach(function(ln){ if(ln.trim()) kbFeed(kbSplit(ln)); });
         //  머리글이 깨졌으면 CP949 파일이다 — 한 번만 바꿔 다시 읽는다
         if(!tried && KBP.head && KBP.head.join('').indexOf('\uFFFD') >= 0){
-          tried = true; enc = 'euc-kr'; off = 0; tail = ''; kbStart();
+          tried = true; enc = 'euc-kr'; off = 0; tail = ''; kbStart(opt);
           prog('글자 코드를 EUC-KR 로 바꿔 다시 읽습니다…');
           return setTimeout(step, 0);
         }
         off += CH;
-        prog('읽는 중… ' + Math.min(100, Math.round(off/file.size*100)) + '% · 이 단지 '
-          + fmtN(KBP.rows.length) + '호');
+        prog('읽는 중… ' + Math.min(100, Math.round(off/file.size*100)) + '% · '
+          + (opt.scope === 'sido'
+              ? fmtN(KBP.nD) + '단지 ' + fmtN(KBP.nRow) + '호'
+              : '이 단지 ' + fmtN(KBP.rows.length) + '호'));
         setTimeout(step, 0);
       };
       r.onerror = function(){ msg('파일을 읽지 못했습니다.', 'no'); };
@@ -27164,28 +27253,70 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     }
     step();
   }
-  function kbXlsx(file, keep, nm){
+  function kbXlsx(file, opt){
     if(typeof XLSX === 'undefined'){ msg('엑셀 기능을 불러오지 못했습니다.', 'no'); return; }
     var e0 = document.getElementById('dj-kbprog');
     if(e0) e0.textContent = '엑셀을 여는 중… (큰 파일은 한참 걸립니다)';
     var r = new FileReader();
     r.onload = function(e){
       try{
-        kbStart();
+        kbStart(opt);
         var wb = XLSX.read(e.target.result, { type:'array' });
         var aoa = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],
           { header:1, raw:true, defval:null });
-        aoa.forEach(function(row){ if(row && row.length) kbFeed(row, keep, nm); });
-        kbDone(nm);
+        aoa.forEach(function(row){ if(row && row.length) kbFeed(row); });
+        kbDone();
       }catch(err){ msg('엑셀을 읽지 못했습니다 — ' + (err && err.message || err), 'no'); }
     };
     r.readAsArrayBuffer(file);
   }
 
-  async function kbDone(nm){
-    var P = KBP, S = K();
-    var e0 = document.getElementById('dj-kbprog'); if(e0) e0.textContent = '';
+  //  같은 호가 여러 번 나오면 마지막 것만 (연도가 겹쳐 적힌 파일이 있다)
+  function kbDedup(rows){
+    var byHo = {};
+    rows.forEach(function(r){ byHo[(r.d||'') + '|' + (r.h||'')] = r; });
+    return Object.keys(byHo).map(function(k){ return byHo[k]; });
+  }
+  /*  큰 덩어리는 localStorage 를 건너뛴다 — 브라우저 칸이 5~10MB 밖에 안 되어
+      인천 전체(수십 MB)를 넣으려 들면 조용히 튕기고, 튕기는 김에 다른 설정까지
+      밀려난다. 파이어베이스에만 담고, 읽을 때 거기서 가져온다. */
+  /*  읽을 때도 localStorage 에 안 담는다. sget 은 읽은 값을 localStorage 에
+      챙겨 두는데, 단지마다 수십 KB 인 공시가격을 그렇게 쌓으면 브라우저 칸
+      (5~10MB)을 금세 채우고, 그 뒤로는 다른 설정 저장까지 조용히 실패한다.
+      — 시험이 잡았다. */
+  async function kbGet(key){
+    try{
+      if(window.storage && window.storage.get){
+        var r = await window.storage.get(KBPRE + key);
+        if(r && r.value) return r.value;
+      }
+    }catch(e){}
+    try{ return localStorage.getItem(KBPRE + key); }catch(e){}
+    return null;
+  }
+  async function kbPut(key, obj){
+    try{
+      if(window.storage && window.storage.set){
+        await window.storage.set(KBPRE + key, JSON.stringify(obj));
+        return true;
+      }
+    }catch(e){ return false; }
+    try{ await K().sset(KBPRE + key, JSON.stringify(obj)); return true; }catch(e){}
+    return false;
+  }
+  function kbBlob(nm, sgg, rows){
+    return { v:2, danji:nm, sgg:sgg || '', rows:kbPack(rows),
+             at:new Date().toISOString(), year:new Date().getFullYear() };
+  }
+
+  async function kbDone(){
+    var P = KBP, S = K(), O = P.opt, nm = O.nm;
+    function prog(t){ var e = document.getElementById('dj-kbprog'); if(e) e.textContent = t; }
+    prog('');
     if(P.head) KBNOTE = kbColNote(P.head, P.C, P.sample);
+
+    if(O.scope === 'sido') return kbDoneSido(P, O, prog);
+
     if(!P.rows.length){
       KB = null; paintKb();
       msg('이 파일에서 「' + nm + '」 을(를) 못 찾았습니다 — 줄 ' + fmtN(P.scanned)
@@ -27193,21 +27324,13 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
         + '읽은 칸이 맞는지 봐 주세요.', 'no');
       return;
     }
-    //  같은 호가 여러 번 나오면 마지막 것만 (연도가 겹쳐 적힌 파일이 있다)
-    var byHo = {};
-    P.rows.forEach(function(r){ byHo[(r.d||'') + '|' + (r.h||'')] = r; });
-    var rows = Object.keys(byHo).map(function(k){ return byHo[k]; });
-
-    KB = { danji:nm, sgg:st().sgg, rows:rows, at:new Date().toISOString(),
-           year:new Date().getFullYear() };
-    KBFOR = nm;
-    var key = kbSlug(nm), ok = false;
-    try{ ok = await S.sset(KBPRE + key, JSON.stringify(KB)); }catch(e){}
-    if(ok !== false){
-      if(!KBIDXL.filter(function(o){ return o.key === key; }).length){
-        KBIDXL.push({ key:key, nm:nm, sgg:st().sgg, n:rows.length });
-        try{ await S.sset(KBIDX, JSON.stringify(KBIDXL)); }catch(e){}
-      }
+    var rows = kbDedup(P.rows), key = kbKey(O.sgg, nm);
+    KB = { v:1, danji:nm, sgg:O.sgg, key:key, rows:rows,
+           at:new Date().toISOString(), year:new Date().getFullYear() };
+    KBFOR = String(O.sgg) + '|' + nm;
+    var ok = await kbPut(key, kbBlob(nm, O.sgg, rows));
+    if(ok){
+      await kbIdxPut([{ key:key, nm:nm, sgg:O.sgg, n:rows.length }]);
       msg(fmtN(rows.length) + '호를 담았습니다 — 사무소 모든 컴퓨터에서 같이 봅니다.', 'ok');
     }else{
       msg(fmtN(rows.length) + '호를 읽었습니다 (담지는 못해 이 컴퓨터에서만 보입니다).', 'warn');
@@ -27215,9 +27338,94 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     paintKb();
   }
 
+  //  색인에 보태기 (같은 열쇠는 갈아 끼운다)
+  async function kbIdxPut(list){
+    var by = {};
+    KBIDXL.forEach(function(o){ by[o.key] = o; });
+    list.forEach(function(o){ by[o.key] = o; });
+    KBIDXL = Object.keys(by).map(function(k){ return by[k]; });
+    try{ await K().sset(KBIDX, JSON.stringify(KBIDXL)); }catch(e){}
+  }
+
+  /*  시·도 통째 담기 — 단지마다 한 덩어리로 나눠 담는다.
+      호 단위로 담으면 88만 번을 써야 하고, 한 덩어리로 담으면 볼 때마다
+      인천 전체를 내려받아야 한다. 단지 단위가 둘 사이의 자리다. */
+  async function kbDoneSido(P, O, prog){
+    var keys = Object.keys(P.byD);
+    if(!keys.length){
+      KB = null; paintKb();
+      msg(sidoNm(O.sidoCd) + ' 자료를 한 줄도 못 찾았습니다 — 줄 ' + fmtN(P.scanned)
+        + '개를 읽었습니다. 읽은 칸이 맞는지 봐 주세요.', 'no');
+      return;
+    }
+    //  호가 너무 적은 것은 단지가 아니라 부속 건물이기 쉽다 — 그래도 담되 세어는 둔다
+    var done = 0, fail = 0, idx = [], nRow = 0, i = 0;
+    var t0 = Date.now();
+    async function one(){
+      while(i < keys.length){
+        var k = keys[i++], b = P.byD[k];
+        var rows = kbDedup(b.rows);
+        nRow += rows.length;
+        var ok = await kbPut(b.key, kbBlob(b.nm, b.sgg, rows));
+        if(ok) idx.push({ key:b.key, nm:b.nm, sgg:b.sgg, n:rows.length });
+        else fail++;
+        done++;
+        if(done % 10 === 0 || done === keys.length){
+          var pc = Math.round(done/keys.length*100);
+          var left = done ? Math.round((Date.now()-t0)/done*(keys.length-done)/1000) : 0;
+          prog('담는 중… ' + pc + '% · ' + fmtN(done) + '/' + fmtN(keys.length) + '단지'
+            + (left > 5 ? ' · 약 ' + left + '초 남음' : ''));
+        }
+      }
+    }
+    prog('담는 중… 0%');
+    var lanes = []; for(var n=0;n<6;n++) lanes.push(one());
+    await Promise.all(lanes);
+    prog('');
+    if(idx.length) await kbIdxPut(idx);
+
+    KBFOR = ''; KB = null;
+    if(O.nm) await kbLoad(O.nm);
+    msg(sidoNm(O.sidoCd) + ' ' + fmtN(idx.length) + '개 단지 · ' + fmtN(nRow) + '호를 담았습니다'
+      + (fail ? ' (' + fmtN(fail) + '단지는 담지 못했습니다)' : '')
+      + ' — 이제 이 지역은 다시 올리지 않으셔도 됩니다.', fail ? 'warn' : 'ok');
+    paintKb();
+  }
+
+  /*  무엇이 담겨 있는지 볼 수 있어야 한다 — 안 보이면 다시 올려야 하는지
+      아닌지를 알 수가 없어 매번 처음부터 올리게 된다. */
+  var KBLIST = false;
+  window.djKbList = function(){
+    KBLIST = !KBLIST;
+    var box = document.getElementById('dj-kblist'); if(!box) return;
+    if(!KBLIST){ box.innerHTML = ''; return; }
+    var by = {};
+    KBIDXL.forEach(function(o){
+      var g = o.sgg ? sggNm(o.sgg) : '시군구 모름';
+      (by[g] = by[g] || []).push(o);
+    });
+    var tot = KBIDXL.reduce(function(a, o){ return a + (o.n||0); }, 0);
+    var h = '<div style="font-size:11.5px;line-height:1.8;background:var(--bg3);'
+      + 'border-radius:9px;padding:10px 12px;margin-top:9px;max-height:260px;overflow:auto">'
+      + '<b>담겨 있는 공시가격</b> — ' + fmtN(KBIDXL.length) + '개 단지 · '
+      + fmtN(tot) + '호<br>';
+    Object.keys(by).sort().forEach(function(g){
+      var L = by[g].slice().sort(function(a,b){ return a.nm < b.nm ? -1 : 1; });
+      var n = L.reduce(function(a,o){ return a + (o.n||0); }, 0);
+      h += '<div style="margin-top:7px"><b>' + esc(g) + '</b> '
+        + '<span style="color:var(--text3)">' + fmtN(L.length) + '개 단지 · '
+        + fmtN(n) + '호</span><br><span style="color:var(--text3)">'
+        + L.slice(0, 60).map(function(o){ return esc(o.nm); }).join(' · ')
+        + (L.length > 60 ? ' … 외 ' + fmtN(L.length-60) + '개' : '')
+        + '</span></div>';
+    });
+    h += '</div>';
+    box.innerHTML = h;
+  };
+
   window.djKbDrop = async function(){
     if(!KB) return;
-    var S = K(), key = kbSlug(KB.danji);
+    var S = K(), key = KB.key || kbKey(KB.sgg, KB.danji);
     try{ await S.sset(KBPRE + key, ''); }catch(e){}
     KBIDXL = KBIDXL.filter(function(o){ return o.key !== key; });
     try{ await S.sset(KBIDX, JSON.stringify(KBIDXL)); }catch(e){}
@@ -27268,23 +27476,48 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
         + '매매현황판 엑셀과 같은 방식이고, 공시가격은 <b>연 1회</b>만 바뀌니 이걸로 충분합니다.'
         + '</div>'
         + '<div style="font-size:11px;color:var(--text3);line-height:1.7;margin-top:8px">'
-        + '전국 파일은 1,500만 줄이 넘습니다 — <b>시·도(인천) 단위 파일</b>을 받으시면 가볍습니다. '
-        + 'CSV 는 줄 단위로 끊어 읽으므로 큰 파일도 화면이 멈추지 않고, 읽으면서 '
-        + '<b>' + esc(sggNm(st().sgg)) + ' · ' + esc(CUR ? CUR.nm : '') + '</b> 만 남깁니다.'
+        + '공공데이터포털 「국토교통부_주택 공시가격 정보」는 <b>전국 한 파일</b>입니다'
+        + '(약 1,558만 줄 · 연 1회 · 무료 · 로그인 필요). <b>시·도로 쪼갠 파일은 없습니다.</b> '
+        + 'CSV 는 줄 단위로 끊어 읽으므로 큰 파일도 화면이 멈추지 않습니다.'
         + '</div>';
     }else{
       h += '<div style="font-size:11px;color:var(--text3);margin-bottom:9px">'
         + esc(String(KB.year||'')) + '년 · ' + fmtN(KB.rows.length) + '호 · '
         + esc(String(KB.at||'').slice(0,10)) + ' 올림</div>';
     }
+    /*  ── 담을 범위 ───────────────────────────────────────────────────
+        어차피 전국 파일을 통째로 훑는다. 그러니 한 단지만 남기고 버리면
+        읽는 값은 같은데 얻는 것만 적다. 시·도를 통째로 담아 두면 그 안에서는
+        단지를 옮겨도 다시 안 읽는다. */
+    var sc = kbScope(), sdNm = sidoNm(String(st().sgg).slice(0,2)) || '이 시·도';
+    h += '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:11px">'
+      + '<span style="font-size:11.5px;color:var(--text3)">담을 범위</span>'
+      + [['sido', sdNm + ' 전체'], ['danji','이 단지만']].map(function(x){
+          return '<button class="dj-bs" onclick="djKbScope(\'' + x[0] + '\')" style="'
+            + (sc === x[0] ? 'border-color:transparent;background:var(--accent);color:#fff' : '')
+            + '">' + esc(x[1]) + '</button>'; }).join('')
+      + '</div>'
+      + '<div style="font-size:11px;color:var(--text3);line-height:1.7;margin:6px 0 2px">'
+      + (sc === 'sido'
+          ? '한 번 올리면 <b>' + esc(sdNm) + ' 안의 모든 단지</b>를 단지별로 나눠 담습니다 — '
+            + '그 뒤로는 이 지역 어느 단지를 보셔도 <b>다시 올리지 않으셔도 됩니다.</b> '
+            + '읽는 데 몇 분, 담는 데 1~2분쯤 걸립니다.'
+          : '지금 고른 <b>' + esc(sggNm(st().sgg)) + ' · ' + esc(CUR ? CUR.nm : '')
+            + '</b> 만 담습니다 — 다른 단지를 보시려면 파일을 <b>다시 올리셔야</b> 합니다.')
+      + '</div>';
+
     h += '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:9px">'
       + '<label class="dj-bp" style="cursor:pointer">'
       +   (have ? '다시 올리기' : '📄 공시가격 파일 고르기')
       +   '<input type="file" accept=".csv,.txt,.xlsx,.xls" style="display:none" '
       +   'onchange="djKbFile(this)"></label>'
       + (have ? '<button class="dj-bs" onclick="djKbDrop()">이 단지 자료 비우기</button>' : '')
+      + (KBIDXL.length > 1
+          ? '<button class="dj-bs" onclick="djKbList()">📚 담긴 단지 ' + fmtN(KBIDXL.length)
+            + '개</button>' : '')
       + '<span id="dj-kbprog" style="font-size:11.5px;color:#1565c0"></span>'
-      + '</div>' + (KBNOTE || '');
+      + '</div>'
+      + '<div id="dj-kblist"></div>' + (KBNOTE || '');
 
     if(have) h += kbTables();
     box.innerHTML = h;
@@ -28659,6 +28892,9 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     py:function(){ return PY; }, same:sameDanji,
     sel:function(){ return SELNM; }, pins:function(){ return PINEL; },
     zoom:function(){ return ZOOM; },
+    kb:function(){ return KB; },
+    kbIdx:function(){ return KBIDXL; },
+    kbReset:function(){ KB = null; KBFOR = ''; KBIDXL = []; KBIDXOK = false; KBNOTE = ''; },
     sunView:function(W,H){ return sunView(W,H); },
     sunLabs:function(){ return (SUN && SUN._labs) || []; }, miniD:function(){ return MINI_D; },
     wins:function(){ return miniWins(); } };
