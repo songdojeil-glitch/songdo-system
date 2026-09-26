@@ -19353,7 +19353,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.09.26-1';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.09.26-2';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_data.html';      // 이 파일 이름
   var SD_NAME = '실거래가';      // 사람이 부르는 이름
 
@@ -21080,7 +21080,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 '11|서울특별시|110종로구,140중구,170용산구,200성동구,215광진구,230동대문구,260중랑구,290성북구,305강북구,320도봉구,350노원구,380은평구,410서대문구,440마포구,470양천구,500강서구,530구로구,545금천구,560영등포구,590동작구,620관악구,650서초구,680강남구,710송파구,740강동구',
 '26|부산광역시|110중구,140서구,170동구,200영도구,230부산진구,260동래구,290남구,320북구,350해운대구,380사하구,410금정구,440강서구,470연제구,500수영구,530사상구,710기장군',
 '27|대구광역시|110중구,140동구,170서구,200남구,230북구,260수성구,290달서구,710달성군,720군위군',
-'28|인천광역시|110중구,140동구,177미추홀구,185연수구,200남동구,237부평구,245계양구,260서구,710강화군,720옹진군',
+'28|인천광역시|110중구,140동구,177미추홀구,185연수구,200남동구,237부평구,245계양구,260서구,290검단구,710강화군,720옹진군',
 '29|광주광역시|110동구,140서구,155남구,170북구,200광산구',
 '30|대전광역시|110동구,140중구,170서구,200유성구,230대덕구',
 '31|울산광역시|110중구,140남구,170동구,200북구,710울주군',
@@ -23844,6 +23844,54 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 
 
   function K(){ return window.sdKR && window.sdKR.stats ? window.sdKR : null; }
+
+  /* ── 표에 없는 시군구 ──────────────────────────────────────────────────
+     행정구역은 바뀐다. 2026년 7월 인천에 검단구·영종구·제물포구가 생겼는데
+     이 파일의 시군구 표(국토부 2026-08-13판)에는 없었다.
+     그러면 sggName() 이 이름 대신 코드를 돌려주고, 좌표 찾기가
+     「28290 마전동 123」 으로 검색해 한 곳도 못 찾는다 — 실제로 겪은 일이다.
+     이제 카카오가 알려 준 이름을 배워 두고 모두가 같이 쓴다. */
+  var SGG_EXTRA = {}, EXTRAKEY = 'sd_sgg_extra';
+  async function loadExtra(){
+    try{
+      var r = await K().sget(EXTRAKEY);
+      if(r) SGG_EXTRA = JSON.parse(r) || {};
+    }catch(e){ SGG_EXTRA = {}; }
+    return SGG_EXTRA;
+  }
+  async function learnSgg(code, name){
+    if(!code || !name || SGG_EXTRA[code] === name) return;
+    if(K().sggName(code) !== code) return;          // 표에 이미 있으면 배울 것 없다
+    SGG_EXTRA[code] = name;
+    try{ await K().sset(EXTRAKEY, JSON.stringify(SGG_EXTRA)); }catch(e){}
+  }
+  //  시군구 이름 — 표에 있으면 표, 없으면 배운 것, 그것도 없으면 코드
+  function sggNm(code){
+    var n = K().sggName(code);
+    return (n !== code) ? n : (SGG_EXTRA[code] || code);
+  }
+  //  시도 이름 (「인천광역시」) 과 짧은 이름 (「인천」)
+  function sidoNm(code){
+    var S = K(), x = (S.sido.filter(function(v){ return v[0] === String(code).slice(0,2); })[0] || ['','']);
+    return x[1] || '';
+  }
+  function sidoShort(code){
+    return sidoNm(code).replace(/(특별시|광역시|특별자치시|특별자치도|도)$/, '');
+  }
+  /*  찾은 자리가 맞는 지역인지 본다.
+      구 이름을 아는 지역은 예전처럼 구로 보고, 모르는 지역은 법정동으로 본다.
+      (「마전동」 + 「인천」 이면 충분히 확실하다) */
+  function inRegionSafe(addr, sgg, dong){
+    var a = String(addr || ''); if(!a) return false;
+    var sd = sidoShort(sgg); if(!sd) return false;
+    if(a.indexOf(sd) < 0) return false;
+    var nm = sggNm(sgg);
+    if(nm !== sgg){
+      var gu = nm.split(' ').pop();
+      if(a.indexOf(gu) >= 0) return true;
+    }
+    return !!(dong && a.indexOf(dong) >= 0);
+  }
   function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g, function(c){
     return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
   function fmtN(v){ return v==null||isNaN(v) ? '—' : Math.round(v).toLocaleString(); }
@@ -24107,7 +24155,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
   async function fetchKind(kind){
     var S = K(), kd = KIND(kind), ck = ckOf(kind);
     if(CACHE[ck]) return CACHE[ck];
-    var yms = periodYms(), sname = S.sggName(st().sgg);
+    var yms = periodYms(), sname = sggNm(st().sgg);
     var done = 0, tot = yms.length * (kd.r ? 2 : 1);
     function step(){ done++; msg(kd.n + ' 실거래를 받는 중… ' + done + '/' + tot, 'go'); }
     var pair = await Promise.all([
@@ -24330,6 +24378,11 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
       +   '<select id="dj-sgg" class="dj-in" onchange="djSgg(this.value)" style="font-size:12px">'
       +   sggs.map(function(x){ return '<option value="'+x[0]+'"'
               + (s.sgg===x[0]?' selected':'') + '>'+esc(x[1])+'</option>'; }).join('')
+      +   Object.keys(SGG_EXTRA).filter(function(c){       // 표에 없어 배운 구
+              return c.slice(0,2) === s.sgg.slice(0,2)
+                && !sggs.some(function(x){ return x[0] === c; }); })
+            .map(function(c){ return '<option value="'+c+'"'
+              + (s.sgg===c?' selected':'') + '>'+esc(SGG_EXTRA[c].split(' ').pop())+'</option>'; }).join('')
       +   '</select></div>'
       + '<div style="flex:1;min-width:230px">'
       +   '<label style="display:block;font-size:10.5px;color:var(--text3);margin-bottom:3px">단지명</label>'
@@ -24496,7 +24549,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     body.innerHTML = '<div class="dj-card">'
       + '<div class="dj-h">🔎 ' + esc(nm) + ' 을(를) 찾지 못했습니다</div>'
       + '<div style="font-size:12.5px;color:var(--text2);line-height:1.7">'
-      +   '<b>' + esc(S.sggName(st().sgg)) + '</b> 의 <b>' + esc(periodLabel()) + '</b> '
+      +   '<b>' + esc(sggNm(st().sgg)) + '</b> 의 <b>' + esc(periodLabel()) + '</b> '
       +   esc(kindsLabel()) + ' ' + esc(DSEL(st().deal).n) + ' 에서 '
       +   '이 이름으로 신고된 거래가 없습니다 (받은 거래 매매 ' + fmtN((D.trade||[]).length)
       +   '건 · 전월세 ' + fmtN((D.rent||[]).length) + '건).<br>'
@@ -24567,6 +24620,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
       + 'justify-content:center;color:var(--text3);font-size:12px">지도를 여는 중…</div>';
     try{
       var S = K();
+      await loadExtra();                       // 표에 없는 구의 이름을 먼저 챙긴다
       await ensure(false);                     // 단지 목록은 실거래에서 나온다
       await S.kakaoReady();
       await officeGeo();                       // 사무실 자리를 먼저 챙긴다 (한 번만 찾는다)
@@ -24612,7 +24666,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     try{
       await S.kakaoReady();
       var sidoNm = (S.sido.filter(function(x){ return x[0] === st().sgg.slice(0,2); })[0] || ['',''])[1];
-      var tries = [q, sidoNm + ' ' + q, S.sggName(st().sgg) + ' ' + q];
+      var tries = [q, sidoNm + ' ' + q, sggNm(st().sgg) + ' ' + q];
       var hit = null, addr = '';
       for(var i=0; i<tries.length && !hit; i++){
         var a = await S.kakaoAddr(tries[i]);
@@ -24686,19 +24740,21 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     if(BUSY){ msg('지금 다른 일을 하는 중입니다. 잠시 뒤 다시 눌러 주세요.', 'warn'); return; }
     var S = K();
     if(DJMAP){ try{ var c = DJMAP.getCenter(); PEND_CENTER = { lat:c.getLat(), lng:c.getLng() }; }catch(e){} }
+    await loadExtra();
+    await learnSgg(code, nm);               // 표에 없는 구면 이름을 배워 둔다
     st().sgg = code; stSave();
     LAST_REGION = '';                                   // 다시 알아보게 비운다
     var bar = document.getElementById('dj-areabar'); if(bar) bar.remove();
     var note = document.getElementById('dj-place-note');
     if(note) note.innerHTML = '<span style="color:var(--text3)">'
-      + esc(nm || S.sggName(code)) + ' 자료를 받는 중입니다…</span>';
+      + esc(nm || sggNm(code)) + ' 자료를 받는 중입니다…</span>';
     try{
       await ensure(false);                       // 실거래
       await djGeo(true);                         // 좌표 — 조용히
       drawMap();
       var n = danjiAgg().length;
       var el = document.getElementById('dj-place-note');
-      if(el) el.innerHTML = '<span style="color:#0a7">' + esc(S.sggName(code))
+      if(el) el.innerHTML = '<span style="color:#0a7">' + esc(sggNm(code))
         + ' 자료를 받았습니다 — 단지 ' + n + '곳.</span>';
       //  지역 고르개도 바뀐 시군구에 맞춰 다시 그린다
       var sel = document.getElementById('dj-sgg');
@@ -24752,7 +24808,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     var d = document.createElement('div');
     d.id = 'dj-areabar';
     d.innerHTML = '<span>지금 보는 곳은 <b>' + esc(reg.name) + '</b> 입니다 — '
-      + '받아 둔 자료는 ' + esc(K().sggName(st().sgg)) + ' 것입니다.</span>'
+      + '받아 둔 자료는 ' + esc(sggNm(st().sgg)) + ' 것입니다.</span>'
       + '<button onclick="djLoadHere(\'' + reg.code + '\',\'' + esc(reg.name) + '\')">'
       + '이 지역 자료 받기</button>';
     box.appendChild(d);
@@ -24769,7 +24825,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
       '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;'
       +   'flex-wrap:wrap;margin-bottom:7px">'
       + '<span style="font-size:11.5px;color:var(--text3)">'
-      +   esc(S.sggName(sv.sgg)) + ' · ' + esc(kindsLabel()) + ' ' + esc(DSEL(sv.deal).n)
+      +   esc(sggNm(sv.sgg)) + ' · ' + esc(kindsLabel()) + ' ' + esc(DSEL(sv.deal).n)
       +   ' · ' + esc(periodLabel()) + ' 거래가 있는 단지 '
       +   '<b style="color:var(--text)">' + list.length + '</b>곳 중 '
       +   '<b style="color:var(--text)">' + have.length + '</b>곳을 지도에 올렸습니다'
@@ -24796,10 +24852,14 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
       document.getElementById('dj-map').innerHTML =
         '<div style="height:100%;display:flex;align-items:center;justify-content:center;'
         + 'color:var(--text3);font-size:12.5px;text-align:center;padding:0 24px">'
-        + (list.length
-            ? '이 지역 단지 ' + list.length + '곳의 좌표를 찾는 중입니다…<br>'
-              + '<span style="font-size:11px">처음 보는 지역은 한 번만 찾으면 됩니다.</span>'
-            : '이 조건으로 거래가 있는 단지가 없습니다.<br>종류·거래·기간을 바꿔 보세요.')
+        + (!list.length
+            ? '이 조건으로 거래가 있는 단지가 없습니다.<br>종류·거래·기간을 바꿔 보세요.'
+            : GEO_TRIED[cacheKey()]
+              ? '이 지역 단지 ' + list.length + '곳의 좌표를 한 곳도 찾지 못했습니다.<br>'
+                + '<span style="font-size:11px">카카오 지도에서 이 지역 주소를 못 찾는 경우입니다. '
+                + '「📍 좌표 찾기」로 다시 시도하거나, 단지 이름으로 브리핑을 여실 수 있습니다.</span>'
+              : '이 지역 단지 ' + list.length + '곳의 좌표를 찾는 중입니다…<br>'
+                + '<span style="font-size:11px">처음 보는 지역은 한 번만 찾으면 됩니다.</span>')
         + '</div>';
       /*  안내만 하고 끝내지 않는다 — 좌표가 없으면 스스로 찾아 다시 그린다.
           단 지역·기간마다 한 번만. 못 찾는 지역에서 끝없이 되풀이하면 안 된다. */
@@ -24880,12 +24940,12 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
       대구로 잡힌 일이 있었다.) 찾은 것은 S실거래가와 같은 창고에 넣는다. */
   window.djGeo = async function(quiet){
     if(BUSY) return;
-    var S = K(), GEO = S.geo(), sgg = st().sgg, region = S.sggName(sgg);
+    var S = K(), GEO = S.geo(), sgg = st().sgg;
     var todo = danjiAgg().filter(function(o){
       if(!(o.key in GEO)) return true;
       var g = GEO[o.key];
       if(g === null) return false;                  // 찾아 봤는데 없던 곳
-      return S.geoBad(g, sgg);                      // 지역이 안 맞는 옛 기록
+      return !g.lat || !inRegionSafe(g.addr, sgg, o.dong);   // 지역이 안 맞는 옛 기록
     });
     if(!todo.length){ if(!quiet) msg('좌표를 모두 갖고 있습니다.', 'ok'); return; }
     //  이미 핀이 하나라도 서 있으면 지도를 진행 글로 덮지 않는다
@@ -24895,6 +24955,10 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     var got = 0, miss = 0;
     try{
       await S.kakaoReady();
+      /*  구 이름을 모르면 「인천광역시 마전동 123」 처럼 시도 + 법정동으로 찾는다.
+          예전에는 「28290 마전동 123」 으로 찾아 한 곳도 못 건졌다. */
+      var known = (sggNm(sgg) !== sgg);
+      var head = known ? sggNm(sgg) : sidoNm(sgg);
       for(var i=0;i<todo.length;i++){
         var o = todo[i], hit = null;
         msg('좌표를 찾는 중… (' + (i+1) + '/' + todo.length + ') ' + o.name, 'go');
@@ -24903,18 +24967,25 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
           + 'justify-content:center;color:var(--text3);font-size:12.5px;text-align:center;padding:0 24px">'
           + '이 지역 단지 좌표를 찾는 중입니다… ' + (i+1) + ' / ' + todo.length + '<br>'
           + '<span style="font-size:11px">' + esc(o.name) + '</span></div>';
-        if(o.jibun){
-          var a = await S.kakaoAddr(region + ' ' + o.dong + ' ' + o.jibun);
-          if(a) hit = { lat:parseFloat(a.y), lng:parseFloat(a.x),
-                        addr:(a.address && a.address.address_name) || a.address_name || '', p:'지번' };
+        if(o.jibun && o.dong){
+          var qs = [ head + ' ' + o.dong + ' ' + o.jibun ];
+          if(known) qs.push(sidoNm(sgg) + ' ' + o.dong + ' ' + o.jibun);   // 구 이름 없이 한 번 더
+          for(var q=0; q<qs.length && !hit; q++){
+            var a = await S.kakaoAddr(qs[q]);
+            if(!a) continue;
+            var aa = (a.address && a.address.address_name) || a.address_name || '';
+            if(aa && !inRegionSafe(aa, sgg, o.dong)) continue;
+            hit = { lat:parseFloat(a.y), lng:parseFloat(a.x), addr:aa, p:'지번' };
+          }
         }
         if(!hit){
-          var tries = [ region + ' ' + o.dong + ' ' + o.name, region + ' ' + o.name ];
+          var tries = [ head + ' ' + o.dong + ' ' + o.name, head + ' ' + o.name ];
+          if(known) tries.push(sidoNm(sgg) + ' ' + o.dong + ' ' + o.name);
           for(var t=0; t<tries.length && !hit; t++){
             var d = await S.kakaoFind(tries[t]);
             if(!d) continue;
             var ad = d.road_address_name || d.address_name || '';
-            if(!S.inRegion(ad, sgg)) continue;      // 엉뚱한 지역이면 버린다
+            if(!inRegionSafe(ad, sgg, o.dong)) continue;   // 엉뚱한 지역이면 버린다
             hit = { lat:parseFloat(d.y), lng:parseFloat(d.x), addr:ad, p:d.place_name||'' };
           }
         }
@@ -24966,7 +25037,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 
   function head(nm, r0, A, HS, mine){
     var S = K();
-    var addr = [S.sggName(st().sgg), r0.umdNm||'', r0.jibun||''].filter(Boolean).join(' ');
+    var addr = [sggNm(st().sgg), r0.umdNm||'', r0.jibun||''].filter(Boolean).join(' ');
     /*  나와 있는 매물은 자사·타사를 합쳐 센다 — 손님에게는 그게 「살 수 있는 물건」이다.
         자사 건수는 괄호로만 덧붙인다. */
     var LS = listingsOf(nm);
@@ -25476,7 +25547,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     var r0 = CUR.rows[0] || {}, A = S.aptFind(CUR.nm, r0.umdNm, r0.jibun), HS = hsOf(CUR.nm);
     var L = [];
     L.push('■ ' + CUR.nm + ' ' + curKindLabel() + ' ' + DSEL(st().deal).n + ' 시세 브리핑');
-    L.push('(' + [S.sggName(st().sgg), r0.umdNm||''].filter(Boolean).join(' ') + ' · 국토교통부 실거래 '
+    L.push('(' + [sggNm(st().sgg), r0.umdNm||''].filter(Boolean).join(' ') + ' · 국토교통부 실거래 '
       + periodLabel() + ' 기준'
       + (st().deal !== 'sale' && st().newOnly ? ' · 신규 계약만' : '')
       + (st().deal === 'wolse' && st().wAxis === 'conv'
