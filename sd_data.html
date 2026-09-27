@@ -19391,7 +19391,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.09.27-43';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.09.27-44';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_data.html';      // 이 파일 이름
   var SD_NAME = '실거래가';      // 사람이 부르는 이름
 
@@ -29216,7 +29216,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
       { i:'🚇', n:'역세권 · 학군', soon:1, d:'단지에서 역·학교까지 걸어서 몇 분' },
       { i:'🏗️', n:'건폐율 · 용적률', soon:1, d:'용도지역별 인천시 조례 한눈에' },
       { i:'🏗️', n:'건축물대장 조회', go:24, tag:'새로',
-        d:'지번·주소·단지로 국토부 건축물대장을 바로 — 총괄표제부·동별 표제부·층별개요 (발급본은 정부24)' }
+        d:'아파트·상가·오피스텔 — 단지·건물 이름·주소·지번으로 국토부 건축물대장을 바로. 표제부·층별개요·호실별 전유부까지 (발급본은 정부24)' }
     ]}
   ];
 
@@ -33569,7 +33569,7 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
 </script>
 
 <!-- ══════════════════════════════════════════════════════════════════════
-     건축물대장 모듈 v1.0  (탭 24) — 1단계
+     건축물대장 모듈 v2.0  (탭 24) — 2단계: 상가·업무 건물 · 이름으로 찾기 · 전유부
      국토교통부 건축물대장정보 서비스를 사무소 화면에서 바로 본다.
      총괄표제부 · 동별 표제부 · 층별개요. 인증키·법정동코드·단지 사전은
      S실거래가 탭이 이미 갖고 있는 것을 그대로 쓴다.
@@ -33619,13 +33619,24 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
 </style>
 <script>
 /*  ══════════════════════════════════════════════════════════════════════
-    건축물대장 조회 (탭 24)  1단계
+    건축물대장 조회 (탭 24)  2단계
     ──────────────────────────────────────────────────────────────────
     국토교통부 건축물대장정보 서비스(BldRgstHubService)를 사무소 화면에서
-    바로 본다. 1단계는 세 가지 —
-      · 총괄표제부   getBrRecapTitleInfo   대지·건폐율·용적률·세대·주차
-      · 표제부(동별) getBrTitleInfo        용도·구조·층수·높이·사용승인일
-      · 층별개요     getBrFlrOulnInfo      층마다 용도와 면적
+    바로 본다.
+      · 총괄표제부   getBrRecapTitleInfo       대지·건폐율·용적률·세대·주차
+      · 표제부(동별) getBrTitleInfo            용도·구조·층수·높이·사용승인일
+      · 층별개요     getBrFlrOulnInfo          층마다 용도와 면적
+      · 전유부       getBrExposPubuseAreaInfo  **호실마다 전유·공용 면적과 용도**   ← 2단계
+
+    2단계에서 더한 것
+      ① 상가·업무·OP 건물 고르기 — 실거래 건물명 사전(sd_bldg_names, 지번 보유)과
+         상가·OP 매물 건물 이름을 칩으로. 아파트만 고를 수 있던 것을 메웠다.
+      ② 건물 이름으로 찾기 — 주소검색이 못 찾으면 카카오 장소검색으로 건물을
+         찾고, 거기서 나온 지번으로 대장을 부른다. 지역을 안 적으면 연수구를
+         먼저 보고, 연수구 밖으로 가면 화면에 그렇다고 적는다.
+      ③ 전유부 — 동을 고른 뒤 「호실 받기」를 눌러야 부른다(호출 한도).
+         한 호실에 전유 한 줄 + 공용 여러 줄이 오므로 호실 단위로 묶어
+         전유·공용·전용률을 낸다. 상가는 전용률과 호실별 용도가 핵심이다.
 
     밑바탕은 이미 있는 것을 그대로 쓴다 —
       인증키            … sdKR.key()      (S실거래가 탭에서 넣은 그 키)
@@ -33649,14 +33660,19 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
   var TAB = 24;
   var W = window;
   var BASE = 'https://apis.data.go.kr/1613000/BldRgstHubService/';
-  var OPS  = { recap:'getBrRecapTitleInfo', title:'getBrTitleInfo', flr:'getBrFlrOulnInfo' };
+  var OPS  = { recap:'getBrRecapTitleInfo', title:'getBrTitleInfo', flr:'getBrFlrOulnInfo',
+               expos:'getBrExposPubuseAreaInfo' };
+  var EXP_PAGE = 1000, EXP_MAXPG = 10;   // 전유부 한 번에 1,000줄 · 최대 10쪽(1만 줄)
 
   // ── 상태 ────────────────────────────────────────────────────────────
-  var MODE = 'apt';                // apt(단지) · addr(주소) · jibun(지번)
+  var MODE = 'apt';                // apt(아파트) · bld(상가·업무·OP) · addr(주소·이름) · jibun(지번)
   var AQ = '', PICK = '';          // 단지 찾기 글자 · 고른 단지 코드
-  var LOC = null;                  // { sgg, bjd, platGb, bun, ji, addr, label }
-  var DAT = null;                  // { recap, titles, loc }
+  var BQ = '', BPICK = -1, BLIST = [];   // 건물 찾기 글자 · 고른 건물 · 지금 칩 목록
+  var LOC = null;                  // { sgg, bjd, platGb, bun, ji, addr, label, via, far }
+  var DAT = null;                  // { recap, titles, loc, at, _flr, _exp:{동열쇠:{rows,total,part}} }
   var DONG = -1, FLR = null, BUSY = false, MSG = '';
+  var EXPBUSY = false;             // 전유부 받는 중
+  var EQ = { q:'', flr:'', purp:'' };    // 호실 표 거르개
   var CACHE = {};                  // 지번 열쇠 → DAT (이 화면이 열려 있는 동안만)
 
   function S(){ return W.sdKR && W.sdKR.key ? W.sdKR : null; }
@@ -33707,6 +33723,7 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
     rserthqkDsgnApplyYn:['내진설계 적용',function(v){ var s=txt(v); return s==='1'?'적용':(s==='0'?'미적용':s); }],
     rserthqkAblty:['내진능력',txt], crtnDay:['자료 기준일',ymd],
     flrGbCdNm:['층 구분',txt], flrNoNm:['층',txt], area:['면적',m2],
+    hoNm:['호',txt], flrNo:['층 번호',txt], exposPubuseGbCdNm:['전유/공용',txt],
     areaExctYn:['면적제외',txt]
   };
   //  카드에 이 차례로 놓는다 (없는 항목은 건너뛴다)
@@ -33760,14 +33777,18 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
   // ── 부르기 ──────────────────────────────────────────────────────────
   function lkey(L){ return [L.sgg, L.bjd, L.platGb, L.bun, L.ji].join('|'); }
 
-  async function call(op, L, rows){
+  //  한 쪽 부르기 — 목록과 전체 건수(totalCount)를 같이 돌려준다. extra 는 dongNm 등.
+  async function callPage(op, L, rows, page, extra){
     var s = S(); if(!s) throw new Error('S실거래가 탭을 한 번 열어 주세요 — 인증키와 법정동코드를 그 탭이 갖고 있습니다.');
     var KEY = s.key();
     if(!KEY) throw new Error('공공데이터포털 인증키가 없습니다 — S실거래가 탭에서 먼저 넣어 주세요.');
     var u = BASE + OPS[op] + '?serviceKey=' + encodeURIComponent(KEY)
           + '&sigunguCd=' + L.sgg + '&bjdongCd=' + L.bjd
           + '&platGbCd=' + (L.platGb||'0') + '&bun=' + L.bun + '&ji=' + L.ji
-          + '&numOfRows=' + (rows||100) + '&pageNo=1&_type=json';
+          + '&numOfRows=' + (rows||100) + '&pageNo=' + (page||1) + '&_type=json';
+    Object.keys(extra||{}).forEach(function(k){
+      if(extra[k] != null && extra[k] !== '') u += '&' + k + '=' + encodeURIComponent(extra[k]);
+    });
     var t = await fetch(u).then(function(r){ return r.text(); });
     var j; try{ j = JSON.parse(t); }catch(e){ throw new Error('응답을 읽지 못했습니다 (' + op + ')'); }
     if(j.OpenAPI_ServiceResponse){
@@ -33777,30 +33798,88 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
     var body = ((j.response||{}).body) || {};
     var list = (body.items && body.items.item) || [];
     if(!Array.isArray(list)) list = list ? [list] : [];
-    return list;
+    var total = parseInt(body.totalCount, 10);
+    return { list:list, total: isNaN(total) ? list.length : total };
+  }
+  async function call(op, L, rows){ return (await callPage(op, L, rows, 1)).list; }
+
+  /*  여러 쪽을 이어 받기.
+      ⚠ 포털이 numOfRows 를 우리가 달라는 것보다 작게 자르는 서비스가 있다.
+        1쪽에서 받은 줄 수가 요청보다 적은데 전체보다도 적으면 「잘렸다」고 보고,
+        그 줄 수를 한 쪽 크기로 삼아 2쪽부터 잇는다 — 안 그러면 중간이 비어 버린다. */
+  async function callAll(op, L, extra, onPage){
+    var size = EXP_PAGE;
+    var first = await callPage(op, L, size, 1, extra);
+    var all = first.list.slice(), total = first.total;
+    if(first.list.length < size && first.list.length < total && first.list.length > 0) size = first.list.length;
+    var page = 1;
+    while(all.length < total && page < EXP_MAXPG){
+      page++;
+      if(onPage) onPage(all.length, total);
+      var p = await callPage(op, L, size, page, extra);
+      if(!p.list.length) break;
+      all = all.concat(p.list);
+    }
+    return { list:all, total:total, part: all.length < total };
   }
 
   /*  어디를 볼지 정하기.
       카카오 주소검색이 법정동코드(b_code)·본번·부번·산여부를 한 번에 주므로
       이것을 첫째 길로 쓴다. 전국 어디든 같은 방식으로 된다.
       카카오가 없거나 못 찾으면 법정동명으로 행안부 코드를 받는다(종전 길). */
-  async function resolve(q, fb){
+  async function byAddr(q){
     var s = S();
-    if(s && s.kakaoReady){
-      try{
-        await s.kakaoReady();
-        var r = await s.kakaoAddr(q);
-        var a = r && r.address;
-        if(a && a.b_code && String(a.b_code).length === 10 && a.main_address_no){
-          return { sgg:String(a.b_code).slice(0,5), bjd:String(a.b_code).slice(5),
-                   platGb: (a.mountain_yn === 'Y' ? '1' : '0'),
-                   bun:('0000'+String(a.main_address_no).replace(/[^0-9]/g,'')).slice(-4),
-                   ji :('0000'+String(a.sub_address_no||'0').replace(/[^0-9]/g,'')).slice(-4),
-                   addr:r.address_name || q, label:r.address_name || q };
-        }
-      }catch(e){}
+    if(!(s && s.kakaoReady && s.kakaoAddr)) return null;
+    try{
+      await s.kakaoReady();
+      var r = await s.kakaoAddr(q);
+      var a = r && r.address;
+      if(a && a.b_code && String(a.b_code).length === 10 && a.main_address_no){
+        return { sgg:String(a.b_code).slice(0,5), bjd:String(a.b_code).slice(5),
+                 platGb: (a.mountain_yn === 'Y' ? '1' : '0'),
+                 bun:('0000'+String(a.main_address_no).replace(/[^0-9]/g,'')).slice(-4),
+                 ji :('0000'+String(a.sub_address_no||'0').replace(/[^0-9]/g,'')).slice(-4),
+                 addr:r.address_name || q, label:r.address_name || q };
+      }
+    }catch(e){}
+    return null;
+  }
+
+  /*  건물 이름으로 찾기 — 카카오 장소검색 → 그 장소의 지번 주소 → 주소검색.
+      「스마트스퀘어」처럼 지역을 안 적으면 전국에서 같은 이름이 걸릴 수 있다.
+      그래서 연수구를 먼저 붙여 찾아 보고, 그래도 연수구 밖으로 가면
+      화면에 「연수구 밖」이라고 적는다(far). 조용히 딴 건물을 보여 주지 않는다. */
+  var SIDO_RE = /(서울|부산|대구|인천|광주|대전|울산|세종|경기|강원|충북|충남|충청|전북|전남|전라|경북|경남|경상|제주)/;
+  async function byName(q){
+    var s = S();
+    if(!(s && s.kakaoReady && s.kakaoFind)) return null;
+    try{ await s.kakaoReady(); }catch(e){ return null; }
+    var mine = !SIDO_RE.test(q);
+    var qs = mine ? ['인천 연수구 ' + q, q] : [q];
+    for(var i=0; i<qs.length; i++){
+      var p = null;
+      try{ p = await s.kakaoFind(qs[i]); }catch(e){}
+      var ad = p && (p.address_name || p.road_address_name);
+      if(!ad) continue;
+      var L = await byAddr(ad);
+      if(!L) continue;
+      L.label = String(q).trim();
+      L.via = '장소검색 「' + (p.place_name || q) + '」 → ' + ad;
+      if(mine && s.inRegion && !s.inRegion(ad, '28185')) L.far = true;
+      return L;
     }
-    if(!fb) throw new Error('주소를 찾지 못했습니다 — 「인천 연수구 송도동 319-1」처럼 넣어 보세요.');
+    return null;
+  }
+
+  async function resolve(q, fb, opt){
+    var s = S();
+    var L = await byAddr(q);
+    if(L) return L;
+    if(opt && opt.name){
+      L = await byName(typeof opt.name === 'string' ? opt.name : q);
+      if(L) return L;
+    }
+    if(!fb) throw new Error('주소나 건물 이름을 찾지 못했습니다 — 「인천 연수구 송도동 319-1」 또는 「송도 스마트스퀘어」처럼 넣어 보세요.');
     //  되돌아가는 길 — 시군구코드 + 법정동명 + 지번
     var m = String(fb.jibun||'').trim().match(/^(\d+)(?:\s*-\s*(\d+))?$/);
     if(!m) throw new Error('지번을 읽지 못했습니다 (' + fb.jibun + ')');
@@ -33820,8 +33899,75 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
     try{ recap = await call('recap', L, 10); }catch(e){ if(!/한도|활용신청|인증키/.test(e.message)) recap = []; else throw e; }
     titles = await call('title', L, 200);
     LOC = L;
-    DAT = CACHE[k] = { recap:recap, titles:titles, loc:L, at:new Date() };
+    DAT = CACHE[k] = { recap:recap, titles:titles, loc:L, at:new Date(), _exp:{} };
     DONG = -1; FLR = null;
+  }
+
+  // ── 전유부 ──────────────────────────────────────────────────────────
+  /*  동 이름 맞추기 — 표제부는 「101동」, 전유부는 「101」로 올 수도 있다. */
+  function dnorm(v){ return String(v==null?'':v).replace(/\s/g,'').replace(/동$/,''); }
+  function dkey(d){ return dnorm(d) || '(동없음)'; }
+
+  /*  호실 단위로 묶는다. 한 호실에 전유 한 줄 + 공용 여러 줄(계단·복도·주차 지분…)이 온다.
+      전용률 = 전유 ÷ (전유+공용). 상가 분양면적과 대략 같은 축이다.
+      용도는 **전유 부분**의 용도를 쓴다 — 공용 줄의 용도(계단실 등)는 호실 용도가 아니다. */
+  function isExc(x){
+    var g = String(x.exposPubuseGbCdNm||'').trim(), c = String(x.exposPubuseGbCd||'').trim();
+    return g ? /전유/.test(g) : c === '1';
+  }
+  function flrSort(x){
+    var n = parseInt(String(x.flrNo||'').replace(/[^0-9\-]/g,''), 10);
+    if(isNaN(n)){ var m = /(\d+)/.exec(String(x.flrNoNm||'')); n = m ? parseInt(m[1],10) : 0; }
+    var under = /지하/.test(String(x.flrGbCdNm||'') + String(x.flrNoNm||''));
+    return under ? -Math.abs(n) : n;
+  }
+  function hoSort(h){
+    var m = /(\d+)/.exec(String(h||'')); return m ? parseInt(m[1],10) : 1e9;
+  }
+  function byHo(rows){
+    var by = {};
+    rows.forEach(function(x){
+      var ho = txt(x.hoNm) || '(호 없음)';
+      var k = dkey(x.dongNm) + '|' + ho;
+      var o = by[k] = by[k] || { dong:txt(x.dongNm), ho:ho, flr:'', fs:0, exc:0, pub:0,
+                                 purp:'', etc:'', _pa:-1, nPub:0 };
+      var a = num(x.area) || 0;
+      if(isExc(x)){
+        o.exc += a;
+        //  전유 줄이 여럿이면 넓은 쪽의 용도·층을 대표로
+        if(a > o._pa){ o._pa = a; o.purp = txt(x.mainPurpsCdNm); o.etc = txt(x.etcPurps);
+                       o.flr = txt(x.flrNoNm) || (txt(x.flrGbCdNm) + ' ' + txt(x.flrNo)).trim(); o.fs = flrSort(x); }
+      } else { o.pub += a; o.nPub++; }
+    });
+    return Object.keys(by).map(function(k){
+      var o = by[k];
+      o.tot = o.exc + o.pub;
+      o.rate = o.tot > 0 ? Math.round(o.exc / o.tot * 1000) / 10 : null;
+      delete o._pa;
+      return o;
+    }).sort(function(a,b){ return (a.fs - b.fs) || (hoSort(a.ho) - hoSort(b.ho)) || String(a.ho).localeCompare(String(b.ho)); });
+  }
+
+  /*  한 동의 전유부 받기.
+      ① dongNm 을 붙여 그 동만 달라고 한다(호출을 아낀다).
+      ② 0줄이면 동 이름 표기가 달라서일 수 있다 — 동을 빼고 지번 전체를 받아
+         우리 쪽에서 동으로 거른다. 거를 때 「101동」과 「101」을 같게 본다. */
+  async function loadExp(i, force){
+    if(!DAT || !DAT.titles[i]) return null;
+    var dn = txt(DAT.titles[i].dongNm);
+    var k = dkey(dn);
+    if(!force && DAT._exp[k]) return DAT._exp[k];
+    var prog = function(n, t){ msg('전유부를 받는 중… ' + fmtN(n) + ' / ' + fmtN(t) + '줄', '#1565c0'); };
+    var r = await callAll('expos', LOC, dn ? { dongNm: dn } : null, prog);
+    var list = r.list, how = 'dong';
+    if(!list.length && dn){
+      r = await callAll('expos', LOC, null, prog);
+      list = r.list.filter(function(x){ var xd = dnorm(x.dongNm); return !xd || xd === dnorm(dn); });
+      how = 'all';
+    }
+    var o = { raw:list, rows:byHo(list), total:r.total, part:r.part, how:how, at:new Date() };
+    DAT._exp[k] = o;
+    return o;
   }
 
   async function loadFlr(i){
@@ -33871,9 +34017,9 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
 
   function bar(){
     var h = '<div class="br-fr">'
-      + ['apt','addr','jibun'].map(function(m){
-          var n = m==='apt' ? '🏢 단지에서 고르기' : m==='addr' ? '📍 주소로 찾기' : '🔢 지번 직접';
-          return '<button class="filter-btn' + (MODE===m?' on':'') + '" onclick="brMode(\'' + m + '\')">' + n + '</button>';
+      + [['apt','🏢 아파트 단지'],['bld','🏪 상가·업무·OP 건물'],['addr','📍 주소·이름으로'],['jibun','🔢 지번 직접']]
+        .map(function(x){
+          return '<button class="filter-btn' + (MODE===x[0]?' on':'') + '" onclick="brMode(\'' + x[0] + '\')">' + x[1] + '</button>';
         }).join('')
       + '<span style="width:10px"></span>'
       + '<span id="br-msg" style="font-size:12px;color:var(--text3)">' + MSG + '</span>'
@@ -33885,12 +34031,21 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
         + ' oninput="brAq(this.value)">'
         + '<span id="br-aptn" style="font-size:11.5px;color:var(--text3)"></span></div>'
         + '<div class="br-chips" id="br-chips"></div>';
+    } else if(MODE === 'bld'){
+      h += '<div class="br-fr" style="margin-top:8px">'
+        + '<input class="br-t" id="br-bq" style="width:200px" placeholder="건물 이름" value="' + esc(BQ) + '"'
+        + ' oninput="brBq(this.value)">'
+        + '<span id="br-bldn" style="font-size:11.5px;color:var(--text3)"></span>'
+        + '<span style="font-size:11px;color:var(--text3)">· <b>지번</b> = 실거래 건물명 사전(정확) · '
+        + '<b>🔎</b> = 매물 건물 이름으로 찾음 · 목록에 없으면 「📍 주소·이름으로」</span></div>'
+        + '<div class="br-chips" id="br-chips"></div>';
     } else if(MODE === 'addr'){
       h += '<div class="br-fr" style="margin-top:8px">'
-        + '<input class="br-t" id="br-addr" style="width:330px" placeholder="예) 인천 연수구 송도동 319-1"'
+        + '<input class="br-t" id="br-addr" style="width:330px" placeholder="예) 송도동 319-1 · 송도 스마트스퀘어"'
         + ' onkeydown="if(event.key===\'Enter\')brGoAddr()">'
         + '<button class="filter-btn on" onclick="brGoAddr()">조회</button>'
-        + '<span style="font-size:11px;color:var(--text3)">지번 주소로 넣어 주세요. 도로명도 되지만 지번이 정확합니다.</span></div>';
+        + '<span style="font-size:11px;color:var(--text3)">지번 주소가 가장 정확합니다. 건물 이름도 됩니다 — '
+        + '지역을 안 적으면 연수구에서 먼저 찾습니다.</span></div>';
     } else {
       h += '<div class="br-fr" style="margin-top:8px">'
         + '<input class="br-t" id="br-sgg" style="width:92px" placeholder="시군구코드" value="28185">'
@@ -33904,7 +34059,80 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
     return h;
   }
 
-  function chips(){
+  function chips(){ if(MODE === 'bld') return bldChips(); return aptChips(); }
+
+  /*  상가·업무·OP 건물 목록 — 두 곳에서 모은다.
+      ① 실거래 건물명 사전 sd_bldg_names  (열쇠 = 시군구|법정동|지번 → 지번이 있어 정확)
+         S실거래가의 「건물명 채우기」가 상업업무용 실거래에서 쌓아 둔 것이다.
+      ② 상가·OP 매물의 건물 이름          (지번이 없다 → 좌표 창고 주소나 이름으로 찾는다)
+      같은 건물이 양쪽에 있으면 하나로 합치고 ①의 지번을 쓴다. */
+  var NM = null;
+  function nz(n){
+    var f = W.NVB && W.NVB.normDanji;
+    return f ? f(n) : String(n||'').replace(/\(.*?\)/g,'').replace(/\s/g,'');
+  }
+  async function bldSource(){
+    var s = S(), out = [], seen = {};
+    if(NM === null){
+      try{ var v = s && s.sget ? await s.sget('sd_bldg_names') : null; NM = v ? (JSON.parse(v) || {}) : {}; }
+      catch(e){ NM = {}; }
+    }
+    Object.keys(NM).forEach(function(k){
+      var v = NM[k];
+      var n = String((v && typeof v === 'object') ? (v.n || '') : (v || '')).trim();
+      var p = k.split('|');
+      //  「8**」처럼 가려진 지번은 앞자리가 숫자여도 대장을 부를 수 없다 — 온전한 지번만
+      if(!n || p.length < 3 || !/^\d+(-\d+)?$/.test(String(p[2]).trim())) return;
+      var key = p[0] + '|' + nz(n);
+      if(key in seen) return;
+      seen[key] = out.length;
+      out.push({ n:n, sgg:p[0], umd:p[1], jb:p[2], src:'jb', cnt:0, kind:'' });
+    });
+    [['naverSanggaData','상가'], ['naverOpData','OP']].forEach(function(g){
+      ((W.G && W.G[g[0]]) || []).forEach(function(r){
+        var n = r.단지명;
+        if(g[1] === '상가' && typeof W.sanggaDispNm === 'function') n = W.sanggaDispNm(n) || n;
+        n = String(n||'').trim(); if(!n) return;
+        var key = '28185|' + nz(n);
+        if(key in seen){ var o = out[seen[key]]; o.cnt++; if(!o.kind) o.kind = g[1]; return; }
+        seen[key] = out.length;
+        out.push({ n:n, src:'nm', cnt:1, kind:g[1] });
+      });
+    });
+    return out.sort(function(a,b){ return (b.cnt - a.cnt) || a.n.localeCompare(b.n, 'ko'); });
+  }
+  var BMAX = 300;
+  function bldChips(){
+    var box = $('br-chips'); if(!box) return;
+    bldSource().then(function(all){
+      var q = nz(BQ) || BQ.replace(/\s/g,'');
+      var list = all.filter(function(b){
+        return !q || nz(b.n).indexOf(q) >= 0 || b.n.replace(/\s/g,'').indexOf(BQ.replace(/\s/g,'')) >= 0;
+      });
+      BLIST = list.slice(0, BMAX);
+      var nj = list.filter(function(b){ return b.src === 'jb'; }).length;
+      var n = $('br-bldn');
+      if(n) n.textContent = list.length + '곳 (지번 ' + nj + ' · 이름 ' + (list.length - nj) + ')';
+      var s = S();
+      box.innerHTML = BLIST.map(function(b, i){
+        var gu = (b.sgg && b.sgg !== '28185' && s && s.sggName) ? String(s.sggName(b.sgg)).split(' ').pop() : '';
+        var tip = b.src === 'jb' ? (b.umd + ' ' + b.jb) : '이름으로 찾습니다';
+        return '<span class="br-ch' + (BPICK === b.n ? ' on' : '') + '" onclick="brBld(' + i + ')" title="' + esc(tip) + '">'
+          + esc(b.n)
+          + (b.src === 'nm' ? ' 🔎' : '')
+          + (gu ? ' <small style="opacity:.7">' + esc(gu) + '</small>' : '')
+          + (b.cnt ? ' <small style="opacity:.7">' + (b.kind || '') + ' 매물 ' + b.cnt + '</small>' : '')
+          + '</span>';
+      }).join('')
+      + (list.length > BMAX ? '<span style="font-size:11px;color:var(--text3);padding:3px 6px">…외 '
+          + (list.length - BMAX) + '곳 — 이름을 넣어 좁혀 주세요</span>' : '')
+      || '<span style="font-size:11.5px;color:var(--text3);line-height:1.8">목록에 건물이 없습니다. '
+         + '<b>S실거래가 → 상업업무용 → 「건물명 채우기」</b>를 한 번 돌리시면 지번이 붙은 건물이 쌓이고, '
+         + '상가·OP 매물을 등록하시면 그 건물들도 여기 뜹니다. 지금은 <b>📍 주소·이름으로</b>를 쓰십시오.</span>';
+    });
+  }
+
+  function aptChips(){
     var box = $('br-chips'); if(!box) return;
     var s = S(); if(!s || !s.aptLoad) return;
     s.aptLoad().then(function(A){
@@ -33924,9 +34152,10 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
   function body(){
     if(BUSY) return '<div class="br-card" style="color:var(--text3);font-size:12.5px">대장을 부르는 중입니다…</div>';
     if(!DAT) return '<div class="br-card" style="color:var(--text3);font-size:12.5px;line-height:1.9">'
-      + '위에서 <b>단지</b>를 고르시거나 <b>주소·지번</b>을 넣으시면 그 지번의 건축물대장을 부릅니다.<br>'
-      + '1단계는 <b>총괄표제부</b>(대지·건폐율·용적률·세대·주차), <b>동별 표제부</b>(용도·구조·층수·높이·사용승인일), '
-      + '<b>층별개요</b>(층마다 용도와 면적)까지 보여 드립니다.</div>';
+      + '위에서 <b>아파트 단지</b>나 <b>상가·업무·OP 건물</b>을 고르시거나, <b>주소·건물 이름·지번</b>을 넣으시면 '
+      + '그 지번의 건축물대장을 부릅니다.<br>'
+      + '<b>총괄표제부</b>(대지·건폐율·용적률·세대·주차) · <b>동별 표제부</b>(용도·구조·층수·높이·사용승인일) · '
+      + '<b>층별개요</b>(층마다 용도와 면적) · <b>전유부</b>(호실마다 전유·공용 면적과 용도)까지 보여 드립니다.</div>';
 
     var h = '';
     var rc = DAT.recap[0] || null;
@@ -33943,6 +34172,14 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
       + '<button class="filter-btn" onclick="brReload()">🔄 다시 받기</button> '
       + '<button class="filter-btn" onclick="brPrint()">🖨 인쇄</button> '
       + '<button class="filter-btn" onclick="brXl()">📊 엑셀</button></span></div>';
+
+    //  이름으로 찾았으면 무엇을 거쳐 이 지번에 왔는지 적는다 — 딴 건물이면 바로 보이게
+    if(LOC.via)
+      h += '<div class="br-note" style="margin:0 0 6px">🔎 ' + esc(LOC.via) + '</div>';
+    if(LOC.far)
+      h += '<div class="br-warn" style="margin-top:4px"><b>연수구 밖의 건물입니다.</b> '
+        + '같은 이름의 다른 건물일 수 있습니다 — 위 주소가 찾으시던 건물이 맞는지 확인해 주세요. '
+        + '지역을 함께 적으면(예: 「송도 ' + esc(LOC.label||'') + '」) 더 정확합니다.</div>';
 
     //  위반건축물 — 값에 '위반'이 든 항목이 있으면 크게 알린다
     var vi = violOf([rc].concat(ts).filter(Boolean));
@@ -34009,10 +34246,126 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
             }).join('')
           + '</tbody></table></div>';
       }
+      h += expView(d);
       h += '</div>';
     }
 
     return h;
+  }
+
+  // ── 전유부 화면 ─────────────────────────────────────────────────────
+  function sumOf(rs, k){ return rs.reduce(function(a,o){ return a + (o[k]||0); }, 0); }
+  function a2(x){ return x ? x.toLocaleString('ko-KR',{maximumFractionDigits:2}) : ''; }
+  function py(x){ return x ? Math.round(x/3.3058*10)/10 : ''; }
+
+  function expView(d){
+    var E = DAT._exp[dkey(txt(d.dongNm))];
+    var gen = /일반/.test(txt(d.regstrGbCdNm));
+    var h = '<div class="br-hd" style="font-size:12.5px;margin-top:15px">🚪 호실별 전유부<span>'
+      + (E ? fmtN(E.rows.length) + '개 호실' : '호실마다 전유·공용 면적과 용도') + '</span>'
+      + '<span class="no-print" style="margin-left:auto">'
+      + (E ? '<button class="filter-btn" onclick="brExp(true)">🔄 호실 다시 받기</button>'
+           : '<button class="filter-btn on" id="br-expbtn" onclick="brExp()"'
+             + (EXPBUSY ? ' disabled style="opacity:.5"' : '') + '>🚪 이 동의 호실 받기</button>')
+      + '</span></div>';
+    if(!E){
+      h += '<div style="font-size:12px;color:var(--text3);line-height:1.8">'
+        + (EXPBUSY ? '전유부를 받는 중입니다…'
+           : '호실이 많으면 여러 번 불러야 해서 <b>누르실 때만</b> 받습니다 (하루 호출 한도).'
+             + (gen ? '<br>이 동은 대장 구분이 <b>일반</b>입니다 — 호실이 나뉘어 등기되지 않은 건물은 전유부가 없습니다.' : ''))
+        + '</div>';
+      return h;
+    }
+    if(!E.rows.length){
+      return h + '<div style="font-size:12px;color:var(--text3);line-height:1.8">이 동의 전유부가 없습니다. '
+        + (gen ? '대장 구분이 일반건축물이라 호실이 나뉘어 있지 않습니다.'
+               : '집합건축물인데 비어 있다면 국토부 자료에 아직 없을 수 있습니다.') + '</div>';
+    }
+    var R = E.rows, se = sumOf(R,'exc'), sp = sumOf(R,'pub');
+    var pc = {}; R.forEach(function(o){ var p = o.purp || '(용도 없음)'; pc[p] = (pc[p]||0) + 1; });
+    var pl = Object.keys(pc).sort(function(a,b){ return pc[b] - pc[a]; });
+    h += '<div class="br-kv">'
+      + '<div><b>호실 수</b><i>' + fmtN(R.length) + '</i></div>'
+      + '<div><b>전유면적 합</b><i>' + esc(m2(se)) + '</i></div>'
+      + '<div><b>공용면적 합</b><i>' + esc(m2(sp)) + '</i></div>'
+      + '<div><b>평균 전용률</b><i>' + (se+sp > 0 ? (Math.round(se/(se+sp)*1000)/10) + '%' : '') + '</i></div>'
+      + '<div><b>용도</b><i>' + esc(pl.slice(0,3).map(function(p){ return p + ' ' + pc[p]; }).join(' · ')
+      +   (pl.length > 3 ? ' 외' : '')) + '</i></div>'
+      + '</div>';
+    if(E.part)
+      h += '<div class="br-warn">전체 ' + fmtN(E.total) + '줄 가운데 ' + fmtN(E.raw.length)
+        + '줄만 받았습니다 (한 번에 ' + fmtN(EXP_PAGE*EXP_MAXPG) + '줄까지). 호실 목록이 모자랄 수 있습니다.</div>';
+    h += '<div class="br-fr no-print" style="margin-top:9px">'
+      + '<input class="br-t" id="br-expq" style="width:170px" placeholder="호·용도 찾기" value="' + esc(EQ.q) + '"'
+      + ' oninput="brEq(\'q\', this.value)">'
+      + '<span id="br-expcnt" style="font-size:11.5px;color:var(--text3)"></span></div>'
+      + '<div id="br-expchips" class="no-print"></div>'
+      + '<div id="br-exptb">' + expTable(R) + '</div>'
+      + '<div class="br-note">공용면적은 계단·복도·주차장 등의 지분을 합친 것입니다. '
+      + '분양 면적과는 계산 방식이 달라 조금 다를 수 있습니다. '
+      + '전용률 = 전유 ÷ (전유 + 공용).</div>';
+    return h;
+  }
+  function expHit(o){
+    if(EQ.flr && o.flr !== EQ.flr) return false;
+    if(EQ.purp && (o.purp || '(용도 없음)') !== EQ.purp) return false;
+    var q = String(EQ.q||'').replace(/\s/g,'');
+    if(q && (o.ho + o.purp + o.etc).replace(/\s/g,'').indexOf(q) < 0) return false;
+    return true;
+  }
+  function expChips(R){
+    var fl = [], fs = {}, pc = {};
+    R.forEach(function(o){
+      if(o.flr && !(o.flr in fs)){ fs[o.flr] = o.fs; fl.push(o.flr); }
+      var p = o.purp || '(용도 없음)'; pc[p] = (pc[p]||0) + 1;
+    });
+    fl.sort(function(a,b){ return fs[a] - fs[b]; });
+    var pl = Object.keys(pc).sort(function(a,b){ return pc[b] - pc[a]; });
+    function ch(key, v, t, on){
+      return '<span class="br-ch' + (on ? ' on' : '') + '" data-k="' + key + '" data-v="' + esc(v) + '"'
+        + ' onclick="brEq(this.getAttribute(\'data-k\'), this.getAttribute(\'data-v\'))">' + esc(t) + '</span>';
+    }
+    var h = '';
+    if(fl.length > 1 && fl.length <= 60)
+      h += '<div class="br-chips" style="max-height:none;margin-top:6px"><span style="font-size:11px;color:var(--text3);padding:3px 2px">층</span>'
+        + ch('flr', '', '전체', !EQ.flr)
+        + fl.map(function(f){ return ch('flr', f, f, EQ.flr === f); }).join('') + '</div>';
+    if(pl.length > 1)
+      h += '<div class="br-chips" style="max-height:none;margin-top:4px"><span style="font-size:11px;color:var(--text3);padding:3px 2px">용도</span>'
+        + ch('purp', '', '전체', !EQ.purp)
+        + pl.map(function(p){ return ch('purp', p, p + ' ' + pc[p], EQ.purp === p); }).join('') + '</div>';
+    return h;
+  }
+  function expTable(R){
+    var rows = R.filter(expHit);
+    var se = sumOf(rows,'exc'), sp = sumOf(rows,'pub');
+    return '<div class="br-scroll" style="margin-top:8px"><table class="br-tb"><thead><tr>'
+      + '<th>층</th><th>호</th><th style="text-align:right">전유면적</th><th style="text-align:right">공용면적</th>'
+      + '<th style="text-align:right">계</th><th style="text-align:right">전용률</th><th>주용도</th></tr></thead><tbody>'
+      + rows.map(function(o){
+          return '<tr><td>' + esc(o.flr) + '</td><td><b>' + esc(o.ho) + '</b></td>'
+            + '<td style="text-align:right">' + esc(m2(o.exc)) + '</td>'
+            + '<td style="text-align:right">' + esc(m2(o.pub)) + '</td>'
+            + '<td style="text-align:right">' + esc(m2(o.tot)) + '</td>'
+            + '<td style="text-align:right">' + (o.rate != null ? o.rate + '%' : '') + '</td>'
+            + '<td>' + esc(o.purp) + (o.etc && o.etc !== o.purp ? ' <span style="color:var(--text3)">' + esc(o.etc) + '</span>' : '')
+            + '</td></tr>';
+        }).join('')
+      + (rows.length ? '<tr style="font-weight:700"><td colspan="2">계 ' + fmtN(rows.length) + '호실</td>'
+          + '<td style="text-align:right">' + esc(m2(se)) + '</td>'
+          + '<td style="text-align:right">' + esc(m2(sp)) + '</td>'
+          + '<td style="text-align:right">' + esc(m2(se+sp)) + '</td>'
+          + '<td style="text-align:right">' + (se+sp > 0 ? (Math.round(se/(se+sp)*1000)/10) + '%' : '') + '</td><td></td></tr>'
+          : '<tr><td colspan="7" style="color:var(--text3)">거르개에 맞는 호실이 없습니다.</td></tr>')
+      + '</tbody></table></div>';
+  }
+  //  거르개가 바뀌면 칩과 표만 — 찾기 칸은 그대로 둬야 글자·초점이 산다
+  function expRefresh(){
+    var d = DAT && DAT.titles[DONG]; if(!d) return;
+    var E = DAT._exp[dkey(txt(d.dongNm))]; if(!E) return;
+    var c = $('br-expchips'); if(c) c.innerHTML = expChips(E.rows);
+    var t = $('br-exptb');    if(t) t.innerHTML = expTable(E.rows);
+    var n = $('br-expcnt');   if(n) n.textContent = E.rows.filter(expHit).length + ' / ' + E.rows.length + '호실';
   }
 
   function foot(){
@@ -34029,10 +34382,11 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
     var root = $('br-root'); if(!root) return;
     root.innerHTML = '<div class="br-in no-print">' + bar() + '</div>'
       + '<div id="br-body">' + body() + '</div>' + foot();
-    if(MODE === 'apt') chips();
+    if(MODE === 'apt' || MODE === 'bld') chips();
+    expRefresh();
   }
   function repaint(){                 // 찾기 줄은 두고 결과만
-    var b = $('br-body'); if(b) b.innerHTML = body(); else paint();
+    var b = $('br-body'); if(b){ b.innerHTML = body(); expRefresh(); } else paint();
   }
   function msg(t, c){
     MSG = t ? '<span style="color:' + (c||'var(--text3)') + '">' + t + '</span>' : '';
@@ -34067,11 +34421,34 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
         .catch(function(e){ msg(String(e.message||e), '#c33'); });
     });
   };
+  W.brBq = function(v){ BQ = v; bldChips(); };
+  /*  상가·업무·OP 건물 칩 — 지번이 있으면 지번으로(정확),
+      없으면 매물IN지도가 찾아 둔 좌표 창고의 주소로, 그것도 없으면 이름으로 찾는다. */
+  W.brBld = function(i){
+    var b = BLIST[i]; if(!b) return;
+    BPICK = b.n; bldChips();
+    var s = S(); if(!s) return msg('S실거래가 탭을 한 번 열어 주세요.', '#c33');
+    var p;
+    if(b.src === 'jb'){
+      var full = (s.sggName ? s.sggName(b.sgg) : '') || '';
+      p = resolve((full ? full + ' ' : '') + b.umd + ' ' + b.jb, { sgg:b.sgg, umd:b.umd, jibun:b.jb, san:false })
+        .then(function(L){ L.via = '실거래 건물명 사전 · ' + b.umd + ' ' + b.jb; return L; });
+    } else {
+      var g = null;
+      try{ g = W.sdMip && W.sdMip.geoOf ? W.sdMip.geoOf(b.n) : null; }catch(e){}
+      p = (g && g.addr)
+        ? resolve(g.addr, null, { name:b.n }).then(function(L){
+            if(!L.via) L.via = '매물IN지도 좌표 창고의 주소 → ' + g.addr; return L; })
+        : resolve(b.n, null, { name:true });
+    }
+    p.then(function(L){ L.label = b.n; return go(L); })
+     .catch(function(e){ msg(String(e.message||e), '#c33'); });
+  };
   W.brGoAddr = function(){
     var q = ($('br-addr')||{}).value || '';
-    if(!q.trim()) return msg('주소를 넣어 주세요.', '#c33');
-    PICK = '';
-    resolve(q).then(go).catch(function(e){ msg(String(e.message||e), '#c33'); });
+    if(!q.trim()) return msg('주소나 건물 이름을 넣어 주세요.', '#c33');
+    PICK = ''; BPICK = -1;
+    resolve(q, null, { name:true }).then(go).catch(function(e){ msg(String(e.message||e), '#c33'); });
   };
   W.brGoJibun = function(){
     var sgg = (($('br-sgg')||{}).value||'').trim();
@@ -34087,10 +34464,21 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
     load(LOC, true).then(function(){ BUSY = false; repaint(); msg('다시 받았습니다.', '#0a7'); })
       .catch(function(e){ BUSY = false; repaint(); msg(String(e.message||e), '#c33'); }); } };
   W.brDong = function(i){
-    DONG = (DONG === i ? -1 : i); FLR = null; repaint();
+    DONG = (DONG === i ? -1 : i); FLR = null; EQ = { q:'', flr:'', purp:'' }; repaint();
     if(DONG < 0) return;
     loadFlr(DONG).then(repaint).catch(function(e){ FLR = []; repaint(); msg(String(e.message||e), '#c33'); });
   };
+  W.brExp = function(force){
+    if(EXPBUSY || DONG < 0) return;
+    EXPBUSY = true; EQ = { q:'', flr:'', purp:'' }; repaint();
+    var i = DONG;
+    loadExp(i, !!force).then(function(E){
+      EXPBUSY = false; repaint();
+      if(E) msg('호실 ' + fmtN(E.rows.length) + '개를 받았습니다'
+        + (E.how === 'all' ? ' (동 이름 표기가 달라 지번 전체에서 골라냈습니다)' : '') + '.', '#0a7');
+    }).catch(function(e){ EXPBUSY = false; repaint(); msg(String(e.message||e), '#c33'); });
+  };
+  W.brEq = function(k, v){ EQ[k] = (k !== 'q' && EQ[k] === v) ? '' : v; expRefresh(); };
   //  대장이 건물명을 주면 그것을 쓴다 — 주소로 찾았을 때 「송도동 319-1」보다 알아보기 쉽다
   function title(){
     var r = DAT && (DAT.recap[0] || DAT.titles[0]);
@@ -34116,9 +34504,26 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
       });
       return { name:nm, cols:ks.map(function(k){ return { w: Math.min(30, Math.max(9, name(k).length*2+4)) }; }), rows:out };
     }
+    //  전유부 — 받아 둔 동을 모두 호실 단위로 한 시트에 (숫자는 숫자로 넣어 합계를 낼 수 있게)
+    function expSheet(){
+      var all = [];
+      Object.keys(DAT._exp || {}).forEach(function(k){ all = all.concat(DAT._exp[k].rows); });
+      if(!all.length) return null;
+      var H = ['동','층','호','전유면적(㎡)','전유(평)','공용면적(㎡)','계(㎡)','전용률(%)','주용도','기타용도'];
+      var out = [{ cells:H, style:{ kind:'hdr', deal:'매매' } }];
+      all.forEach(function(o, i){
+        out.push({ cells:[ o.dong || null, o.flr || null, o.ho,
+                           o.exc ? Math.round(o.exc*100)/100 : null, o.exc ? py(o.exc) : null,
+                           o.pub ? Math.round(o.pub*100)/100 : null, o.tot ? Math.round(o.tot*100)/100 : null,
+                           o.rate, o.purp || null, (o.etc && o.etc !== o.purp) ? o.etc : null ],
+                   style:{ kind:'data', deal:'매매', alt:(i%2===0) } });
+      });
+      return { name:'호실별전유부', cols:[{w:9},{w:9},{w:10},{w:13},{w:9},{w:13},{w:11},{w:10},{w:20},{w:20}], rows:out };
+    }
     var sh = [ sheet('총괄표제부', DAT.recap, ORD_RECAP),
                sheet('동별표제부', DAT.titles, ORD_TITLE),
-               sheet('층별개요', DAT._flr || [], ['dongNm','flrGbCdNm','flrNoNm','mainPurpsCdNm','etcPurps','strctCdNm','area']) ]
+               sheet('층별개요', DAT._flr || [], ['dongNm','flrGbCdNm','flrNoNm','mainPurpsCdNm','etcPurps','strctCdNm','area']),
+               expSheet() ]
              .filter(Boolean);
     if(!sh.length) return msg('담을 것이 없습니다.', '#c33');
     var d = new Date(), ds = d.getFullYear() + ('0'+(d.getMonth()+1)).slice(-2) + ('0'+d.getDate()).slice(-2);
@@ -34127,8 +34532,10 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
       msg('엑셀로 내려받았습니다.', '#0a7');
     }catch(e){ msg('엑셀을 만들지 못했습니다 — ' + (e.message||e), '#c33'); }
   };
-  W.sdBr = { tab:TAB, call:call, resolve:resolve, load:load, viol:violOf,
-             state:function(){ return { mode:MODE, loc:LOC, dong:DONG,
+  W.sdBr = { tab:TAB, call:call, callAll:callAll, resolve:resolve, load:load, viol:violOf,
+             byHo:byHo, bldSource:bldSource, bld:function(){ return BLIST; },
+             exp:function(){ var d = DAT && DAT.titles[DONG]; return d ? (DAT._exp[dkey(txt(d.dongNm))] || null) : null; },
+             state:function(){ return { mode:MODE, loc:LOC, dong:DONG, eq:EQ,
                titles:(DAT?DAT.titles.length:0), recap:(DAT?DAT.recap.length:0),
                flr:(FLR?FLR.length:null) }; } };
 
