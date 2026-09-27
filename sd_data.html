@@ -19353,7 +19353,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.09.27-33';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.09.27-34';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_data.html';      // 이 파일 이름
   var SD_NAME = '실거래가';      // 사람이 부르는 이름
 
@@ -29566,16 +29566,24 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 </script>
 
 <!-- ══════════════════════════════════════════════════════════════════════
-     N 매물 분석 모듈 v1.0
+     N 매물 분석 모듈 v2.0
      ──────────────────────────────────────────────────────────────────
-     네이버 부동산 단지 매물 화면을 통째로 붙여넣으면 표·통계·경쟁 강도까지.
+     ① 추출기 텍스트 파일을 50~100개 한꺼번에 골라
+     ② 파일마다 종류(아파트·상가·사무실·오피스텔·생숙)를 알아서 가리고
+     ③ 단지별로 갈라 합친 뒤
+     ④ 매물(APT/상가사무실/OP생숙) 탭에 바로 등록한다. 엑셀은 보관용이다.
 
-     지금까지는 PC에서 파이썬 변환기(아파트_변환기.py v2.7)를 돌려 엑셀을
-     만드셨다. 그 파서를 그대로 옮겼다 — 판단 하나하나를 같은 차례로.
+     파이썬 변환기 세 벌(아파트 v2.8 · 상가사무실 v2.7 · OP생숙 v2.8)을 옮겼다.
+     세 벌은 지침이 서로 다르다 — 한 벌로 뭉개면 상가는 매물 시작을 못 찾고
+     (카테고리 줄이 시작이다), OP 는 타입 접미사(A1·(3단지))를 놓치며,
+     생숙이 오피스텔로 둔갑한다.
 
-     옮기면서 실제로 걸린 것: 파이썬의 \b(단어 경계)는 한글을 단어로 보지만
-     자바스크립트는 안 본다. 그대로 옮겼더니 「매매 6억 9,500」 줄이 단지
-     이름으로 잡혀 매물 블록이 쪼개지고 동 칸이 통째로 비었다.
+     옮기면서 실제로 걸린 것 둘:
+     ① 파이썬의 \b(단어 경계)는 한글을 단어로 보지만 자바스크립트는 안 본다.
+        그대로 옮겼더니 「매매 6억 9,500」 줄이 단지 이름으로 잡혀 블록이 쪼개졌다.
+     ② 파이썬 원본은 블록 이름을 거를 때는 매물제공처 13곳을 쓰면서, 중개업소명을
+        고를 때는 11곳만 썼다. 그래서 중개업소가 안 적힌 매물에서 이실장플러스·
+        텐컴즈·알터·선방이 중개업소명으로 잡혔다. 두 곳 모두 전수 목록을 쓴다.
 
      그래서 「파이썬 엑셀과 대조」를 기능으로 두었다. 한 번 맞춰 보고 끝낼
      일이 아니다 — 네이버가 화면을 바꾸면 또 어긋나고, 그때 말없이 틀린
@@ -29615,41 +29623,73 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 @media print{ #nv-root .nv-in{display:none} }
 </style>
 <script>
-(function(){
-  'use strict';
-  //  2단 탭 모듈이 __nvOn 을 쓰고 있다 — 같은 표식을 쓰면 이 모듈이 통째로 안 돈다
-  if(window.__nvAnOn) return; window.__nvAnOn = true;
-  /*  이름은 nva- 로 시작한다. 2단 탭 모듈이 nvFind(Ctrl+K)를 쓰고 있어서,
-      같은 이름을 쓰면 빠른 이동이 통째로 망가진다 — 실제로 그랬다. */
-  var TAB = 21;
+/*  ── N 매물 · 유형별 파서 (아파트 / 상가·사무실 / 오피스텔·생숙) ─────────
+    파이썬 변환기 세 벌을 옮긴 것이다. 세 벌은 지침이 서로 다르다 —
+    한 벌로 뭉개면 상가는 매물 시작을 못 찾고(카테고리 줄이 시작이다),
+    OP 는 타입 접미사(A1·(3단지))를 놓치고, 생숙이 오피스텔로 둔갑한다.
+
+    바깥에서 쓰는 것: NVB.detect(raw, fname) · NVB.collect(kind, raw, opt)
+                      NVB.build(kind, entries) · NVB.COLS[kind]
+    ──────────────────────────────────────────────────────────────────── */
+(function(root){
+'use strict';
 
 var JASA_KW = ['송도제일','문영은','송도제일공인'];
 var ABBR_KW = ['공인중개사사무소','공인중개사무소','중개사무소','공인중개사','중개법인',
                '주식회사','부동산','사무소','중개사','공인'];
 var PROVIDERS = ['매경부동산','부동산렛츠','한경부동산','부동산써브','아실','부동산뱅크',
-  '우리집부동산','부동산포스','매경부동산 ','한국공인중개사협회','부동산써브 '];
+  '우리집부동산','부동산포스','한국공인중개사협회'];
+var PROVIDER2 = ['부동산렛츠','매경부동산','한경부동산','이실장플러스','부동산뱅크','부동산써브',
+  '아실','우리집부동산','알터','부동산포스','텐컴즈','선방','한국공인중개사협회'];
 var MARKERS = ['관심매물','매물 보러가기','Npay 부동산에서 보기','이미지','개',
                '상승내역 보기','하락내역 보기'];
+/*  ⚠ 파이썬 원본은 「블록 이름 거르기」에는 13곳을 쓰면서 「중개업소명 고르기」에는
+    11곳만 썼다. 그래서 중개업소가 안 적힌 매물에서 매물제공처(이실장플러스·텐컴즈·
+    알터·선방)가 중개업소명으로 잡혔다 — 시험이 잡았다. 손님께 「이 매물은 어디에
+    있다」를 잘못 말하게 되므로, 두 곳 모두 같은 전수 목록을 쓴다.
+    고를 것이 없으면 비워 둔다. 지어내지 않는다. */
+var PROVIDER_ALL = PROVIDERS.concat(PROVIDER2).filter(function(v,i,a){
+  return a.indexOf(v) === i; }).map(function(s){ return s.trim(); });
+function isProvider(s){ return PROVIDER_ALL.indexOf(String(s||'').trim()) >= 0; }
 var DIRS = ['남서향','남동향','북서향','북동향','남향','북향','동향','서향'];
+var DIRRE = DIRS.join('|');
 
 function abbr(name){
   var orig = name;
-  name = String(name).replace(/\(.*?\)/g, '').replace(/^\(주\)/, '');
+  name = String(name).replace(/\(.*?\)/g,'').replace(/^\(주\)/,'');
   var ch = true;
-  while(ch){
-    ch = false;
-    for(var i=0;i<ABBR_KW.length;i++){
-      if(name.indexOf(ABBR_KW[i]) >= 0){ name = name.split(ABBR_KW[i]).join(''); ch = true; }
-    }
+  while(ch){ ch = false;
+    for(var i=0;i<ABBR_KW.length;i++)
+      if(name.indexOf(ABBR_KW[i])>=0){ name = name.split(ABBR_KW[i]).join(''); ch = true; }
   }
-  name = name.replace(/^[\s\-·.]+|[\s\-·.]+$/g, '');
+  name = name.replace(/^[\s\-·.]+|[\s\-·.]+$/g,'');
   return name || String(orig).trim();
 }
 function isJasa(raw){
   raw = String(raw||'');
-  return JASA_KW.some(function(k){ return raw.indexOf(k) >= 0; });
+  return JASA_KW.some(function(k){ return raw.indexOf(k)>=0; });
 }
+function priceNum(price){
+  var p = String(price||'').split('/')[0].split('~')[0].trim();
+  var m = p.match(/^(\d+)억(?:\s*([\d,]+))?/);
+  if(m){ var v = parseInt(m[1],10)*10000;
+         if(m[2]) v += parseInt(m[2].replace(/,/g,''),10); return v; }
+  m = p.match(/^([\d,]+)/);
+  return m ? parseInt(m[1].replace(/,/g,''),10) : 0;
+}
+/*  월세는 「보증금/월세」다 — 보증금만 보면 250 과 700 이 같은 자리에 선다. */
+function priceKey(price){
+  var p = String(price||'').trim();
+  if(p.indexOf('/')>-1){
+    var a = p.split('/');
+    return [priceNum(a[0]), priceNum(a[1])];
+  }
+  return [priceNum(p), 0];
+}
+function yy(d){ return d ? String(d).slice(2) : ''; }
+function trunc(x){ return String(Math.trunc(parseFloat(x))); }
 
+//  ── 주요정보 (아파트·OP 공용) ─────────────────────────────────────────
 var KW = [
   ['즉시입주',['즉시입주']],
   ['입주가능',['입주가능','입주 가능','실입주','빠른입주','빠른 입주']],
@@ -29673,57 +29713,63 @@ var KW = [
   ['단지뷰',['단지뷰','단지 뷰','정원뷰','정원 뷰','초록단지','조경']],
   ['트인뷰',['트인뷰','트인 뷰','막힘없','막힘 없','뻥뷰','뻥 뷰','시티뷰','씨티뷰','시티 뷰','트인조망','확트인','탁트인','트인단지','조망트인','양창뚫린','확 트인','뚫린뷰','뚫린 뷰']],
   ['양창형',['양창형','양창','판상형','대면형']],
-  ['펜트리',['펜트리']],
-  ['중문',['중문']],
-  ['풀옵션',['풀옵션','풀 옵션']],
-  ['필로티',['필로티','피로티']],
-  ['전자계약가능',['전자계약']]
+  ['펜트리',['펜트리']],['중문',['중문']],['풀옵션',['풀옵션','풀 옵션']],
+  ['필로티',['필로티','피로티']],['전자계약가능',['전자계약']]
 ];
 function extractInfo(descs, cap){
   var text = descs.join(' '), out = [];
   KW.forEach(function(p){
-    var canon = p[0], trigs = p[1];
-    if(trigs.some(function(t){ return text.indexOf(t) >= 0; }) && out.indexOf(canon) < 0)
-      out.push(canon);
+    if(p[1].some(function(t){ return text.indexOf(t)>=0; }) && out.indexOf(p[0])<0) out.push(p[0]);
   });
   var s = out.join(' ');
-  return s.length > cap ? s.slice(0, cap).replace(/\s+$/,'') : s;
+  return s.length>cap ? s.slice(0,cap).replace(/\s+$/,'') : s;
 }
-function priceNum(price){
-  var p = String(price||'').split('/')[0].split('~')[0].trim();
-  var m = p.match(/^(\d+)억(?:\s*([\d,]+))?/);
-  if(m){
-    var v = parseInt(m[1],10)*10000;
-    if(m[2]) v += parseInt(m[2].replace(/,/g,''),10);
-    return v;
-  }
-  m = p.match(/^([\d,]+)/);
-  return m ? parseInt(m[1].replace(/,/g,''),10) : 0;
-}
-function yy(d){ return d ? String(d).slice(2) : ''; }
 
-var AREA = new RegExp('아파트(?:분양권|오피스텔|생활형숙박시설)?([\\d.]+)([A-Za-z0-9\\-]*)㎡ ?'
-  + '\\(전용([\\d.]+)([A-Za-z0-9\\-]*)\\)(.+?)(' + DIRS.join('|') + ')');
-function parseArea(line){
-  var m = AREA.exec(line);
-  if(!m) return null;
-  var gong = m[1], gsuf = m[2], jeon = parseFloat(m[3]), jsuf = m[4], floor = m[5].trim();
-  return { bun: String(Math.trunc(parseFloat(gong))) + gsuf,
-           jeonS: String(Math.trunc(jeon)) + jsuf,
-           bunPy: Math.round(parseFloat(gong)/3.3058*10)/10,
-           jeon: jeon, floor: floor, dir: m[6] };
+//  ── 주요정보 (상가·사무실) — 권리금이 0순위다 ────────────────────────
+var SG_KW = [
+  ['즉시입주',['즉시입주']],
+  ['공실',['공실','언제든입주','즉시입주가능']],
+  ['렌트프리',['렌트프리','렌트 프리']],
+  ['무권리',['무권리','권리금없음','권리금 없음','권리없음','권리 없음','무권리금']],
+  ['시설협의',['시설협의','시설인테리어','인테리어 승계','시설 승계']],
+  ['세안고',['세안고','세끼고','전세끼고','월세낀','월세 낀','세낀']],
+  ['대로변',['대로변']],['노출좋음',['노출좋','노출 좋']],['코너',['코너']],
+  ['메인상권',['메인상권','메인자리','중심상권','핫플']],
+  ['엘리베이터앞',['엘리베이터앞','엘리베이터 앞','승강기앞','승강기 앞','엘리베이터']],
+  ['에스컬레이터앞',['에스컬레이터앞','에스컬레이터 앞','에스컬레이터']],
+  ['양창',['양창','삼면창','삼면 창']],['층고높음',['층고높','층고 높']],
+  ['학원',['학원']],['병원',['병원']],['식당',['식당','요식업']],['카페',['카페']],
+  ['미용실',['미용실']],['운동시설',['운동시설','헬스','피트니스']]
+];
+var SG_GWON = /권리(?:금)?\s*[:=]?\s*(\d+(?:[,\d]*)\s*(?:억|천만|백만|만원|만|천)?)/;
+function gwonInfo(text){
+  //  「권리금없음」을 「권리금」으로 잡으면 뜻이 정반대가 된다 — 무권리를 먼저 본다
+  if(/무권리|권리금?\s*(없|무(?![료])|X|x|0(?!\d))/.test(text)) return '무권리';
+  var m = SG_GWON.exec(text);
+  if(!m) return text.indexOf('권리금')>=0 ? '권리금' : '';
+  var amt = m[1].replace(/ /g,'');
+  return amt ? '권리금 '+amt : '권리금';
 }
-var DEAL = /^(매매|전세|월세|단기)\s+(.+?)\s*(?:변동)?$/;
-var DATE = /(?:집주인확인매물|확인매물|등록)\s+(\d{4}\.\d{2}\.\d{2})/;
+function sgExtractInfo(descs, cap){
+  var text = descs.join(' '), out = [];
+  var g = gwonInfo(text); if(g) out.push(g);
+  SG_KW.forEach(function(p){
+    if(p[0]==='무권리' && g) return;
+    if(p[1].some(function(t){ return text.indexOf(t)>=0; }) && out.indexOf(p[0])<0) out.push(p[0]);
+  });
+  var mj = /전용\s?\d+(?:\.\d+)?/.exec(text);
+  if(mj){ var v = mj[0].replace(/ /g,''); if(out.indexOf(v)<0) out.push(v); }
+  var s = out.join(' ');
+  return s.length>cap ? s.slice(0,cap).replace(/\s+$/,'') : s;
+}
 
-var PROVIDER2 = ['부동산렛츠','매경부동산','한경부동산','이실장플러스','부동산뱅크','부동산써브',
-  '아실','우리집부동산','알터','부동산포스','텐컴즈','선방','한국공인중개사협회'];
+//  ── 공통 — 이름처럼 보이는 줄 ────────────────────────────────────────
 var NOISE = /^(매물\s*목록.*|창닫기|도움말.*|랭킹순|가격순|최신순|면적순|관심매물|이미지|매물\s*보러가기|중개사\s*\d+곳.*|매물목록\s*(펼치기|접기)|더보기|매물\d+|개|이전\s*페이지로\s*이동|하락내역\s*보기|상승내역\s*보기|변동)$/;
 function looksLikeName(t){
-  if(!t || t.length > 40) return false;
-  if(PROVIDER2.indexOf(t) >= 0) return false;
+  if(!t || t.length>40) return false;
+  if(PROVIDER2.indexOf(t)>=0) return false;
   if(NOISE.test(t)) return false;
-  if(t.charAt(0) === '[' || t.charAt(0) === '"') return false;
+  if(t.charAt(0)==='[' || t.charAt(0)==='"') return false;
   /*  파이썬 \b 는 한글도 단어로 보지만 JS 는 ASCII 만 본다 —
       그대로 옮기면 「매매 6억 9,500」이 단지 이름으로 잡혀 블록이 쪼개진다. */
   if(/^(매매|전세|월세|단기|단기임대)(\s|$)/.test(t)) return false;
@@ -29733,176 +29779,570 @@ function looksLikeName(t){
   return true;
 }
 
-function parse(raw, opt){
+var DEAL  = /^(매매|전세|월세|단기)\s+(.+?)\s*(?:변동)?$/;
+var DATE  = /(?:집주인확인매물|확인매물|등록)\s+(\d{4}\.\d{2}\.\d{2})/;
+
+/*  하위 매물 읽기 — 아파트·OP 공용. 접힌 묶음/펼친 묶음/단건 세 갈래. */
+function readMembers(blk, dpPrice, warns, tag){
+  var btxt = blk.join('\n'), members = [];
+  var Nm = /중개사\s+(\d+)곳/.exec(btxt);
+  var headerN = Nm ? parseInt(Nm[1],10) : null;
+  var collapsed = 0;
+  function agencyFrom(from){
+    for(var j=from; j<blk.length; j++){
+      var c = blk[j].trim();
+      if(c && MARKERS.indexOf(c)<0 && !isProvider(c) && !/^\d+$/.test(c)) return c;
+    }
+    return '';
+  }
+  if(btxt.indexOf('매물목록 접기')>=0){
+    var k = 0;
+    while(k<blk.length && blk[k].trim()!=='매물목록 접기') k++;
+    k++;
+    var cur = null, desc = '', inq = false;
+    while(k<blk.length){
+      var ln = blk[k].trim();
+      var dm = DEAL.exec(ln);
+      if(dm && !inq){ cur = dm[2].trim(); desc = ''; k++; continue; }
+      if(ln === '"'){ inq = !inq; k++; continue; }
+      if(inq){ desc += (desc?' ':'') + ln; k++; continue; }
+      var dt = DATE.exec(ln);
+      if(dt){ members.push([cur, dt[1], desc, agencyFrom(k+1)]); desc=''; k++; continue; }
+      k++;
+    }
+    if(headerN && members.length !== headerN && warns)
+      warns.push(tag + ' 헤더 ' + headerN + '곳 vs 파싱 ' + members.length + '건 불일치');
+  } else if(btxt.indexOf('매물목록 펼치기')>=0){
+    collapsed = 1;
+    members.push([dpPrice, '', '', '']);
+  } else {
+    var d2 = '', date_ = '', ag2 = '', inq2 = false;
+    for(var j2=0;j2<blk.length;j2++){
+      var l2 = blk[j2].trim();
+      if(l2 === '"'){ inq2 = !inq2; continue; }
+      if(inq2){ d2 += (d2?' ':'') + l2; continue; }
+      var dt2 = DATE.exec(l2);
+      if(dt2){ date_ = dt2[1]; ag2 = agencyFrom(j2+1); }
+    }
+    members.push([dpPrice, date_, d2, ag2]);
+  }
+  return { members: members, collapsed: collapsed };
+}
+
+/*  대표 고르기 — 자사가 있으면 자사, 없으면 확인일이 가장 최근인 것. */
+function pickRep(list, dateOf){
+  var jm = list.filter(function(x){ return isJasa(dateOf.agency(x)); });
+  var pool = jm.length ? jm : list;
+  var rep = pool.reduce(function(a,b){ return (dateOf.date(b) > dateOf.date(a)) ? b : a; });
+  return { rep: rep, jasa: jm.length > 0 };
+}
+
+/*  묶기 — (열쇠)가 같고 층이 어긋나지 않으면 한 매물.
+    열쇠에는 반드시 단지명이 들어간다. 파이썬 원본에는 빠져 있어서,
+    한 파일에 여러 단지를 뽑았을 때 동·면적·거래·향·가격이 우연히 같으면
+    다른 단지 매물끼리 한 건으로 합쳐졌다. */
+function unionGroups(entries, keyOf){
+  function ftype(f){ return /^\d/.test(f) ? 'num' : 'gjz'; }
+  function compat(a,b){ return a===b || ftype(a)!==ftype(b); }
+  var groups = {};
+  entries.forEach(function(e,i){ var k = keyOf(e); (groups[k]=groups[k]||[]).push(i); });
+  var par = entries.map(function(_,i){ return i; });
+  function find(x){ while(par[x]!==x){ par[x]=par[par[x]]; x=par[x]; } return x; }
+  Object.keys(groups).forEach(function(k){
+    var ix = groups[k];
+    for(var a=0;a<ix.length;a++) for(var b=a+1;b<ix.length;b++)
+      if(compat(entries[ix[a]].floor, entries[ix[b]].floor)) par[find(ix[a])] = find(ix[b]);
+  });
+  var comp = {};
+  for(var i=0;i<entries.length;i++){ var r = find(i); (comp[r]=comp[r]||[]).push(i); }
+  return Object.keys(comp).map(function(k){
+    return comp[k].map(function(i){ return entries[i]; });
+  });
+}
+
+var ORDER = { '매매':0, '전세':1, '월세':2, '단기':3 };
+function dealRank(d){ return ORDER[d]==null ? 4 : ORDER[d]; }
+
+/* ══════════════════════════════════════════════════════════════════════
+   ① 아파트 · 분양권
+   ══════════════════════════════════════════════════════════════════ */
+var APT_AREA = new RegExp('아파트(?:분양권|오피스텔|생활형숙박시설)?([\\d.]+)([A-Za-z0-9\\-]*)㎡ ?'
+  + '\\(전용([\\d.]+)([A-Za-z0-9\\-]*)\\)(.+?)(' + DIRRE + ')');
+function aptParseArea(line){
+  var m = APT_AREA.exec(line); if(!m) return null;
+  return { bun: trunc(m[1]) + m[2], jeonS: trunc(m[3]) + m[4],
+           bunPy: Math.round(parseFloat(m[1])/3.3058*10)/10,
+           jeon: parseFloat(m[3]), floor: m[5].trim(), dir: m[6] };
+}
+function collectApt(raw, opt){
   opt = opt || {};
-  var warns = [];
-  var lines = String(raw).split(/\r?\n/);
+  var warns = [], lines = String(raw).split(/\r?\n/);
   var mm = /\[명칭:\s*([^\]]+)\]/.exec(raw);
   var tagDanji = mm ? mm[1].trim() : null;
-
-  //  본문에서 가장 많이 나오는 「이름 + 동」 앞머리
   var pref = {};
   lines.forEach(function(l){
     var bm = /^(.+?)\s+\d+동$/.exec(l.trim());
     if(bm){ var k = bm[1].trim(); pref[k] = (pref[k]||0)+1; }
   });
   var bodyDanji = null, best = 0;
-  Object.keys(pref).forEach(function(k){ if(pref[k] > best){ best = pref[k]; bodyDanji = k; } });
+  Object.keys(pref).forEach(function(k){ if(pref[k]>best){ best=pref[k]; bodyDanji=k; } });
   var danji = tagDanji || opt.danji || bodyDanji;
   var isBunyang = raw.indexOf('[물건유형: 분양권]') >= 0
-    || (raw.match(/프리미엄|(?<![A-Za-z])P[\s:]/g) || []).length >= 3;
+    || (raw.match(/프리미엄|P[\s:]/g)||[]).length >= 3;
 
-  //  매물 블록 시작 찾기
   var starts = [], names = [], dongs = [];
   for(var idx=0; idx<lines.length; idx++){
     var s2 = lines[idx].trim();
     var m2 = /^(.+?)\s+([A-Za-z0-9]{1,6}동)$/.exec(s2);
-    var base = m2 ? m2[1].trim() : s2;
-    var dong = m2 ? m2[2] : '';
+    var base = m2 ? m2[1].trim() : s2, dong = m2 ? m2[2] : '';
     if(!looksLikeName(base)) continue;
     var ok = false;
-    for(var j=idx+1; j<Math.min(idx+7, lines.length); j++) if(AREA.test(lines[j])){ ok = true; break; }
+    for(var j=idx+1;j<Math.min(idx+7,lines.length);j++) if(APT_AREA.test(lines[j])){ ok=true; break; }
     if(!ok) continue;
-    base = base.replace(/^송도동\s+/, '').trim();
+    base = base.replace(/^송도동\s+/,'').trim();
     if(!base) continue;
     starts.push(idx); names.push(base); dongs.push(dong);
   }
-  if(!starts.length) return { rows:[], warns:['매물 블록을 찾지 못함'], danji:danji, bunyang:isBunyang };
+  if(!starts.length) return { entries:[], warns:['매물 블록을 찾지 못함'], danji:danji, bunyang:isBunyang };
 
   var entries = [], collapsed = 0;
   for(var bi=0; bi<starts.length; bi++){
-    var si = starts[bi], ei = (bi+1 < starts.length) ? starts[bi+1] : lines.length;
-    var blk = lines.slice(si, ei).map(function(l){ return l.replace(/\s+$/,''); });
-    var dongN = dongs[bi] || '', mdanji = names[bi] || danji;
+    var si = starts[bi], ei = (bi+1<starts.length) ? starts[bi+1] : lines.length;
+    var blk = lines.slice(si,ei).map(function(l){ return l.replace(/\s+$/,''); });
     var dp = null, ai = null;
-    for(var k2=1; k2<Math.min(6, blk.length); k2++){
+    for(var k2=1;k2<Math.min(6,blk.length);k2++){
       var t = blk[k2].trim();
       if(!dp && DEAL.test(t)) dp = DEAL.exec(t);
-      if(!ai && AREA.test(blk[k2])) ai = parseArea(blk[k2]);
+      if(!ai && APT_AREA.test(blk[k2])) ai = aptParseArea(blk[k2]);
     }
     if(!dp || !ai){ warns.push('블록 파싱 실패(' + (blk[0]||'').trim() + ')'); continue; }
-    var btxt = blk.join('\n');
-    var Nm = /중개사\s+(\d+)곳/.exec(btxt);
-    var headerN = Nm ? parseInt(Nm[1],10) : null;
-    var members = [];
-
-    if(btxt.indexOf('매물목록 접기') >= 0){
-      var k = 0;
-      while(k < blk.length && blk[k].trim() !== '매물목록 접기') k++;
-      k++;
-      var cur = null, desc = '', inq = false;
-      while(k < blk.length){
-        var ln = blk[k].trim();
-        var dm = DEAL.exec(ln);
-        if(dm && !inq){ cur = dm[2].trim(); desc = ''; k++; continue; }
-        if(ln === '"'){ inq = !inq; k++; continue; }
-        if(inq){ desc += (desc ? ' ' : '') + ln; k++; continue; }
-        var dt = DATE.exec(ln);
-        if(dt){
-          var ag = '', jj = k+1;
-          while(jj < blk.length){
-            var cand = blk[jj].trim();
-            if(cand && MARKERS.indexOf(cand) < 0 && PROVIDERS.indexOf(cand) < 0 && !/^\d+$/.test(cand)){
-              ag = cand; break;
-            }
-            jj++;
-          }
-          members.push([cur, dt[1], desc, ag]); desc = ''; k++; continue;
-        }
-        k++;
-      }
-      if(headerN && members.length !== headerN)
-        warns.push(dongN + ' ' + dp[1] + ' ' + dp[2].trim() + ' 헤더 ' + headerN
-          + '곳 vs 파싱 ' + members.length + '건 불일치');
-    } else if(btxt.indexOf('매물목록 펼치기') >= 0){
-      collapsed++;
-      members.push([dp[2].trim(), '', '', '']);
-    } else {
-      var d2 = '', date_ = '', ag2 = '', inq2 = false;
-      for(var j2=0; j2<blk.length; j2++){
-        var l2 = blk[j2].trim();
-        if(l2 === '"'){ inq2 = !inq2; continue; }
-        if(inq2){ d2 += (d2 ? ' ' : '') + l2; continue; }
-        var dt2 = DATE.exec(l2);
-        if(dt2){
-          date_ = dt2[1];
-          var j3 = j2+1;
-          while(j3 < blk.length){
-            var c3 = blk[j3].trim();
-            if(c3 && MARKERS.indexOf(c3) < 0 && PROVIDERS.indexOf(c3) < 0 && !/^\d+$/.test(c3)){ ag2 = c3; break; }
-            j3++;
-          }
-        }
-      }
-      members.push([dp[2].trim(), date_, d2, ag2]);
-    }
-    var jm0 = members.filter(function(x){ return isJasa(x[3]); });
-    var pool0 = jm0.length ? jm0 : members;
-    var rep0 = pool0.reduce(function(a,b){ return (b[1] > a[1]) ? b : a; });
-    entries.push({ dong:dongN, typ:ai.jeonS, bun:ai.bun, bunPy:ai.bunPy, jeon:ai.jeon,
-                   deal:dp[1], dir:ai.dir, floor:ai.floor, members:members,
-                   price:rep0[0], danji:mdanji });
+    var mr = readMembers(blk, dp[2].trim(), warns,
+                         (dongs[bi]||'') + ' ' + dp[1] + ' ' + dp[2].trim());
+    collapsed += mr.collapsed;
+    var pr = pickRep(mr.members, { agency:function(x){return x[3];}, date:function(x){return x[1];} });
+    entries.push({ danji:names[bi]||danji, dong:dongs[bi]||'', typ:ai.jeonS, bun:ai.bun,
+      bunPy:ai.bunPy, jeon:ai.jeon, deal:dp[1], dir:ai.dir, floor:ai.floor,
+      members:mr.members, price:pr.rep[0], kind:'' });
   }
   if(collapsed) warns.push('접힌(펼치기) 그룹 ' + collapsed + '개 — 중개업소·주요정보 없음');
-
-  //  (동, 전용, 거래, 향, 가격) 이 같고 층이 어긋나지 않으면 한 매물로 묶는다
-  function ftype(f){ return /^\d/.test(f) ? 'num' : 'gjz'; }
-  function compat(a,b){ return a === b || ftype(a) !== ftype(b); }
-  var groups = {};
-  entries.forEach(function(e,i){
-    var k = [e.dong,e.typ,e.deal,e.dir,e.price].join('\u0001');
-    (groups[k] = groups[k] || []).push(i);
-  });
-  var par = entries.map(function(_,i){ return i; });
-  function find(x){ while(par[x] !== x){ par[x] = par[par[x]]; x = par[x]; } return x; }
-  Object.keys(groups).forEach(function(k){
-    var idxs = groups[k];
-    for(var a=0;a<idxs.length;a++) for(var b=a+1;b<idxs.length;b++)
-      if(compat(entries[idxs[a]].floor, entries[idxs[b]].floor)) par[find(idxs[a])] = find(idxs[b]);
-  });
-  var comp = {};
-  for(var i2=0;i2<entries.length;i2++){ var r2 = find(i2); (comp[r2] = comp[r2] || []).push(i2); }
-
+  return { entries:entries, warns:warns, danji:danji, bunyang:isBunyang, blocks:starts.length };
+}
+function buildApt(entries){
+  var comps = unionGroups(entries, function(e){
+    return [e.danji,e.dong,e.typ,e.deal,e.dir,e.price].join('\u0001'); });
   var rows = [];
-  Object.keys(comp).forEach(function(k){
-    var ents = comp[k].map(function(i){ return entries[i]; });
+  comps.forEach(function(ents){
     var allmem = [];
-    ents.forEach(function(e){ e.members.forEach(function(m){ allmem.push([m, e.floor]); }); });
-    var jm = allmem.filter(function(x){ return isJasa(x[0][3]); });
-    var pool = jm.length ? jm : allmem;
-    var rep = pool.reduce(function(a,b){ return (b[0][1] > a[0][1]) ? b : a; });
-    var ordered = [rep].concat(allmem.filter(function(x){ return x !== rep; }));
+    ents.forEach(function(e){ e.members.forEach(function(m){ allmem.push([m,e.floor]); }); });
+    var pr = pickRep(allmem, { agency:function(x){return x[0][3];}, date:function(x){return x[0][1];} });
+    var rep = pr.rep;
+    var ordered = [rep].concat(allmem.filter(function(x){ return x!==rep; }));
     var dup = [];
-    ordered.forEach(function(x){ var a = abbr(x[0][3]); if(a && dup.indexOf(a) < 0) dup.push(a); });
-    var dc = allmem.length - 1, e0 = ents[0];
-    var info = extractInfo(allmem.map(function(x){ return x[0][2]; }), allmem.length > 1 ? 100 : 80);
-    rows.push({ 단지명:e0.danji || danji, 거래구분:e0.deal, '분양m²':e0.bun, '전용m²':e0.typ,
+    ordered.forEach(function(x){ var a = abbr(x[0][3]); if(a && dup.indexOf(a)<0) dup.push(a); });
+    var e0 = ents[0];
+    rows.push({ 단지명:e0.danji, 거래구분:e0.deal, '분양m²':e0.bun, '전용m²':e0.typ,
       분양평수:e0.bunPy, 가격:rep[0][0], 동:e0.dong, 호수:null, 층:rep[1], 방향:e0.dir,
-      주요정보:info, 중개업소명:abbr(rep[0][3]), 확인날짜:yy(rep[0][1]),
-      중복등록수:(dc > 0 ? dc : null), 자사매물:(jm.length ? '★' : ''),
-      중복업소명:dup.join(', '), _jeon:e0.jeon, _p:priceNum(rep[0][0]) });
+      주요정보:extractInfo(allmem.map(function(x){return x[0][2];}), allmem.length>1?100:80),
+      중개업소명:abbr(rep[0][3]), 확인날짜:yy(rep[0][1]),
+      중복등록수:(allmem.length-1>0 ? allmem.length-1 : null),
+      자사매물:(pr.jasa?'★':''), 중복업소명:dup.join(', '),
+      _jeon:e0.jeon, _p:priceNum(rep[0][0]) });
   });
-  var order = { 매매:0, 전세:1, 월세:2, 단기:3 };
   rows.sort(function(a,b){
-    var x = (order[a.거래구분]==null?4:order[a.거래구분]) - (order[b.거래구분]==null?4:order[b.거래구분]);
-    if(x) return x;
-    if(a._jeon !== b._jeon) return a._jeon - b._jeon;
-    return a._p - b._p;
+    var x = dealRank(a.거래구분)-dealRank(b.거래구분); if(x) return x;
+    if(a._jeon!==b._jeon) return a._jeon-b._jeon;
+    return a._p-b._p;
   });
-  return { rows:rows, warns:warns, danji:danji, bunyang:isBunyang, blocks:starts.length };
+  return rows;
 }
 
-/*  ── N 매물 분석 · 화면 ──────────────────────────────────────────────
-    파서는 위에 옮겨 둔 것을 그대로 쓴다. 여기서는 읽은 것을 보여 준다.
+/* ══════════════════════════════════════════════════════════════════════
+   ② 오피스텔 · 생활형숙박시설
+   ══════════════════════════════════════════════════════════════════ */
+/*  타입 접미사는 한 글자가 아니다 — A1·A-1·AT-2·II-B·(3단지) 전부 받는다.
+    [A-Z]? 로 잡으면 실측 90개 중 34개(38%)가 통째로 빠진다. */
+var OP_SUF = '(?:\\([^)]*\\)|[A-Za-zⅠ-Ⅹ]{0,3}[0-9]{0,3}(?:\\-[A-Za-z0-9]{1,3})?)';
+var OP_AREA = new RegExp('([가-힣]{2,10})?([\\d.]+)(' + OP_SUF + ')㎡ ?\\(전용([\\d.]+)('
+  + OP_SUF + ')\\)(.+?)(' + DIRRE + ')');
+function opParseArea(line){
+  var m = OP_AREA.exec(line); if(!m) return null;
+  return { kind:(m[1]||''), typ: trunc(m[2]) + m[3] + '/' + trunc(m[4]) + 'm²',
+           jeon: parseFloat(m[4]), floor: m[6].trim(), dir: m[7] };
+}
+/*  네이버는 생활숙박시설도 면적 줄 접두어를 「오피스텔」로 쓴다.
+    (한라웨스턴파크송도(생활숙박시설) 의 면적 줄이 「오피스텔51A1㎡…」)
+    그래서 단지명 표기를 먼저 본다. */
+function opKindOfName(nm){
+  var t = String(nm||'').trim();
+  if(/생활숙박|생활형숙박|생숙|레지던스/.test(t)) return '생숙';
+  if(t.indexOf('오피스텔')>=0) return '오피스텔';
+  return '';
+}
+function opKindOf(rawKind, fallback){
+  var k = String(rawKind||'').trim();
+  if(/생활형숙박|생숙|레지던스/.test(k)) return '생숙';
+  if(/오피스텔|오피스/.test(k)) return '오피스텔';
+  return fallback;
+}
+function collectOp(raw, opt){
+  opt = opt || {};
+  var warns = [], lines = String(raw).split(/\r?\n/);
+  var mm = /\[명칭:\s*([^\]]+)\]/.exec(raw);
+  var tagDanji = mm ? mm[1].trim() : null;
+  var fallback = '오피스텔';
+  if(raw.indexOf('[물건유형: 생활형숙박시설]')>=0 || /생활형숙박/.test(raw.slice(0,500))
+     || /생숙/.test(opt.fname||'')) fallback = '생숙';
 
-    MR.K 의 「N 매물 분석」을 견주되, 대표님께 값이 되는 것을 하나 더 넣었다 —
-    「몇 곳이 같이 냈나(경쟁 강도)」와 「우리만 가진 매물」. 중복 업소명이
-    이미 파싱돼 있으므로 그냥 나온다. 호가 경쟁이 심한 매물과 우리만 쥔
-    매물은 손님께 드릴 말이 완전히 다르다. */
+  var starts = [], names = [];
+  for(var idx=0; idx<lines.length; idx++){
+    var ls = lines[idx].trim();
+    if(!looksLikeName(ls)) continue;
+    var ok = false;
+    for(var j=idx+1;j<Math.min(idx+6,lines.length);j++) if(OP_AREA.test(lines[j])){ ok=true; break; }
+    if(!ok) continue;
+    //  동은 숫자만이 아니다 — A동·C동도 떼어낸다. 안 떼면 같은 단지가
+    //  동별로 다른 단지로 쪼개진다(한라웨스턴파크·더샵퍼스트월드에서 실제로).
+    var nm = ls.replace(/\s+[A-Za-z0-9]{1,6}동$/,'').replace(/^송도동\s+/,'').trim();
+    if(!nm) continue;
+    starts.push(idx); names.push(nm);
+  }
+  if(!starts.length) return { entries:[], warns:['매물 블록을 찾지 못함'], danji:tagDanji||opt.danji };
 
-  var NVS = null;                       // 마지막 분석 결과
-  var NVQ = '';                         // 표 안에서 찾기
-  var NVDEAL = '전체';
+  var entries = [], collapsed = 0;
+  for(var bi=0;bi<starts.length;bi++){
+    var si = starts[bi], ei = (bi+1<starts.length) ? starts[bi+1] : lines.length;
+    var blk = lines.slice(si,ei).map(function(l){ return l.replace(/\s+$/,''); });
+    //  괄호 표기 「(생활숙박시설)」를 동으로 오인하지 않도록 줄 끝에서만 찾는다
+    var dm = /\s([A-Za-z0-9]{1,6}동)$/.exec(blk[0].replace(/\s+$/,''));
+    var dong = dm ? dm[1] : '';
+    var dp = null, ai = null;
+    for(var k2=1;k2<Math.min(6,blk.length);k2++){
+      var t = blk[k2].trim();
+      if(!dp && DEAL.test(t)) dp = DEAL.exec(t);
+      if(!ai && OP_AREA.test(blk[k2])) ai = opParseArea(blk[k2]);
+    }
+    if(!dp || !ai){ warns.push('블록 파싱 실패(' + (blk[0]||'').trim() + ')'); continue; }
+    var mdanji = names[bi] || tagDanji || opt.danji || '';
+    var mkind = opKindOfName(mdanji) || opKindOf(ai.kind, fallback);
+    var mr = readMembers(blk, dp[2].trim(), warns, dong + ' ' + dp[1] + ' ' + dp[2].trim());
+    collapsed += mr.collapsed;
+    var pr = pickRep(mr.members, { agency:function(x){return x[3];}, date:function(x){return x[1];} });
+    entries.push({ danji:mdanji, dong:dong, typ:ai.typ, jeon:ai.jeon, deal:dp[1], dir:ai.dir,
+      floor:ai.floor, members:mr.members, price:pr.rep[0], kind:mkind });
+  }
+  if(collapsed) warns.push('접힌(펼치기) 그룹 ' + collapsed + '개 — 중개업소·주요정보 없음');
+  return { entries:entries, warns:warns, danji:tagDanji||opt.danji||(names[0]||'') };
+}
+function buildOp(entries){
+  var comps = unionGroups(entries, function(e){
+    return [e.danji,e.dong,e.typ,e.deal,e.dir,e.price].join('\u0001'); });
+  var rows = [];
+  comps.forEach(function(ents){
+    var allmem = [];
+    ents.forEach(function(e){ e.members.forEach(function(m){ allmem.push([m,e.floor]); }); });
+    var pr = pickRep(allmem, { agency:function(x){return x[0][3];}, date:function(x){return x[0][1];} });
+    var rep = pr.rep;
+    var ordered = [rep].concat(allmem.filter(function(x){ return x!==rep; }));
+    var dup = [];
+    ordered.forEach(function(x){ var a = abbr(x[0][3]); if(a && dup.indexOf(a)<0) dup.push(a); });
+    var e0 = ents[0];
+    var row = { 단지명:e0.danji, 물건구분:e0.kind||'오피스텔', 거래구분:e0.deal, '전용m²':e0.typ,
+      가격:rep[0][0], 동:e0.dong, 호수:null, 층:rep[1], 방향:e0.dir,
+      주요정보:extractInfo(allmem.map(function(x){return x[0][2];}), allmem.length>1?100:80),
+      중개업소명:abbr(rep[0][3]), 확인날짜:yy(rep[0][1]),
+      중복등록수:(allmem.length-1>0 ? allmem.length-1 : null),
+      자사매물:(pr.jasa?'★':''), 중복업소명:dup.join(', '),
+      _jeon:e0.jeon, _p:priceNum(rep[0][0]) };
+    if(row.물건구분 === '생숙') row.동 = '';   // 생숙은 동 정보가 없다 (지침)
+    rows.push(row);
+  });
+  rows.sort(function(a,b){
+    var x = dealRank(a.거래구분)-dealRank(b.거래구분); if(x) return x;
+    if(a._jeon!==b._jeon) return a._jeon-b._jeon;
+    return a._p-b._p;
+  });
+  return rows;
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   ③ 상가 · 사무실  — 매물 시작이 「카테고리 줄」이다 (아파트와 완전히 다름)
+   ══════════════════════════════════════════════════════════════════ */
+/*  접두어를 고정 열거하면 새 표기가 나올 때마다 통째로 놓친다.
+    (v2.5 는 「중소형사무실」을 안 넣어 58건·24건을 통째로 빠뜨렸다)
+    끝이 상가·사무실·오피스·지식산업센터면 모두 잡는다. 접두어는 4자까지 —
+    길이를 열면 설명문 「…국제업무지구역세권사무실」까지 잡혀 매물이 잘린다. */
+var SG_CAT  = /^(?:\S+동\s+)?(?:소유자|현장)?([가-힣A-Za-z]{0,4}(?:상가|사무실|오피스|지식산업센터))$/;
+var SG_DEAL = /^(매매|전세|월세|단기임대|단기)\s*(.+)/;
+var SG_DATE = /(?:집주인|소유자|현장)?(?:확인매물|등록일?)\s+(\d{2,4})\.(\d{2})\.(\d{2})/;
+var SG_AREA_NEW = /^(?:상가점포|사무실|섹션오피스|점포).*?([\d,]+(?:\.\d+)?)㎡\s*\(전용([\d,]+(?:\.\d+)?)\)\s*(\d+\/\d+층|[고중저]층)?/;
+var SG_AREA_OLD = new RegExp('(?:상가|사무실)([\\d.]+)(?:\\/([\\d.]+))?\\s*m²,?\\s*([^,]+?),?\\s*('
+  + DIRRE + ')?$');
+function sgParseArea(line){
+  var ln = String(line).trim(), i;
+  var m = SG_AREA_NEW.exec(ln);
+  if(m){
+    var jeon = m[2].replace(/,/g,''), dr = '';
+    for(i=0;i<DIRS.length;i++) if(ln.indexOf(DIRS[i])>=0){ dr = DIRS[i]; break; }
+    return { typ: jeon+'m²', jeon: parseFloat(jeon), floor: (m[3]||'').trim(), dir: dr };
+  }
+  m = SG_AREA_OLD.exec(ln);
+  if(m){
+    var j2 = m[2] || m[1];
+    return { typ: j2+'m²', jeon: parseFloat(j2), floor: (m[3]||'').trim(), dir: m[4]||'' };
+  }
+  return null;
+}
+function sgIsCatStart(lines, i){
+  if(!SG_CAT.test(lines[i].trim())) return false;
+  var cnt = 0;
+  for(var j=i+1;j<Math.min(i+8,lines.length);j++){
+    var t = lines[j].trim();
+    if(!t || t === '"') continue;
+    if(SG_DEAL.test(t)) return true;
+    if(SG_CAT.test(t)) return false;      // 다음 매물 카테고리가 먼저 나오면 가짜
+    cnt++;
+    if(cnt>=3) return false;
+  }
+  return false;
+}
+function sgMulgun(cat){
+  return String(cat).replace(/^\S+동\s+/,'').replace(/^(소유자|현장)/,'');
+}
+function sgBigCat(mg){
+  var m = String(mg||'');
+  return (/사무실|오피스|지식산업센터/.test(m)) ? '사무실' : '상가';
+}
+function sgParseDate(line){
+  var m = SG_DATE.exec(line); if(!m) return '';
+  var y = m[1]; if(y.length===4) y = y.slice(2);
+  return y + '.' + m[2] + '.' + m[3];
+}
+/*  단지명·공구·동은 본문에 없다 — 파일 이름에서만 읽는다 (지침). */
+function sgParseFilename(fn, raw){
+  fn = String(fn||'');
+  var m = /^NV_(.+?)_(\d{8})(?:\s*\(\d+\))?\.txt$/i.exec(fn);
+  var date = m ? m[2] : '20000101';
+  var core = m ? m[1] : fn.replace(/\.[^.]+$/,'');
+  var tag = /\[명칭:\s*([^\]]+)\]/.exec(raw||'');
+  if(tag) core = tag[1].trim();
+  var gong = '';
+  var gm = /(\d+공구)/.exec(core) || /(\d+공구)/.exec(fn);
+  if(gm) gong = gm[1];
+  var s = core.replace(/^(상가|사무실)_?/,'').replace(/\d+공구_?/g,'')
+              .replace(/_/g,'').replace(/(상가|사무실)$/,'');
+  var dong = '', danji = s;
+  var dm = /([A-Za-z]|[가-힣]|\d)동$/.exec(s);
+  if(dm){ dong = dm[0]; danji = s.slice(0, dm.index); }
+  return { gong:gong, danji:danji.trim(), dong:dong,
+           filedate: date.slice(0,4)+'.'+date.slice(4,6)+'.'+date.slice(6), date8:date };
+}
+function collectSg(raw, opt){
+  opt = opt || {};
+  var warns = [], lines = String(raw).split(/\r?\n/).map(function(l){ return l.replace(/\s+$/,''); });
+  var meta = sgParseFilename(opt.fname||'', raw);
+  if(opt.danji) meta.danji = opt.danji;
+  var NOISE2 = ['관심매물','매물 보러가기','이미지','개','매물'];
+  var starts = [];
+  for(var i=0;i<lines.length;i++) if(sgIsCatStart(lines,i)) starts.push(i);
+  if(!starts.length) return { entries:[], warns:['카테고리 줄을 찾지 못함'], meta:meta };
+
+  function agencyAfter(blk, di){
+    for(var j=di+1;j<blk.length;j++){
+      var c = blk[j].trim();
+      if(c && c.indexOf('제공')<0 && NOISE2.indexOf(c)<0 && !isProvider(c) && !/^\d+$/.test(c)) return c;
+    }
+    return '';
+  }
+  var entries = [];
+  for(var bi=0;bi<starts.length;bi++){
+    var si = starts[bi], ei = (bi+1<starts.length) ? starts[bi+1] : lines.length;
+    var blk = lines.slice(si,ei);
+    var mg = sgMulgun(blk[0].trim());
+    var dp = null, ai = null, k;
+    for(k=1;k<Math.min(5,blk.length);k++) if(SG_DEAL.test(blk[k].trim())){ dp = SG_DEAL.exec(blk[k].trim()); break; }
+    for(k=1;k<Math.min(7,blk.length);k++){ ai = sgParseArea(blk[k]); if(ai) break; }
+    if(!dp || !ai){ warns.push('매물 파싱 실패(' + (blk[0]||'').trim() + ')'); continue; }
+    var deal = dp[1]; if(deal==='단기임대') deal = '단기';
+    var price = dp[2].trim();
+    var members = [], btxt = blk.join('\n');
+    if(btxt.indexOf('매물목록 접기')>=0){
+      k = 0;
+      while(k<blk.length && blk[k].trim()!=='매물목록 접기') k++;
+      k++;
+      var cur = price, desc = '', inq = false;
+      while(k<blk.length){
+        var ln = blk[k].trim();
+        var dm2 = SG_DEAL.exec(ln);
+        if(dm2 && !inq){ cur = dm2[2].trim(); desc=''; k++; continue; }
+        if(ln === '"'){ inq = !inq; k++; continue; }
+        if(inq){ desc += (desc?' ':'') + ln; k++; continue; }
+        if(SG_DATE.test(ln)){ members.push([cur, sgParseDate(ln), desc, agencyAfter(blk,k)]); desc=''; k++; continue; }
+        k++;
+      }
+      var gm2 = /중개사\s*(\d+)\s*곳/.exec(btxt);
+      if(gm2 && parseInt(gm2[1],10)!==members.length)
+        warns.push('그룹수 불일치 헤더' + gm2[1] + ' vs 파싱' + members.length
+                   + ' (' + blk[0].trim() + ' ' + price + ')');
+    } else {
+      var di = -1;
+      for(k=0;k<blk.length;k++) if(SG_DATE.test(blk[k].trim())) di = k;
+      var desc2 = '', ag = '', d = '';
+      if(di >= 0){
+        d = sgParseDate(blk[di]); ag = agencyAfter(blk, di);
+        var aidx = 0;
+        for(k=0;k<blk.length;k++) if(sgParseArea(blk[k])){ aidx = k; break; }
+        var inq3 = false, parts = [];
+        for(k=aidx+1;k<di;k++){
+          var s3 = blk[k].trim();
+          if(s3 === '"'){ inq3 = !inq3; continue; }
+          if(inq3 && s3) parts.push(s3);
+        }
+        desc2 = parts.join(' ');
+      }
+      members.push([price, d, desc2, ag]);
+    }
+    if(!members.length){ warns.push('하위 매물 없음(' + blk[0].trim() + ')'); continue; }
+    entries.push({ danji:meta.danji, dong:meta.dong, gong:meta.gong, mg:mg, typ:ai.typ,
+      jeon:ai.jeon, deal:deal, dir:ai.dir, floor:ai.floor, members:members, price:price,
+      kind:sgBigCat(mg) });
+  }
+  return { entries:entries, warns:warns, meta:meta };
+}
+function buildSg(entries){
+  var comps = unionGroups(entries, function(e){
+    return [e.danji,e.dong,e.mg,e.typ,e.deal,e.price].join('\u0001'); });
+  var rows = [];
+  comps.forEach(function(ents){
+    var allmem = [];
+    ents.forEach(function(e){ e.members.forEach(function(m){ allmem.push([m,e]); }); });
+    var pr = pickRep(allmem, { agency:function(x){return x[0][3];}, date:function(x){return x[0][1];} });
+    var rep = pr.rep, repmem = rep[0], repent = rep[1];
+    var ordered = [rep].concat(allmem.filter(function(x){ return x!==rep; }));
+    var dup = [];
+    ordered.forEach(function(x){ var a = abbr(x[0][3]); if(a && dup.indexOf(a)<0) dup.push(a); });
+    //  방향은 묶음 안에서 가장 많이 나온 것
+    var cnt = {}, bestD = repent.dir, bn = 0;
+    ents.forEach(function(e){ if(e.dir){ cnt[e.dir]=(cnt[e.dir]||0)+1; } });
+    Object.keys(cnt).forEach(function(d){ if(cnt[d]>bn){ bn=cnt[d]; bestD=d; } });
+    var fl = repent.floor;
+    rows.push({ 공구:repent.gong, 물건구분:repent.mg, 단지명:repent.danji, 거래구분:repent.deal,
+      층: fl ? (/층$/.test(fl) ? fl : fl+'층') : '',
+      동:repent.dong||'', 호수:null, '전용m²':repent.typ,
+      전용평수: Math.round(repent.jeon/3.3058*10)/10, 가격:repmem[0], 방향:bestD,
+      주요정보: sgExtractInfo(allmem.map(function(x){return x[0][2];}), allmem.length>1?100:80),
+      중개업소명:abbr(repmem[3]), 확인날짜:repmem[1],
+      중복등록수:(allmem.length-1>0 ? allmem.length-1 : null),
+      자사매물:(pr.jasa?'★':''), 중복업소명:dup.join(', '),
+      _cat:repent.kind, _jeon:repent.jeon,
+      _p:priceKey(repmem[0])[0], _pw:priceKey(repmem[0])[1] });
+  });
+  rows.sort(function(a,b){
+    var x = dealRank(a.거래구분)-dealRank(b.거래구분); if(x) return x;
+    if(a._p!==b._p) return a._p-b._p;
+    return a._pw-b._pw;
+  });
+  return rows;
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   유형 가려내기 — 면적 줄의 접두어가 가장 확실하다
+   ══════════════════════════════════════════════════════════════════ */
+function detect(raw, fname){
+  raw = String(raw||''); fname = String(fname||'');
+  //  ① 머리글 태그
+  var hm = /\[물건유형:\s*([^\]]+)\]/.exec(raw);
+  if(hm){
+    var h = hm[1];
+    if(/상가|사무실|점포|오피스(?!텔)|지식산업/.test(h)) return 'sg';
+    if(/오피스텔|생활형숙박|생숙/.test(h)) return 'op';
+    if(/아파트|분양권/.test(h)) return 'apt';
+  }
+  //  ② 본문에서 실제로 몇 줄이 잡히는지 세어 본다 — 이름표보다 정확하다
+  var lines = raw.split(/\r?\n/);
+  var nApt = 0, nOp = 0, nSg = 0, i;
+  for(i=0;i<lines.length;i++){
+    var l = lines[i];
+    if(APT_AREA.test(l)) nApt++;
+    else if(OP_AREA.test(l)) nOp++;
+    if(SG_AREA_NEW.test(l.trim()) || SG_AREA_OLD.test(l.trim())) nSg++;
+  }
+  //  상가는 카테고리 줄이 매물의 시작이다 — 그것도 세어 힘을 싣는다
+  var nCat = 0;
+  for(i=0;i<lines.length;i++) if(sgIsCatStart(lines,i)) nCat++;
+  if(nCat > 0 && nCat >= nApt && nCat >= nOp) return 'sg';
+  if(nApt >= nOp && nApt >= nSg && nApt > 0) return 'apt';
+  if(nOp >= nSg && nOp > 0) return 'op';
+  if(nSg > 0) return 'sg';
+  //  ③ 아무것도 못 세면 파일 이름
+  if(/상가|사무실/.test(fname)) return 'sg';
+  if(/오피스텔|OP|생숙|생활형숙박/i.test(fname)) return 'op';
+  return 'apt';
+}
+
+var COLS = {
+  apt: ['단지명','거래구분','분양m²','전용m²','분양평수','가격','동','호수','층','방향',
+        '주요정보','중개업소명','확인날짜','중복등록수','자사매물','중복업소명'],
+  op:  ['단지명','물건구분','거래구분','전용m²','가격','동','호수','층','방향',
+        '주요정보','중개업소명','확인날짜','중복등록수','자사매물','중복업소명'],
+  sg:  ['공구','물건구분','단지명','거래구분','층','동','호수','전용m²','전용평수','가격','방향',
+        '주요정보','중개업소명','확인날짜','중복등록수','자사매물','중복업소명']
+};
+var KINDNM = { apt:'아파트·분양권', op:'오피스텔·생숙', sg:'상가·사무실' };
+var SHEETNM = { apt:'아파트', op:'오피스텔', sg:'상가' };
+
+function collect(kind, raw, opt){
+  if(kind === 'sg') return collectSg(raw, opt);
+  if(kind === 'op') return collectOp(raw, opt);
+  return collectApt(raw, opt);
+}
+function build(kind, entries){
+  if(kind === 'sg') return buildSg(entries);
+  if(kind === 'op') return buildOp(entries);
+  return buildApt(entries);
+}
+/*  같은 단지가 여러 파일에 걸쳐 있으면 완전히 같은 매물이 두 번 들어온다.
+    반드시 중복등록수를 세기 **전에** 지워야 한다 — 순서가 바뀌면 같은 매물이
+    다른 업소가 낸 것으로 잡혀 숫자가 부풀려진다 (지침 v2.8). */
+function dedupe(entries){
+  var seen = {}, out = [];
+  entries.forEach(function(e){
+    var k = [e.danji,e.dong,e.typ,e.jeon,e.deal,e.dir,e.floor,e.price,e.mg||'',
+             JSON.stringify(e.members)].join('\u0001');
+    if(seen[k]) return;
+    seen[k] = 1; out.push(e);
+  });
+  return out;
+}
+
+root.NVB = { detect:detect, collect:collect, build:build, dedupe:dedupe,
+             COLS:COLS, KINDNM:KINDNM, SHEETNM:SHEETNM, abbr:abbr, isJasa:isJasa,
+             sgBigCat:sgBigCat, priceNum:priceNum,
+             _apt:{area:APT_AREA}, _op:{area:OP_AREA}, _sg:{cat:SG_CAT} };
+})(typeof window !== 'undefined' ? window : globalThis);
+
+(function(){
+  'use strict';
+  //  2단 탭 모듈이 __nvOn 을 쓰고 있다 — 같은 표식을 쓰면 이 모듈이 통째로 안 돈다
+  if(window.__nvAnOn) return; window.__nvAnOn = true;
+  /*  이름은 nva- 로 시작한다. 2단 탭 모듈이 nvFind(Ctrl+K)를 쓰고 있어서,
+      같은 이름을 쓰면 빠른 이동이 통째로 망가진다 — 실제로 그랬다. */
+  var TAB = 21;
+  var NVB = window.NVB;
+
+/* ══════════════════════════════════════════════════════════════════════
+   N 매물 분석 · 화면 v2.0
+   ──────────────────────────────────────────────────────────────────
+   ① 텍스트 파일을 여러 개(50~100개) 한꺼번에 고르면
+   ② 파일마다 종류(아파트·상가·사무실·오피스텔·생숙)를 알아서 가리고
+   ③ 단지별로 갈라 합친 뒤
+   ④ 매물(APT/상가사무실/OP생숙) 탭에 바로 등록한다.
+   엑셀은 보관용이다 — 등록에는 필요 없다.
+   ══════════════════════════════════════════════════════════════════ */
+  var NVS = null;       // 지금 보고 있는 한 단지 보고서
+  var NVQ = '', NVDEAL = '전체', NVRAW = '';
+  var BAT = null;       // 여러 파일 결과
+  var NVKIND = 'apt';   // 지금 보고서의 종류
+  var XLON = true;      // 엑셀도 함께 내려받기 (기본 켬)
 
   function esc(s){ return String(s==null?'':s)
     .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
@@ -29918,6 +30358,10 @@ function parse(raw, opt){
     var b = a.slice().sort(function(x,y){ return x-y; }), m = b.length>>1;
     return b.length % 2 ? b[m] : Math.round((b[m-1]+b[m])/2);
   }
+  function msg(t, c){
+    var e = document.getElementById('nv-msg');
+    if(e) e.innerHTML = t ? '<span style="color:' + (c||'var(--text3)') + '">' + esc(t) + '</span>' : '';
+  }
 
   /*  통계 — 값을 만들어 내지 않는다. 읽은 것만 센다. */
   function stats(rows){
@@ -29926,7 +30370,7 @@ function parse(raw, opt){
       byDeal[r.거래구분] = (byDeal[r.거래구분]||0) + 1;
       if(r.거래구분 === '매매'){
         var k = r['전용m²'];
-        (byArea[k] = byArea[k] || { k:k, py:r.분양평수, ps:[], n:0 });
+        (byArea[k] = byArea[k] || { k:k, py:(r.분양평수 || r.전용평수 || 0), ps:[], n:0 });
         byArea[k].ps.push(r._p); byArea[k].n++;
       }
       var d = (r.중복등록수 || 0);
@@ -29942,7 +30386,6 @@ function parse(raw, opt){
       o.med = med(o.ps); o.lo = Math.min.apply(null,o.ps); o.hi = Math.max.apply(null,o.ps);
       return o;
     }).sort(function(a,b){ return parseFloat(a.k) - parseFloat(b.k); });
-    //  가성비 — 같은 전용형 중위값보다 싼 매매 매물
     var cheap = rows.filter(function(r){
       if(r.거래구분 !== '매매') return false;
       var o = byArea[r['전용m²']];
@@ -29957,7 +30400,19 @@ function parse(raw, opt){
              dupTot:dupTot, mine:mine, only:only, n:rows.length };
   }
 
-  // ── 화면 ────────────────────────────────────────────────────────────
+  /*  붙여넣기 한 판 — 종류도 알아서 가린다 */
+  function parse(raw, opt){
+    opt = opt || {};
+    var kind = opt.kind || NVB.detect(raw, opt.fname || '');
+    var c = NVB.collect(kind, raw, opt);
+    var ents = NVB.dedupe(c.entries || []);
+    var rows = NVB.build(kind, ents);
+    return { rows:rows, warns:c.warns || [], kind:kind,
+             danji: c.danji || (c.meta && c.meta.danji) || (rows[0] && rows[0].단지명) || '',
+             bunyang: !!c.bunyang, blocks: ents.length };
+  }
+
+  // ── 화면 조각 ───────────────────────────────────────────────────────
   function card(t, v, sub, c){
     return '<div class="nv-c"><div class="nv-cl">' + esc(t) + '</div>'
       + '<div class="nv-cv"' + (c ? ' style="color:' + c + '"' : '') + '>' + v + '</div>'
@@ -29970,9 +30425,36 @@ function parse(raw, opt){
 
   function paint(){
     var root = document.getElementById('nv-root'); if(!root) return;
-    var h = '<div class="nv-in">'
+    var h = '';
+
+    //  ── ① 파일 여러 개 ────────────────────────────────────────────
+    h += '<div class="nv-in">'
+      + '<div style="font-weight:800;font-size:13px;margin-bottom:6px">📂 텍스트 파일로 한꺼번에</div>'
       + '<div style="font-size:12px;line-height:1.75;color:var(--text2);margin-bottom:9px">'
-      + '네이버 부동산에서 <b>단지 매물 목록을 모두 펼친 뒤</b> 화면 전체를 복사(Ctrl+A → Ctrl+C)해 '
+      + '추출기로 뽑은 <b>NV_…txt 를 50~100개 한꺼번에</b> 고르셔도 됩니다. '
+      + '파일마다 <b>아파트·상가·사무실·오피스텔·생숙</b>을 알아서 가리고, '
+      + '한 파일에 여러 단지가 섞여 있어도 <b>단지별로 갈라 합칩니다.</b><br>'
+      + '읽은 뒤 <b>매물 탭에 바로 등록</b>할 수 있습니다 — 엑셀을 거치지 않습니다.'
+      + '</div>'
+      + '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">'
+      +   '<label class="dj-bp" style="cursor:pointer">📂 텍스트 파일 고르기 (여러 개)'
+      +     '<input type="file" accept=".txt,text/plain" multiple style="display:none" '
+      +     'onchange="nvaFiles(this)"></label>'
+      +   '<label style="display:flex;align-items:center;gap:5px;font-size:12px;cursor:pointer">'
+      +     '<input type="checkbox" id="nv-xlon"' + (XLON ? ' checked' : '')
+      +     ' onchange="nvaXlOn(this.checked)" style="width:15px;height:15px;cursor:pointer">'
+      +     '엑셀도 함께 내려받기</label>'
+      +   (BAT ? '<button class="dj-bs" onclick="nvaBatClear()">결과 비우기</button>' : '')
+      +   '<span id="nv-bmsg" style="font-size:12px;color:var(--text3)"></span>'
+      + '</div></div>';
+
+    if(BAT) h += batBox();
+
+    //  ── ② 붙여넣기 (한 단지) ──────────────────────────────────────
+    h += '<div class="nv-in" style="margin-top:12px">'
+      + '<div style="font-weight:800;font-size:13px;margin-bottom:6px">📋 붙여넣기 (한 단지)</div>'
+      + '<div style="font-size:12px;line-height:1.75;color:var(--text2);margin-bottom:9px">'
+      + '네이버 부동산에서 <b>매물 목록을 모두 펼친 뒤</b> 화면 전체를 복사(Ctrl+A → Ctrl+C)해 '
       + '아래에 붙여넣으십시오. 매물이 <b>접혀 있으면 중개업소와 주요정보가 안 들어옵니다.</b>'
       + '</div>'
       + '<textarea id="nv-txt" placeholder="여기에 붙여넣기"></textarea>'
@@ -29984,18 +30466,69 @@ function parse(raw, opt){
              + '<input type="file" accept=".xlsx" style="display:none" onchange="nvaDiff(this)"></label>' : '')
       +   '<span id="nv-msg" style="font-size:12px;color:var(--text3)"></span>'
       + '</div></div>';
+
     if(NVS) h += result();
     root.innerHTML = h;
     var t = document.getElementById('nv-txt');
     if(t && NVRAW) t.value = NVRAW;
   }
 
-  function result(){
-    var S = NVS.st, rows = NVS.rows, h = '';
-    h += '<div class="nv-h">📋 ' + esc(NVS.danji || '') + ' <span>매물 ' + S.n + '건 · '
-      + esc(NVS.at) + ' 읽음</span></div>';
+  //  ── 여러 파일 결과 ──────────────────────────────────────────────
+  function batBox(){
+    var h = '<div class="nv-h">📦 읽은 결과 <span>' + BAT.nFile + '개 파일 · '
+      + (BAT.ms/1000).toFixed(1) + '초</span></div>';
+    h += '<div class="nv-cards">'
+      + card('파일', BAT.nFile + '<small>개</small>',
+             Object.keys(BAT.byKind).map(function(k){
+               return NVB.KINDNM[k] + ' ' + BAT.byKind[k]; }).join(' · '))
+      + card('단지', BAT.list.length + '<small>개</small>', '단지별로 갈라 합쳤습니다')
+      + card('매물', fmtN(BAT.nRow) + '<small>건</small>',
+             BAT.dropped ? '같은 매물 ' + fmtN(BAT.dropped) + '건은 지웠습니다' : '중복 없음')
+      + card('우리 매물', BAT.mine + '<small>건</small>', BAT.mine ? '자사 ★' : '이 목록에 없음',
+             BAT.mine ? '#1565c0' : '')
+      + '</div>';
 
-    //  요약
+    h += '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:11px 0">'
+      + '<button class="dj-bp" onclick="nvaRegister()">📤 매물 탭에 등록</button>'
+      + '<button class="dj-bs" onclick="nvaBatXlsx()">📥 엑셀 내려받기</button>'
+      + '<span style="font-size:11px;color:var(--text3)">등록하면 '
+      + Object.keys(BAT.byKind).map(function(k){ return TABNM[k]; }).join(' · ')
+      + ' 탭의 <b>같은 단지만</b> 갈아 끼웁니다 — 다른 단지는 그대로 둡니다.</span>'
+      + '</div>';
+
+    if(BAT.warns.length)
+      h += '<div class="nv-diff">⚠ <b>읽으면서 걸린 것 ' + BAT.warns.length + '가지</b> — '
+        + BAT.warns.slice(0,4).map(esc).join(' · ')
+        + (BAT.warns.length>4 ? ' 외 ' + (BAT.warns.length-4) + '가지' : '') + '</div>';
+
+    h += '<div style="overflow-x:auto;max-height:340px"><table class="nv-t"><thead><tr>'
+      + '<th>종류</th><th>단지</th><th>매물</th><th>거래</th><th>자사★</th><th>보고서</th>'
+      + '</tr></thead><tbody>';
+    BAT.list.forEach(function(o, i){
+      var bd = {};
+      o.rows.forEach(function(r){ bd[r.거래구분] = (bd[r.거래구분]||0)+1; });
+      h += '<tr' + (o.mine ? ' class="nv-mine"' : '') + '>'
+        + '<td>' + esc(NVB.KINDNM[o.kind]) + '</td>'
+        + '<td><b>' + esc(o.danji) + '</b>' + (o.dong ? ' ' + esc(o.dong) : '') + '</td>'
+        + '<td>' + o.rows.length + '</td>'
+        + '<td style="color:var(--text3)">'
+        +   Object.keys(bd).map(function(k){ return k + ' ' + bd[k]; }).join(' · ') + '</td>'
+        + '<td>' + (o.mine || '') + '</td>'
+        + '<td><button class="dj-bs" style="padding:2px 8px;font-size:11px" '
+        +   'onclick="nvaPick(' + i + ')">열기</button></td></tr>';
+    });
+    h += '</tbody></table></div>';
+    return h;
+  }
+
+  var TABNM = { apt:'매물(APT)', sg:'매물(상가/사무실)', op:'매물(OP/생숙)' };
+
+  //  ── 한 단지 보고서 ──────────────────────────────────────────────
+  function result(){
+    var S = NVS.st, rows = NVS.rows, kind = NVS.kind || 'apt', h = '';
+    h += '<div class="nv-h">📋 ' + esc(NVS.danji || '') + ' <span>'
+      + esc(NVB.KINDNM[kind]) + ' · 매물 ' + S.n + '건 · ' + esc(NVS.at) + ' 읽음</span></div>';
+
     var sale = rows.filter(function(r){ return r.거래구분 === '매매'; });
     var ps = sale.map(function(r){ return r._p; });
     h += '<div class="nv-cards">'
@@ -30007,19 +30540,17 @@ function parse(raw, opt){
              S.mine ? '#1565c0' : '')
       + card('우리만 가진 매물', S.only + '<small>건</small>',
              '다른 곳이 안 낸 것 · 전체의 ' + Math.round(S.only/S.n*100) + '%')
-      + card('중복 등록', fmtN(S.dupTot) + '<small>건</small>',
-             '한 매물을 여러 곳이 같이 냄')
+      + card('중복 등록', fmtN(S.dupTot) + '<small>건</small>', '한 매물을 여러 곳이 같이 냄')
       + '</div>';
 
-    //  면적형별
     if(S.areas.length){
       h += '<div class="nv-h">📐 전용면적형별 매매 시세 <span>중위값 기준</span></div>'
         + '<div style="overflow-x:auto"><table class="nv-t"><thead><tr>'
-        + '<th>전용</th><th>분양평</th><th>건수</th><th>중위</th><th>최저~최고</th><th>폭</th>'
+        + '<th>전용</th><th>평</th><th>건수</th><th>중위</th><th>최저~최고</th><th>폭</th>'
         + '</tr></thead><tbody>';
       var top = Math.max.apply(null, S.areas.map(function(a){ return a.hi; }));
       S.areas.forEach(function(a){
-        h += '<tr><td>' + esc(a.k) + '㎡</td><td>' + (a.py||'') + '평</td><td>' + a.n + '</td>'
+        h += '<tr><td>' + esc(a.k) + '</td><td>' + (a.py||'') + '</td><td>' + a.n + '</td>'
           + '<td><b>' + eok(a.med) + '</b></td>'
           + '<td style="color:var(--text3)">' + eok(a.lo) + ' ~ ' + eok(a.hi) + '</td>'
           + '<td style="min-width:120px">' + bar(a.hi/top*100, '#4c6ef5') + '</td></tr>';
@@ -30027,21 +30558,19 @@ function parse(raw, opt){
       h += '</tbody></table></div>';
     }
 
-    //  가성비
     if(S.cheap.length){
       h += '<div class="nv-h">💡 같은 면적형보다 싼 매물 <span>중위값 대비</span></div><div class="nv-grid">';
       S.cheap.forEach(function(c){
         var r = c.r;
-        h += '<div class="nv-p"><div class="nv-pt">' + esc(r.동) + ' ' + esc(r.층)
+        h += '<div class="nv-p"><div class="nv-pt">' + esc(r.동 || r.층) + ' ' + esc(r.층)
           + ' <b style="color:#2b8a3e">-' + c.gap + '%</b></div>'
-          + '<div class="nv-pd">' + esc(r['전용m²']) + '㎡ · ' + esc(r.가격) + ' · ' + esc(r.방향)
+          + '<div class="nv-pd">' + esc(r['전용m²']) + ' · ' + esc(r.가격) + ' · ' + esc(r.방향)
           + '<br>' + esc(r.중개업소명) + (r.중복등록수 ? ' 외 ' + r.중복등록수 + '곳' : ' <b>단독</b>')
           + '</div></div>';
       });
       h += '</div>';
     }
 
-    //  경쟁 강도 — MR.K 에 없는 것
     if(S.tops.length){
       h += '<div class="nv-h">🏢 이 단지에 매물을 낸 중개업소 <span>같은 매물을 여럿이 내면 각각 셉니다</span></div>'
         + '<div class="nv-grid">';
@@ -30055,14 +30584,15 @@ function parse(raw, opt){
       h += '</div>';
     }
 
-    //  표
+    //  표 — 칸은 종류마다 다르다 (엑셀과 같은 차례)
+    var COLS = NVB.COLS[kind];
     h += '<div class="nv-h">📄 매물 목록 <span>엑셀과 같은 칸</span></div>'
       + '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">'
       + ['전체','매매','전세','월세','단기'].filter(function(d){
-          return d === '전체' || NVS.st.byDeal[d]; }).map(function(d){
+          return d === '전체' || S.byDeal[d]; }).map(function(d){
           return '<button class="dj-bs" onclick="nvaDeal(\'' + d + '\')"'
             + (NVDEAL === d ? ' style="border-color:transparent;background:var(--accent);color:#fff"' : '')
-            + '>' + d + (d !== '전체' ? ' ' + NVS.st.byDeal[d] : ' ' + NVS.st.n) + '</button>';
+            + '>' + d + (d !== '전체' ? ' ' + S.byDeal[d] : ' ' + S.n) + '</button>';
         }).join('')
       + '<input class="dj-in" style="width:170px;padding:5px 9px;font-size:12px" '
       + 'placeholder="표에서 찾기" value="' + esc(NVQ) + '" oninput="nvaFind(this.value)">'
@@ -30072,28 +30602,25 @@ function parse(raw, opt){
       if(NVDEAL !== '전체' && r.거래구분 !== NVDEAL) return false;
       if(!NVQ) return true;
       var q = NVQ.toLowerCase();
-      return [r.동,r.층,r.가격,r.방향,r.주요정보,r.중개업소명,r.중복업소명,r['전용m²']]
-        .join(' ').toLowerCase().indexOf(q) >= 0;
+      return COLS.map(function(c){ return r[c]; }).join(' ').toLowerCase().indexOf(q) >= 0;
     });
     h += '<div style="overflow-x:auto;max-height:560px"><table class="nv-t nv-list"><thead><tr>'
-      + '<th>거래</th><th>분양㎡</th><th>전용㎡</th><th>분양평</th><th>가격</th><th>동</th><th>층</th>'
-      + '<th>방향</th><th>주요정보</th><th>중개업소</th><th>확인</th><th>중복</th><th>★</th>'
+      + COLS.map(function(c){ return '<th>' + esc(c) + '</th>'; }).join('')
       + '</tr></thead><tbody>';
     show.forEach(function(r){
       h += '<tr' + (r.자사매물 === '★' ? ' class="nv-mine"' : '') + '>'
-        + '<td>' + esc(r.거래구분) + '</td><td>' + esc(r['분양m²']) + '</td>'
-        + '<td>' + esc(r['전용m²']) + '</td><td>' + (r.분양평수||'') + '</td>'
-        + '<td><b>' + esc(r.가격) + '</b></td><td>' + esc(r.동) + '</td><td>' + esc(r.층) + '</td>'
-        + '<td>' + esc(r.방향) + '</td>'
-        + '<td class="nv-info">' + esc(r.주요정보) + '</td>'
-        + '<td title="' + esc(r.중복업소명) + '">' + esc(r.중개업소명) + '</td>'
-        + '<td>' + esc(r.확인날짜) + '</td>'
-        + '<td>' + (r.중복등록수 || '') + '</td><td>' + esc(r.자사매물) + '</td></tr>';
+        + COLS.map(function(c){
+            var v = r[c] == null ? '' : r[c];
+            if(c === '주요정보') return '<td class="nv-info">' + esc(v) + '</td>';
+            if(c === '중개업소명') return '<td title="' + esc(r.중복업소명) + '">' + esc(v) + '</td>';
+            if(c === '가격') return '<td><b>' + esc(v) + '</b></td>';
+            return '<td>' + esc(v) + '</td>';
+          }).join('') + '</tr>';
     });
     h += '</tbody></table></div>'
       + '<div style="font-size:11px;color:var(--text3);margin-top:7px;line-height:1.7">'
       + '읽은 것만 적습니다 — 네이버 원문에 없는 값은 만들어 내지 않습니다. '
-      + '「중복」은 같은 매물을 함께 낸 다른 업소 수이고, <b>빈 칸이면 그 업소만 가진 매물</b>입니다. '
+      + '「중복등록수」는 같은 매물을 함께 낸 다른 업소 수이고, <b>빈 칸이면 그 업소만 가진 매물</b>입니다. '
       + '대표 업소는 <b>자사 → 최근 확인일</b> 순으로 고릅니다.';
     if(NVS.warns && NVS.warns.length)
       h += '<br><b style="color:#c80">읽으면서 걸린 것 ' + NVS.warns.length + '가지</b> — '
@@ -30103,7 +30630,236 @@ function parse(raw, opt){
     return h;
   }
 
-  var NVRAW = '';
+  // ── 파일 읽기 ───────────────────────────────────────────────────────
+  /*  추출기가 UTF-8 로 쓰지만, 윈도에서 메모장으로 다시 저장하면 CP949 가 된다.
+      깨진 글자(U+FFFD)가 보이면 euc-kr 로 한 번 더 읽는다. */
+  function readText(file){
+    return new Promise(function(done){
+      var rd = new FileReader();
+      rd.onload = function(e){
+        var buf = e.target.result, txt = '';
+        try{ txt = new TextDecoder('utf-8').decode(buf); }catch(x){ txt = ''; }
+        if(!txt || txt.indexOf('�') >= 0){
+          try{ txt = new TextDecoder('euc-kr').decode(buf); }catch(x){}
+        }
+        done(txt || '');
+      };
+      rd.onerror = function(){ done(''); };
+      rd.readAsArrayBuffer(file);
+    });
+  }
+  function bmsg(t, c){
+    var e = document.getElementById('nv-bmsg');
+    if(e) e.innerHTML = t ? '<span style="color:' + (c||'var(--text3)') + '">' + t + '</span>' : '';
+  }
+
+  window.nvaXlOn = function(v){ XLON = !!v; };
+
+  window.nvaFiles = async function(input){
+    var files = input.files ? Array.prototype.slice.call(input.files) : [];
+    input.value = '';
+    if(!files.length) return;
+    bmsg('⏳ ' + files.length + '개 파일 읽는 중…', '#1565c0');
+    var t0 = Date.now();
+    var pool = {}, warns = [], byKind = {}, nRow = 0, dropped = 0;
+    for(var i=0; i<files.length; i++){
+      var f = files[i];
+      if(i % 10 === 0) bmsg('⏳ ' + (i+1) + ' / ' + files.length + ' …', '#1565c0');
+      var raw = await readText(f);
+      if(!raw.trim()){ warns.push(f.name + ': 빈 파일'); continue; }
+      var kind;
+      try{ kind = NVB.detect(raw, f.name); }
+      catch(e){ warns.push(f.name + ': 종류를 못 가림'); continue; }
+      byKind[kind] = (byKind[kind]||0) + 1;
+      var c;
+      try{ c = NVB.collect(kind, raw, { fname: f.name }); }
+      catch(e){ warns.push(f.name + ': ' + (e && e.message || e)); continue; }
+      (c.warns||[]).forEach(function(w){ warns.push(f.name + ': ' + w); });
+      if(!c.entries || !c.entries.length){ warns.push(f.name + ': 매물 0건'); continue; }
+      /*  단지 단위로 모은다 — 파일마다 바로 만들면, 같은 단지가 여러 파일에
+          걸쳐 있을 때 뒤 파일이 앞 파일을 덮어써 매물이 통째로 사라진다. */
+      c.entries.forEach(function(e){
+        var key = kind + '\u0001' + (e.danji||'') + '\u0001' + (kind==='sg' ? (e.dong||'') : '');
+        (pool[key] = pool[key] || { kind:kind, danji:e.danji||'', dong:(kind==='sg'?(e.dong||''):''),
+                                    ents:[] }).ents.push(e);
+      });
+      if(i % 5 === 4) await new Promise(function(r){ setTimeout(r, 0); });  // 화면이 멈추지 않게
+    }
+    var list = [];
+    Object.keys(pool).forEach(function(k){
+      var o = pool[k];
+      /*  같은 매물을 두 번 담지 않는다. 반드시 중복등록수를 세기 **전에** 지운다 —
+          순서가 바뀌면 같은 매물이 다른 업소가 낸 것으로 잡혀 숫자가 부풀려진다. */
+      var before = o.ents.length;
+      var ents = NVB.dedupe(o.ents);
+      dropped += before - ents.length;
+      var rows = NVB.build(o.kind, ents);
+      if(!rows.length) return;
+      nRow += rows.length;
+      list.push({ kind:o.kind, danji:o.danji, dong:o.dong, rows:rows,
+                  mine: rows.filter(function(r){ return r.자사매물==='★'; }).length });
+    });
+    list.sort(function(a,b){
+      if(a.kind !== b.kind) return a.kind < b.kind ? -1 : 1;
+      return a.danji < b.danji ? -1 : 1;
+    });
+    if(!list.length){
+      BAT = null; paint();
+      bmsg('매물을 한 건도 못 찾았습니다 — 추출기가 만든 NV_….txt 가 맞는지 봐 주세요.', '#c33');
+      return;
+    }
+    BAT = { list:list, nFile:files.length, byKind:byKind, nRow:nRow, dropped:dropped,
+            warns:warns, ms:Date.now()-t0,
+            mine:list.reduce(function(a,o){ return a + o.mine; }, 0),
+            at:new Date().toISOString().slice(0,10).replace(/-/g,'.') };
+    NVS = null;
+    paint();
+    bmsg('✅ 단지 ' + list.length + '개 · 매물 ' + fmtN(nRow) + '건을 읽었습니다.', '#0a7');
+    if(XLON) setTimeout(function(){ window.nvaBatXlsx(true); }, 300);
+  };
+
+  window.nvaBatClear = function(){ BAT = null; paint(); };
+  window.nvaPick = function(i){
+    if(!BAT || !BAT.list[i]) return;
+    var o = BAT.list[i];
+    NVS = { rows:o.rows, warns:[], danji:o.danji + (o.dong ? ' ' + o.dong : ''),
+            kind:o.kind, at:BAT.at, st:stats(o.rows) };
+    NVDEAL = '전체'; NVQ = '';
+    paint();
+    var t = document.querySelectorAll('#nv-root .nv-h');
+    if(t.length) t[t.length>3 ? t.length-4 : 0].scrollIntoView({ behavior:'smooth', block:'start' });
+  };
+
+  // ── 엑셀 ────────────────────────────────────────────────────────────
+  function sheetName(s, used){
+    var n = String(s||'매물').replace(/[\[\]:*?\/\\]/g,'-').slice(0,28) || '매물';
+    var base = n, i = 2;
+    while(used[n]){ n = base.slice(0,25) + '(' + i + ')'; i++; }
+    used[n] = 1; return n;
+  }
+  function sheetOf(kind, rows, at){
+    var COLS = NVB.COLS[kind];
+    var aoa = [COLS.slice()];
+    aoa[0][COLS.length-1] = '중복업소명 (' + at + ')';
+    rows.forEach(function(r){
+      aoa.push(COLS.map(function(c){ return r[c] == null ? '' : r[c]; }));
+    });
+    return XLSX.utils.aoa_to_sheet(aoa);
+  }
+  /*  단지가 100개면 파일도 100개가 된다 — 내려받기 창이 100번 뜬다.
+      그래서 한 권에 단지마다 시트 하나로 담는다. 보관하기도 쉽다. */
+  window.nvaBatXlsx = function(quiet){
+    if(!BAT) return;
+    if(typeof XLSX === 'undefined'){ bmsg('엑셀 기능을 불러오지 못했습니다.', '#c33'); return; }
+    var wb = XLSX.utils.book_new(), used = {}, n = 0;
+    BAT.list.forEach(function(o){
+      //  상가·사무실은 대분류로 나눈다 (지침 v2.6 — 파일을 나누던 것을 시트로)
+      var buckets = {};
+      if(o.kind === 'sg') o.rows.forEach(function(r){
+        (buckets[r._cat || '상가'] = buckets[r._cat || '상가'] || []).push(r); });
+      else buckets[''] = o.rows;
+      Object.keys(buckets).sort().forEach(function(b){
+        var nm = (b ? b + '_' : '') + o.danji + (o.dong || '');
+        XLSX.utils.book_append_sheet(wb, sheetOf(o.kind, buckets[b], BAT.at),
+                                     sheetName(nm, used));
+        n++;
+      });
+    });
+    if(!n) return;
+    XLSX.writeFile(wb, '네이버매물_' + BAT.at.replace(/\./g,'') + '_' + n + '개단지.xlsx');
+    if(!quiet) bmsg('✅ 엑셀 한 권(' + n + '개 시트)으로 내려받았습니다.', '#0a7');
+  };
+
+  window.nvaXlsx = function(){
+    if(!NVS) return;
+    if(typeof XLSX === 'undefined'){ msg('엑셀 기능을 불러오지 못했습니다.', '#c33'); return; }
+    var kind = NVS.kind || 'apt';
+    var wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, sheetOf(kind, NVS.rows, NVS.at), NVB.SHEETNM[kind]);
+    XLSX.writeFile(wb, (NVS.danji || '매물') + '_매물정리_' + NVS.at.replace(/\./g,'') + '.xlsx');
+    msg('내려받았습니다.', '#0a7');
+  };
+
+  // ── 매물 탭에 등록 ──────────────────────────────────────────────────
+  /*  엑셀을 거치지 않는다. 매물 탭이 읽는 칸과 파서가 내는 칸이 같기 때문이다.
+      등록은 **단지 단위 갈아 끼우기**다 — 올린 자료에 있는 단지만 새것으로
+      바꾸고, 나머지 단지는 손대지 않는다 (엑셀 업로드와 똑같다). */
+  function flat(kind){
+    var out = [];
+    BAT.list.forEach(function(o){ if(o.kind === kind) out = out.concat(o.rows); });
+    return out;
+  }
+  function regOp(rows){
+    rows.forEach(function(r){ r.__kind__ = r.물건구분 || '오피스텔'; });
+    var np = window.parseNaverRows(rows);
+    if(!np.length) return 0;
+    var G = window.G;
+    if(G.naverOpData && G.naverOpData.length){
+      var set = {};
+      np.forEach(function(r){ if(r.단지명) set[r.단지명] = true; });
+      G.naverOpData = G.naverOpData.filter(function(r){ return !set[r.단지명]; }).concat(np);
+    } else G.naverOpData = np;
+    var opN = G.naverOpData.filter(function(r){ return r.매물구분 === '오피스텔'; }).length;
+    var ssN = G.naverOpData.filter(function(r){ return r.매물구분 === '생숙'; }).length;
+    var el = document.getElementById('op-status');
+    if(el) el.textContent = '✅ ' + G.naverOpData.length + '건 (OP ' + opN + ' · 생숙 ' + ssN + ')';
+    if(typeof window.fbSaveNaverOp === 'function')
+      setTimeout(function(){ window.fbRetry(window.fbSaveNaverOp); }, 400);
+    if(typeof window.renderTab7 === 'function') try{ window.renderTab7(); }catch(e){}
+    return np.length;
+  }
+  function regSg(rows){
+    rows.forEach(function(r){
+      r.__fileDist__ = String(r.공구 || '').replace(/[^0-9]/g, '');
+      r.__dupNm__ = r.중복업소명 || '';
+    });
+    var np = window.parseNaverSanggaRows(rows);
+    if(!np.length) return 0;
+    var G = window.G, dn = window.sanggaDispNm || function(x){ return x; };
+    if(G.naverSanggaData && G.naverSanggaData.length){
+      var set = {};
+      np.forEach(function(r){ if(r.단지명){ set[r.단지명] = true; set[dn(r.단지명)] = true; } });
+      G.naverSanggaData = G.naverSanggaData.filter(function(r){
+        return !set[r.단지명] && !set[dn(r.단지명)]; }).concat(np);
+    } else G.naverSanggaData = np;
+    var el = document.getElementById('sangga-status');
+    if(el) el.textContent = '✅ ' + G.naverSanggaData.length + '건';
+    if(typeof window.fbSaveNaverSangga === 'function')
+      setTimeout(function(){ window.fbRetry(window.fbSaveNaverSangga); }, 400);
+    if(typeof window.renderTab8 === 'function') try{ window.renderTab8(); }catch(e){}
+    return np.length;
+  }
+  window.nvaRegister = function(){
+    if(!BAT) return;
+    if(typeof window.parseNaverRows !== 'function'){
+      bmsg('매물 탭을 찾지 못했습니다 — 화면을 새로 고쳐 주십시오.', '#c33'); return;
+    }
+    var done = [];
+    function cp(r){ var o = {}; for(var k in r) if(k.charAt(0) !== '_') o[k] = r[k]; return o; }
+    try{
+      var a = flat('apt');
+      if(a.length && typeof window.processNaverRows === 'function'){
+        //  APT 는 엑셀 업로드와 똑같은 길로 보낸다 (공구 맞추기·이력 쌓기까지 그대로)
+        window.processNaverRows(a.map(function(r){
+          var o = {}; for(var k in r) if(k.charAt(0) !== '_') o[k] = r[k]; return o;
+        }), BAT.nFile);
+        done.push('매물(APT) ' + fmtN(a.length) + '건');
+      }
+      var o2 = flat('op');
+      if(o2.length){ var n2 = regOp(o2.map(cp)); if(n2) done.push('매물(OP/생숙) ' + fmtN(n2) + '건'); }
+      var s2 = flat('sg');
+      if(s2.length){ var n3 = regSg(s2.map(cp)); if(n3) done.push('매물(상가/사무실) ' + fmtN(n3) + '건'); }
+    }catch(e){
+      bmsg('등록 중 막혔습니다 — ' + esc(e && e.message || e), '#c33');
+      return;
+    }
+    if(!done.length){ bmsg('등록할 것이 없습니다.', '#c33'); return; }
+    bmsg('✅ ' + done.join(' · ') + ' 등록했습니다.', '#0a7');
+    if(typeof window.showToast === 'function')
+      window.showToast('✅ ' + done.join(' · ') + ' 등록 완료');
+  };
+
+  // ── 붙여넣기 한 판 ──────────────────────────────────────────────────
   window.nvaClear = function(){ NVS = null; NVRAW = ''; NVQ = ''; paint(); };
   window.nvaDeal = function(d){ NVDEAL = d; paint(); };
   window.nvaFind = function(v){
@@ -30116,10 +30872,6 @@ function parse(raw, opt){
     var fresh = tmp.querySelector('.nv-list');
     if(fresh){ wrap.replaceChild(fresh, box); wrap.scrollTop = sc; }
   };
-  function msg(t, c){
-    var e = document.getElementById('nv-msg');
-    if(e) e.innerHTML = t ? '<span style="color:' + (c||'var(--text3)') + '">' + esc(t) + '</span>' : '';
-  }
   window.nvaRun = function(){
     var t = document.getElementById('nv-txt');
     var raw = t ? t.value : '';
@@ -30138,37 +30890,20 @@ function parse(raw, opt){
         r.at = new Date().toISOString().slice(0,10).replace(/-/g,'.');
         NVS = r; NVDEAL = '전체'; NVQ = '';
         paint();
-        msg(r.rows.length + '건을 읽었습니다.', '#0a7');
+        msg(r.rows.length + '건을 읽었습니다 (' + NVB.KINDNM[r.kind] + ').', '#0a7');
       }catch(e){
         msg('읽지 못했습니다 — ' + (e && e.message || e), '#c33');
       }
     }, 20);
   };
 
-  //  엑셀 — 파이썬 변환기와 같은 칸·차례
-  var COLS = ['단지명','거래구분','분양m²','전용m²','분양평수','가격','동','호수','층','방향',
-              '주요정보','중개업소명','확인날짜','중복등록수','자사매물','중복업소명'];
-  window.nvaXlsx = function(){
-    if(!NVS) return;
-    if(typeof XLSX === 'undefined'){ msg('엑셀 기능을 불러오지 못했습니다.', '#c33'); return; }
-    var aoa = [COLS.slice()];
-    aoa[0][15] = '중복업소명 (' + NVS.at + ')';
-    NVS.rows.forEach(function(r){
-      aoa.push(COLS.map(function(c){ return r[c] == null ? '' : r[c]; }));
-    });
-    var wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), '아파트');
-    XLSX.writeFile(wb, (NVS.danji || '매물') + '_매물정리_' + NVS.at.replace(/\./g,'') + '.xlsx');
-    msg('내려받았습니다.', '#0a7');
-  };
-
-  /*  파이썬 엑셀과 대조 —
-      파서를 옮겼으니 「같은 답이 나오는가」를 매번 확인할 수 있어야 한다.
-      한 번 맞춰 보고 끝낼 일이 아니다. 네이버가 화면을 바꾸면 또 어긋난다. */
+  /*  파이썬 엑셀과 대조 — 파서를 옮겼으니 「같은 답이 나오는가」를 매번 확인할 수
+      있어야 한다. 한 번 맞춰 보고 끝낼 일이 아니다. 네이버가 화면을 바꾸면 또 어긋난다. */
   window.nvaDiff = function(input){
     var f = input.files && input.files[0]; input.value = '';
     if(!f || !NVS) return;
     if(typeof XLSX === 'undefined'){ msg('엑셀 기능을 불러오지 못했습니다.', '#c33'); return; }
+    var COLS = NVB.COLS[NVS.kind || 'apt'];
     var rd = new FileReader();
     rd.onload = function(e){
       try{
@@ -30178,7 +30913,7 @@ function parse(raw, opt){
         aoa.forEach(function(row){
           var a = row.map(function(x){ return String(x==null?'':x).trim(); });
           if(!a.length || !a[0]) return;
-          if(a[0] === '단지명'){ head = a; return; }   // 거래별로 머리글이 다시 나온다
+          if(a[0] === COLS[0]){ head = a; return; }   // 거래별로 머리글이 다시 나온다
           if(!head) return;
           var o = {}; COLS.forEach(function(c,i){ o[c] = a[i] == null ? '' : a[i]; });
           want.push(o);
@@ -30186,14 +30921,14 @@ function parse(raw, opt){
         if(!want.length){ msg('엑셀에서 줄을 못 찾았습니다.', '#c33'); return; }
         var got = NVS.rows;
         var key = function(o){ return [o.거래구분,o['전용m²'],o.가격,o.동,o.층].join('|'); };
-        var W = {}, G = {};
+        var W = {}, Gm = {};
         want.forEach(function(o){ W[key(o)] = o; });
-        got.forEach(function(o){ G[key(o)] = o; });
-        var missing = want.filter(function(o){ return !G[key(o)]; });
+        got.forEach(function(o){ Gm[key(o)] = o; });
+        var missing = want.filter(function(o){ return !Gm[key(o)]; });
         var extra = got.filter(function(o){ return !W[key(o)]; });
         var diff = [];
         want.forEach(function(o){
-          var g = G[key(o)]; if(!g) return;
+          var g = Gm[key(o)]; if(!g) return;
           COLS.forEach(function(c){
             var a = String(o[c]==null?'':o[c]).trim();
             var b = String(g[c]==null?'':g[c]).trim();
@@ -30226,8 +30961,8 @@ function parse(raw, opt){
         if(box) box.innerHTML = h;
         else {
           var d = document.createElement('div'); d.id = 'nv-diffbox'; d.innerHTML = h;
-          document.getElementById('nv-root').insertBefore(d,
-            document.getElementById('nv-root').children[1] || null);
+          var rt = document.getElementById('nv-root');
+          rt.insertBefore(d, rt.children[1] || null);
         }
         msg(ok ? '대조 결과 완전히 같습니다.' : '대조 결과를 위에 적었습니다.', ok ? '#0a7' : '#c80');
       }catch(err){ msg('엑셀을 읽지 못했습니다 — ' + (err && err.message || err), '#c33'); }
@@ -30235,6 +30970,7 @@ function parse(raw, opt){
     rd.readAsArrayBuffer(f);
   };
 
+  // ── 탭 만들기 ───────────────────────────────────────────────────────
   function build(){
     if(document.getElementById('tc' + TAB)) return true;
     var nav  = document.querySelector('.tab-nav-inner') || document.querySelector('.tab-nav');
@@ -30268,8 +31004,9 @@ function parse(raw, opt){
     var ok = build() && hookSw();
     if(!ok && tries++ < 80) return void setTimeout(start, 200);
   })();
-  window.sdNv = { parse:parse, stats:stats, tab:TAB,
-                  last:function(){ return NVS; } };
+  window.sdNv = { parse:parse, stats:stats, tab:TAB, core:NVB,
+                  last:function(){ return NVS; },
+                  batch:function(){ return BAT; } };
 })();
 </script>
 
