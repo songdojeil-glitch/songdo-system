@@ -19353,7 +19353,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.09.27-36';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.09.27-37';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_data.html';      // 이 파일 이름
   var SD_NAME = '실거래가';      // 사람이 부르는 이름
 
@@ -30855,27 +30855,41 @@ var LIST = null;               // 목록 (한 번만 읽는다)
 function safe(s){ return String(s == null ? '' : s).replace(/[.$#\[\]\/\s]/g, '-'); }
 function idOf(kind, key, ymd){ return kind + '_' + safe(key) + '_' + ymd; }
 
+/*  ⚠ window.storage.set 은 실패해도 **던지지 않고 null 을 돌려준다.**
+    돌려준 값을 안 보면 못 담은 것을 담았다고 말하게 된다 — 실제로 그랬다.
+    대표님이 「등록했는데 기록이 안 생겼다」고 하셨을 때, 화면은 「담았습니다」라고
+    적고 있었다. 그러니 저장 계층에서 성공 여부를 반드시 확인한다. */
+var LASTERR = '';
+/*  저장소가 영영 안 돌아오면 등록이 통째로 멈춘다 — 시간을 끊는다 */
+function withTimeout(pr, ms, what){
+  return Promise.race([pr, new Promise(function(_, rej){
+    setTimeout(function(){ rej(new Error(what + ' — ' + (ms/1000) + '초 안에 응답이 없습니다')); }, ms);
+  })]);
+}
 async function sGet(k){
+  LASTERR = '';
+  if(!(root.storage && root.storage.get)){ LASTERR = '저장소가 없습니다 (window.storage)'; return null; }
   try{
-    if(root.storage && root.storage.get){
-      var r = await root.storage.get(k);
-      if(r && r.value != null) return r.value;
-    }
-  }catch(e){}
-  return null;
+    var r = await withTimeout(root.storage.get(k), 20000, '읽기');
+    if(r && r.value != null) return r.value;
+    return null;                       // 담긴 것이 없음 (오류가 아니다)
+  }catch(e){ LASTERR = String(e && e.message || e); return null; }
 }
 async function sSet(k, v){
+  LASTERR = '';
+  if(!(root.storage && root.storage.set)){ LASTERR = '저장소가 없습니다 (window.storage)'; return false; }
   try{
-    if(root.storage && root.storage.set){ await root.storage.set(k, v); return true; }
-  }catch(e){}
-  return false;
+    var r = await withTimeout(root.storage.set(k, v), 20000, '쓰기');
+    if(r == null){ LASTERR = '저장소가 거절했습니다 — ' + k; return false; }
+    return true;
+  }catch(e){ LASTERR = String(e && e.message || e); return false; }
 }
 async function sDel(k){
-  try{
-    if(root.storage && root.storage.delete){ await root.storage.delete(k); return true; }
-  }catch(e){}
-  return false;
+  if(!(root.storage && root.storage.delete)) return false;
+  try{ var r = await withTimeout(root.storage.delete(k), 20000, '지우기'); return r != null; }
+  catch(e){ return false; }
 }
+function lastErr(){ return LASTERR; }
 
 async function load(force){
   if(LIST && !force) return LIST;
@@ -30952,16 +30966,62 @@ async function purge(keys){
 
 /*  여러 단지를 한 번에 담고 정리까지. 등록 한 판이 끝날 때 부른다. */
 async function putMany(items, at, note, onProg){
-  var saved = [], keys = {};
+  var saved = [], keys = {}, failed = [], err = '';
   for(var i=0;i<items.length;i++){
     var o = items[i];
     if(onProg) onProg(i+1, items.length);
     var e = await put(o.kind, o.danji, o.dong, o.rows, at, note);
-    if(e){ saved.push(e); keys[e.kind + '|' + e.key] = 1; }
+    if(e){
+      saved.push(e); keys[e.kind + '|' + e.key] = 1;
+      if(!e.rows){ failed.push(o.danji); if(!err) err = LASTERR; }
+    }
   }
   var dropped = await purge(Object.keys(keys));
-  await saveIdx();
-  return { saved:saved, dropped:dropped };
+  var idxOk = await saveIdx();
+  if(!idxOk && !err) err = LASTERR;
+  /*  되읽어 확인한다 — 「담았습니다」는 담긴 것을 눈으로 보고 나서 할 말이다. */
+  var verified = false;
+  if(idxOk){
+    var raw = await sGet(IDX);
+    try{
+      var back = raw ? JSON.parse(raw) : [];
+      var have = {};
+      back.forEach(function(x){ have[x.id] = 1; });
+      verified = saved.every(function(x){ return have[x.id]; });
+      if(!verified && !err) err = '담았다고 했는데 다시 읽으니 없습니다';
+    }catch(e2){ if(!err) err = '목록을 다시 읽지 못했습니다'; }
+  }
+  return { saved:saved, dropped:dropped, failed:failed, verified:verified, err:err };
+}
+
+/*  🩺 저장 점검 — 쓰고·읽고·지워 보고 무엇이 막혔는지 그대로 알려 준다.
+    서버에 닿을 수 없을 때 화면이 조용히 넘어가지 않게 하려고 둔다. */
+async function probe(){
+  var out = [];
+  out.push(['저장소', (root.storage && root.storage.set)
+            ? '있음' : '❌ 없음 — 이 화면은 자료를 서버에 담지 못합니다']);
+  var k = PRE + '__probe__', v = JSON.stringify({ t: Date.now() });
+  var w = await sSet(k, v);
+  out.push(['시험 쓰기', w ? '✅ 됨' : '❌ 안 됨 — ' + (LASTERR || '까닭 모름')]);
+  var r = await sGet(k);
+  out.push(['시험 읽기', (r === v) ? '✅ 됨 (쓴 것과 같음)'
+            : (r == null ? '❌ 안 됨 — 담긴 것이 없습니다 ' + (LASTERR ? '(' + LASTERR + ')' : '')
+                         : '⚠ 다른 값이 돌아왔습니다')]);
+  await sDel(k);
+  var raw = await sGet(IDX);
+  var n = -2;
+  try{ n = raw ? JSON.parse(raw).length : -1; }catch(e){ n = -3; }
+  out.push(['서버의 회차 목록',
+            n === -1 ? '없습니다 — 한 번도 안 담겼거나 지워졌습니다'
+          : n === -3 ? '❌ 글이 깨졌습니다'
+          : n === -2 ? '❌ 읽지 못했습니다 — ' + (LASTERR || '까닭 모름')
+          : n + '개']);
+  out.push(['이 화면이 들고 있는 것', (LIST ? LIST.length : 0) + '개']);
+  out.push(['로그인', (function(){ try{
+      var a = JSON.parse(localStorage.getItem('sd_auth_session') || '{}');
+      return a.name ? (a.name + ' (' + (a.role || '권한 없음') + ')') : '❌ 로그인 정보가 없습니다';
+    }catch(e){ return '❌ 읽지 못했습니다'; } })()]);
+  return out;
 }
 
 async function rows(id){
@@ -30990,6 +31050,7 @@ async function remove(ids){
 function idxBytes(){ try{ return JSON.stringify(LIST || []).length; }catch(e){ return 0; } }
 
 root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, idxBytes:idxBytes,
+             probe:probe, lastErr:lastErr,
              rows:rows, remove:remove, saveIdx:saveIdx, pack:pack, unpack:unpack,
              KEEP:KEEP, SLIM:SLIM, _id:idOf, _safe:safe };
 })(typeof window !== 'undefined' ? window : globalThis);
@@ -31360,7 +31421,10 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
             at:new Date().toISOString().slice(0,10).replace(/-/g,'.') };
     NVS = null;
     paint();
-    bmsg('✅ 단지 ' + list.length + '개 · 매물 ' + fmtN(nRow) + '건을 읽었습니다.', '#0a7');
+    bmsg('✅ 단지 ' + list.length + '개 · 매물 ' + fmtN(nRow) + '건을 읽었습니다 — '
+      + '<b>아직 등록되지 않았습니다.</b> 아래 <b>'
+      + (RECONLY ? '🗂 기록만 남기기' : '📤 매물 탭에 등록') + '</b> 을 누르셔야 '
+      + '매물 탭에 들어가고 회차도 쌓입니다.', '#0a7');
     if(XLON) setTimeout(function(){ window.nvaBatXlsx(true); }, 300);
   };
 
@@ -31594,12 +31658,19 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
       + (res.ren.length > 3 ? ' 외 ' + (res.ren.length-3) + '곳' : '') + '</span>';
     if(res.purged) t += '<br><span style="color:#1565c0">다른 표기로 갈라져 있던 옛 매물 '
       + fmtN(res.purged) + '건을 정리했습니다.</span>';
-    if(ev && ev.saved.length) t += '<br><span style="color:#0a7">🔎 <b>N 매물 분석</b> 탭에 '
-      + ev.saved.length + '개 단지 회차로 담았습니다'
-      + (ev.dropped ? ' (오래된 회차 ' + ev.dropped + '건은 요약만 남기고 매물은 지웠습니다)' : '')
-      + ' — 다음에 또 올리시면 그때 견주실 수 있습니다.</span>';
-    else t += '<br><span style="color:#c80">회차 기록은 남기지 못했습니다 — '
-      + '인터넷이 끊겼는지 봐 주십시오. 매물 등록 자체는 위에 적은 대로 끝났습니다.</span>';
+    /*  담았다는 말은 되읽어 확인한 뒤에만 한다.
+        저장소는 실패해도 오류를 안 던지고 null 을 돌려주므로, 확인 없이 적으면
+        못 담은 것을 담았다고 말하게 된다 — 실제로 그랬다. */
+    if(ev && ev.verified && ev.saved.length)
+      t += '<br><span style="color:#0a7">🔎 <b>N 매물 분석</b> 탭에 '
+        + ev.saved.length + '개 단지 회차로 담았습니다'
+        + (ev.dropped ? ' (오래된 회차 ' + ev.dropped + '건은 요약만 남기고 매물은 지웠습니다)' : '')
+        + ' — 다음에 또 올리시면 그때 견주실 수 있습니다.</span>';
+    else
+      t += '<br><span style="color:#c33"><b>⚠ 회차 기록을 못 담았습니다</b> — '
+        + esc((ev && ev.err) || NVE.lastErr() || '저장소에 닿지 못했습니다')
+        + '.<br>매물 등록 자체는 위에 적은 대로 끝났습니다. '
+        + '🔎 <b>N 매물 분석</b> 탭의 <b>🩺 저장 점검</b>을 눌러 보시면 어디가 막혔는지 나옵니다.</span>';
 
     if(typeof window.showToast === 'function' && res.done.length)
       window.showToast('✅ ' + res.done.join(' · ') + ' 등록 완료');
@@ -31796,13 +31867,22 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
   }
 
   // ── 목록 ────────────────────────────────────────────────────────────
+  function tools(){
+    return '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:9px">'
+      + '<button class="dj-bs" onclick="nvbReload()">🔄 새로 읽기</button>'
+      + '<button class="dj-bs" onclick="nvbProbe()">🩺 저장 점검</button>'
+      + '<span id="an-msg" style="font-size:12px;color:var(--text3)"></span>'
+      + '</div><div id="an-probe"></div>';
+  }
   function listBox(){
     var all = NVE.cached();
     if(!all.length)
       return '<div class="nv-in" style="margin-top:12px;color:var(--text3);font-size:12.5px;line-height:1.8">'
-        + '아직 기록이 없습니다. <b>📥 N 매물 등록</b> 탭에서 한 번 등록하시면 '
-        + '단지마다 한 건씩 여기 쌓입니다 — 그 뒤로는 올릴 때마다 회차가 늘고, '
-        + '회차를 둘 고르시면 <b>지난번과 견준 보고서</b>가 나옵니다.</div>';
+        + '아직 기록이 없습니다. <b>📥 N 매물 등록</b> 탭에서 파일을 고른 뒤 '
+        + '<b>📤 매물 탭에 등록</b>까지 누르시면 단지마다 한 건씩 여기 쌓입니다 '
+        + '— 파일을 읽기만 해서는 쌓이지 않습니다.<br>'
+        + '등록하셨는데도 비어 있으면 <b>🩺 저장 점검</b>을 눌러 주십시오.'
+        + tools() + '</div>';
 
     var rows = all.filter(function(e){
       if(FK !== 'all' && e.kind !== FK) return false;
@@ -31838,8 +31918,10 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
       + (nSel ? '<button class="dj-bs" onclick="nvbClearSel()">고른 것 풀기</button>'
               + '<button class="dj-bs" onclick="nvbDel()" style="color:#c33">🗑 고른 회차 지우기</button>' : '')
       + (nSel === 1 ? '<button class="dj-bs" onclick="nvbRestore()">↩ 이 회차로 되돌리기</button>' : '')
+      + '<button class="dj-bs" onclick="nvbReload()">🔄 새로 읽기</button>'
+      + '<button class="dj-bs" onclick="nvbProbe()">🩺 저장 점검</button>'
       + '<span id="an-msg" style="font-size:12px;color:var(--text3)"></span>'
-      + '</div>';
+      + '</div><div id="an-probe"></div>';
 
     //  날짜로 접는다 — 주 1회 100개면 1년에 5,200줄이 된다
     var byYmd = {};
@@ -32246,6 +32328,30 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
     var out = window.sdNvReg.push([{ kind:e.kind, danji:e.danji, dong:e.dong, rows:r }]);
     amsg('↩ ' + esc(e.danji) + ' 를 ' + esc(e.at) + ' 회차로 되돌렸습니다 — ' + esc(out), '#0a7');
   };
+  window.nvbReload = async function(){
+    amsg('서버에서 다시 읽는 중…', '#1565c0');
+    try{ await NVE.load(true); READY = true; paint();
+         amsg('회차 ' + fmtN(NVE.cached().length) + '개를 읽었습니다.', '#0a7'); }
+    catch(e){ amsg('읽지 못했습니다 — ' + esc(e && e.message || e), '#c33'); }
+  };
+  /*  등록했는데 기록이 비어 있을 때, 어디가 막혔는지 화면이 스스로 말하게 한다.
+      서버에 닿는지·쓰는지·읽는지를 차례로 찔러 보고 그대로 적는다. */
+  window.nvbProbe = async function(){
+    var box = document.getElementById('an-probe');
+    if(box) box.innerHTML = '<div class="nv-diff">🩺 점검하는 중…</div>';
+    var rows = await NVE.probe();
+    var bad = rows.some(function(r){ return /❌/.test(r[1]); });
+    var h = '<div class="nv-diff' + (bad ? '' : ' ok') + '" style="'
+      + (bad ? '' : 'background:#e8f5e9;border-color:#a5d6a7;color:#1b5e20') + '">'
+      + '<b>🩺 저장 점검</b><br>'
+      + rows.map(function(r){ return '· ' + esc(r[0]) + ' — ' + esc(r[1]); }).join('<br>')
+      + '<br><span style="font-size:11px">'
+      + (bad ? '❌ 가 붙은 줄이 막힌 곳입니다. 이 칸을 그대로 찍어 보내 주시면 됩니다.'
+             : '모두 정상입니다. 회차가 비어 있다면 <b>📥 N 매물 등록</b>에서 '
+               + '<b>📤 매물 탭에 등록</b>을 누르지 않으신 것입니다 — 파일을 읽기만 해서는 쌓이지 않습니다.')
+      + '</span></div>';
+    if(box) box.innerHTML = h;
+  };
   window.sdNvAn = { tab:TAB, sel:function(){ return SEL; }, paint:paint,
                     repDiff:repDiff, repTrend:repTrend };
 
@@ -32280,9 +32386,12 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
   }
   async function open(){
     paint();
-    if(READY || BUSY) return;
+    if(BUSY) return;
+    //  비어 있으면 탭을 열 때마다 다시 읽는다 — 다른 창에서 등록했을 수도 있고,
+    //  처음 읽을 때 서버가 느렸을 수도 있다. 회차가 이미 있으면 다시 안 읽는다.
+    if(READY && NVE.cached().length) return;
     BUSY = true; paint();
-    try{ await NVE.load(); READY = true; }
+    try{ await NVE.load(true); READY = true; }
     catch(e){ READY = false; }
     BUSY = false; paint();
   }
