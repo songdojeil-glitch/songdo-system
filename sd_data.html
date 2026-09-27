@@ -2073,7 +2073,12 @@ tr.naver-fav>td:first-child{border-left:3px solid #b8860b;}
         </div>
       </div>
       <div class="table-scroll-hint">← 좌우로 스크롤하여 전체 내용 확인 →</div>
-      <div class="table-scroll" id="t6-table-scroll" style="max-height:calc(100vh - 300px);min-height:400px">
+      <!--  매물 목록은 이 탭에서 가장 중요한 것이다. 작은 칸에 가두고 그 안에서
+            스크롤하게 하면 아래 「의뢰가 vs 실거래가」 표에 자리를 내주느라
+            정작 매물이 열몇 줄밖에 안 보인다 — 그래서 높이를 풀어 둔다.
+            그려 내는 줄 수는 MAX_T6(500줄)로 이미 막혀 있으므로 길어도 한계가 있다.
+            비교 표는 이 아래에 그대로 이어진다.  -->
+      <div class="table-scroll" id="t6-table-scroll" style="max-height:none;overflow-y:visible;min-height:120px">
         <table class="data-table" id="t6-naver-table" style="table-layout:fixed;width:100%;min-width:1600px">
           <colgroup id="t6-colgroup"></colgroup>
           <thead><tr id="t6-thead-tr"></tr></thead>
@@ -8833,6 +8838,34 @@ function findSaleNm(nm){
   var norm = nm.replace('(주상복합)','').replace('(주상)','').trim();
   if(_DANJI_NM_MAP[norm]) return _DANJI_NM_MAP[norm];
   if(G.saleData && G.saleData.some(function(r){ return r['단지명']===norm; })) return norm;
+  /*  4. 표기가 달라도 같은 단지면 찾아낸다.
+      네이버는 「송도더샵7단지그린애비뉴」, 국토부는 「송도더샵그린애비뉴7단지」처럼
+      같은 단지를 다르게 적는다. 이름이 정확히 같아야 짝이 맞는 구조라 그냥 두면
+      실거래가 한 건도 없는 것으로 나온다 — 실제로 그랬다.
+      손으로 관리하는 _DANJI_NM_MAP 은 새 표기가 나올 때마다 또 비므로,
+      마지막에 정규화 열쇠로 한 번 더 맞춰 본다. 앞의 정확한 짝이 다 실패한
+      뒤에만 도는 길이라 기존 동작을 바꾸지 않는다. */
+  var nd = window.NVB && window.NVB.normDanji;
+  if(nd && G.saleData && G.saleData.length){
+    var key = nd(nm);
+    if(key){
+      if(!G._saleNmIdx || G._saleNmIdxFor !== G.saleData.length){
+        var idx = {};
+        G.saleData.forEach(function(r){
+          var n2 = r['단지명']; if(!n2) return;
+          var k2 = nd(n2); if(!k2) return;
+          (idx[k2] = idx[k2] || {})[n2] = (idx[k2][n2] || 0) + 1;
+        });
+        G._saleNmIdx = idx; G._saleNmIdxFor = G.saleData.length;
+      }
+      var cand = G._saleNmIdx[key];
+      if(cand){
+        var best = null, bn = -1;
+        Object.keys(cand).forEach(function(n2){ if(cand[n2] > bn){ bn = cand[n2]; best = n2; } });
+        if(best){ findSaleNm._last = { from:nm, to:best }; return best; }
+      }
+    }
+  }
   return nm;
 }
 
@@ -17823,8 +17856,13 @@ function renderNaverCompare(rows){
 
   if(compareSub){
     var rCnt=Object.keys(realAvg).length;
-    compareSub.textContent = selectedUnit+' · 매물 '+cmpRows.length+'건'
+    var sNm2=findSaleNm(selectedUnit);
+    var t = selectedUnit+' · 매물 '+cmpRows.length+'건'
       +(rCnt>0?' · 실거래 평균 '+rCnt+'개 유형':' · 실거래 없음');
+    //  이름이 달라 맞춰 찾은 것이라면 그 사실을 적는다 — 잘못 붙었을 때 바로 보이게
+    if(sNm2 && sNm2!==selectedUnit) t += ' (실거래 단지명 「'+sNm2+'」로 맞춤)';
+    else if(!rCnt) t += ' — 국토부 자료에 이 단지 이름이 없거나 1년 내 거래가 없습니다';
+    compareSub.textContent = t;
   }
 }
 
@@ -19353,7 +19391,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.09.27-37';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.09.27-39';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_data.html';      // 이 파일 이름
   var SD_NAME = '실거래가';      // 사람이 부르는 이름
 
@@ -30754,6 +30792,41 @@ function stats(rows){
            dupTot:dupTot, mine:mine, only:only, n:rows.length };
 }
 
+/*  면적형별로 매매와 전세를 함께 모아 갭과 전세가율을 낸다.
+    갭투자·전세 상담에서 맨 먼저 묻는 숫자인데, 매매 중위만으로는 답이 안 된다.
+    매매와 전세가 둘 다 있는 면적형에서만 갭을 낸다 — 한쪽만 있으면 빈칸으로 둔다.
+    없는 값을 0으로 채우면 「갭 0원」이라는 거짓말이 된다. */
+function areaGap(rows){
+  var by = {};
+  rows.forEach(function(r){
+    var k = r['전용m²'];
+    if(k == null || k === '') return;
+    var o = by[k] = by[k] || { k:k, py:(r.분양평수 || r.전용평수 || 0), sale:[], jeon:[] };
+    if(r.거래구분 === '매매') o.sale.push(r._p);
+    else if(r.거래구분 === '전세') o.jeon.push(r._p);
+  });
+  return Object.keys(by).map(function(k){
+    var o = by[k];
+    o.n = o.sale.length; o.nj = o.jeon.length;
+    o.med = med(o.sale); o.jmed = med(o.jeon);
+    o.lo = o.n ? Math.min.apply(null, o.sale) : null;
+    o.hi = o.n ? Math.max.apply(null, o.sale) : null;
+    o.gap  = (o.med != null && o.jmed != null) ? o.med - o.jmed : null;
+    o.rate = (o.med && o.jmed) ? Math.round(o.jmed / o.med * 1000) / 10 : null;
+    return o;
+  }).sort(function(a, b){ return parseFloat(a.k) - parseFloat(b.k); });
+}
+
+/*  확인일이 얼마나 지났는지 — 「yy.mm.dd」를 날짜로 읽는다.
+    오래된 호가는 지금 값과 다를 수 있어 손님께 말씀드리기 전에 봐야 한다. */
+function daysSince(yymmdd){
+  var m = /^(\d{2})\.(\d{2})\.(\d{2})$/.exec(String(yymmdd || '').trim());
+  if(!m) return null;
+  var d = new Date(2000 + (+m[1]), (+m[2]) - 1, +m[3]);
+  if(isNaN(d)) return null;
+  return Math.max(0, Math.round((Date.now() - d.getTime()) / 86400000));
+}
+
 /*  회차가 오래돼 행 자료를 지운 뒤에도 남길 요약.
     이것만으로 호가 추이 그래프가 그려진다 — 1KB 도 안 된다. */
 function summarize(rows){
@@ -30813,6 +30886,7 @@ function spark(pts, w, h, color){
 }
 
 root.NVL = { esc:esc, fmtN:fmtN, eok:eok, med:med, card:card, bar:bar,
+             areaGap:areaGap, daysSince:daysSince,
              today:today, ymdOf:ymdOf, who:who, isBoss:isBoss,
              stats:stats, summarize:summarize, unitKey:unitKey, compare:compare, spark:spark };
 })(typeof window !== 'undefined' ? window : globalThis);
@@ -31855,6 +31929,7 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
 
   var SEL = {};            // 고른 회차 id
   var REP = null;          // 지금 만든 보고서
+  var REPMETA = null;      // 인쇄 머리글에 쓸 제목·부제
   var Q = '', FK = 'all', FB = 'all', OPEN = {};
   var READY = false, BUSY = false;
 
@@ -31984,6 +32059,13 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
   }
   function repOne(e, rows){
     var S = NVL.stats(rows), kind = e.kind, h = '';
+    var AG = NVL.areaGap(rows);
+    var withGap = AG.filter(function(a){ return a.gap != null; });
+    var minGap = withGap.length
+      ? withGap.reduce(function(a,b){ return b.gap < a.gap ? b : a; }) : null;
+    var jeon = rows.filter(function(r){ return r.거래구분==='전세'; }).map(function(r){ return r._p; });
+    REPMETA = { ttl: e.danji + (e.dong ? ' ' + e.dong : '') + ' · 매물 분석 보고서',
+                sub: NVB.KINDNM[kind] + ' · 매물 ' + S.n + '건 · ' + e.at + ' 조사' };
     h += head('📋 ' + esc(e.danji) + (e.dong ? ' ' + esc(e.dong) : ''),
               NVB.KINDNM[kind] + ' · 매물 ' + S.n + '건 · ' + e.at + ' 읽음 · 등록 ' + e.by);
     var ps = rows.filter(function(r){ return r.거래구분==='매매'; }).map(function(r){ return r._p; });
@@ -31991,26 +32073,47 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
       + card('매물 수', S.n + '<small>건</small>',
              Object.keys(S.byDeal).map(function(k){ return k + ' ' + S.byDeal[k]; }).join(' · '))
       + card('매매 중위', ps.length ? eok(med(ps)) : '—',
-             ps.length ? eok(Math.min.apply(null,ps)) + ' ~ ' + eok(Math.max.apply(null,ps)) : '')
+             ps.length ? eok(Math.min.apply(null,ps)) + ' ~ ' + eok(Math.max.apply(null,ps))
+                         + ' · ' + ps.length + '건' : '')
+      + card('전세 중위', jeon.length ? eok(med(jeon)) : '—',
+             jeon.length ? eok(Math.min.apply(null,jeon)) + ' ~ ' + eok(Math.max.apply(null,jeon))
+                           + ' · ' + jeon.length + '건' : '이 목록에 전세가 없습니다')
+      + card('최소 갭', minGap ? eok(minGap.gap) : '—',
+             minGap ? '전용 ' + esc(minGap.k) + ' · 전세가율 ' + minGap.rate + '%'
+                    : '매매·전세가 함께 있는 면적형이 없습니다',
+             minGap ? '#2b8a3e' : '')
       + card('우리 매물', S.mine + '<small>건</small>', S.mine ? '자사 ★' : '이 목록에 없음',
              S.mine ? '#1565c0' : '')
       + card('우리만 가진 매물', S.only + '<small>건</small>',
              '전체의 ' + Math.round(S.only/S.n*100) + '%')
       + card('중복 등록', fmtN(S.dupTot) + '<small>건</small>', '한 매물을 여러 곳이 같이 냄')
       + '</div>';
-    if(S.areas.length){
-      h += head('📐 전용면적형별 매매 시세', '중위값 기준')
+    if(AG.length){
+      /*  매매만 보던 표에 전세·갭·전세가율을 붙였다. 갭투자 상담에서
+          맨 먼저 묻는 숫자인데 지금까지 화면에 없어 따로 세고 계셨다. */
+      h += head('📐 전용면적형별 시세 · 전세갭', '중위값 기준 · 전세가율 = 전세 ÷ 매매')
         + '<div style="overflow-x:auto"><table class="nv-t"><thead><tr>'
-        + '<th>전용</th><th>평</th><th>건수</th><th>중위</th><th>최저~최고</th><th>폭</th>'
+        + '<th>전용</th><th>평</th><th>매매</th><th>매매 중위</th><th>최저~최고</th>'
+        + '<th>전세</th><th>전세 중위</th><th>갭</th><th>전세가율</th>'
         + '</tr></thead><tbody>';
-      var top = Math.max.apply(null, S.areas.map(function(a){ return a.hi; }));
-      S.areas.forEach(function(a){
-        h += '<tr><td>' + esc(a.k) + '</td><td>' + (a.py||'') + '</td><td>' + a.n + '</td>'
-          + '<td><b>' + eok(a.med) + '</b></td>'
-          + '<td style="color:var(--text3)">' + eok(a.lo) + ' ~ ' + eok(a.hi) + '</td>'
-          + '<td style="min-width:120px">' + bar(a.hi/top*100, '#4c6ef5') + '</td></tr>';
+      AG.forEach(function(a){
+        h += '<tr><td>' + esc(a.k) + '</td><td>' + (a.py||'') + '</td>'
+          + '<td>' + (a.n || '') + '</td>'
+          + '<td><b>' + (a.med != null ? eok(a.med) : '—') + '</b></td>'
+          + '<td style="color:var(--text3)">'
+          +   (a.n ? eok(a.lo) + ' ~ ' + eok(a.hi) : '—') + '</td>'
+          + '<td>' + (a.nj || '') + '</td>'
+          + '<td>' + (a.jmed != null ? eok(a.jmed) : '—') + '</td>'
+          + '<td><b>' + (a.gap != null ? eok(a.gap) : '—') + '</b></td>'
+          + '<td>' + (a.rate != null
+              ? '<b style="color:' + (a.rate >= 80 ? '#c62828' : a.rate >= 70 ? '#c80' : '#2b8a3e')
+                + '">' + a.rate + '%</b>' : '—') + '</td></tr>';
       });
-      h += '</tbody></table></div>';
+      h += '</tbody></table></div>'
+        + '<div style="font-size:11px;color:var(--text3);margin-top:6px;line-height:1.7">'
+        + '전세가율은 <b>매매와 전세가 함께 나와 있는 면적형에서만</b> 냅니다 — '
+        + '한쪽만 있으면 빈칸으로 둡니다. 실거래가가 아니라 <b>지금 나와 있는 호가</b>의 중위값입니다.'
+        + '</div>';
     }
     if(S.cheap.length){
       h += head('💡 같은 면적형보다 싼 매물', '중위값 대비') + '<div class="nv-grid">';
@@ -32034,8 +32137,112 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
       });
       h += '</div>';
     }
+    h += party(rows, AG, S);
     h += table(kind, rows);
+    h += '<div style="font-size:11px;color:var(--text3);margin-top:10px;line-height:1.75;'
+      + 'border-top:1px solid var(--border);padding-top:9px">'
+      + '본 자료는 <b>공개된 네이버 매물 정보</b>를 정리한 참고용이며 감정평가가 아닙니다. '
+      + '금액은 실거래가가 아니라 <b>지금 나와 있는 호가</b>입니다. '
+      + '법령 조항은 작성 시점 기준이며, 개별 사안은 등기부·현장 확인이 따로 필요합니다.'
+      + '</div>';
     return h;
+  }
+
+  /*  ── 거래 당사자별로 짚을 것 ─────────────────────────────────────────
+      MR.K 보고서를 보고 넣었다. 다만 문장은 우리 것으로 쓰고, 줄마다
+      **이 단지 자료에서 실제로 센 숫자**를 넣는다. 어느 단지에나 똑같이
+      붙는 일반론은 손님 앞에서 값을 못 한다.
+      법 조항은 사실 관계만 적고 단정하지 않는다 — 개별 사안은 따로 봐야 한다. */
+  function party(rows, AG, S){
+    var sale = rows.filter(function(r){ return r.거래구분==='매매'; });
+    var jeon = rows.filter(function(r){ return r.거래구분==='전세'; });
+    var ps = sale.map(function(r){ return r._p; });
+    var m = med(ps);
+    var lo = ps.length ? Math.min.apply(null, ps) : null;
+    var hi = ps.length ? Math.max.apply(null, ps) : null;
+    var span = (m && lo != null && hi != null) ? Math.round((hi - lo) / m * 100) : null;
+    var withGap = AG.filter(function(a){ return a.rate != null; });
+    var maxRate = withGap.length
+      ? withGap.reduce(function(a,b){ return b.rate > a.rate ? b : a; }) : null;
+    var minGap = withGap.length
+      ? withGap.reduce(function(a,b){ return b.gap < a.gap ? b : a; }) : null;
+    var best = S.cheap.length ? S.cheap[0] : null;
+    //  확인일이 가장 오래된 매물
+    var old = null, oldD = -1;
+    rows.forEach(function(r){
+      var d = NVL.daysSince(r.확인날짜);
+      if(d != null && d > oldD){ oldD = d; old = r; }
+    });
+    var jPct = rows.length ? Math.round(jeon.length / rows.length * 100) : 0;
+
+    function box(icon, who, note, lines){
+      return '<div class="nv-p" style="min-width:290px">'
+        + '<div class="nv-pt">' + icon + ' ' + esc(who)
+        + ' <span style="font-weight:400;color:var(--text3)">' + esc(note) + '</span></div>'
+        + '<div class="nv-pd"><ul style="margin:4px 0 0;padding-left:16px">'
+        + lines.filter(Boolean).map(function(t){ return '<li style="margin:3px 0">' + t + '</li>'; }).join('')
+        + '</ul></div></div>';
+    }
+
+    var h = head('🧭 거래 당사자별로 짚을 것', '이 단지 자료에서 센 숫자 + 확인할 법 조항')
+      + '<div class="nv-grid" style="grid-template-columns:repeat(auto-fill,minmax(330px,1fr))">';
+
+    h += box('🔑', '세로 들어오시는 분', '(임차인)', [
+      maxRate
+        ? '이 단지에서 전세가율이 가장 높은 것은 <b>전용 ' + esc(maxRate.k) + ' · '
+          + maxRate.rate + '%</b> 입니다. 전세가율이 높을수록 집값이 내렸을 때 '
+          + '보증금을 다 돌려받기 어려워집니다.'
+        : '이 목록에는 매매와 전세가 함께 있는 면적형이 없어 전세가율을 낼 수 없습니다.',
+      '잔금 치르는 날 <b>등기부를 다시 떼어 보시고</b>, 그날 전입신고와 확정일자를 함께 '
+        + '마치셔야 대항력·우선변제권이 섭니다 (주택임대차보호법 §3·§3-2).',
+      '집주인이 세금을 체납했으면 그 세금이 보증금보다 먼저 갈 수 있습니다. '
+        + '계약 전에 <b>미납국세 열람</b>을 요청하실 수 있습니다 (국세징수법 §109).'
+    ]);
+
+    h += box('🏠', '세를 놓으시는 분', '(임대인)', [
+      '지금 이 단지에 나와 있는 전세는 <b>' + jeon.length + '건</b>'
+        + (rows.length ? ' (전체의 ' + jPct + '%)' : '') + ' 입니다. '
+        + (jeon.length === 0 ? '전세 물건이 없어 견줄 상대가 없습니다.'
+           : jPct <= 10 ? '재고가 적어 회전이 빠른 편입니다.'
+           : '재고가 적지 않아 보증금을 높게 부르시면 공실이 길어질 수 있습니다.'),
+      '세입자는 갱신을 한 번 요구할 수 있고(2+2년), 갱신할 때 올릴 수 있는 폭은 '
+        + '<b>5%</b> 까지입니다 (주임법 §6-3 · §7, 시행령 §8).',
+      '전세를 월세로 돌리실 때는 <b>법에서 정한 전환율 상한</b>을 넘지 않는지 '
+        + '보셔야 합니다 (주임법 §7-2).'
+    ]);
+
+    h += box('🛒', '사시려는 분', '(매수인)', [
+      best
+        ? '같은 면적형 중위값보다 싼 매물이 <b>' + S.cheap.length + '건</b> 있고, '
+          + '가장 싼 것은 <b>' + best.gap + '% 낮습니다</b> ('
+          + esc([best.r.동, best.r.층, best.r['전용m²']].filter(Boolean).join(' · ')) + ').'
+        : '같은 면적형 중위값보다 싼 매매 매물은 이 목록에 없습니다.',
+      (span != null)
+        ? '매매 호가가 <b>' + eok(lo) + ' ~ ' + eok(hi) + '</b> 로 중위값의 <b>'
+          + span + '% 폭</b> 입니다. 폭이 넓으면 층·향·수리 상태 차이가 큽니다 — '
+          + '싼 값에는 까닭이 있는지 보셔야 합니다.'
+        : null,
+      (old && oldD >= 14)
+        ? '확인일이 오래된 호가는 지금 값과 다를 수 있습니다. 가장 오래된 것이 <b>'
+          + esc(old.확인날짜) + ' (' + oldD + '일 전)</b> 이니 계약 이야기 전에 다시 확인하십시오.'
+        : null,
+      '눈에 띄게 싼 매물은 <b>등기부·세금·명도 조건</b>을 먼저 보십시오.'
+    ]);
+
+    h += box('📢', '파시려는 분', '(매도인)', [
+      '지금 같이 경쟁하는 매매 매물이 <b>' + sale.length + '건</b> 입니다'
+        + (lo != null ? ', 그중 가장 싼 호가는 <b>' + eok(lo) + '</b> 입니다.' : '.'),
+      '한 곳에서만 낸 매물이 <b>' + S.only + '건</b> 입니다'
+        + (S.n ? ' (전체의 ' + Math.round(S.only/S.n*100) + '%)' : '')
+        + '. 내 물건이 그중 하나라면 <b>노출이 좁습니다</b> — 공동중개로 넓히는 길이 있습니다.',
+      S.mine
+        ? '이 목록에서 <b>우리 사무소 매물이 ' + S.mine + '건</b> 입니다 (★ 표시).'
+        : '이 목록에 우리 사무소 매물은 없습니다.',
+      '양도세(보유·거주 기간, 다주택 여부)와 자금 일정(선매도–후매수)은 '
+        + '계약 전에 <b>세무사와 함께</b> 짚으십시오.'
+    ]);
+
+    return h + '</div>';
   }
   function table(kind, rows){
     var COLS = NVB.COLS[kind];
@@ -32069,6 +32276,8 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
       return '<span style="color:' + (d>0 ? '#c62828' : '#2b8a3e') + '">'
         + (d>0 ? '▲' : '▼') + ' ' + (unit==='eok' ? eok(Math.abs(d)) : fmtN(Math.abs(d))) + '</span>';
     }
+    REPMETA = { ttl: eB.danji + ' · 시점 비교 보고서',
+                sub: eA.at + ' → ' + eB.at + ' · ' + NVB.KINDNM[eB.kind] };
     var h = head('🔁 ' + esc(eB.danji) + ' 시점 비교',
                  eA.at + ' → ' + eB.at + ' · ' + NVB.KINDNM[eB.kind]);
     h += '<div class="nv-cards">'
@@ -32137,6 +32346,8 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
   function repTrend(list){
     var L = list.slice().sort(function(a,b){ return a.ymd < b.ymd ? -1 : 1; });
     var e0 = L[L.length-1];
+    REPMETA = { ttl: e0.danji + ' · 호가 추이 보고서',
+                sub: L[0].at + ' ~ ' + e0.at + ' · ' + L.length + '회차' };
     var h = head('📈 ' + esc(e0.danji) + ' 호가 추이',
                  L[0].at + ' ~ ' + e0.at + ' · ' + L.length + '회차');
     //  면적형을 모아 면적형마다 선을 그린다
@@ -32181,6 +32392,8 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
 
   /*  단지 비교 */
   function repCmp(items){
+    REPMETA = { ttl: '단지 비교 보고서',
+                sub: items.map(function(x){ return x.e.danji; }).join(' · ') };
     var h = head('⚖ 단지 비교', items.map(function(x){ return x.e.danji; }).join(' · '));
     h += '<div class="nv-cards">';
     items.forEach(function(x){
@@ -32243,7 +32456,17 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
         + (BUSY ? '⏳ 기록을 읽는 중…' : '기록을 아직 못 읽었습니다.') + '</div>';
     } else {
       h += listBox();
-      if(REP) h += REP;
+      if(REP){
+        /*  printModal 이 이 칸을 통째로 떠 간다. 단추와 .no-print 는 스스로 걷어낸다. */
+        h += '<div id="an-card">'
+          + '<div class="no-print" style="display:flex;gap:8px;flex-wrap:wrap;'
+          +   'align-items:center;margin:14px 0 2px">'
+          +   '<button class="dj-bp" onclick="nvbPrint()">🖨 보고서 인쇄 · PDF</button>'
+          +   '<span style="font-size:11px;color:var(--text3)">'
+          +   '사무소 이름과 작성일이 머리글에 들어갑니다 — 손님께 그대로 드리셔도 됩니다.</span>'
+          + '</div>'
+          + REP + '</div>';
+      }
     }
     root.innerHTML = h;
   }
@@ -32351,6 +32574,36 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
                + '<b>📤 매물 탭에 등록</b>을 누르지 않으신 것입니다 — 파일을 읽기만 해서는 쌓이지 않습니다.')
       + '</span></div>';
     if(box) box.innerHTML = h;
+  };
+  /*  보고서 인쇄 — 사무소 이름·작성자·작성일을 머리글에 넣는다.
+      손님께 그대로 드리는 종이라 어디서 나온 자료인지가 적혀 있어야 한다.
+      공시가격·일조 보고서와 같은 방식(붙였다 떼기)을 쓴다. */
+  function prtHead(ttl, sub){
+    var off = '송도제일공인중개사사무소';
+    try{ var c = JSON.parse(localStorage.getItem('sd_office') || '{}');
+         if(c && c.name) off = c.name; }catch(e){}
+    var who = NVL.who().name;
+    var d = new Date(), pad = function(n){ return String(n).padStart(2,'0'); };
+    var ds = d.getFullYear() + '.' + pad(d.getMonth()+1) + '.' + pad(d.getDate());
+    var el = document.createElement('div');
+    el.style.cssText = 'border-bottom:2px solid #1a2035;padding-bottom:9px;margin-bottom:12px';
+    el.innerHTML = '<div style="font-size:17px;font-weight:800">' + esc(ttl) + '</div>'
+      + '<div style="font-size:11.5px;color:#555;margin-top:3px">' + esc(sub) + '</div>'
+      + '<div style="font-size:11px;color:#777;margin-top:5px">'
+      + esc(off) + (who && who !== '(모름)' ? ' · ' + esc(who) : '') + ' · ' + ds + ' 작성'
+      + ' · SJRWS(송도제일부동산업무시스템)</div>';
+    return el;
+  }
+  window.nvbPrint = function(){
+    var card = document.getElementById('an-card');
+    if(!card || !REP){ amsg('인쇄할 보고서가 없습니다 — 먼저 회차를 골라 보고서를 만드십시오.', '#c33'); return; }
+    if(typeof window.printModal !== 'function'){ amsg('인쇄 기능을 찾지 못했습니다.', '#c33'); return; }
+    var mt = REPMETA || { ttl:'매물 분석 보고서', sub:'' };
+    var head = prtHead(mt.ttl, mt.sub);
+    card.insertBefore(head, card.firstChild);
+    try{ window.printModal('an-card', mt.ttl); }
+    catch(e){ amsg('인쇄를 열지 못했습니다 — ' + esc(e && e.message || e), '#c33'); }
+    setTimeout(function(){ if(head.parentNode) head.parentNode.removeChild(head); }, 1500);
   };
   window.sdNvAn = { tab:TAB, sel:function(){ return SEL; }, paint:paint,
                     repDiff:repDiff, repTrend:repTrend };
