@@ -19391,7 +19391,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.09.27-42';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.09.27-43';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_data.html';      // 이 파일 이름
   var SD_NAME = '실거래가';      // 사람이 부르는 이름
 
@@ -29214,7 +29214,9 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
         d:'전세가율·근저당·선순위를 넣어 위험을 점수로 — 전세사기 예방 강의에도' },
       { i:'📜', n:'등기부 요점정리', soon:1, d:'등기사항증명서에서 봐야 할 것만 뽑아 정리' },
       { i:'🚇', n:'역세권 · 학군', soon:1, d:'단지에서 역·학교까지 걸어서 몇 분' },
-      { i:'🏗️', n:'건폐율 · 용적률', soon:1, d:'용도지역별 인천시 조례 한눈에' }
+      { i:'🏗️', n:'건폐율 · 용적률', soon:1, d:'용도지역별 인천시 조례 한눈에' },
+      { i:'🏗️', n:'건축물대장 조회', go:24, tag:'새로',
+        d:'지번·주소·단지로 국토부 건축물대장을 바로 — 총괄표제부·동별 표제부·층별개요 (발급본은 정부24)' }
     ]}
   ];
 
@@ -33556,6 +33558,607 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
       return out;
     };
     w.__mip = true; W.sw = w;
+    return true;
+  }
+  var tries = 0;
+  (function start(){
+    var ok = build() && hookSw();
+    if(!ok && tries++ < 80) return void setTimeout(start, 200);
+  })();
+})();
+</script>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     건축물대장 모듈 v1.0  (탭 24) — 1단계
+     국토교통부 건축물대장정보 서비스를 사무소 화면에서 바로 본다.
+     총괄표제부 · 동별 표제부 · 층별개요. 인증키·법정동코드·단지 사전은
+     S실거래가 탭이 이미 갖고 있는 것을 그대로 쓴다.
+     ══════════════════════════════════════════════════════════════════ -->
+<style>
+#br-root{padding:2px 0}
+#br-root .br-in{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px 14px}
+#br-root .br-fr{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+#br-root .br-t{padding:5px 10px;border:1px solid var(--border);border-radius:7px;
+  background:var(--bg3);color:var(--text);font-size:12px;font-family:inherit}
+#br-root .br-t:focus{outline:none;border-color:var(--accent)}
+#br-root .br-chips{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px;max-height:132px;overflow:auto}
+#br-root .br-ch{padding:3px 9px;border-radius:12px;font-size:11.5px;white-space:nowrap;cursor:pointer;
+  background:var(--bg3);color:var(--text2);border:1px solid var(--border)}
+#br-root .br-ch:hover{border-color:var(--accent);color:var(--accent)}
+#br-root .br-ch.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+#br-root .br-card{background:var(--card);border:1px solid var(--border);border-radius:12px;
+  padding:13px 15px;margin-top:11px}
+#br-root .br-hd{font-size:13.5px;font-weight:800;margin:0 0 9px;display:flex;align-items:baseline;
+  gap:8px;flex-wrap:wrap}
+#br-root .br-hd span{font-size:11px;font-weight:400;color:var(--text3)}
+#br-root .br-kv{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:1px;
+  background:var(--border);border:1px solid var(--border);border-radius:9px;overflow:hidden}
+#br-root .br-kv>div{background:var(--card);padding:7px 10px;font-size:12px;display:flex;
+  justify-content:space-between;gap:10px}
+#br-root .br-kv b{font-weight:400;color:var(--text3);white-space:nowrap}
+#br-root .br-kv i{font-style:normal;font-weight:700;text-align:right}
+#br-root table.br-tb{width:100%;border-collapse:collapse;background:var(--card);font-size:12px}
+#br-root table.br-tb th{padding:6px 8px;background:var(--bg3);font-size:11px;font-weight:700;
+  text-align:left;white-space:nowrap}
+#br-root table.br-tb td{padding:5px 8px;border-top:1px solid var(--border);white-space:nowrap}
+#br-root table.br-tb tbody tr.pick{cursor:pointer}
+#br-root table.br-tb tbody tr.pick:hover td{background:var(--bg3)}
+#br-root table.br-tb tr.on td{background:#e7f0fb;font-weight:700}
+#br-root .br-scroll{overflow:auto;max-height:340px;border:1px solid var(--border);border-radius:9px}
+#br-root .br-warn{margin-top:10px;padding:10px 12px;border-radius:10px;font-size:11.5px;line-height:1.8;
+  background:#fff8e1;border:1px solid #ffe082;color:#5d4037}
+#br-root .br-bad{background:#fdeaea;border-color:#f5b5b5;color:#8a2020}
+#br-root .br-note{font-size:11px;color:var(--text3);margin-top:9px;line-height:1.75}
+#br-root .br-raw{font-size:11px;margin-top:8px}
+#br-root .br-raw summary{cursor:pointer;color:var(--text3);font-size:11.5px}
+#br-root .br-raw td{white-space:normal;word-break:break-all}
+@media print{
+  #br-root .br-in,#br-root .no-print{display:none}
+  #br-root .br-scroll{max-height:none;overflow:visible;border:0}
+}
+</style>
+<script>
+/*  ══════════════════════════════════════════════════════════════════════
+    건축물대장 조회 (탭 24)  1단계
+    ──────────────────────────────────────────────────────────────────
+    국토교통부 건축물대장정보 서비스(BldRgstHubService)를 사무소 화면에서
+    바로 본다. 1단계는 세 가지 —
+      · 총괄표제부   getBrRecapTitleInfo   대지·건폐율·용적률·세대·주차
+      · 표제부(동별) getBrTitleInfo        용도·구조·층수·높이·사용승인일
+      · 층별개요     getBrFlrOulnInfo      층마다 용도와 면적
+
+    밑바탕은 이미 있는 것을 그대로 쓴다 —
+      인증키            … sdKR.key()      (S실거래가 탭에서 넣은 그 키)
+      법정동코드        … sdKR.umd()      (행안부 행정표준코드, 시군구 단위 캐시)
+      주소 → 지번·법정동 … sdKR.kakaoAddr (카카오가 b_code 를 그대로 준다)
+      단지 사전         … sdKR.aptLoad    (75단지, 지번 100% 보유)
+      인쇄·엑셀         … printModal · sdXl
+
+    ⚠ 이 화면은 **빠르게 보는 용도**다. 법적 효력이 있는 것은 정부24 발급본이고,
+      확인설명서 근거로는 발급본을 쓰셔야 한다. 화면에 못 박아 둔다.
+    ⚠ 공공데이터 API에는 **소유자 정보가 없다.** 소유현황은 발급본으로만 본다.
+    ⚠ 응답 항목 이름은 대장 종류·건물마다 조금씩 다르다. 그래서 아는 것만
+      우리말 이름표를 붙이고, **나머지는 원문 그대로 펼쳐 보여 준다** —
+      이름표가 없다고 값을 버리면 정작 필요한 항목이 사라진다.
+    ⚠ 개발계정은 하루 호출 한도가 있다. 한 번 받은 것은 이 화면이 기억해
+      같은 지번을 다시 부르지 않는다 (🔄 다시 받기로 새로 받을 수 있다).
+    ══════════════════════════════════════════════════════════════════ */
+(function(){
+  'use strict';
+  if(window.__brOn) return; window.__brOn = true;
+  var TAB = 24;
+  var W = window;
+  var BASE = 'https://apis.data.go.kr/1613000/BldRgstHubService/';
+  var OPS  = { recap:'getBrRecapTitleInfo', title:'getBrTitleInfo', flr:'getBrFlrOulnInfo' };
+
+  // ── 상태 ────────────────────────────────────────────────────────────
+  var MODE = 'apt';                // apt(단지) · addr(주소) · jibun(지번)
+  var AQ = '', PICK = '';          // 단지 찾기 글자 · 고른 단지 코드
+  var LOC = null;                  // { sgg, bjd, platGb, bun, ji, addr, label }
+  var DAT = null;                  // { recap, titles, loc }
+  var DONG = -1, FLR = null, BUSY = false, MSG = '';
+  var CACHE = {};                  // 지번 열쇠 → DAT (이 화면이 열려 있는 동안만)
+
+  function S(){ return W.sdKR && W.sdKR.key ? W.sdKR : null; }
+  function $(id){ return document.getElementById(id); }
+  function esc(s){ return String(s==null?'':s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+  // ── 값 다듬기 ───────────────────────────────────────────────────────
+  function num(v){ var x = parseFloat(String(v==null?'':v).replace(/[^0-9.\-]/g,'')); return isNaN(x)?null:x; }
+  function fmtN(n){ return n==null ? '' : Number(n).toLocaleString('ko-KR'); }
+  function m2(v){                                   // 면적 — ㎡ 와 평을 같이
+    var x = num(v); if(x==null || x===0) return '';
+    return x.toLocaleString('ko-KR',{maximumFractionDigits:2}) + '㎡ ('
+         + Math.round(x/3.3058).toLocaleString('ko-KR') + '평)';
+  }
+  function pct(v){ var x = num(v); return x==null||x===0 ? '' : x.toLocaleString('ko-KR',{maximumFractionDigits:2})+'%'; }
+  function ymd(v){                                  // 20181106 → 2018.11.06
+    var s = String(v==null?'':v).replace(/[^0-9]/g,'');
+    return s.length===8 ? s.slice(0,4)+'.'+s.slice(4,6)+'.'+s.slice(6) : (s||'');
+  }
+  function cnt(v){ var x = num(v); return x==null||x===0 ? '' : fmtN(x); }
+  function txt(v){ var s = String(v==null?'':v).trim(); return s==='0'?'':s; }
+
+  /*  아는 항목만 우리말 이름표를 붙인다. [이름, 다듬는 함수, 줄 순서]
+      여기 없는 항목은 버리지 않고 「원문 그대로」 접힌 표에 담는다. */
+  var LB = {
+    platPlc:['대지위치',txt], newPlatPlc:['도로명주소',txt], bldNm:['건물명',txt],
+    dongNm:['동 이름',txt], mgmBldrgstPk:['대장 PK',txt],
+    regstrGbCdNm:['대장 구분',txt], regstrKindCdNm:['대장 종류',txt],
+    mainAtchGbCdNm:['주/부속',txt],
+    mainPurpsCdNm:['주용도',txt], etcPurps:['기타용도',txt],
+    strctCdNm:['구조',txt], etcStrct:['기타구조',txt],
+    roofCdNm:['지붕',txt], etcRoof:['기타지붕',txt],
+    platArea:['대지면적',m2], archArea:['건축면적',m2], totArea:['연면적',m2],
+    totDongTotArea:['동 연면적',m2], vlRatEstmTotArea:['용적률 산정 연면적',m2],
+    atchBldArea:['부속건축물 면적',m2], bcRat:['건폐율',pct], vlRat:['용적률',pct],
+    grndFlrCnt:['지상 층수',cnt], ugrndFlrCnt:['지하 층수',cnt], heit:['높이',function(v){
+      var x=num(v); return x==null||x===0?'':x.toLocaleString('ko-KR',{maximumFractionDigits:2})+'m'; }],
+    hhldCnt:['세대수',cnt], fmlyCnt:['가구수',cnt], hoCnt:['호수',cnt],
+    mainBldCnt:['주건축물 수',cnt], atchBldCnt:['부속건축물 수',cnt],
+    rideUseElvtCnt:['승용승강기',cnt], emgenUseElvtCnt:['비상용승강기',cnt],
+    totPkngCnt:['주차 총계',cnt],
+    indrMechUtcnt:['옥내기계식 대수',cnt], oudrMechUtcnt:['옥외기계식 대수',cnt],
+    indrAutoUtcnt:['옥내자주식 대수',cnt], oudrAutoUtcnt:['옥외자주식 대수',cnt],
+    pmsDay:['허가일',ymd], stcnsDay:['착공일',ymd], useAprDay:['사용승인일',ymd],
+    engrGrade:['에너지효율등급',txt], engrEpi:['EPI 점수',txt],
+    gnBldGrade:['녹색건축 등급',txt], itgBldGrade:['지능형건축물 등급',txt],
+    rserthqkDsgnApplyYn:['내진설계 적용',function(v){ var s=txt(v); return s==='1'?'적용':(s==='0'?'미적용':s); }],
+    rserthqkAblty:['내진능력',txt], crtnDay:['자료 기준일',ymd],
+    flrGbCdNm:['층 구분',txt], flrNoNm:['층',txt], area:['면적',m2],
+    areaExctYn:['면적제외',txt]
+  };
+  //  카드에 이 차례로 놓는다 (없는 항목은 건너뛴다)
+  var ORD_RECAP = ['platPlc','newPlatPlc','bldNm','regstrGbCdNm','regstrKindCdNm','platArea','archArea',
+    'totArea','bcRat','vlRat','vlRatEstmTotArea','mainBldCnt','atchBldCnt','hhldCnt','fmlyCnt','hoCnt',
+    'totPkngCnt','indrAutoUtcnt','oudrAutoUtcnt','indrMechUtcnt','oudrMechUtcnt',
+    'pmsDay','stcnsDay','useAprDay','crtnDay'];
+  var ORD_TITLE = ['dongNm','bldNm','mainAtchGbCdNm','mainPurpsCdNm','etcPurps','strctCdNm','etcStrct',
+    'roofCdNm','grndFlrCnt','ugrndFlrCnt','heit','archArea','totDongTotArea','hhldCnt','fmlyCnt','hoCnt',
+    'rideUseElvtCnt','emgenUseElvtCnt','rserthqkDsgnApplyYn','rserthqkAblty',
+    'engrGrade','engrEpi','gnBldGrade','itgBldGrade','useAprDay','crtnDay'];
+
+  function val(k, v){ var d = LB[k]; return d ? d[1](v) : txt(v); }
+  function name(k){ var d = LB[k]; return d ? d[0] : k; }
+
+  /*  「위반건축물」 표시 — 대장 종류·건물마다 항목 이름이 갈려서
+      이름으로 찾지 않고 **값에 '위반'이 든 항목**을 통째로 훑는다.
+      못 찾았다고 위반이 없다는 뜻은 아니므로 그렇게 적지 않는다. */
+  function violOf(rows){
+    var hit = [];
+    (rows||[]).forEach(function(r){
+      Object.keys(r||{}).forEach(function(k){
+        var v = String(r[k]==null?'':r[k]);
+        if(/위반/.test(v) || (/viol/i.test(k) && /^(Y|1)$/i.test(v.trim())))
+          hit.push((r.dongNm ? r.dongNm + ' — ' : '') + name(k) + ': ' + (v||'Y'));
+      });
+    });
+    return hit;
+  }
+
+  /*  공공데이터포털 오류를 사람 말로.
+      ⚠ 포털은 오류 이름을 **띄어쓰기**로 준다 — 'LIMITED NUMBER OF SERVICE REQUESTS
+      EXCEEDS ERROR'. 밑줄만 보던 종전 규칙(/LIMITED_NUMBER/)에는 안 걸려
+      영어 원문이 그대로 화면에 나왔다. 둘 다 받도록 [ _] 로 본다.
+      인증키 오류가 활용신청 오류보다 먼저다 — 두 글귀에 NOT REGISTERED 가 같이 들어 있다. */
+  function sayErr(em){
+    var e = String(em||'').toUpperCase();
+    if(/SERVICE[ _]KEY[ _]IS[ _]NOT[ _]REGISTERED/.test(e))
+      return '인증키가 등록되지 않았습니다 — S실거래가 탭에서 키를 다시 넣어 주세요.';
+    if(/NOT[ _]REGISTERED[ _]FOR[ _]SERVICE|NO[ _]OPENAPI|ACCESS[ _]DENIED/.test(e))
+      return '건축물대장이 활용신청되어 있지 않습니다 — 공공데이터포털에서 「국토교통부_건축물대장정보 서비스」를 신청해 주세요';
+    if(/LIMITED[ _]NUMBER|REQUEST[ _]EXCEED/.test(e))
+      return '오늘 호출 한도를 넘었습니다 — 내일 다시 받으시거나 공공데이터포털에서 한도 상향을 신청해 주세요';
+    if(/DEADLINE|EXPIRED/.test(e))
+      return '인증키 활용기간이 지났습니다 — 공공데이터포털에서 연장해 주세요.';
+    if(/HTTP[ _]ERROR|SERVER[ _]ERROR|UNKNOWN[ _]ERROR|DB[ _]ERROR/.test(e))
+      return '국토부 쪽에서 오류가 났습니다 — 잠시 뒤 다시 눌러 주세요. (' + em + ')';
+    return em || '건축물대장 오류';
+  }
+
+  // ── 부르기 ──────────────────────────────────────────────────────────
+  function lkey(L){ return [L.sgg, L.bjd, L.platGb, L.bun, L.ji].join('|'); }
+
+  async function call(op, L, rows){
+    var s = S(); if(!s) throw new Error('S실거래가 탭을 한 번 열어 주세요 — 인증키와 법정동코드를 그 탭이 갖고 있습니다.');
+    var KEY = s.key();
+    if(!KEY) throw new Error('공공데이터포털 인증키가 없습니다 — S실거래가 탭에서 먼저 넣어 주세요.');
+    var u = BASE + OPS[op] + '?serviceKey=' + encodeURIComponent(KEY)
+          + '&sigunguCd=' + L.sgg + '&bjdongCd=' + L.bjd
+          + '&platGbCd=' + (L.platGb||'0') + '&bun=' + L.bun + '&ji=' + L.ji
+          + '&numOfRows=' + (rows||100) + '&pageNo=1&_type=json';
+    var t = await fetch(u).then(function(r){ return r.text(); });
+    var j; try{ j = JSON.parse(t); }catch(e){ throw new Error('응답을 읽지 못했습니다 (' + op + ')'); }
+    if(j.OpenAPI_ServiceResponse){
+      var em = String((j.OpenAPI_ServiceResponse.cmmMsgHeader||{}).errMsg||'');
+      throw new Error(sayErr(em));
+    }
+    var body = ((j.response||{}).body) || {};
+    var list = (body.items && body.items.item) || [];
+    if(!Array.isArray(list)) list = list ? [list] : [];
+    return list;
+  }
+
+  /*  어디를 볼지 정하기.
+      카카오 주소검색이 법정동코드(b_code)·본번·부번·산여부를 한 번에 주므로
+      이것을 첫째 길로 쓴다. 전국 어디든 같은 방식으로 된다.
+      카카오가 없거나 못 찾으면 법정동명으로 행안부 코드를 받는다(종전 길). */
+  async function resolve(q, fb){
+    var s = S();
+    if(s && s.kakaoReady){
+      try{
+        await s.kakaoReady();
+        var r = await s.kakaoAddr(q);
+        var a = r && r.address;
+        if(a && a.b_code && String(a.b_code).length === 10 && a.main_address_no){
+          return { sgg:String(a.b_code).slice(0,5), bjd:String(a.b_code).slice(5),
+                   platGb: (a.mountain_yn === 'Y' ? '1' : '0'),
+                   bun:('0000'+String(a.main_address_no).replace(/[^0-9]/g,'')).slice(-4),
+                   ji :('0000'+String(a.sub_address_no||'0').replace(/[^0-9]/g,'')).slice(-4),
+                   addr:r.address_name || q, label:r.address_name || q };
+        }
+      }catch(e){}
+    }
+    if(!fb) throw new Error('주소를 찾지 못했습니다 — 「인천 연수구 송도동 319-1」처럼 넣어 보세요.');
+    //  되돌아가는 길 — 시군구코드 + 법정동명 + 지번
+    var m = String(fb.jibun||'').trim().match(/^(\d+)(?:\s*-\s*(\d+))?$/);
+    if(!m) throw new Error('지번을 읽지 못했습니다 (' + fb.jibun + ')');
+    if(!s || !s.umd) throw new Error('법정동코드를 받을 수 없습니다 — S실거래가 탭을 한 번 열어 주세요.');
+    var bjd = await s.umd(fb.sgg, fb.umd);
+    if(!bjd) throw new Error('법정동코드를 찾지 못했습니다 (' + fb.umd + ')');
+    return { sgg:String(fb.sgg), bjd:bjd, platGb:(fb.san?'1':'0'),
+             bun:('0000'+m[1]).slice(-4), ji:('0000'+(m[2]||'0')).slice(-4),
+             addr:(fb.umd + ' ' + fb.jibun), label:(fb.umd + ' ' + fb.jibun) };
+  }
+
+  async function load(L, force){
+    var k = lkey(L);
+    if(!force && CACHE[k]){ LOC = L; DAT = CACHE[k]; DONG = -1; FLR = null; return; }
+    var recap = [], titles = [];
+    //  총괄표제부가 없는 건물도 많다 (동이 하나인 일반건축물). 없다고 멈추지 않는다.
+    try{ recap = await call('recap', L, 10); }catch(e){ if(!/한도|활용신청|인증키/.test(e.message)) recap = []; else throw e; }
+    titles = await call('title', L, 200);
+    LOC = L;
+    DAT = CACHE[k] = { recap:recap, titles:titles, loc:L, at:new Date() };
+    DONG = -1; FLR = null;
+  }
+
+  async function loadFlr(i){
+    if(!DAT || !DAT.titles[i]) return;
+    var d = String(DAT.titles[i].dongNm||'').trim();
+    var all = DAT._flr;
+    if(!all){
+      all = await call('flr', LOC, 500);
+      DAT._flr = all;
+    }
+    //  층별개요는 지번 단위로 한꺼번에 오므로 동으로 갈라 쓴다
+    FLR = all.filter(function(x){
+      var xd = String(x.dongNm||'').trim();
+      return !d || !xd || xd === d;
+    });
+  }
+
+  // ── 화면 ────────────────────────────────────────────────────────────
+  function kv(r, ord){
+    var h = '';
+    ord.forEach(function(k){
+      if(!(k in r)) return;
+      var v = val(k, r[k]);
+      if(v === '' || v == null) return;
+      h += '<div><b>' + esc(name(k)) + '</b><i>' + esc(v) + '</i></div>';
+    });
+    return '<div class="br-kv">' + h + '</div>';
+  }
+  /*  이름표가 없는 항목도 버리지 않는다 — 접어서 원문 그대로.
+      다만 **우리가 보낸 값이 그대로 돌아온 것**(시군구·법정동·본번·부번 …)은
+      새 정보가 아니라 화면만 어지럽히므로 뺀다. */
+  var SKIP = ['rnum','sigunguCd','bjdongCd','platGbCd','bun','ji',
+              'naRoadCd','naBjdongCd','naUgrndCd','naMainBun','naSubBun'];
+  function raw(r, ord){
+    var ks = Object.keys(r).filter(function(k){
+      return ord.indexOf(k) < 0 && SKIP.indexOf(k) < 0
+          && String(r[k]==null?'':r[k]).trim() !== '';
+    });
+    if(!ks.length) return '';
+    return '<details class="br-raw"><summary>그 밖의 항목 ' + ks.length + '개 — 원문 그대로 보기</summary>'
+      + '<table class="br-tb"><tbody>' + ks.map(function(k){
+          return '<tr><td style="color:var(--text3);width:38%">' + esc(name(k))
+               + (LB[k] ? '' : ' <span style="font-size:10px">(' + esc(k) + ')</span>')
+               + '</td><td>' + esc(String(r[k])) + '</td></tr>';
+        }).join('') + '</tbody></table></details>';
+  }
+
+  function bar(){
+    var h = '<div class="br-fr">'
+      + ['apt','addr','jibun'].map(function(m){
+          var n = m==='apt' ? '🏢 단지에서 고르기' : m==='addr' ? '📍 주소로 찾기' : '🔢 지번 직접';
+          return '<button class="filter-btn' + (MODE===m?' on':'') + '" onclick="brMode(\'' + m + '\')">' + n + '</button>';
+        }).join('')
+      + '<span style="width:10px"></span>'
+      + '<span id="br-msg" style="font-size:12px;color:var(--text3)">' + MSG + '</span>'
+      + '</div>';
+
+    if(MODE === 'apt'){
+      h += '<div class="br-fr" style="margin-top:8px">'
+        + '<input class="br-t" id="br-aq" style="width:200px" placeholder="단지 이름" value="' + esc(AQ) + '"'
+        + ' oninput="brAq(this.value)">'
+        + '<span id="br-aptn" style="font-size:11.5px;color:var(--text3)"></span></div>'
+        + '<div class="br-chips" id="br-chips"></div>';
+    } else if(MODE === 'addr'){
+      h += '<div class="br-fr" style="margin-top:8px">'
+        + '<input class="br-t" id="br-addr" style="width:330px" placeholder="예) 인천 연수구 송도동 319-1"'
+        + ' onkeydown="if(event.key===\'Enter\')brGoAddr()">'
+        + '<button class="filter-btn on" onclick="brGoAddr()">조회</button>'
+        + '<span style="font-size:11px;color:var(--text3)">지번 주소로 넣어 주세요. 도로명도 되지만 지번이 정확합니다.</span></div>';
+    } else {
+      h += '<div class="br-fr" style="margin-top:8px">'
+        + '<input class="br-t" id="br-sgg" style="width:92px" placeholder="시군구코드" value="28185">'
+        + '<input class="br-t" id="br-umd" style="width:110px" placeholder="법정동명" value="송도동">'
+        + '<input class="br-t" id="br-jb" style="width:110px" placeholder="지번 319-1"'
+        + ' onkeydown="if(event.key===\'Enter\')brGoJibun()">'
+        + '<label style="display:inline-flex;align-items:center;gap:4px;font-size:11.5px;color:var(--text2)">'
+        + '<input type="checkbox" id="br-san"> 산</label>'
+        + '<button class="filter-btn on" onclick="brGoJibun()">조회</button></div>';
+    }
+    return h;
+  }
+
+  function chips(){
+    var box = $('br-chips'); if(!box) return;
+    var s = S(); if(!s || !s.aptLoad) return;
+    s.aptLoad().then(function(A){
+      if(!A || !A.apt) return;
+      var q = AQ.replace(/\s/g,'');
+      var list = Object.keys(A.apt).map(function(c){ return A.apt[c]; })
+        .filter(function(a){ return a && a.j && a.j.length && (!q || String(a.n).replace(/\s/g,'').indexOf(q) >= 0); })
+        .sort(function(a,b){ return String(a.n).localeCompare(String(b.n),'ko'); });
+      var n = $('br-aptn'); if(n) n.textContent = list.length + '곳';
+      box.innerHTML = list.map(function(a){
+        return '<span class="br-ch' + (PICK===a.c?' on':'') + '" onclick="brApt(\'' + a.c + '\')" '
+          + 'title="' + esc(a.d + ' ' + a.j[0]) + '">' + esc(a.n) + '</span>';
+      }).join('') || '<span style="font-size:11.5px;color:var(--text3)">찾는 단지가 없습니다.</span>';
+    });
+  }
+
+  function body(){
+    if(BUSY) return '<div class="br-card" style="color:var(--text3);font-size:12.5px">대장을 부르는 중입니다…</div>';
+    if(!DAT) return '<div class="br-card" style="color:var(--text3);font-size:12.5px;line-height:1.9">'
+      + '위에서 <b>단지</b>를 고르시거나 <b>주소·지번</b>을 넣으시면 그 지번의 건축물대장을 부릅니다.<br>'
+      + '1단계는 <b>총괄표제부</b>(대지·건폐율·용적률·세대·주차), <b>동별 표제부</b>(용도·구조·층수·높이·사용승인일), '
+      + '<b>층별개요</b>(층마다 용도와 면적)까지 보여 드립니다.</div>';
+
+    var h = '';
+    var rc = DAT.recap[0] || null;
+    var ts = DAT.titles || [];
+    var where = esc((rc && txt(rc.platPlc)) || (ts[0] && txt(ts[0].platPlc)) || LOC.label || '');
+
+    var jb  = (LOC.platGb === '1' ? '산 ' : '') + parseInt(LOC.bun, 10)
+            + (parseInt(LOC.ji, 10) ? '-' + parseInt(LOC.ji, 10) : '');
+    var sub = LOC.sgg + '-' + LOC.bjd + ' · ' + jb + ' · 받은 때 ' + DAT.at.toLocaleString('ko-KR');
+
+    h += '<div class="br-card"><div class="br-hd">📍 ' + where
+      + '<span>' + esc(sub) + '</span>'
+      + '<span class="no-print" style="margin-left:auto">'
+      + '<button class="filter-btn" onclick="brReload()">🔄 다시 받기</button> '
+      + '<button class="filter-btn" onclick="brPrint()">🖨 인쇄</button> '
+      + '<button class="filter-btn" onclick="brXl()">📊 엑셀</button></span></div>';
+
+    //  위반건축물 — 값에 '위반'이 든 항목이 있으면 크게 알린다
+    var vi = violOf([rc].concat(ts).filter(Boolean));
+    if(vi.length)
+      h += '<div class="br-warn br-bad"><b>⚠ 「위반」 표기가 있습니다</b><br>' + vi.map(esc).join('<br>')
+         + '<br>반드시 <b>발급본</b>으로 확인하시고 확인설명서에 적으십시오.</div>';
+
+    if(rc){
+      h += '<div style="margin-top:10px"><div class="br-hd" style="font-size:12.5px">🏗 총괄표제부</div>'
+        + kv(rc, ORD_RECAP) + raw(rc, ORD_RECAP) + '</div>';
+    } else {
+      h += '<div class="br-note">총괄표제부가 없습니다 — 동이 하나인 일반건축물이면 원래 없습니다.</div>';
+    }
+    h += '</div>';
+
+    //  동 목록
+    h += '<div class="br-card"><div class="br-hd">🏢 동별 표제부 <span>' + ts.length + '개 동 · 줄을 누르면 상세와 층별개요</span></div>';
+    if(!ts.length){
+      h += '<div style="font-size:12.5px;color:var(--text3);line-height:1.9">'
+        + '이 지번에는 표제부가 없습니다. 지번이 맞는지, 「산」 여부가 맞는지 확인해 주세요. '
+        + '오래된 건물은 대장이 전산화되지 않은 경우도 있습니다.</div></div>';
+      return h;
+    }
+    h += '<div class="br-scroll"><table class="br-tb"><thead><tr>'
+      + '<th>동</th><th>주용도</th><th>구조</th><th class="num">지상</th><th class="num">지하</th>'
+      + '<th style="text-align:right">높이</th><th style="text-align:right">연면적</th>'
+      + '<th style="text-align:right">세대</th><th>사용승인일</th></tr></thead><tbody>';
+    ts.forEach(function(r, i){
+      h += '<tr class="pick' + (DONG===i?' on':'') + '" onclick="brDong(' + i + ')">'
+        + '<td><b>' + esc(txt(r.dongNm) || txt(r.bldNm) || '-') + '</b></td>'
+        + '<td>' + esc(txt(r.mainPurpsCdNm)) + '</td>'
+        + '<td>' + esc(txt(r.strctCdNm)) + '</td>'
+        + '<td style="text-align:right">' + esc(cnt(r.grndFlrCnt)) + '</td>'
+        + '<td style="text-align:right">' + esc(cnt(r.ugrndFlrCnt)) + '</td>'
+        + '<td style="text-align:right">' + esc(val('heit', r.heit)) + '</td>'
+        + '<td style="text-align:right">' + esc(m2(r.totDongTotArea || r.totArea)) + '</td>'
+        + '<td style="text-align:right">' + esc(cnt(r.hhldCnt)) + '</td>'
+        + '<td>' + esc(ymd(r.useAprDay)) + '</td></tr>';
+    });
+    h += '</tbody></table></div></div>';
+
+    //  고른 동 상세 + 층별개요
+    if(DONG >= 0 && ts[DONG]){
+      var d = ts[DONG];
+      h += '<div class="br-card"><div class="br-hd">📄 ' + esc(txt(d.dongNm) || txt(d.bldNm) || '표제부')
+        + '<span>표제부 상세</span></div>' + kv(d, ORD_TITLE) + raw(d, ORD_TITLE);
+      h += '<div class="br-hd" style="font-size:12.5px;margin-top:13px">📶 층별개요'
+        + '<span>' + (FLR ? FLR.length + '개 층' : '') + '</span></div>';
+      if(!FLR){
+        h += '<div style="font-size:12px;color:var(--text3)">층별개요를 부르는 중입니다…</div>';
+      } else if(!FLR.length){
+        h += '<div style="font-size:12px;color:var(--text3)">이 동의 층별개요가 없습니다.</div>';
+      } else {
+        h += '<div class="br-scroll"><table class="br-tb"><thead><tr>'
+          + '<th>구분</th><th>층</th><th>주용도</th><th>구조</th><th style="text-align:right">면적</th>'
+          + '</tr></thead><tbody>'
+          + FLR.map(function(x){
+              return '<tr><td>' + esc(txt(x.flrGbCdNm)) + '</td>'
+                + '<td>' + esc(txt(x.flrNoNm) || txt(x.flrNo)) + '</td>'
+                + '<td>' + esc(txt(x.mainPurpsCdNm)) + (txt(x.etcPurps) ? ' <span style="color:var(--text3)">'
+                +   esc(txt(x.etcPurps)) + '</span>' : '') + '</td>'
+                + '<td>' + esc(txt(x.strctCdNm)) + '</td>'
+                + '<td style="text-align:right">' + esc(m2(x.area)) + '</td></tr>';
+            }).join('')
+          + '</tbody></table></div>';
+      }
+      h += '</div>';
+    }
+
+    return h;
+  }
+
+  function foot(){
+    return '<div class="br-warn"><b>이 화면은 빠르게 보는 용도입니다.</b> '
+      + '법적 효력이 있는 것은 <b>정부24 발급본</b>이고, 확인설명서 근거로는 발급본을 쓰셔야 합니다. '
+      + '공공데이터에는 <b>소유자 정보가 없습니다</b> — 소유현황은 발급본으로만 보실 수 있습니다. '
+      + '세움터 원본과 시차가 있을 수 있고, 지번이 가려진 매물(8**)이나 대장이 전산화되지 않은 오래된 건물은 나오지 않습니다.'
+      + '</div>'
+      + '<div class="br-note">자료: 국토교통부 건축물대장정보 서비스 · 주소 찾기는 카카오 · '
+      + '인증키는 S실거래가 탭에 넣어 두신 것을 그대로 씁니다.</div>';
+  }
+
+  function paint(){
+    var root = $('br-root'); if(!root) return;
+    root.innerHTML = '<div class="br-in no-print">' + bar() + '</div>'
+      + '<div id="br-body">' + body() + '</div>' + foot();
+    if(MODE === 'apt') chips();
+  }
+  function repaint(){                 // 찾기 줄은 두고 결과만
+    var b = $('br-body'); if(b) b.innerHTML = body(); else paint();
+  }
+  function msg(t, c){
+    MSG = t ? '<span style="color:' + (c||'var(--text3)') + '">' + t + '</span>' : '';
+    var e = $('br-msg'); if(e) e.innerHTML = MSG;
+  }
+
+  // ── 바깥에서 부르는 것들 ────────────────────────────────────────────
+  async function go(L){
+    BUSY = true; msg(''); repaint();
+    try{
+      await load(L);
+      BUSY = false; repaint();
+      msg('동 ' + DAT.titles.length + '개를 받았습니다.', '#0a7');
+    }catch(e){
+      BUSY = false; DAT = null; repaint();
+      msg(String(e && e.message || e), '#c33');
+    }
+  }
+  W.brMode = function(m){ MODE = m; paint(); };
+  W.brAq   = function(v){ AQ = v; chips(); };
+  W.brApt  = function(c){
+    var s = S(); if(!s) return;
+    s.aptLoad().then(function(A){
+      var a = A && A.apt && A.apt[c]; if(!a || !a.j || !a.j.length) return;
+      PICK = c; chips();
+      var sgg = (A.sgg || '28185');
+      //  sggName 은 「인천광역시 연수구」처럼 시·도까지 붙여 준다. 앞에 또 붙이면 안 된다.
+      var full = (s.sggName ? s.sggName(sgg) : '') || '';
+      resolve((full ? full + ' ' : '') + a.d + ' ' + a.j[0],
+              { sgg:sgg, umd:a.d, jibun:a.j[0], san:false })
+        .then(function(L){ L.label = a.n; return go(L); })
+        .catch(function(e){ msg(String(e.message||e), '#c33'); });
+    });
+  };
+  W.brGoAddr = function(){
+    var q = ($('br-addr')||{}).value || '';
+    if(!q.trim()) return msg('주소를 넣어 주세요.', '#c33');
+    PICK = '';
+    resolve(q).then(go).catch(function(e){ msg(String(e.message||e), '#c33'); });
+  };
+  W.brGoJibun = function(){
+    var sgg = (($('br-sgg')||{}).value||'').trim();
+    var umd = (($('br-umd')||{}).value||'').trim();
+    var jb  = (($('br-jb') ||{}).value||'').trim();
+    var san = !!(($('br-san')||{}).checked);
+    if(!sgg || !umd || !jb) return msg('시군구코드·법정동명·지번을 모두 넣어 주세요.', '#c33');
+    PICK = '';
+    resolve(umd + ' ' + jb, { sgg:sgg, umd:umd, jibun:jb, san:san })
+      .then(go).catch(function(e){ msg(String(e.message||e), '#c33'); });
+  };
+  W.brReload = function(){ if(LOC) { BUSY = true; repaint();
+    load(LOC, true).then(function(){ BUSY = false; repaint(); msg('다시 받았습니다.', '#0a7'); })
+      .catch(function(e){ BUSY = false; repaint(); msg(String(e.message||e), '#c33'); }); } };
+  W.brDong = function(i){
+    DONG = (DONG === i ? -1 : i); FLR = null; repaint();
+    if(DONG < 0) return;
+    loadFlr(DONG).then(repaint).catch(function(e){ FLR = []; repaint(); msg(String(e.message||e), '#c33'); });
+  };
+  //  대장이 건물명을 주면 그것을 쓴다 — 주소로 찾았을 때 「송도동 319-1」보다 알아보기 쉽다
+  function title(){
+    var r = DAT && (DAT.recap[0] || DAT.titles[0]);
+    return (r && txt(r.bldNm)) || (LOC && LOC.label) || '건축물대장';
+  }
+  W.brPrint = function(){
+    if(!DAT) return;
+    if(typeof W.printModal === 'function') W.printModal('br-root', '건축물대장 — ' + title());
+    else window.print();
+  };
+  /*  엑셀 — 총괄표제부·동별 표제부·층별개요를 시트 셋으로.
+      sdXl.listSheet 은 매물 전용이라 여기서는 시트를 직접 짠다. */
+  W.brXl = async function(){
+    if(!DAT || !W.sdXl) return msg('엑셀 기능을 불러오지 못했습니다.', '#c33');
+    function sheet(nm, rows, ord){
+      if(!rows.length) return null;
+      var ks = ord.filter(function(k){ return rows.some(function(r){ return k in r && txt(r[k]); }); });
+      Object.keys(rows[0]).forEach(function(k){ if(ks.indexOf(k) < 0) ks.push(k); });
+      var out = [{ cells: ks.map(name), style:{ kind:'hdr', deal:'매매' } }];
+      rows.forEach(function(r, i){
+        out.push({ cells: ks.map(function(k){ var v = txt(r[k]); return v === '' ? null : v; }),
+                   style:{ kind:'data', deal:'매매', alt:(i%2===0) } });
+      });
+      return { name:nm, cols:ks.map(function(k){ return { w: Math.min(30, Math.max(9, name(k).length*2+4)) }; }), rows:out };
+    }
+    var sh = [ sheet('총괄표제부', DAT.recap, ORD_RECAP),
+               sheet('동별표제부', DAT.titles, ORD_TITLE),
+               sheet('층별개요', DAT._flr || [], ['dongNm','flrGbCdNm','flrNoNm','mainPurpsCdNm','etcPurps','strctCdNm','area']) ]
+             .filter(Boolean);
+    if(!sh.length) return msg('담을 것이 없습니다.', '#c33');
+    var d = new Date(), ds = d.getFullYear() + ('0'+(d.getMonth()+1)).slice(-2) + ('0'+d.getDate()).slice(-2);
+    try{
+      await W.sdXl.write(sh, (title().replace(/[\\/:*?"<>|]/g,'').trim()) + '_건축물대장_' + ds + '.xlsx');
+      msg('엑셀로 내려받았습니다.', '#0a7');
+    }catch(e){ msg('엑셀을 만들지 못했습니다 — ' + (e.message||e), '#c33'); }
+  };
+  W.sdBr = { tab:TAB, call:call, resolve:resolve, load:load, viol:violOf,
+             state:function(){ return { mode:MODE, loc:LOC, dong:DONG,
+               titles:(DAT?DAT.titles.length:0), recap:(DAT?DAT.recap.length:0),
+               flr:(FLR?FLR.length:null) }; } };
+
+  // ── 탭 만들기 ───────────────────────────────────────────────────────
+  function build(){
+    if($('tc' + TAB)) return true;
+    var nav  = document.querySelector('.tab-nav-inner') || document.querySelector('.tab-nav');
+    var host = $('tc0');
+    if(!nav || !host || !host.parentNode) return false;
+    var b = document.createElement('button');
+    b.className = 'tab-btn';
+    b.setAttribute('onclick', 'sw(' + TAB + ')');
+    b.innerHTML = '🏗 건축물대장';
+    nav.appendChild(b);
+    var panel = document.createElement('div');
+    panel.id = 'tc' + TAB; panel.className = 'tc';
+    panel.innerHTML = '<div id="br-root"></div>';
+    host.parentNode.appendChild(panel);
+    return true;
+  }
+  function hookSw(){
+    if(typeof W.sw !== 'function') return false;
+    if(W.sw.__br) return true;
+    var orig = W.sw;
+    var w = function(n){
+      var out = orig.apply(this, arguments);
+      if(n === TAB){ try{ paint(); }catch(e){ console.warn('[건축물대장]', e); } }
+      return out;
+    };
+    w.__br = true; W.sw = w;
     return true;
   }
   var tries = 0;
