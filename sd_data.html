@@ -19353,7 +19353,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.09.27-31';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.09.27-32';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_data.html';      // 이 파일 이름
   var SD_NAME = '실거래가';      // 사람이 부르는 이름
 
@@ -29136,6 +29136,8 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     ]},
     { n:'매물 · 중개', d:'물건을 받고 내놓고 손님께 보여 드리는 일', items:[
       { i:'🏢', n:'매물관리', href:'sd_props.html', d:'네이버 매물을 받아 단지·유형별로 관리' },
+      { i:'🔎', n:'N 매물 분석', go:21, tag:'새로',
+        d:'네이버 매물 화면을 붙여넣으면 표·시세·경쟁 업소까지 — 파이썬 변환기를 옮겨 왔습니다' },
       { i:'📦', n:'매물 시황판', go:16, d:'네이버 매물 스냅샷 이력 — 호가가 어떻게 움직였나' },
       { i:'🏠', n:'매물(APT)', go:6, d:'아파트 매물 목록 · 즐겨찾기' },
       { i:'🏢', n:'매물(OP/생숙)', go:7, d:'오피스텔·생활숙박시설 매물' },
@@ -29364,7 +29366,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
   var GROUPS = [
     { k:'sise', n:'📡 시황·시세', t:[18, 0, 12, 1, 2] },
     { k:'real', n:'📈 실거래·동향', t:[3, 4, 5, 15, 13] },
-    { k:'prop', n:'🏠 매물',        t:[16, 6, 7, 8] },
+    { k:'prop', n:'🏠 매물',        t:[16, 6, 7, 8, 21] },
     { k:'tool', n:'📊 자료·도구',   t:[9, 10, 11, 14, 20] }
   ];
   var WHERE = {};                       // 탭번호 → 묶음 열쇠
@@ -29560,6 +29562,714 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 
   window.sdNav = { groups:GROUPS, cur:function(){ return CUR; }, sync:sync,
                    items:function(){ return ITEMS; }, pool:pool };
+})();
+</script>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     N 매물 분석 모듈 v1.0
+     ──────────────────────────────────────────────────────────────────
+     네이버 부동산 단지 매물 화면을 통째로 붙여넣으면 표·통계·경쟁 강도까지.
+
+     지금까지는 PC에서 파이썬 변환기(아파트_변환기.py v2.7)를 돌려 엑셀을
+     만드셨다. 그 파서를 그대로 옮겼다 — 판단 하나하나를 같은 차례로.
+
+     옮기면서 실제로 걸린 것: 파이썬의 \b(단어 경계)는 한글을 단어로 보지만
+     자바스크립트는 안 본다. 그대로 옮겼더니 「매매 6억 9,500」 줄이 단지
+     이름으로 잡혀 매물 블록이 쪼개지고 동 칸이 통째로 비었다.
+
+     그래서 「파이썬 엑셀과 대조」를 기능으로 두었다. 한 번 맞춰 보고 끝낼
+     일이 아니다 — 네이버가 화면을 바꾸면 또 어긋나고, 그때 말없이 틀린
+     표가 나가면 손님께 잘못된 값을 드리게 된다.
+     ══════════════════════════════════════════════════════════════════ -->
+<style>
+#nv-root{padding:2px 0}
+#nv-root .nv-in{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:13px 15px}
+#nv-root textarea{width:100%;height:150px;padding:10px 12px;border:1px solid var(--border);
+  border-radius:9px;background:var(--bg3);color:var(--text);font-size:12px;font-family:inherit;
+  line-height:1.6;resize:vertical}
+#nv-root textarea:focus{outline:none;border-color:var(--accent)}
+#nv-root .nv-h{display:flex;align-items:baseline;gap:8px;font-size:14px;font-weight:800;
+  margin:20px 0 9px;padding-bottom:6px;border-bottom:2px solid var(--border)}
+#nv-root .nv-h span{font-size:11px;font-weight:400;color:var(--text3)}
+#nv-root .nv-cards{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
+#nv-root .nv-c{background:var(--card);border:1px solid var(--border);border-radius:11px;padding:11px 13px}
+#nv-root .nv-cl{font-size:11px;color:var(--text3);margin-bottom:4px}
+#nv-root .nv-cv{font-size:20px;font-weight:800;line-height:1.2}
+#nv-root .nv-cv small{font-size:12px;font-weight:600;color:var(--text3);margin-left:1px}
+#nv-root .nv-cs{font-size:10.5px;color:var(--text3);margin-top:3px;line-height:1.5}
+#nv-root .nv-grid{display:grid;gap:9px;grid-template-columns:repeat(auto-fill,minmax(212px,1fr))}
+#nv-root .nv-p{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:9px 11px}
+#nv-root .nv-pt{font-size:12px;font-weight:700;margin-bottom:4px}
+#nv-root .nv-pd{font-size:11px;color:var(--text3);line-height:1.6}
+#nv-root .nv-bar{height:6px;background:var(--bg3);border-radius:4px;overflow:hidden}
+#nv-root .nv-bar i{display:block;height:100%;border-radius:4px}
+#nv-root table.nv-t{width:100%;border-collapse:collapse;background:var(--card);font-size:12px}
+#nv-root table.nv-t th{padding:7px 9px;background:var(--bg3);font-size:11px;font-weight:700;
+  text-align:left;white-space:nowrap;position:sticky;top:0;z-index:1}
+#nv-root table.nv-t td{padding:6px 9px;border-top:1px solid var(--border);white-space:nowrap}
+#nv-root table.nv-t td.nv-info{white-space:normal;max-width:300px;color:var(--text3);font-size:11px}
+#nv-root tr.nv-mine td{color:#c62828;font-weight:700}
+#nv-root .nv-diff{margin:12px 0;padding:11px 13px;border-radius:10px;font-size:12px;line-height:1.8;
+  background:#fff8e1;border:1px solid #ffe082;color:#5d4037}
+#nv-root .nv-diff.ok{background:#e8f5e9;border-color:#a5d6a7;color:#1b5e20}
+@media print{ #nv-root .nv-in{display:none} }
+</style>
+<script>
+(function(){
+  'use strict';
+  //  2단 탭 모듈이 __nvOn 을 쓰고 있다 — 같은 표식을 쓰면 이 모듈이 통째로 안 돈다
+  if(window.__nvAnOn) return; window.__nvAnOn = true;
+  /*  이름은 nva- 로 시작한다. 2단 탭 모듈이 nvFind(Ctrl+K)를 쓰고 있어서,
+      같은 이름을 쓰면 빠른 이동이 통째로 망가진다 — 실제로 그랬다. */
+  var TAB = 21;
+
+var JASA_KW = ['송도제일','문영은','송도제일공인'];
+var ABBR_KW = ['공인중개사사무소','공인중개사무소','중개사무소','공인중개사','중개법인',
+               '주식회사','부동산','사무소','중개사','공인'];
+var PROVIDERS = ['매경부동산','부동산렛츠','한경부동산','부동산써브','아실','부동산뱅크',
+  '우리집부동산','부동산포스','매경부동산 ','한국공인중개사협회','부동산써브 '];
+var MARKERS = ['관심매물','매물 보러가기','Npay 부동산에서 보기','이미지','개',
+               '상승내역 보기','하락내역 보기'];
+var DIRS = ['남서향','남동향','북서향','북동향','남향','북향','동향','서향'];
+
+function abbr(name){
+  var orig = name;
+  name = String(name).replace(/\(.*?\)/g, '').replace(/^\(주\)/, '');
+  var ch = true;
+  while(ch){
+    ch = false;
+    for(var i=0;i<ABBR_KW.length;i++){
+      if(name.indexOf(ABBR_KW[i]) >= 0){ name = name.split(ABBR_KW[i]).join(''); ch = true; }
+    }
+  }
+  name = name.replace(/^[\s\-·.]+|[\s\-·.]+$/g, '');
+  return name || String(orig).trim();
+}
+function isJasa(raw){
+  raw = String(raw||'');
+  return JASA_KW.some(function(k){ return raw.indexOf(k) >= 0; });
+}
+
+var KW = [
+  ['즉시입주',['즉시입주']],
+  ['입주가능',['입주가능','입주 가능','실입주','빠른입주','빠른 입주']],
+  ['입주협의',['입주협의','입주 협의','입주일협의','입주일 협의','입주여유']],
+  ['이사협의',['이사협의','이사 협의','이사일 협의','이사일협의','이사일']],
+  ['세안고',['세안고','세 안고','세끼고','세 끼고','전세끼고','전세 끼고','전세안고','세낀','전세포함','임대안고']],
+  ['갭투자',['갭투','갭 투']],
+  ['융자무',['융무','융자무','융자없음','융자 없음']],
+  ['올수리',['올수리','올 수리']],
+  ['부분수리',['부분수리','부분 수리','일부수리','일부 수리','부분인테리어']],
+  ['올인테리어',['올인테리어','풀인테리어','풀 인테리어']],
+  ['인테리어',['인테리어','리모델링']],
+  ['샷시교체',['이중창','샷시','샤시','이중유리']],
+  ['주인거주',['주인거주','주인 거주']],
+  ['공실',['공실']],
+  ['관리잘됨',['관리잘','관리 잘','잘관리','잘 관리','관리상태 좋','관리상태좋','관리된세대','관리잘된','관리된 세대','잘관리된','잘 관리된']],
+  ['상태좋음',['상태좋','상태 좋','집상태 좋','집상태좋','상태최상','상태 최상','컨디션최상','컨디션 최상','깨끗','집깨끗','상태굿','상태 굿','상태아주']],
+  ['풀에어컨',['풀에어컨','풀 에어컨','풀시스템에어컨','신형풀에어컨','신형 풀에어컨']],
+  ['시스템에어컨',['시스템에어컨','천장에어컨']],
+  ['에어컨',['에어컨']],
+  ['단지뷰',['단지뷰','단지 뷰','정원뷰','정원 뷰','초록단지','조경']],
+  ['트인뷰',['트인뷰','트인 뷰','막힘없','막힘 없','뻥뷰','뻥 뷰','시티뷰','씨티뷰','시티 뷰','트인조망','확트인','탁트인','트인단지','조망트인','양창뚫린','확 트인','뚫린뷰','뚫린 뷰']],
+  ['양창형',['양창형','양창','판상형','대면형']],
+  ['펜트리',['펜트리']],
+  ['중문',['중문']],
+  ['풀옵션',['풀옵션','풀 옵션']],
+  ['필로티',['필로티','피로티']],
+  ['전자계약가능',['전자계약']]
+];
+function extractInfo(descs, cap){
+  var text = descs.join(' '), out = [];
+  KW.forEach(function(p){
+    var canon = p[0], trigs = p[1];
+    if(trigs.some(function(t){ return text.indexOf(t) >= 0; }) && out.indexOf(canon) < 0)
+      out.push(canon);
+  });
+  var s = out.join(' ');
+  return s.length > cap ? s.slice(0, cap).replace(/\s+$/,'') : s;
+}
+function priceNum(price){
+  var p = String(price||'').split('/')[0].split('~')[0].trim();
+  var m = p.match(/^(\d+)억(?:\s*([\d,]+))?/);
+  if(m){
+    var v = parseInt(m[1],10)*10000;
+    if(m[2]) v += parseInt(m[2].replace(/,/g,''),10);
+    return v;
+  }
+  m = p.match(/^([\d,]+)/);
+  return m ? parseInt(m[1].replace(/,/g,''),10) : 0;
+}
+function yy(d){ return d ? String(d).slice(2) : ''; }
+
+var AREA = new RegExp('아파트(?:분양권|오피스텔|생활형숙박시설)?([\\d.]+)([A-Za-z0-9\\-]*)㎡ ?'
+  + '\\(전용([\\d.]+)([A-Za-z0-9\\-]*)\\)(.+?)(' + DIRS.join('|') + ')');
+function parseArea(line){
+  var m = AREA.exec(line);
+  if(!m) return null;
+  var gong = m[1], gsuf = m[2], jeon = parseFloat(m[3]), jsuf = m[4], floor = m[5].trim();
+  return { bun: String(Math.trunc(parseFloat(gong))) + gsuf,
+           jeonS: String(Math.trunc(jeon)) + jsuf,
+           bunPy: Math.round(parseFloat(gong)/3.3058*10)/10,
+           jeon: jeon, floor: floor, dir: m[6] };
+}
+var DEAL = /^(매매|전세|월세|단기)\s+(.+?)\s*(?:변동)?$/;
+var DATE = /(?:집주인확인매물|확인매물|등록)\s+(\d{4}\.\d{2}\.\d{2})/;
+
+var PROVIDER2 = ['부동산렛츠','매경부동산','한경부동산','이실장플러스','부동산뱅크','부동산써브',
+  '아실','우리집부동산','알터','부동산포스','텐컴즈','선방','한국공인중개사협회'];
+var NOISE = /^(매물\s*목록.*|창닫기|도움말.*|랭킹순|가격순|최신순|면적순|관심매물|이미지|매물\s*보러가기|중개사\s*\d+곳.*|매물목록\s*(펼치기|접기)|더보기|매물\d+|개|이전\s*페이지로\s*이동|하락내역\s*보기|상승내역\s*보기|변동)$/;
+function looksLikeName(t){
+  if(!t || t.length > 40) return false;
+  if(PROVIDER2.indexOf(t) >= 0) return false;
+  if(NOISE.test(t)) return false;
+  if(t.charAt(0) === '[' || t.charAt(0) === '"') return false;
+  /*  파이썬 \b 는 한글도 단어로 보지만 JS 는 ASCII 만 본다 —
+      그대로 옮기면 「매매 6억 9,500」이 단지 이름으로 잡혀 블록이 쪼개진다. */
+  if(/^(매매|전세|월세|단기|단기임대)(\s|$)/.test(t)) return false;
+  if(/(확인매물|공인중개사|부동산|㎡|전용|층|향$|등록했어요|펼치기|접기)/.test(t)) return false;
+  if(/^등록\s+\d{4}\.\d{2}\.\d{2}$/.test(t)) return false;
+  if(/^[\d,\s/억만원.\-]+$/.test(t)) return false;
+  return true;
+}
+
+function parse(raw, opt){
+  opt = opt || {};
+  var warns = [];
+  var lines = String(raw).split(/\r?\n/);
+  var mm = /\[명칭:\s*([^\]]+)\]/.exec(raw);
+  var tagDanji = mm ? mm[1].trim() : null;
+
+  //  본문에서 가장 많이 나오는 「이름 + 동」 앞머리
+  var pref = {};
+  lines.forEach(function(l){
+    var bm = /^(.+?)\s+\d+동$/.exec(l.trim());
+    if(bm){ var k = bm[1].trim(); pref[k] = (pref[k]||0)+1; }
+  });
+  var bodyDanji = null, best = 0;
+  Object.keys(pref).forEach(function(k){ if(pref[k] > best){ best = pref[k]; bodyDanji = k; } });
+  var danji = tagDanji || opt.danji || bodyDanji;
+  var isBunyang = raw.indexOf('[물건유형: 분양권]') >= 0
+    || (raw.match(/프리미엄|(?<![A-Za-z])P[\s:]/g) || []).length >= 3;
+
+  //  매물 블록 시작 찾기
+  var starts = [], names = [], dongs = [];
+  for(var idx=0; idx<lines.length; idx++){
+    var s2 = lines[idx].trim();
+    var m2 = /^(.+?)\s+([A-Za-z0-9]{1,6}동)$/.exec(s2);
+    var base = m2 ? m2[1].trim() : s2;
+    var dong = m2 ? m2[2] : '';
+    if(!looksLikeName(base)) continue;
+    var ok = false;
+    for(var j=idx+1; j<Math.min(idx+7, lines.length); j++) if(AREA.test(lines[j])){ ok = true; break; }
+    if(!ok) continue;
+    base = base.replace(/^송도동\s+/, '').trim();
+    if(!base) continue;
+    starts.push(idx); names.push(base); dongs.push(dong);
+  }
+  if(!starts.length) return { rows:[], warns:['매물 블록을 찾지 못함'], danji:danji, bunyang:isBunyang };
+
+  var entries = [], collapsed = 0;
+  for(var bi=0; bi<starts.length; bi++){
+    var si = starts[bi], ei = (bi+1 < starts.length) ? starts[bi+1] : lines.length;
+    var blk = lines.slice(si, ei).map(function(l){ return l.replace(/\s+$/,''); });
+    var dongN = dongs[bi] || '', mdanji = names[bi] || danji;
+    var dp = null, ai = null;
+    for(var k2=1; k2<Math.min(6, blk.length); k2++){
+      var t = blk[k2].trim();
+      if(!dp && DEAL.test(t)) dp = DEAL.exec(t);
+      if(!ai && AREA.test(blk[k2])) ai = parseArea(blk[k2]);
+    }
+    if(!dp || !ai){ warns.push('블록 파싱 실패(' + (blk[0]||'').trim() + ')'); continue; }
+    var btxt = blk.join('\n');
+    var Nm = /중개사\s+(\d+)곳/.exec(btxt);
+    var headerN = Nm ? parseInt(Nm[1],10) : null;
+    var members = [];
+
+    if(btxt.indexOf('매물목록 접기') >= 0){
+      var k = 0;
+      while(k < blk.length && blk[k].trim() !== '매물목록 접기') k++;
+      k++;
+      var cur = null, desc = '', inq = false;
+      while(k < blk.length){
+        var ln = blk[k].trim();
+        var dm = DEAL.exec(ln);
+        if(dm && !inq){ cur = dm[2].trim(); desc = ''; k++; continue; }
+        if(ln === '"'){ inq = !inq; k++; continue; }
+        if(inq){ desc += (desc ? ' ' : '') + ln; k++; continue; }
+        var dt = DATE.exec(ln);
+        if(dt){
+          var ag = '', jj = k+1;
+          while(jj < blk.length){
+            var cand = blk[jj].trim();
+            if(cand && MARKERS.indexOf(cand) < 0 && PROVIDERS.indexOf(cand) < 0 && !/^\d+$/.test(cand)){
+              ag = cand; break;
+            }
+            jj++;
+          }
+          members.push([cur, dt[1], desc, ag]); desc = ''; k++; continue;
+        }
+        k++;
+      }
+      if(headerN && members.length !== headerN)
+        warns.push(dongN + ' ' + dp[1] + ' ' + dp[2].trim() + ' 헤더 ' + headerN
+          + '곳 vs 파싱 ' + members.length + '건 불일치');
+    } else if(btxt.indexOf('매물목록 펼치기') >= 0){
+      collapsed++;
+      members.push([dp[2].trim(), '', '', '']);
+    } else {
+      var d2 = '', date_ = '', ag2 = '', inq2 = false;
+      for(var j2=0; j2<blk.length; j2++){
+        var l2 = blk[j2].trim();
+        if(l2 === '"'){ inq2 = !inq2; continue; }
+        if(inq2){ d2 += (d2 ? ' ' : '') + l2; continue; }
+        var dt2 = DATE.exec(l2);
+        if(dt2){
+          date_ = dt2[1];
+          var j3 = j2+1;
+          while(j3 < blk.length){
+            var c3 = blk[j3].trim();
+            if(c3 && MARKERS.indexOf(c3) < 0 && PROVIDERS.indexOf(c3) < 0 && !/^\d+$/.test(c3)){ ag2 = c3; break; }
+            j3++;
+          }
+        }
+      }
+      members.push([dp[2].trim(), date_, d2, ag2]);
+    }
+    var jm0 = members.filter(function(x){ return isJasa(x[3]); });
+    var pool0 = jm0.length ? jm0 : members;
+    var rep0 = pool0.reduce(function(a,b){ return (b[1] > a[1]) ? b : a; });
+    entries.push({ dong:dongN, typ:ai.jeonS, bun:ai.bun, bunPy:ai.bunPy, jeon:ai.jeon,
+                   deal:dp[1], dir:ai.dir, floor:ai.floor, members:members,
+                   price:rep0[0], danji:mdanji });
+  }
+  if(collapsed) warns.push('접힌(펼치기) 그룹 ' + collapsed + '개 — 중개업소·주요정보 없음');
+
+  //  (동, 전용, 거래, 향, 가격) 이 같고 층이 어긋나지 않으면 한 매물로 묶는다
+  function ftype(f){ return /^\d/.test(f) ? 'num' : 'gjz'; }
+  function compat(a,b){ return a === b || ftype(a) !== ftype(b); }
+  var groups = {};
+  entries.forEach(function(e,i){
+    var k = [e.dong,e.typ,e.deal,e.dir,e.price].join('\u0001');
+    (groups[k] = groups[k] || []).push(i);
+  });
+  var par = entries.map(function(_,i){ return i; });
+  function find(x){ while(par[x] !== x){ par[x] = par[par[x]]; x = par[x]; } return x; }
+  Object.keys(groups).forEach(function(k){
+    var idxs = groups[k];
+    for(var a=0;a<idxs.length;a++) for(var b=a+1;b<idxs.length;b++)
+      if(compat(entries[idxs[a]].floor, entries[idxs[b]].floor)) par[find(idxs[a])] = find(idxs[b]);
+  });
+  var comp = {};
+  for(var i2=0;i2<entries.length;i2++){ var r2 = find(i2); (comp[r2] = comp[r2] || []).push(i2); }
+
+  var rows = [];
+  Object.keys(comp).forEach(function(k){
+    var ents = comp[k].map(function(i){ return entries[i]; });
+    var allmem = [];
+    ents.forEach(function(e){ e.members.forEach(function(m){ allmem.push([m, e.floor]); }); });
+    var jm = allmem.filter(function(x){ return isJasa(x[0][3]); });
+    var pool = jm.length ? jm : allmem;
+    var rep = pool.reduce(function(a,b){ return (b[0][1] > a[0][1]) ? b : a; });
+    var ordered = [rep].concat(allmem.filter(function(x){ return x !== rep; }));
+    var dup = [];
+    ordered.forEach(function(x){ var a = abbr(x[0][3]); if(a && dup.indexOf(a) < 0) dup.push(a); });
+    var dc = allmem.length - 1, e0 = ents[0];
+    var info = extractInfo(allmem.map(function(x){ return x[0][2]; }), allmem.length > 1 ? 100 : 80);
+    rows.push({ 단지명:e0.danji || danji, 거래구분:e0.deal, '분양m²':e0.bun, '전용m²':e0.typ,
+      분양평수:e0.bunPy, 가격:rep[0][0], 동:e0.dong, 호수:null, 층:rep[1], 방향:e0.dir,
+      주요정보:info, 중개업소명:abbr(rep[0][3]), 확인날짜:yy(rep[0][1]),
+      중복등록수:(dc > 0 ? dc : null), 자사매물:(jm.length ? '★' : ''),
+      중복업소명:dup.join(', '), _jeon:e0.jeon, _p:priceNum(rep[0][0]) });
+  });
+  var order = { 매매:0, 전세:1, 월세:2, 단기:3 };
+  rows.sort(function(a,b){
+    var x = (order[a.거래구분]==null?4:order[a.거래구분]) - (order[b.거래구분]==null?4:order[b.거래구분]);
+    if(x) return x;
+    if(a._jeon !== b._jeon) return a._jeon - b._jeon;
+    return a._p - b._p;
+  });
+  return { rows:rows, warns:warns, danji:danji, bunyang:isBunyang, blocks:starts.length };
+}
+
+/*  ── N 매물 분석 · 화면 ──────────────────────────────────────────────
+    파서는 위에 옮겨 둔 것을 그대로 쓴다. 여기서는 읽은 것을 보여 준다.
+
+    MR.K 의 「N 매물 분석」을 견주되, 대표님께 값이 되는 것을 하나 더 넣었다 —
+    「몇 곳이 같이 냈나(경쟁 강도)」와 「우리만 가진 매물」. 중복 업소명이
+    이미 파싱돼 있으므로 그냥 나온다. 호가 경쟁이 심한 매물과 우리만 쥔
+    매물은 손님께 드릴 말이 완전히 다르다. */
+
+  var NVS = null;                       // 마지막 분석 결과
+  var NVQ = '';                         // 표 안에서 찾기
+  var NVDEAL = '전체';
+
+  function esc(s){ return String(s==null?'':s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  function fmtN(n){ return (n==null||isNaN(n)) ? '' : String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
+  function eok(man){
+    if(man == null || isNaN(man)) return '';
+    if(man < 10000) return fmtN(Math.round(man)) + '만';
+    var e = Math.floor(man/10000), r = Math.round(man - e*10000);
+    return e + '억' + (r ? ' ' + fmtN(r) : '');
+  }
+  function med(a){
+    if(!a.length) return null;
+    var b = a.slice().sort(function(x,y){ return x-y; }), m = b.length>>1;
+    return b.length % 2 ? b[m] : Math.round((b[m-1]+b[m])/2);
+  }
+
+  /*  통계 — 값을 만들어 내지 않는다. 읽은 것만 센다. */
+  function stats(rows){
+    var byDeal = {}, byArea = {}, agency = {}, dupTot = 0, mine = 0, only = 0;
+    rows.forEach(function(r){
+      byDeal[r.거래구분] = (byDeal[r.거래구분]||0) + 1;
+      if(r.거래구분 === '매매'){
+        var k = r['전용m²'];
+        (byArea[k] = byArea[k] || { k:k, py:r.분양평수, ps:[], n:0 });
+        byArea[k].ps.push(r._p); byArea[k].n++;
+      }
+      var d = (r.중복등록수 || 0);
+      dupTot += d;
+      if(r.자사매물 === '★') mine++;
+      if(!d) only++;
+      (r.중복업소명 || '').split(', ').forEach(function(a){
+        if(a) agency[a] = (agency[a]||0) + 1;
+      });
+    });
+    var areas = Object.keys(byArea).map(function(k){
+      var o = byArea[k];
+      o.med = med(o.ps); o.lo = Math.min.apply(null,o.ps); o.hi = Math.max.apply(null,o.ps);
+      return o;
+    }).sort(function(a,b){ return parseFloat(a.k) - parseFloat(b.k); });
+    //  가성비 — 같은 전용형 중위값보다 싼 매매 매물
+    var cheap = rows.filter(function(r){
+      if(r.거래구분 !== '매매') return false;
+      var o = byArea[r['전용m²']];
+      return o && o.med && r._p < o.med;
+    }).map(function(r){
+      var o = byArea[r['전용m²']];
+      return { r:r, gap: Math.round((o.med - r._p)/o.med*1000)/10 };
+    }).sort(function(a,b){ return b.gap - a.gap; }).slice(0, 8);
+    var tops = Object.keys(agency).map(function(a){ return [a, agency[a]]; })
+      .sort(function(x,y){ return y[1] - x[1]; }).slice(0, 12);
+    return { byDeal:byDeal, areas:areas, cheap:cheap, tops:tops,
+             dupTot:dupTot, mine:mine, only:only, n:rows.length };
+  }
+
+  // ── 화면 ────────────────────────────────────────────────────────────
+  function card(t, v, sub, c){
+    return '<div class="nv-c"><div class="nv-cl">' + esc(t) + '</div>'
+      + '<div class="nv-cv"' + (c ? ' style="color:' + c + '"' : '') + '>' + v + '</div>'
+      + (sub ? '<div class="nv-cs">' + sub + '</div>' : '') + '</div>';
+  }
+  function bar(w, c){
+    return '<div class="nv-bar"><i style="width:' + Math.max(1,Math.min(100,w)) + '%;'
+      + 'background:' + c + '"></i></div>';
+  }
+
+  function paint(){
+    var root = document.getElementById('nv-root'); if(!root) return;
+    var h = '<div class="nv-in">'
+      + '<div style="font-size:12px;line-height:1.75;color:var(--text2);margin-bottom:9px">'
+      + '네이버 부동산에서 <b>단지 매물 목록을 모두 펼친 뒤</b> 화면 전체를 복사(Ctrl+A → Ctrl+C)해 '
+      + '아래에 붙여넣으십시오. 매물이 <b>접혀 있으면 중개업소와 주요정보가 안 들어옵니다.</b>'
+      + '</div>'
+      + '<textarea id="nv-txt" placeholder="여기에 붙여넣기"></textarea>'
+      + '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px">'
+      +   '<button class="dj-bp" onclick="nvaRun()">🔎 분석</button>'
+      +   '<button class="dj-bs" onclick="nvaClear()">비우기</button>'
+      +   (NVS ? '<button class="dj-bs" onclick="nvaXlsx()">📥 엑셀로 내려받기</button>'
+             + '<label class="dj-bs" style="cursor:pointer">🧪 파이썬 엑셀과 대조'
+             + '<input type="file" accept=".xlsx" style="display:none" onchange="nvaDiff(this)"></label>' : '')
+      +   '<span id="nv-msg" style="font-size:12px;color:var(--text3)"></span>'
+      + '</div></div>';
+    if(NVS) h += result();
+    root.innerHTML = h;
+    var t = document.getElementById('nv-txt');
+    if(t && NVRAW) t.value = NVRAW;
+  }
+
+  function result(){
+    var S = NVS.st, rows = NVS.rows, h = '';
+    h += '<div class="nv-h">📋 ' + esc(NVS.danji || '') + ' <span>매물 ' + S.n + '건 · '
+      + esc(NVS.at) + ' 읽음</span></div>';
+
+    //  요약
+    var sale = rows.filter(function(r){ return r.거래구분 === '매매'; });
+    var ps = sale.map(function(r){ return r._p; });
+    h += '<div class="nv-cards">'
+      + card('매물 수', S.n + '<small>건</small>',
+             Object.keys(S.byDeal).map(function(k){ return k + ' ' + S.byDeal[k]; }).join(' · '))
+      + card('매매 중위', ps.length ? eok(med(ps)) : '—',
+             ps.length ? eok(Math.min.apply(null,ps)) + ' ~ ' + eok(Math.max.apply(null,ps)) : '')
+      + card('우리 매물', S.mine + '<small>건</small>', S.mine ? '자사 ★ 표시' : '이 목록에 없음',
+             S.mine ? '#1565c0' : '')
+      + card('우리만 가진 매물', S.only + '<small>건</small>',
+             '다른 곳이 안 낸 것 · 전체의 ' + Math.round(S.only/S.n*100) + '%')
+      + card('중복 등록', fmtN(S.dupTot) + '<small>건</small>',
+             '한 매물을 여러 곳이 같이 냄')
+      + '</div>';
+
+    //  면적형별
+    if(S.areas.length){
+      h += '<div class="nv-h">📐 전용면적형별 매매 시세 <span>중위값 기준</span></div>'
+        + '<div style="overflow-x:auto"><table class="nv-t"><thead><tr>'
+        + '<th>전용</th><th>분양평</th><th>건수</th><th>중위</th><th>최저~최고</th><th>폭</th>'
+        + '</tr></thead><tbody>';
+      var top = Math.max.apply(null, S.areas.map(function(a){ return a.hi; }));
+      S.areas.forEach(function(a){
+        h += '<tr><td>' + esc(a.k) + '㎡</td><td>' + (a.py||'') + '평</td><td>' + a.n + '</td>'
+          + '<td><b>' + eok(a.med) + '</b></td>'
+          + '<td style="color:var(--text3)">' + eok(a.lo) + ' ~ ' + eok(a.hi) + '</td>'
+          + '<td style="min-width:120px">' + bar(a.hi/top*100, '#4c6ef5') + '</td></tr>';
+      });
+      h += '</tbody></table></div>';
+    }
+
+    //  가성비
+    if(S.cheap.length){
+      h += '<div class="nv-h">💡 같은 면적형보다 싼 매물 <span>중위값 대비</span></div><div class="nv-grid">';
+      S.cheap.forEach(function(c){
+        var r = c.r;
+        h += '<div class="nv-p"><div class="nv-pt">' + esc(r.동) + ' ' + esc(r.층)
+          + ' <b style="color:#2b8a3e">-' + c.gap + '%</b></div>'
+          + '<div class="nv-pd">' + esc(r['전용m²']) + '㎡ · ' + esc(r.가격) + ' · ' + esc(r.방향)
+          + '<br>' + esc(r.중개업소명) + (r.중복등록수 ? ' 외 ' + r.중복등록수 + '곳' : ' <b>단독</b>')
+          + '</div></div>';
+      });
+      h += '</div>';
+    }
+
+    //  경쟁 강도 — MR.K 에 없는 것
+    if(S.tops.length){
+      h += '<div class="nv-h">🏢 이 단지에 매물을 낸 중개업소 <span>같은 매물을 여럿이 내면 각각 셉니다</span></div>'
+        + '<div class="nv-grid">';
+      var mx = S.tops[0][1];
+      S.tops.forEach(function(t){
+        var ours = /송도제일/.test(t[0]);
+        h += '<div class="nv-p"' + (ours ? ' style="border-color:#1565c0"' : '') + '>'
+          + '<div class="nv-pt">' + esc(t[0]) + (ours ? ' ★' : '') + ' <b>' + t[1] + '</b></div>'
+          + bar(t[1]/mx*100, ours ? '#1565c0' : '#adb5bd') + '</div>';
+      });
+      h += '</div>';
+    }
+
+    //  표
+    h += '<div class="nv-h">📄 매물 목록 <span>엑셀과 같은 칸</span></div>'
+      + '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">'
+      + ['전체','매매','전세','월세','단기'].filter(function(d){
+          return d === '전체' || NVS.st.byDeal[d]; }).map(function(d){
+          return '<button class="dj-bs" onclick="nvaDeal(\'' + d + '\')"'
+            + (NVDEAL === d ? ' style="border-color:transparent;background:var(--accent);color:#fff"' : '')
+            + '>' + d + (d !== '전체' ? ' ' + NVS.st.byDeal[d] : ' ' + NVS.st.n) + '</button>';
+        }).join('')
+      + '<input class="dj-in" style="width:170px;padding:5px 9px;font-size:12px" '
+      + 'placeholder="표에서 찾기" value="' + esc(NVQ) + '" oninput="nvaFind(this.value)">'
+      + '</div>';
+
+    var show = rows.filter(function(r){
+      if(NVDEAL !== '전체' && r.거래구분 !== NVDEAL) return false;
+      if(!NVQ) return true;
+      var q = NVQ.toLowerCase();
+      return [r.동,r.층,r.가격,r.방향,r.주요정보,r.중개업소명,r.중복업소명,r['전용m²']]
+        .join(' ').toLowerCase().indexOf(q) >= 0;
+    });
+    h += '<div style="overflow-x:auto;max-height:560px"><table class="nv-t nv-list"><thead><tr>'
+      + '<th>거래</th><th>분양㎡</th><th>전용㎡</th><th>분양평</th><th>가격</th><th>동</th><th>층</th>'
+      + '<th>방향</th><th>주요정보</th><th>중개업소</th><th>확인</th><th>중복</th><th>★</th>'
+      + '</tr></thead><tbody>';
+    show.forEach(function(r){
+      h += '<tr' + (r.자사매물 === '★' ? ' class="nv-mine"' : '') + '>'
+        + '<td>' + esc(r.거래구분) + '</td><td>' + esc(r['분양m²']) + '</td>'
+        + '<td>' + esc(r['전용m²']) + '</td><td>' + (r.분양평수||'') + '</td>'
+        + '<td><b>' + esc(r.가격) + '</b></td><td>' + esc(r.동) + '</td><td>' + esc(r.층) + '</td>'
+        + '<td>' + esc(r.방향) + '</td>'
+        + '<td class="nv-info">' + esc(r.주요정보) + '</td>'
+        + '<td title="' + esc(r.중복업소명) + '">' + esc(r.중개업소명) + '</td>'
+        + '<td>' + esc(r.확인날짜) + '</td>'
+        + '<td>' + (r.중복등록수 || '') + '</td><td>' + esc(r.자사매물) + '</td></tr>';
+    });
+    h += '</tbody></table></div>'
+      + '<div style="font-size:11px;color:var(--text3);margin-top:7px;line-height:1.7">'
+      + '읽은 것만 적습니다 — 네이버 원문에 없는 값은 만들어 내지 않습니다. '
+      + '「중복」은 같은 매물을 함께 낸 다른 업소 수이고, <b>빈 칸이면 그 업소만 가진 매물</b>입니다. '
+      + '대표 업소는 <b>자사 → 최근 확인일</b> 순으로 고릅니다.';
+    if(NVS.warns && NVS.warns.length)
+      h += '<br><b style="color:#c80">읽으면서 걸린 것 ' + NVS.warns.length + '가지</b> — '
+        + NVS.warns.slice(0,3).map(esc).join(' · ')
+        + (NVS.warns.length > 3 ? ' 외 ' + (NVS.warns.length-3) + '가지' : '');
+    h += '</div>';
+    return h;
+  }
+
+  var NVRAW = '';
+  window.nvaClear = function(){ NVS = null; NVRAW = ''; NVQ = ''; paint(); };
+  window.nvaDeal = function(d){ NVDEAL = d; paint(); };
+  window.nvaFind = function(v){
+    NVQ = v;
+    var box = document.querySelector('#nv-root .nv-list');
+    if(!box) return paint();
+    //  표만 다시 그린다 — 칸에서 초점이 빠지면 글자를 이어 칠 수 없다
+    var wrap = box.parentNode, sc = wrap.scrollTop;
+    var tmp = document.createElement('div'); tmp.innerHTML = result();
+    var fresh = tmp.querySelector('.nv-list');
+    if(fresh){ wrap.replaceChild(fresh, box); wrap.scrollTop = sc; }
+  };
+  function msg(t, c){
+    var e = document.getElementById('nv-msg');
+    if(e) e.innerHTML = t ? '<span style="color:' + (c||'var(--text3)') + '">' + esc(t) + '</span>' : '';
+  }
+  window.nvaRun = function(){
+    var t = document.getElementById('nv-txt');
+    var raw = t ? t.value : '';
+    if(!raw.trim()){ msg('붙여넣은 글이 없습니다.', '#c33'); return; }
+    NVRAW = raw;
+    msg('읽는 중…', '#1565c0');
+    setTimeout(function(){
+      try{
+        var r = parse(raw);
+        if(!r.rows.length){
+          NVS = null; paint();
+          msg('매물을 한 건도 못 찾았습니다 — 단지 매물 목록 화면을 통째로 복사하셨는지 봐 주세요.', '#c33');
+          return;
+        }
+        r.st = stats(r.rows);
+        r.at = new Date().toISOString().slice(0,10).replace(/-/g,'.');
+        NVS = r; NVDEAL = '전체'; NVQ = '';
+        paint();
+        msg(r.rows.length + '건을 읽었습니다.', '#0a7');
+      }catch(e){
+        msg('읽지 못했습니다 — ' + (e && e.message || e), '#c33');
+      }
+    }, 20);
+  };
+
+  //  엑셀 — 파이썬 변환기와 같은 칸·차례
+  var COLS = ['단지명','거래구분','분양m²','전용m²','분양평수','가격','동','호수','층','방향',
+              '주요정보','중개업소명','확인날짜','중복등록수','자사매물','중복업소명'];
+  window.nvaXlsx = function(){
+    if(!NVS) return;
+    if(typeof XLSX === 'undefined'){ msg('엑셀 기능을 불러오지 못했습니다.', '#c33'); return; }
+    var aoa = [COLS.slice()];
+    aoa[0][15] = '중복업소명 (' + NVS.at + ')';
+    NVS.rows.forEach(function(r){
+      aoa.push(COLS.map(function(c){ return r[c] == null ? '' : r[c]; }));
+    });
+    var wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), '아파트');
+    XLSX.writeFile(wb, (NVS.danji || '매물') + '_매물정리_' + NVS.at.replace(/\./g,'') + '.xlsx');
+    msg('내려받았습니다.', '#0a7');
+  };
+
+  /*  파이썬 엑셀과 대조 —
+      파서를 옮겼으니 「같은 답이 나오는가」를 매번 확인할 수 있어야 한다.
+      한 번 맞춰 보고 끝낼 일이 아니다. 네이버가 화면을 바꾸면 또 어긋난다. */
+  window.nvaDiff = function(input){
+    var f = input.files && input.files[0]; input.value = '';
+    if(!f || !NVS) return;
+    if(typeof XLSX === 'undefined'){ msg('엑셀 기능을 불러오지 못했습니다.', '#c33'); return; }
+    var rd = new FileReader();
+    rd.onload = function(e){
+      try{
+        var wb = XLSX.read(e.target.result, { type:'array' });
+        var aoa = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header:1, defval:'' });
+        var want = [], head = null;
+        aoa.forEach(function(row){
+          var a = row.map(function(x){ return String(x==null?'':x).trim(); });
+          if(!a.length || !a[0]) return;
+          if(a[0] === '단지명'){ head = a; return; }   // 거래별로 머리글이 다시 나온다
+          if(!head) return;
+          var o = {}; COLS.forEach(function(c,i){ o[c] = a[i] == null ? '' : a[i]; });
+          want.push(o);
+        });
+        if(!want.length){ msg('엑셀에서 줄을 못 찾았습니다.', '#c33'); return; }
+        var got = NVS.rows;
+        var key = function(o){ return [o.거래구분,o['전용m²'],o.가격,o.동,o.층].join('|'); };
+        var W = {}, G = {};
+        want.forEach(function(o){ W[key(o)] = o; });
+        got.forEach(function(o){ G[key(o)] = o; });
+        var missing = want.filter(function(o){ return !G[key(o)]; });
+        var extra = got.filter(function(o){ return !W[key(o)]; });
+        var diff = [];
+        want.forEach(function(o){
+          var g = G[key(o)]; if(!g) return;
+          COLS.forEach(function(c){
+            var a = String(o[c]==null?'':o[c]).trim();
+            var b = String(g[c]==null?'':g[c]).trim();
+            if(a !== b) diff.push({ k:key(o), c:c, a:a, b:b });
+          });
+        });
+        var ok = !missing.length && !extra.length && !diff.length;
+        var h = '<div class="nv-diff' + (ok ? ' ok' : '') + '">'
+          + '<b>' + (ok ? '✅ 엑셀과 완전히 같습니다' : '⚠ 다른 곳이 있습니다') + '</b> — '
+          + '엑셀 ' + want.length + '행 · 화면 ' + got.length + '행<br>';
+        if(ok) h += '모든 칸이 한 글자도 다르지 않습니다.';
+        else {
+          if(missing.length) h += '· 엑셀에 있고 화면에 없는 매물 <b>' + missing.length + '건</b> — '
+            + missing.slice(0,3).map(function(o){ return esc(key(o)); }).join(' / ') + '<br>';
+          if(extra.length) h += '· 화면에만 있는 매물 <b>' + extra.length + '건</b> — '
+            + extra.slice(0,3).map(function(o){ return esc(key(o)); }).join(' / ') + '<br>';
+          if(diff.length){
+            var byc = {};
+            diff.forEach(function(d){ byc[d.c] = (byc[d.c]||0)+1; });
+            h += '· 값이 다른 칸 <b>' + diff.length + '곳</b> ('
+              + Object.keys(byc).map(function(c){ return c + ' ' + byc[c]; }).join(', ') + ')<br>'
+              + diff.slice(0,5).map(function(d){
+                  return '&nbsp;&nbsp;' + esc(d.k) + ' · <b>' + esc(d.c) + '</b> — 엑셀 「'
+                    + esc(d.a) + '」 vs 화면 「' + esc(d.b) + '」';
+                }).join('<br>');
+          }
+        }
+        h += '</div>';
+        var box = document.getElementById('nv-diffbox');
+        if(box) box.innerHTML = h;
+        else {
+          var d = document.createElement('div'); d.id = 'nv-diffbox'; d.innerHTML = h;
+          document.getElementById('nv-root').insertBefore(d,
+            document.getElementById('nv-root').children[1] || null);
+        }
+        msg(ok ? '대조 결과 완전히 같습니다.' : '대조 결과를 위에 적었습니다.', ok ? '#0a7' : '#c80');
+      }catch(err){ msg('엑셀을 읽지 못했습니다 — ' + (err && err.message || err), '#c33'); }
+    };
+    rd.readAsArrayBuffer(f);
+  };
+
+  function build(){
+    if(document.getElementById('tc' + TAB)) return true;
+    var nav  = document.querySelector('.tab-nav-inner') || document.querySelector('.tab-nav');
+    var host = document.getElementById('tc0');
+    if(!nav || !host || !host.parentNode) return false;
+    var b = document.createElement('button');
+    b.className = 'tab-btn';
+    b.setAttribute('onclick', 'sw(' + TAB + ')');
+    b.innerHTML = '🔎 N 매물 분석';
+    nav.appendChild(b);
+    var panel = document.createElement('div');
+    panel.id = 'tc' + TAB; panel.className = 'tc';
+    panel.innerHTML = '<div id="nv-root"></div>';
+    host.parentNode.appendChild(panel);
+    return true;
+  }
+  function hookSw(){
+    if(typeof window.sw !== 'function') return false;
+    if(window.sw.__nv2) return true;
+    var orig = window.sw;
+    var w = function(n){
+      var out = orig.apply(this, arguments);
+      if(n === TAB){ try{ paint(); }catch(e){ console.warn('[N 매물 분석]', e); } }
+      return out;
+    };
+    w.__nv2 = true; window.sw = w;
+    return true;
+  }
+  var tries = 0;
+  (function start(){
+    var ok = build() && hookSw();
+    if(!ok && tries++ < 80) return void setTimeout(start, 200);
+  })();
+  window.sdNv = { parse:parse, stats:stats, tab:TAB,
+                  last:function(){ return NVS; } };
 })();
 </script>
 
