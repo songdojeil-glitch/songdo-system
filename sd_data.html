@@ -19353,7 +19353,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.09.27-30';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.09.27-31';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_data.html';      // 이 파일 이름
   var SD_NAME = '실거래가';      // 사람이 부르는 이름
 
@@ -29301,6 +29301,265 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 
   window.sdTools = { groups:GROUPS, paint:paint, tab:TAB,
                      q:function(){ return Q; }, only:function(){ return ONLYON; } };
+})();
+</script>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     2단 탭 + 빠른 이동 모듈 v1.0
+     ──────────────────────────────────────────────────────────────────
+     탭이 19개가 되어 가로로 긁어야 원하는 탭이 나온다. 도구를 더할수록
+     나빠진다. 그래서 두 가지를 한다.
+
+       B. 2단 탭 — 윗줄에 묶음 4개, 아랫줄은 그 묶음의 탭만. 줄 수가
+          늘 둘로 고정되므로 탭이 40개가 되어도 가로로 긁을 일이 없다.
+       C. 빠른 이동 — Ctrl+K(또는 🔍). 탭 이름 몇 글자로 바로 간다.
+          다른 프로그램도 함께 찾는다. 손에 익으면 이쪽이 더 빠르다.
+
+     본문 HTML 은 건드리지 않는다. 이미 있는 .tab-btn 을 읽어 묶음을
+     지을 뿐이라, 이 <script> 를 지우면 예전 한 줄짜리로 그대로 돌아간다.
+
+     묶음에 없는 탭은 절대 숨기지 않는다 — 나중에 탭을 더했을 때
+     말없이 사라지면 찾을 길이 없다. 그런 탭은 마지막 묶음에 붙인다.
+     ══════════════════════════════════════════════════════════════════ -->
+<style>
+#nv-groups{display:flex;gap:6px;align-items:center;flex-wrap:wrap;
+  padding:7px 14px 0;background:var(--card)}
+#nv-groups .nv-g{padding:6px 13px;border:1px solid var(--border);border-radius:9px 9px 0 0;
+  border-bottom:none;background:var(--bg3);color:var(--text3);font-size:12.5px;
+  font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap}
+#nv-groups .nv-g:hover{color:var(--accent)}
+#nv-groups .nv-g.on{background:var(--accent);border-color:transparent;color:#fff}
+#nv-groups .nv-n{font-size:10px;opacity:.75;margin-left:3px;font-weight:500}
+#nv-groups .nv-find{margin-left:auto;padding:5px 11px;border:1px solid var(--border);
+  border-radius:8px;background:var(--card);color:var(--text3);font-size:11.5px;
+  cursor:pointer;font-family:inherit;white-space:nowrap}
+#nv-groups .nv-find:hover{border-color:var(--accent);color:var(--accent)}
+#nv-groups .nv-k{font-size:10px;border:1px solid var(--border);border-radius:4px;
+  padding:0 4px;margin-left:4px;opacity:.7}
+#nv-ov{position:fixed;inset:0;z-index:9600;background:rgba(15,18,28,.45);
+  display:flex;align-items:flex-start;justify-content:center;padding-top:11vh}
+#nv-box{width:min(560px,92vw);background:var(--card);border:1px solid var(--border);
+  border-radius:14px;box-shadow:0 16px 46px rgba(0,0,0,.3);overflow:hidden}
+#nv-in{width:100%;padding:15px 18px;border:0;border-bottom:1px solid var(--border);
+  background:transparent;color:var(--text);font-size:15px;font-family:inherit;outline:none}
+#nv-list{max-height:52vh;overflow:auto;padding:6px}
+#nv-list .nv-i{display:flex;align-items:center;gap:9px;padding:9px 12px;border-radius:9px;
+  cursor:pointer;font-size:13px;color:var(--text)}
+#nv-list .nv-i.sel{background:var(--bg3)}
+#nv-list .nv-i .nv-w{font-size:11px;color:var(--text3);margin-left:auto;white-space:nowrap}
+#nv-list .nv-e{padding:20px 14px;font-size:12.5px;color:var(--text3);text-align:center}
+#nv-foot{padding:7px 14px;border-top:1px solid var(--border);font-size:10.5px;
+  color:var(--text3);background:var(--bg3)}
+@media (max-width:760px){ #nv-groups{padding:6px 10px 0} #nv-groups .nv-g{padding:5px 10px;font-size:12px} }
+@media print{ #nv-groups{display:none} }
+</style>
+<script>
+(function(){
+  'use strict';
+  if(window.__nvOn) return; window.__nvOn = true;
+
+  var GKEY = 'sd_nav_group';
+
+  /*  묶음 — 탭 번호로 가른다. 여기 없는 번호는 마지막 묶음으로 간다. */
+  var GROUPS = [
+    { k:'sise', n:'📡 시황·시세', t:[18, 0, 12, 1, 2] },
+    { k:'real', n:'📈 실거래·동향', t:[3, 4, 5, 15, 13] },
+    { k:'prop', n:'🏠 매물',        t:[16, 6, 7, 8] },
+    { k:'tool', n:'📊 자료·도구',   t:[9, 10, 11, 14, 20] }
+  ];
+  var WHERE = {};                       // 탭번호 → 묶음 열쇠
+  GROUPS.forEach(function(g){ g.t.forEach(function(n){ WHERE[n] = g.k; }); });
+  var LAST = GROUPS[GROUPS.length-1].k;
+
+  var CUR = GROUPS[0].k;
+  try{ var v = localStorage.getItem(GKEY);
+       if(v && GROUPS.some(function(g){ return g.k === v; })) CUR = v; }catch(e){}
+
+  function btns(){
+    var nav = document.querySelector('.tab-nav-inner');
+    return nav ? Array.prototype.slice.call(nav.querySelectorAll('.tab-btn')) : [];
+  }
+  function numOf(b){
+    var m = String(b.getAttribute('onclick') || '').match(/sw\((\d+)\)/);
+    return m ? parseInt(m[1], 10) : -1;
+  }
+  function groupOf(n){ return WHERE[n] || LAST; }
+
+  function paintBtns(){
+    btns().forEach(function(b){
+      b.style.display = (groupOf(numOf(b)) === CUR) ? '' : 'none';
+    });
+    var row = document.getElementById('nv-groups');
+    if(row) Array.prototype.forEach.call(row.querySelectorAll('.nv-g'), function(e){
+      e.classList.toggle('on', e.getAttribute('data-k') === CUR);
+    });
+  }
+
+  window.nvGroup = function(k, noJump){
+    CUR = k;
+    try{ localStorage.setItem(GKEY, k); }catch(e){}
+    paintBtns();
+    if(noJump) return;
+    /*  묶음을 바꿨는데 열려 있는 탭이 안 보이면 갈 데가 없어 보인다 —
+        그 묶음의 첫 탭으로 옮겨 준다. */
+    var on = document.querySelector('.tab-nav-inner .tab-btn.on');
+    if(on && on.style.display !== 'none') return;
+    var first = btns().filter(function(b){ return b.style.display !== 'none'; })[0];
+    if(first && typeof window.sw === 'function') sw(numOf(first));
+  };
+
+  function buildRow(){
+    if(document.getElementById('nv-groups')) return true;
+    var nav = document.querySelector('.tab-nav');
+    if(!nav || !nav.parentNode) return false;
+    var row = document.createElement('div');
+    row.id = 'nv-groups';
+    row.innerHTML = GROUPS.map(function(g){
+      return '<button class="nv-g" data-k="' + g.k + '" onclick="nvGroup(\'' + g.k + '\')">'
+        + g.n + '<span class="nv-n" data-c="' + g.k + '"></span></button>';
+    }).join('')
+      + '<button class="nv-find" onclick="nvFind()">🔍 빠른 이동'
+      + '<span class="nv-k">Ctrl K</span></button>';
+    nav.parentNode.insertBefore(row, nav);
+    return true;
+  }
+
+  function counts(){
+    var c = {};
+    btns().forEach(function(b){ var k = groupOf(numOf(b)); c[k] = (c[k]||0) + 1; });
+    var row = document.getElementById('nv-groups'); if(!row) return;
+    Array.prototype.forEach.call(row.querySelectorAll('.nv-n'), function(e){
+      var k = e.getAttribute('data-c');
+      e.textContent = c[k] ? c[k] : '';
+    });
+  }
+
+  // ── 빠른 이동 ───────────────────────────────────────────────────────
+  var SEL = 0, ITEMS = [];
+
+  function pool(){
+    var out = btns().map(function(b){
+      var n = numOf(b);
+      var g = GROUPS.filter(function(x){ return x.k === groupOf(n); })[0];
+      return { t: b.textContent.trim(), w: g ? g.n.replace(/^\S+\s/,'') : '', go: n };
+    });
+    //  다른 프로그램도 함께 — 전체도구가 있으면 그 목록을 빌려 쓴다
+    try{
+      (window.sdTools ? window.sdTools.groups : []).forEach(function(g){
+        g.items.forEach(function(it){
+          if(it.href) out.push({ t: it.n, w: '다른 프로그램', href: it.href });
+        });
+      });
+    }catch(e){}
+    return out;
+  }
+  function norm(s){ return String(s||'').toLowerCase().replace(/\s/g,''); }
+
+  function draw(){
+    var q = norm((document.getElementById('nv-in')||{}).value);
+    ITEMS = pool().filter(function(o){ return !q || norm(o.t + o.w).indexOf(q) >= 0; });
+    if(SEL >= ITEMS.length) SEL = 0;
+    var L = document.getElementById('nv-list'); if(!L) return;
+    L.innerHTML = ITEMS.length
+      ? ITEMS.map(function(o, i){
+          return '<div class="nv-i' + (i === SEL ? ' sel' : '') + '" data-i="' + i + '">'
+            + '<span>' + o.t + '</span><span class="nv-w">' + o.w + '</span></div>';
+        }).join('')
+      : '<div class="nv-e">찾는 것이 없습니다.</div>';
+    var s = L.querySelector('.nv-i.sel');
+    if(s && s.scrollIntoView) s.scrollIntoView({ block:'nearest' });
+  }
+
+  function pick(i){
+    var o = ITEMS[i]; if(!o) return;
+    nvClose();
+    if(o.href) return void (location.href = o.href);
+    if(typeof window.sw !== 'function') return;
+    nvGroup(groupOf(o.go), true);
+    sw(o.go);
+  }
+
+  window.nvClose = function(){
+    var ov = document.getElementById('nv-ov');
+    if(ov && ov.parentNode) ov.parentNode.removeChild(ov);
+    document.removeEventListener('keydown', key, true);
+  };
+  function key(e){
+    if(e.key === 'Escape'){ e.preventDefault(); return void nvClose(); }
+    if(e.key === 'ArrowDown'){ e.preventDefault(); SEL = Math.min(SEL+1, ITEMS.length-1); return draw(); }
+    if(e.key === 'ArrowUp'){ e.preventDefault(); SEL = Math.max(SEL-1, 0); return draw(); }
+    if(e.key === 'Enter'){ e.preventDefault(); return pick(SEL); }
+  }
+  window.nvFind = function(){
+    if(document.getElementById('nv-ov')) return;
+    SEL = 0;
+    var ov = document.createElement('div');
+    ov.id = 'nv-ov';
+    ov.innerHTML = '<div id="nv-box">'
+      + '<input id="nv-in" placeholder="탭 이름으로 — 예: 단지, 전월세, 도구" autocomplete="off">'
+      + '<div id="nv-list"></div>'
+      + '<div id="nv-foot">↑↓ 고르기 · Enter 이동 · Esc 닫기</div></div>';
+    ov.addEventListener('click', function(e){ if(e.target === ov) nvClose(); });
+    document.body.appendChild(ov);
+    var L = document.getElementById('nv-list');
+    L.addEventListener('click', function(e){
+      var it = e.target.closest ? e.target.closest('.nv-i') : null;
+      if(it) pick(parseInt(it.getAttribute('data-i'), 10));
+    });
+    L.addEventListener('mousemove', function(e){
+      var it = e.target.closest ? e.target.closest('.nv-i') : null;
+      if(!it) return;
+      var i = parseInt(it.getAttribute('data-i'), 10);
+      if(i !== SEL){ SEL = i; draw(); }
+    });
+    var inp = document.getElementById('nv-in');
+    inp.addEventListener('input', function(){ SEL = 0; draw(); });
+    document.addEventListener('keydown', key, true);
+    draw();
+    inp.focus();
+  };
+
+  document.addEventListener('keydown', function(e){
+    if((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K')){
+      e.preventDefault(); nvFind();
+    }
+  });
+
+  // ── sw 를 감싸 묶음을 따라가게 ──────────────────────────────────────
+  function hookSw(){
+    if(typeof window.sw !== 'function') return false;
+    if(window.sw.__nv) return true;
+    var orig = window.sw;
+    var wrapped = function(n){
+      var g = groupOf(n);
+      if(g !== CUR) nvGroup(g, true);      // 다른 묶음의 탭으로 가면 묶음도 옮긴다
+      var out = orig.apply(this, arguments);
+      paintBtns();
+      return out;
+    };
+    wrapped.__nv = true; window.sw = wrapped;
+    return true;
+  }
+
+  function sync(){ counts(); paintBtns(); }
+
+  var tries = 0;
+  (function start(){
+    var ok = buildRow() && hookSw();
+    if(!ok && tries++ < 80) return void setTimeout(start, 200);
+    //  다른 모듈이 탭을 더 붙일 수 있다 — 붙을 때마다 다시 맞춘다
+    var nav = document.querySelector('.tab-nav-inner');
+    if(nav && window.MutationObserver)
+      new MutationObserver(sync).observe(nav, { childList:true });
+    //  열려 있는 탭이 있으면 그 묶음으로 시작한다
+    var on = document.querySelector('.tab-nav-inner .tab-btn.on');
+    if(on) CUR = groupOf(numOf(on));
+    sync();
+    [400, 1200, 3000].forEach(function(ms){ setTimeout(sync, ms); });
+  })();
+
+  window.sdNav = { groups:GROUPS, cur:function(){ return CUR; }, sync:sync,
+                   items:function(){ return ITEMS; }, pool:pool };
 })();
 </script>
 
