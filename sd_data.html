@@ -19391,7 +19391,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.09.27-41';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.09.27-42';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_data.html';      // 이 파일 이름
   var SD_NAME = '실거래가';      // 사람이 부르는 이름
 
@@ -32846,7 +32846,7 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
 </script>
 
 <!-- ══════════════════════════════════════════════════════════════════════
-     매물IN지도 모듈 v1.0  (탭 23)
+     매물IN지도 모듈 v2.0  (탭 23)
      등록된 네이버 매물을 종류별(APT·상가사무실·OP생숙)로 지도에 펼친다.
      손님 브리핑이 주 목적이라 사무실 PC 큰 화면 2단(지도 | 목록)으로 짰다.
      밑바탕(좌표 창고 sd_geo · 카카오 로더 · 단지 사전)은 이미 있는 것을 쓴다.
@@ -32854,12 +32854,19 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
 <style>
 #mip-root{padding:2px 0}
 #mip-root .nv-in{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px 14px}
+/*  거르개 줄 — 매물 탭들과 같은 .filter-btn 을 쓴다 (전에는 #dj-root 전용 클래스를
+    빌려 써서 단추가 맨몸으로 나왔다) */
+#mip-root .mip-fr{display:flex;gap:5px;flex-wrap:wrap;align-items:center}
+#mip-root .mip-in{padding:4px 9px;border:1px solid var(--border);border-radius:7px;
+  background:var(--bg3);color:var(--text);font-size:12px;width:170px}
+#mip-root .mip-in:focus{outline:none;border-color:var(--accent)}
 #mip-root .nv-diff{margin:10px 0;padding:10px 12px;border-radius:10px;font-size:11.5px;line-height:1.8;
   background:#fff8e1;border:1px solid #ffe082;color:#5d4037}
 #mip-root table.nv-t{width:100%;border-collapse:collapse;background:var(--card);font-size:12px}
 #mip-root table.nv-t th{padding:6px 8px;background:var(--bg3);font-size:11px;font-weight:700;
   text-align:left;white-space:nowrap;position:sticky;top:0;z-index:1}
 #mip-root table.nv-t td{padding:5px 8px;border-top:1px solid var(--border);white-space:nowrap}
+#mip-root table.nv-t tbody tr:hover td{background:var(--bg3)}
 #mip-root tr.nv-mine td{color:#c62828;font-weight:700}
 #mip-root .mip-2{display:grid;grid-template-columns:1fr 420px;gap:10px;margin-top:11px}
 #mip-root .mip-mapwrap{border:1px solid var(--border);border-radius:11px;overflow:hidden;background:var(--card)}
@@ -32879,7 +32886,7 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
 </style>
 <script>
 /*  ══════════════════════════════════════════════════════════════════════
-    매물IN지도 (탭 23)
+    매물IN지도 (탭 23)  v2.0
     ──────────────────────────────────────────────────────────────────
     등록된 네이버 매물을 종류별로 지도에 펼친다. 핀 하나 = 단지 하나.
     손님 브리핑이 주 목적이라 사무실 PC 큰 화면 2단(지도 | 목록)으로 짰다.
@@ -32889,6 +32896,21 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
       카카오 SDK 로더·장소검색·주소검색·지역 검증   … window.sdKR
       단지 사전 sd_apt.json (75단지 지번 전부 보유)  … S.aptFind
       단지명 표기 맞추기                            … NVB.normDanji
+      중개업소 거르개                               … G_ag / agHit / agBar
+      매물 상세 모달                                … openNaverDetail(2) / ndSave
+
+    v2.0 에서 고친 것
+      ① 고른 단지 핀을 **파랑**으로 (전에는 녹색이라 자사 빨강과 헷갈렸다)
+      ② 매물구분 · 면적 · 중개업소 거르개 + 「중개업소명 제외」
+         — 종류(APT·상가·OP)를 바꾸면 그 종류의 거르개로 통째 바뀐다
+      ③ 축척 30/50/100/250M 고르기, 기본 100M.
+         **단지를 골라도 축척은 그대로** 두고 중심만 옮긴다
+      ④ 오른쪽 매물을 누르면 매물 탭과 **똑같은 상세 모달** (중복업소명까지).
+         거기서 고쳐 저장하면 이 목록도 같이 새로 그린다
+
+    ⚠ 화면을 통째로 다시 그리면 중개업소 입력칸의 글자와 초점이 날아간다.
+      그래서 거르개 줄(f1~f3)과 입력 줄(f4)을 갈라 두고, 글자가 든 줄은
+      종류를 바꿀 때만 다시 만든다.
 
     ⚠ 이 지도의 값은 **호가 중위**다. S실거래가·단지 브리핑 지도는 **실거래
       중위**를 찍는다. 값이 다른 지도가 셋이 되면 헷갈리므로 화면에 못 박아 둔다.
@@ -32902,34 +32924,123 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
   if(window.__mipOn) return; window.__mipOn = true;
   var TAB = 23;
   var NVB = window.NVB, NVL = window.NVL;
+  var W = window;
 
-  var KIND = 'apt', DEAL = '전체', GONG = 'all', Q = '';
-  var PICK = null;                 // 고른 단지 (표시 이름)
-  var MAP = null, OVER = [], BUSY = false, MSG = '';
+  // ── 상태 ────────────────────────────────────────────────────────────
+  var KIND='apt', DEAL='전체', CAT='all', AREA='all', GONG='all', Q='';
+  var HIDEAG = false;              // 중개업소명 제외
+  var LEVEL  = 4;                  // 카카오 level 4 = 축척 100M (기본)
+  var PICK   = null;               // 고른 단지 (표시 이름)
+  var MAP=null, OVER=[], BUSY=false, MSG='';
+  var CENTER=null;                 // 지도 중심 — 다시 그려도 그대로 둔다
+  var GOTO=null, FIT=false;        // 이번 한 번만 중심 옮기기 / 전체 맞추기
+  var ROWS=[];                     // 오른쪽에 지금 그려 놓은 매물 (상세 모달용)
 
   var KINDS = [
     { k:'apt', n:'🏠 매물(APT)',       g:'naverData' },
     { k:'sg',  n:'🏪 상가·사무실',      g:'naverSanggaData' },
     { k:'op',  n:'🏢 OP·생숙',         g:'naverOpData' }
   ];
+
+  /*  매물구분 — 종류마다 다르다.
+      APT 는 '매매구분'(아파트/분양권)이라 매매 매물에만 걸린다(매물 APT 탭과 같은 규칙).
+      상가는 '매물구분'(상가/사무실), OP 는 '매물구분'(오피스텔/생숙). */
+  var CATS = {
+    apt: [['all','전체'],['아파트','아파트'],['분양권','분양권']],
+    sg : [['all','전체'],['상가','상가'],['사무실','사무실']],
+    op : [['all','전체'],['오피스텔','오피스텔'],['생숙','생숙']]
+  };
+  var CATLBL = { apt:'매매구분', sg:'매물구분', op:'물건구분' };
+
+  /*  면적 — 매물 APT / 상가사무실 / OP생숙 탭에 있는 것과 **똑같은 칸**이다.
+      칸이 달라지면 탭과 지도의 건수가 어긋나 보이므로 값까지 그대로 옮겼다. */
+  var AREAS = {
+    apt: [['all','전체'],['u20','20평이하'],['20','20평대'],['30','30평대'],['84','84㎡'],
+          ['40','40평대'],['50','50평대'],['o60','60평이상']],
+    sg : [['all','전체'],['u10','10평미만'],['10a','10~15평'],['10b','15~20평'],['20','20평대'],
+          ['30','30평대'],['40','40평대'],['50','50평대'],['60','60평대'],['70','70평대'],['80','80평이상']],
+    op : [['all','전체'],['a','50㎡미만'],['b','50~65㎡'],['c','65~84㎡'],['d','84~86㎡'],
+          ['e','86~100㎡'],['f','100~120㎡'],['g','120~140㎡'],['h','140㎡이상']]
+  };
+  /*  카카오 축척 — level 값이 그대로 지도 왼쪽 아래 축척 막대의 값이다.
+      2=30M · 3=50M · 4=100M · 5=250M (그 위는 500M·1KM…) */
+  var LEVELS = [[2,'30M'],[3,'50M'],[4,'100M'],[5,'250M']];
+
   function esc(s){ return NVL.esc(s); }
   function fmtN(n){ return NVL.fmtN(n); }
   function eok(n){ return NVL.eok(n); }
   function med(a){ return NVL.med(a); }
-  function K(){ return window.sdKR && window.sdKR.geo ? window.sdKR : null; }
+  function K(){ return W.sdKR && W.sdKR.geo ? W.sdKR : null; }
+  function $(id){ return document.getElementById(id); }
 
   function rowsOf(kind){
     var g = (KINDS.filter(function(x){ return x.k===kind; })[0]||{}).g;
-    var a = (window.G && window.G[g]) || [];
+    var a = (W.G && W.G[g]) || [];
     return Array.isArray(a) ? a : [];
   }
   //  상가는 「상가_5공구_스마트스퀘어」처럼 접두어가 붙어 있다
   function disp(kind, nm){
-    if(kind === 'sg' && typeof window.sanggaDispNm === 'function')
-      return window.sanggaDispNm(nm) || nm;
+    if(kind === 'sg' && typeof W.sanggaDispNm === 'function')
+      return W.sanggaDispNm(nm) || nm;
     return nm;
   }
   function isMine(r){ return /송도제일|문영은/.test(String(r.중개사||'')); }
+
+  // ── 거르개 ──────────────────────────────────────────────────────────
+  function catHit(r){
+    if(CAT === 'all') return true;
+    if(KIND === 'apt'){
+      //  매물 APT 탭과 같은 규칙 — 매매 매물에만 걸고, 표기가 없으면 통과시킨다
+      if(String(r.거래유형||'') !== '매매') return true;
+      var st = r.매매구분 || r.거래구분 || '';
+      return !st || st === CAT;
+    }
+    if(KIND === 'op') return (r.매물구분 || '오피스텔') === CAT;
+    return (r.매물구분 || '') === CAT;
+  }
+  function areaHit(r){
+    if(AREA === 'all') return true;
+    var s = parseFloat(r.전용) || 0;
+    if(KIND === 'apt'){
+      //  분양평형 우선, 없으면 타입 숫자, 그것도 없으면 전용㎡ ÷ 3.3058 (매물 APT 탭과 동일)
+      var bp = parseInt(r.분양평형) || 0;
+      var tn = parseInt(String(r.타입||'').replace(/[^0-9].*/,'')) || 0;
+      var py = bp>0 ? bp : (tn>0 ? Math.round(tn/3.3058) : (s>0 ? Math.round(s/3.3058) : 0));
+      if(AREA==='u20') return py < 20;
+      if(AREA==='20')  return py>=20 && py<30;
+      if(AREA==='30')  return py>=30 && py<40;
+      if(AREA==='84')  return s>=83.5 && s<85.5;
+      if(AREA==='40')  return py>=40 && py<50;
+      if(AREA==='50')  return py>=50 && py<60;
+      if(AREA==='o60') return py >= 60;
+      return true;
+    }
+    if(KIND === 'sg'){
+      var ac = s / 3.3058;
+      if(AREA==='u10') return ac < 10;
+      if(AREA==='10a') return ac>=10 && ac<15;
+      if(AREA==='10b') return ac>=15 && ac<20;
+      if(AREA==='20')  return ac>=20 && ac<30;
+      if(AREA==='30')  return ac>=30 && ac<40;
+      if(AREA==='40')  return ac>=40 && ac<50;
+      if(AREA==='50')  return ac>=50 && ac<60;
+      if(AREA==='60')  return ac>=60 && ac<70;
+      if(AREA==='70')  return ac>=70 && ac<80;
+      if(AREA==='80')  return ac >= 80;
+      return true;
+    }
+    //  OP·생숙 — S실거래가(오피스텔)와 같은 칸
+    if(typeof W.opAreaHit === 'function') return W.opAreaHit(s, AREA);
+    var B = {a:[0,50],b:[50,65],c:[65,84],d:[84,86],e:[86,100],f:[100,120],g:[120,140],h:[140,1e9]}[AREA];
+    return !B || (s>=B[0] && s<B[1]);
+  }
+  //  중개업소 거르개 — 매물 탭들이 쓰는 그 장치를 'mip' 칸 하나 더 만들어 그대로 쓴다
+  function agSt(){ return W.G_ag ? W.G_ag.mip : null; }
+  function agOk(r){
+    var st = agSt();
+    if(!st || typeof W.agHit !== 'function') return true;
+    return W.agHit(r, st);
+  }
 
   /*  좌표 찾기 — 이름이 갈려도 찾도록 정규화 열쇠로 색인한다.
       네이버는 「송도더샵7단지그린애비뉴」, 실거래·좌표 창고는
@@ -32962,6 +33073,9 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
     var rows = rowsOf(KIND).filter(function(r){
       if(DEAL !== '전체' && String(r.거래유형||'') !== DEAL) return false;
       if(GONG !== 'all' && String(r.공구||'') !== GONG) return false;
+      if(!catHit(r)) return false;
+      if(!areaHit(r)) return false;
+      if(!agOk(r)) return false;
       return true;
     });
     var by = {};
@@ -32991,59 +33105,68 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
   // ── 화면 ────────────────────────────────────────────────────────────
   function chips(list, cur, fn){
     return list.map(function(x){
-      var v = x[0], t = x[1];
-      return '<button class="dj-bs" onclick="' + fn + '(\'' + v + '\')"'
-        + (cur === v ? ' style="border-color:transparent;background:var(--accent);color:#fff"' : '')
-        + '>' + esc(t) + '</button>';
+      var v = String(x[0]), t = x[1];
+      return '<button class="filter-btn' + (String(cur) === v ? ' on' : '') + '"'
+        + ' onclick="' + fn + '(\'' + v + '\')">' + esc(t) + '</button>';
     }).join('');
   }
+  function lbl(t){ return '<span class="filter-label" style="min-width:auto;white-space:nowrap">' + t + '</span>'; }
 
-  function paint(){
-    var root = document.getElementById('mip-root'); if(!root) return;
-    var all = agg();
-    var have = all.filter(function(o){ return o.geo; });
-    var miss = all.filter(function(o){ return !o.geo; });
-    var nRow = all.reduce(function(a,o){ return a + o.n; }, 0);
-    var kindNm = (KINDS.filter(function(x){ return x.k===KIND; })[0]||{}).n || '';
+  //  거르개 줄 — 글자칸이 없는 줄만 여기서 다시 만든다
+  function bars(){
+    var f1 = $('mip-f1'), f2 = $('mip-f2'), f3 = $('mip-f3');
+    if(!f1) return;
+    f1.innerHTML = chips(KINDS.map(function(x){ return [x.k, x.n]; }), KIND, 'mipKind')
+      + '<span style="width:12px"></span>'
+      + lbl('거래') + chips([['전체','전체'],['매매','매매'],['전세','전세'],['월세','월세']], DEAL, 'mipDeal');
+
+    f2.innerHTML = lbl(CATLBL[KIND]) + chips(CATS[KIND], CAT, 'mipCat')
+      + '<span style="width:12px"></span>'
+      + lbl('면적') + chips(AREAS[KIND], AREA, 'mipArea');
 
     //  공구는 값이 둘 이상일 때만 보여 준다
     var gs = {};
     rowsOf(KIND).forEach(function(r){ if(r.공구) gs[String(r.공구)] = 1; });
     var gl = Object.keys(gs).sort(function(a,b){ return (+a)-(+b); });
-
-    var h = '<div class="nv-in">'
-      + '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">'
-      +   chips(KINDS.map(function(x){ return [x.k, x.n]; }), KIND, 'mipKind')
-      +   '<span style="width:10px"></span>'
-      +   chips([['전체','거래 전체'],['매매','매매'],['전세','전세'],['월세','월세']], DEAL, 'mipDeal')
-      + '</div>';
+    var h3 = '';
     if(gl.length > 1)
-      h += '<div style="display:flex;gap:5px;flex-wrap:wrap;align-items:center;margin-top:7px">'
-        + '<span style="font-size:11.5px;color:var(--text3)">공구</span>'
-        + chips([['all','전체']].concat(gl.map(function(g){ return [g, g+'공구']; })), GONG, 'mipGong')
-        + '</div>';
-    h += '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:8px">'
-      + '<input class="dj-in" style="width:180px;padding:5px 9px;font-size:12px" '
-      +   'placeholder="단지 찾기" value="' + esc(Q) + '" oninput="mipQ(this.value)">'
-      + '<button class="dj-bs" onclick="mipFill()"' + (BUSY ? ' disabled style="opacity:.5"' : '') + '>'
-      +   (miss.length ? '📍 좌표 찾기 ' + miss.length + '곳' : '📍 좌표 다시 찾기') + '</button>'
-      + (PICK ? '<button class="dj-bs" onclick="mipPick(null)">↩ 전체 보기</button>' : '')
-      + '<span style="font-size:11.5px;color:var(--text3)">'
-      +   '단지 <b>' + all.length + '곳</b> · 매물 <b>' + fmtN(nRow) + '건</b> · '
-      +   '지도에 <b>' + have.length + '곳</b>'
-      +   (miss.length ? ' · <b style="color:#c80">좌표 없는 곳 ' + miss.length + '</b>' : '')
-      + '</span>'
-      + '<span id="mip-msg" style="font-size:12px;color:var(--text3)">' + MSG + '</span>'
-      + '</div></div>';
+      h3 += lbl('공구') + chips([['all','전체']].concat(gl.map(function(g){ return [g, g+'공구']; })), GONG, 'mipGong')
+          + '<span style="width:12px"></span>';
+    h3 += lbl('축척') + chips(LEVELS, LEVEL, 'mipLevel')
+       + '<button class="filter-btn" onclick="mipFit()" title="지금 보이는 단지가 모두 들어오도록 한 번 맞춥니다">⤢ 전체 맞춤</button>';
+    f3.innerHTML = h3;
+  }
+  function lvlChips(){   // 손으로 확대·축소했을 때 축척 칸의 표시만 맞춘다
+    var f3 = $('mip-f3'); if(!f3) return;
+    f3.querySelectorAll('button.filter-btn').forEach(function(b){
+      var m = /mipLevel\('(\d+)'\)/.exec(b.getAttribute('onclick')||'');
+      if(!m) return;
+      b.classList.toggle('on', +m[1] === LEVEL);
+    });
+  }
 
-    h += '<div class="mip-2">'
-      + '<div class="mip-mapwrap"><div id="mip-map"></div></div>'
-      + '<div class="mip-side" id="mip-side"></div>'
-      + '</div>';
+  //  건수·좌표 안내 — 목록과 지도를 다시 그릴 때마다 여기만 고친다
+  function stats(all){
+    var have = all.filter(function(o){ return o.geo; });
+    var miss = all.filter(function(o){ return !o.geo; });
+    var nRow = all.reduce(function(a,o){ return a + o.n; }, 0);
+    var st = $('mip-stat');
+    if(st) st.innerHTML = '단지 <b>' + all.length + '곳</b> · 매물 <b>' + fmtN(nRow) + '건</b> · '
+      + '지도에 <b>' + have.length + '곳</b>'
+      + (miss.length ? ' · <b style="color:#c80">좌표 없는 곳 ' + miss.length + '</b>' : '');
+    var fb = $('mip-fillbtn');
+    if(fb){
+      fb.textContent = miss.length ? '📍 좌표 찾기 ' + miss.length + '곳' : '📍 좌표 다시 찾기';
+      fb.disabled = !!BUSY; fb.style.opacity = BUSY ? '.5' : '';
+    }
+    var bk = $('mip-backbtn');
+    if(bk) bk.style.display = PICK ? '' : 'none';
 
     /*  못 찾은 단지를 반드시 적는다 — 조용히 빠지면 「매물이 없다」고 읽힌다 */
-    if(miss.length){
-      h += '<div class="nv-diff" style="margin-top:10px">'
+    var mz = $('mip-miss');
+    if(mz){
+      mz.innerHTML = !miss.length ? '' :
+        '<div class="nv-diff" style="margin-top:10px">'
         + '<b>⚠ 좌표를 못 찾아 지도에 안 나오는 단지 ' + miss.length + '곳</b> '
         + '(매물 ' + fmtN(miss.reduce(function(a,o){ return a+o.n; },0)) + '건) — '
         + '<b>지도에 없다고 매물이 없는 것이 아닙니다.</b> '
@@ -33052,24 +33175,26 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
         + miss.slice(0, 30).map(function(o){ return esc(o.name) + ' (' + o.n + ')'; }).join(' · ')
         + (miss.length > 30 ? ' 외 ' + (miss.length-30) + '곳' : '') + '</div></div>';
     }
+    return have;
+  }
 
-    h += '<div style="font-size:11px;color:var(--text3);margin-top:9px;line-height:1.75">'
-      + '핀의 값은 <b>지금 나와 있는 매물의 매매 호가 중위</b>입니다 — '
-      + '<b>실거래가가 아닙니다.</b> 실거래 중위를 보시려면 <b>S실거래가</b>나 '
-      + '<b>단지 브리핑</b> 지도를 쓰십시오. '
-      + '테두리가 굵은 핀은 <b>우리 매물(★)이 있는 단지</b>입니다.'
-      + '</div>';
-
-    root.innerHTML = h;
+  //  자료만 다시 — 거르개 줄은 건드리지 않는다 (입력칸의 글자·초점을 지키려고)
+  function data(){
+    var all = agg();
+    var have = stats(all);
     side(all);
     drawMap(have);
+    if(W.agCount) { try{ W.agCount('mip'); }catch(e){} }
   }
+  //  거르개 줄까지 다시
+  function refresh(){ bars(); data(); }
 
   //  오른쪽 — 단지를 고르기 전에는 단지 목록, 고르면 그 단지 매물
   function side(all){
-    var box = document.getElementById('mip-side'); if(!box) return;
+    var box = $('mip-side'); if(!box) return;
+    ROWS = [];
     if(!PICK){
-      var h = '<div class="mip-h">단지 ' + all.length + '곳 <span>매물이 많은 차례</span></div>'
+      var h = '<div class="mip-h">단지 ' + all.length + '곳 <span>매물이 많은 차례 · 누르면 그 단지 매물</span></div>'
         + '<div class="mip-scroll"><table class="nv-t"><tbody>';
       all.forEach(function(o){
         h += '<tr' + (o.mine ? ' class="nv-mine"' : '') + ' style="cursor:pointer" '
@@ -33085,16 +33210,17 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
     }
     var one = all.filter(function(o){ return o.name === PICK; })[0];
     if(!one){ box.innerHTML = '<div class="mip-h">고른 단지가 지금 거르개에 없습니다</div>'; return; }
-    var rows = one.rows.slice().sort(function(a,b){ return (a.호가||0) - (b.호가||0); });
+    ROWS = one.rows.slice().sort(function(a,b){ return (a.호가||0) - (b.호가||0); });
     var h2 = '<div class="mip-h">' + esc(one.name)
       + ' <span>' + one.n + '건'
       + (one.med != null ? ' · 매매 중위 ' + eok(one.med) : '')
-      + (one.mine ? ' · 우리 ★' + one.mine : '') + '</span></div>'
+      + (one.mine ? ' · 우리 ★' + one.mine : '')
+      + ' · 줄을 누르면 상세·수정</span></div>'
       + '<div class="mip-scroll"><table class="nv-t"><thead><tr>'
       + '<th>거래</th><th>전용</th><th>동</th><th>층</th><th style="text-align:right">호가</th>'
-      + '<th>중개업소</th><th>확인</th></tr></thead><tbody>';
-    rows.forEach(function(r){
-      h2 += '<tr' + (isMine(r) ? ' class="nv-mine"' : '') + '>'
+      + (HIDEAG ? '' : '<th>중개업소</th>') + '<th>확인</th></tr></thead><tbody>';
+    ROWS.forEach(function(r, i){
+      h2 += '<tr' + (isMine(r) ? ' class="nv-mine"' : '') + ' style="cursor:pointer" onclick="mipRow(' + i + ')">'
         + '<td>' + esc(r.거래유형) + '</td>'
         + '<td>' + esc(r.전용) + '</td>'
         + '<td>' + esc(r.동 === '-' ? '' : r.동) + '</td>'
@@ -33102,36 +33228,66 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
         + '<td style="text-align:right"><b>' + (r.호가 ? eok(r.호가) : '') + '</b>'
         +   (r.월세 ? ' <span style="font-size:10.5px;color:var(--text3)">/' + fmtN(r.월세) + '</span>' : '')
         + '</td>'
-        + '<td>' + esc(r.중개사) + (r.중복등록수 ? ' <span style="color:var(--text3)">외'
-        +   r.중복등록수 + '</span>' : '') + '</td>'
+        + (HIDEAG ? '' : ('<td>' + esc(r.중개사) + (r.중복등록수 ? ' <span style="color:var(--text3)">외'
+        +   r.중복등록수 + '</span>' : '') + '</td>'))
         + '<td style="font-size:10.5px;color:var(--text3)">' + esc(r.입력일) + '</td></tr>';
     });
     box.innerHTML = h2 + '</tbody></table></div>';
   }
 
   // ── 지도 ────────────────────────────────────────────────────────────
+  /*  지도는 **한 번만** 만들고 그 뒤로는 핀만 갈아 끼운다.
+      다시 만들면 대표님이 맞춰 놓은 축척과 위치가 날아간다. */
+  function ensureMap(cb){
+    var S = K(); if(!S) return cb(null);
+    S.kakaoReady().then(function(){
+      var box = $('mip-map'); if(!box) return cb(null);
+      if(MAP && MAP.__box === box) return cb(MAP);
+      box.innerHTML = '';
+      var c = CENTER || { lat:37.3894, lng:126.6390 };   // 송도 어림 중심
+      MAP = new kakao.maps.Map(box, { center:new kakao.maps.LatLng(c.lat, c.lng), level:LEVEL });
+      MAP.__box = box;
+      kakao.maps.event.addListener(MAP, 'zoom_changed', function(){
+        LEVEL = MAP.getLevel(); lvlChips();
+      });
+      kakao.maps.event.addListener(MAP, 'center_changed', function(){
+        var p = MAP.getCenter(); CENTER = { lat:p.getLat(), lng:p.getLng() };
+      });
+      cb(MAP);
+    }).catch(function(e){
+      var box = $('mip-map');
+      if(box) box.innerHTML = note('지도를 불러오지 못했습니다 — ' + esc(e && e.message || e));
+      MAP = null; cb(null);
+    });
+  }
+
   function drawMap(pts){
-    var el = document.getElementById('mip-map'); if(!el) return;
+    var el = $('mip-map'); if(!el) return;
     var S = K();
-    if(!S){ el.innerHTML = note('지도 기능을 불러오지 못했습니다 — S실거래가 탭을 한 번 열어 주세요.'); return; }
+    if(!S){ el.innerHTML = note('지도 기능을 불러오지 못했습니다 — S실거래가 탭을 한 번 열어 주세요.'); MAP=null; return; }
     if(!pts.length){
       el.innerHTML = note('지도에 찍을 좌표가 아직 없습니다.<br>'
         + '위의 <b>📍 좌표 찾기</b>를 한 번 눌러 주세요 — 한 번만 찾으면 사무소 전체가 같이 씁니다.');
-      return;
+      MAP = null; return;
     }
-    S.kakaoReady().then(function(){
-      var box = document.getElementById('mip-map'); if(!box) return;
-      box.innerHTML = '';
-      MAP = new kakao.maps.Map(box, {
-        center: new kakao.maps.LatLng(pts[0].geo.lat, pts[0].geo.lng), level: 6 });
+    //  처음 만들 때는 지금 보이는 단지들의 한가운데에서 시작한다
+    if(!MAP && !CENTER){
+      var la=0, ln=0;
+      pts.forEach(function(o){ la += o.geo.lat; ln += o.geo.lng; });
+      CENTER = { lat: la/pts.length, lng: ln/pts.length };
+    }
+    ensureMap(function(M){
+      if(!M) return;
+      try{ M.relayout(); }catch(e){}
+      OVER.forEach(function(o){ o.setMap(null); });
       OVER = [];
       var b = new kakao.maps.LatLngBounds();
-      var mx = Math.max.apply(null, pts.map(function(o){ return o.n; }));
       pts.forEach(function(o){
         var ll = new kakao.maps.LatLng(o.geo.lat, o.geo.lng);
         b.extend(ll);
         var sel = (PICK === o.name);
-        var bg  = sel ? 'var(--accent3)' : (o.mine ? '#c62828' : 'var(--accent)');
+        //  고른 단지 = 파랑 · 우리 매물이 있는 단지 = 빨강 · 그 밖 = 기본색
+        var bg  = sel ? '#1d4ed8' : (o.mine ? '#c62828' : 'var(--accent)');
         //  핀은 두 줄 — 위는 단지 이름, 아래는 건수와 중위 호가.
         //  좁게 만들어 옆 단지를 덜 가린다 (S실거래가 지도에서 배운 것).
         var d = document.createElement('div');
@@ -33140,7 +33296,8 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
         d.innerHTML = '<div style="background:' + bg + ';color:#fff;border-radius:6px;'
           + 'padding:2px 6px;box-shadow:0 1px 3px rgba(0,0,0,.32);line-height:1.2;'
           + 'min-width:74px;max-width:110px;text-align:center'
-          + (sel ? ';outline:2px solid #fff' : '') + (o.mine ? ';border:1.5px solid #fff' : '') + '">'
+          + (sel ? ';outline:2px solid #fff;box-shadow:0 0 0 2px #1d4ed8,0 2px 6px rgba(0,0,0,.4)' : '')
+          + (o.mine && !sel ? ';border:1.5px solid #fff' : '') + '">'
           +   '<div style="font-size:9px;opacity:.92;overflow:hidden;text-overflow:ellipsis">'
           +     esc(o.name) + '</div>'
           +   '<div style="font-size:10.5px;font-weight:700">' + o.n + '건'
@@ -33149,15 +33306,15 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
           + '</div>'
           + '<div style="width:0;height:0;margin:0 auto;border-left:4px solid transparent;'
           + 'border-right:4px solid transparent;border-top:5px solid ' + bg + '"></div>';
-        d.onclick = function(){ window.mipPick(o.name); };
+        d.onclick = function(){ W.mipPick(o.name); };
         var ov = new kakao.maps.CustomOverlay({ position: ll, content: d, yAnchor: 1, clickable: true });
-        ov.setMap(MAP); OVER.push(ov);
+        ov.setMap(M); OVER.push(ov);
       });
-      if(pts.length > 1) MAP.setBounds(b);
-      else MAP.setLevel(4);
-    }).catch(function(e){
-      var box = document.getElementById('mip-map');
-      if(box) box.innerHTML = note('지도를 불러오지 못했습니다 — ' + esc(e && e.message || e));
+      /*  축척은 대표님이 정한 대로 둔다. 단지를 골라도 중심만 옮긴다.
+          「전체 맞춤」을 누른 때만 한 번 맞춘다. */
+      if(FIT){ FIT = false; if(pts.length > 1) M.setBounds(b); else M.setLevel(LEVEL); }
+      else if(GOTO){ M.setCenter(new kakao.maps.LatLng(GOTO.lat, GOTO.lng)); }
+      GOTO = null;
     });
   }
   function note(t){
@@ -33167,13 +33324,13 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
   }
   function msg(t, c){
     MSG = t ? '<span style="color:' + (c||'var(--text3)') + '">' + t + '</span>' : '';
-    var e = document.getElementById('mip-msg'); if(e) e.innerHTML = MSG;
+    var e = $('mip-msg'); if(e) e.innerHTML = MSG;
   }
 
   /*  좌표 채우기 — 지번이 가장 정확하다. 아파트는 sd_apt.json 에 지번이
       다 있으므로 거의 다 찍힌다. 상가·오피스텔은 이름으로 찾되 지역을
       반드시 검증한다 (이름만으로 찾다가 대구로 간 적이 있다). */
-  window.mipFill = async function(){
+  W.mipFill = async function(){
     if(BUSY) return;
     var S = K();
     if(!S){ msg('지도 기능을 불러오지 못했습니다 — S실거래가 탭을 한 번 열어 주세요.', '#c33'); return; }
@@ -33181,6 +33338,7 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
     if(!todo.length){ msg('좌표를 모두 갖고 있습니다.', '#0a7'); return; }
     if(todo.length > 80) todo = todo.slice(0, 80);
     BUSY = true;
+    var fb = $('mip-fillbtn'); if(fb){ fb.disabled = true; fb.style.opacity = '.5'; }
     var GEO = S.geo(), sgg = '28185';          // 연수구 — 이 사무소가 다루는 지역
     var got = 0, bad = 0;
     try{
@@ -33220,39 +33378,162 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
       try{ await S.saveGeo(); }catch(e){}
     }catch(e){
       msg('좌표를 찾다 막혔습니다 — ' + esc(e && e.message || e), '#c33');
-      BUSY = false; return;
+      BUSY = false; if(fb){ fb.disabled=false; fb.style.opacity=''; }
+      return;
     }
     BUSY = false;
     GIDX = null;                         // 색인 다시 만들기
-    paint();
+    data();
     msg('좌표 ' + got + '곳을 찾았습니다'
       + (bad ? ' · ' + bad + '곳은 못 찾았습니다 (이름이 카카오에 없을 수 있습니다)' : '')
       + '. 찾은 좌표는 사무소 전체가 같이 씁니다.', got ? '#0a7' : '#c80');
   };
 
-  window.mipKind = function(k){ KIND = k; PICK = null; Q = ''; MSG = ''; paint(); };
-  window.mipDeal = function(d){ DEAL = d; PICK = null; paint(); };
-  window.mipGong = function(g){ GONG = g; PICK = null; paint(); };
-  window.mipQ = function(v){
-    Q = v;
-    var all = agg();
-    side(all);
-    drawMap(all.filter(function(o){ return o.geo; }));
+  // ── 바깥에서 부르는 것들 ────────────────────────────────────────────
+  W.mipKind = function(k){
+    if(KIND === k) return;
+    KIND = k; PICK = null; Q = ''; MSG = '';
+    CAT = 'all'; AREA = 'all'; GONG = 'all';   // 종류가 바뀌면 이후 거르개도 통째로 바뀐다
+    var qi = $('mip-q'); if(qi) qi.value = '';
+    agReset();
+    refresh();
   };
-  window.mipPick = function(nm){
+  W.mipDeal  = function(d){ DEAL = d; PICK = null; refresh(); };
+  W.mipCat   = function(v){ CAT  = v; PICK = null; refresh(); };
+  W.mipArea  = function(v){ AREA = v; PICK = null; refresh(); };
+  W.mipGong  = function(g){ GONG = g; PICK = null; refresh(); };
+  W.mipLevel = function(v){
+    LEVEL = parseInt(v, 10) || 4;
+    lvlChips();
+    if(MAP) MAP.setLevel(LEVEL);
+  };
+  W.mipFit = function(){ FIT = true; data(); };
+  W.mipHideAg = function(on){ HIDEAG = !!on; side(agg()); };
+  W.mipQ = function(v){ Q = v; data(); };
+  W.mipPick = function(nm){
     PICK = nm || null;
-    var all = agg();
-    side(all);
-    drawMap(all.filter(function(o){ return o.geo; }));
+    //  고른 단지로 **중심만** 옮긴다 — 축척은 대표님이 정한 그대로
+    if(PICK){
+      var g = geoOf(PICK);
+      if(g) GOTO = { lat:g.lat, lng:g.lng };
+    }
+    data();
   };
-  window.sdMip = { tab:TAB, agg:agg, geoOf:geoOf,
-                   state:function(){ return { kind:KIND, deal:DEAL, gong:GONG, pick:PICK }; } };
+  /*  오른쪽 목록의 매물 한 건 → 매물 탭과 똑같은 상세 모달.
+      APT 는 G.naverData 의 자리번호로, OP·상가는 _ndCurrentData 로 연다.
+      (이 구분을 틀리면 저장이 엉뚱한 배열로 간다 — ndSave 주석 참조) */
+  W.mipRow = function(i){
+    var r = ROWS[i]; if(!r) return;
+    var arr = rowsOf(KIND), idx = arr.indexOf(r);
+    if(KIND === 'apt'){
+      if(idx < 0 || typeof W.openNaverDetail !== 'function'){
+        msg('이 매물을 매물(APT) 목록에서 찾지 못했습니다.', '#c33'); return;
+      }
+      W.openNaverDetail(idx);
+    } else {
+      if(typeof W.openNaverDetail2 !== 'function'){
+        msg('상세 모달을 불러오지 못했습니다.', '#c33'); return;
+      }
+      W.openNaverDetail2(r, idx, KIND === 'op' ? 'op' : 'sangga');
+    }
+  };
+  W.sdMip = { tab:TAB, agg:agg, geoOf:geoOf, rows:function(){ return ROWS; },
+              state:function(){ return { kind:KIND, deal:DEAL, cat:CAT, area:AREA,
+                                         gong:GONG, level:LEVEL, hideAg:HIDEAG, pick:PICK }; } };
+
+  // ── 중개업소 거르개 이어 붙이기 ─────────────────────────────────────
+  /*  매물 탭들이 쓰는 장치에 'mip' 칸을 하나 더 낸다.
+      agData 는 어느 자료를 셀지, agRender 는 어느 화면을 다시 그릴지만 알려주면 된다. */
+  function agReset(){
+    var st = agSt(); if(!st) return;
+    st.mode='all'; st.q=''; st.picks=[]; st.qOk=''; st.applied='all';
+    var bar = $('ag-mip-bar');
+    if(bar){ bar.removeAttribute('data-on'); bar.innerHTML=''; }
+    if(W.agMount) { try{ W.agMount('mip'); }catch(e){} }
+  }
+  function hookAg(){
+    if(!W.G_ag || typeof W.agData !== 'function' || typeof W.agRender !== 'function') return false;
+    if(W.agData.__mip) return true;
+    if(!W.G_ag.mip) W.G_ag.mip = { mode:'all', q:'', picks:[], qOk:'', applied:'all' };
+    var od = W.agData;
+    var wd = function(tab){ return tab === 'mip' ? rowsOf(KIND) : od.apply(this, arguments); };
+    wd.__mip = true; W.agData = wd;
+    var orr = W.agRender;
+    var wr = function(tab){
+      if(tab === 'mip'){ data(); return; }
+      return orr.apply(this, arguments);
+    };
+    wr.__mip = true; W.agRender = wr;
+    //  후보 목록 바깥을 누르면 닫는다 (agMount 의 목록에는 'mip' 이 없다)
+    if(!W.__mipAgDoc){
+      W.__mipAgDoc = true;
+      document.addEventListener('mousedown', function(e){
+        var b = $('ag-mip-box');
+        if(b && !b.contains(e.target) && W.agSugClose) W.agSugClose('mip');
+      });
+    }
+    return true;
+  }
+  /*  모달에서 고쳐 저장하면 이 목록도 같이 새로 그린다.
+      ndSave 는 renderTab6/7/8 만 다시 그리므로 지도 쪽은 옛 값이 남는다. */
+  function hookSave(){
+    if(typeof W.ndSave !== 'function') return false;
+    if(W.ndSave.__mip) return true;
+    var o = W.ndSave;
+    var w = function(){
+      var out = o.apply(this, arguments);
+      try{ if($('mip-f1')) data(); }catch(e){}
+      return out;
+    };
+    w.__mip = true; W.ndSave = w;
+    return true;
+  }
 
   // ── 탭 만들기 ───────────────────────────────────────────────────────
+  function shell(root){
+    root.innerHTML =
+      '<div class="nv-in">'
+      + '<div class="mip-fr" id="mip-f1"></div>'
+      + '<div class="mip-fr" id="mip-f2" style="margin-top:7px"></div>'
+      + '<div class="mip-fr" id="mip-f3" style="margin-top:7px"></div>'
+      + '<div class="mip-fr" id="mip-f4" style="margin-top:8px">'
+      +   '<span id="ag-mip-bar" style="display:inline-flex;align-items:center;gap:5px;flex-wrap:wrap"></span>'
+      +   '<label style="display:inline-flex;align-items:center;gap:4px;font-size:11.5px;color:var(--text2);cursor:pointer;margin-left:6px">'
+      +     '<input type="checkbox" id="mip-hideag" onchange="mipHideAg(this.checked)"> 중개업소명 제외</label>'
+      +   '<span style="width:10px"></span>'
+      +   '<input class="mip-in" id="mip-q" type="text" placeholder="단지 찾기" oninput="mipQ(this.value)">'
+      +   '<button class="filter-btn" id="mip-fillbtn" onclick="mipFill()">📍 좌표 찾기</button>'
+      +   '<button class="filter-btn" id="mip-backbtn" style="display:none" onclick="mipPick(null)">↩ 전체 보기</button>'
+      +   '<span id="mip-stat" style="font-size:11.5px;color:var(--text3)"></span>'
+      +   '<span id="mip-msg" style="font-size:12px;color:var(--text3)"></span>'
+      + '</div></div>'
+      + '<div class="mip-2">'
+      +   '<div class="mip-mapwrap"><div id="mip-map"></div></div>'
+      +   '<div class="mip-side" id="mip-side"></div>'
+      + '</div>'
+      + '<div id="mip-miss"></div>'
+      + '<div style="font-size:11px;color:var(--text3);margin-top:9px;line-height:1.75">'
+      +   '핀의 값은 <b>지금 나와 있는 매물의 매매 호가 중위</b>입니다 — '
+      +   '<b>실거래가가 아닙니다.</b> 실거래 중위를 보시려면 <b>S실거래가</b>나 '
+      +   '<b>단지 브리핑</b> 지도를 쓰십시오. '
+      +   '<b style="color:#1d4ed8">파란 핀</b>은 지금 고른 단지, '
+      +   '<b style="color:#c62828">빨간 핀(★)</b>은 우리 매물이 있는 단지입니다.'
+      + '</div>';
+  }
+  function paint(){
+    var root = $('mip-root'); if(!root) return;
+    if(!$('mip-f1')) shell(root);
+    hookAg(); hookSave();
+    if(W.agMount) { try{ W.agMount('mip'); }catch(e){} }
+    var qi = $('mip-q'); if(qi && qi.value !== Q) qi.value = Q;
+    var hi = $('mip-hideag'); if(hi) hi.checked = HIDEAG;
+    refresh();
+  }
+
   function build(){
-    if(document.getElementById('tc' + TAB)) return true;
+    if($('tc' + TAB)) return true;
     var nav  = document.querySelector('.tab-nav-inner') || document.querySelector('.tab-nav');
-    var host = document.getElementById('tc0');
+    var host = $('tc0');
     if(!nav || !host || !host.parentNode) return false;
     var b = document.createElement('button');
     b.className = 'tab-btn';
@@ -33266,15 +33547,15 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
     return true;
   }
   function hookSw(){
-    if(typeof window.sw !== 'function') return false;
-    if(window.sw.__mip) return true;
-    var orig = window.sw;
+    if(typeof W.sw !== 'function') return false;
+    if(W.sw.__mip) return true;
+    var orig = W.sw;
     var w = function(n){
       var out = orig.apply(this, arguments);
       if(n === TAB){ try{ paint(); }catch(e){ console.warn('[매물IN지도]', e); } }
       return out;
     };
-    w.__mip = true; window.sw = w;
+    w.__mip = true; W.sw = w;
     return true;
   }
   var tries = 0;
