@@ -19391,7 +19391,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.09.27-39';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.09.27-40';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_data.html';      // 이 파일 이름
   var SD_NAME = '실거래가';      // 사람이 부르는 이름
 
@@ -31930,6 +31930,8 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
   var SEL = {};            // 고른 회차 id
   var REP = null;          // 지금 만든 보고서
   var REPMETA = null;      // 인쇄 머리글에 쓸 제목·부제
+  var ADPICK = null;       // 광고 문안을 만들 대상 매물 (null 이면 알아서 고름)
+  var ADTXT = [];          // 만든 문안 (복사 단추가 번호로 집는다)
   var Q = '', FK = 'all', FB = 'all', OPEN = {};
   var READY = false, BUSY = false;
 
@@ -32138,6 +32140,7 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
       h += '</div>';
     }
     h += party(rows, AG, S);
+    h += adBox(rows, AG, S, e.danji);
     h += table(kind, rows);
     h += '<div style="font-size:11px;color:var(--text3);margin-top:10px;line-height:1.75;'
       + 'border-top:1px solid var(--border);padding-top:9px">'
@@ -32145,6 +32148,169 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
       + '금액은 실거래가가 아니라 <b>지금 나와 있는 호가</b>입니다. '
       + '법령 조항은 작성 시점 기준이며, 개별 사안은 등기부·현장 확인이 따로 필요합니다.'
       + '</div>';
+    return h;
+  }
+
+  /*  ── 광고 문안 만들기 ────────────────────────────────────────────────
+      MR.K 화면을 보고 넣었다. 지키는 것 하나 — **문안마다 「근거」를 붙인다.**
+      근거를 못 대는 문안은 아예 만들지 않는다. 광고는 대표님 등록번호를 달고
+      나가는 글이고, 없는 사실을 적으면 공인중개사법 §18-2 부당 표시·광고가 된다.
+      그래서 「전세 끼고 실투자」는 전세가 실제로 나와 있을 때만, 「시세보다 싸다」는
+      그 매물이 정말 중위값 아래일 때만 만든다.
+
+      이 칸은 인쇄에서 뺀다(.no-print) — 손님께 드리는 보고서에 들어갈 글이 아니다. */
+  function adBox(rows, AG, S, danji){
+    var sale = rows.filter(function(r){ return r.거래구분==='매매'; });
+    if(!rows.length) return '';
+    var ps = sale.map(function(r){ return r._p; });
+    var m = med(ps), lo = ps.length?Math.min.apply(null,ps):null, hi = ps.length?Math.max.apply(null,ps):null;
+
+    //  대상 매물 — 우리 매물이 있으면 그것부터. 광고를 내는 건 우리 물건이다.
+    var mine = rows.filter(function(r){ return r.자사매물==='★'; });
+    var order = mine.concat(rows.filter(function(r){ return r.자사매물!=='★'; }));
+    var T = (ADPICK != null && order[ADPICK]) ? order[ADPICK] : (order[0] || null);
+    var aT = T ? AG.filter(function(a){ return a.k === T['전용m²']; })[0] : null;
+    var cheapT = T ? S.cheap.filter(function(c){ return c.r === T; })[0] : null;
+
+    function lbl(r, i){
+      return (r.자사매물==='★' ? '★ ' : '') + (i+1) + '. '
+        + [r.거래구분, r['전용m²'], r.동, r.층, r.가격].filter(Boolean).join(' · ');
+    }
+    /*  머리글까지 .no-print 안에 넣는다 — 밖에 두면 인쇄된 보고서에
+        「📣 광고 문안 만들기」 제목만 덩그러니 남는다(시험이 잡았다). */
+    var h = '<div class="no-print">'
+      + head('📣 광고 문안 만들기', '문안마다 무엇을 근거로 썼는지 함께 적습니다');
+    h += '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px">'
+      + '<span style="font-size:11.5px;color:var(--text3)">대상 매물</span>'
+      + '<select class="dj-in" style="padding:5px 9px;font-size:12px;max-width:420px" '
+      +   'onchange="nvbAdPick(this.value)">'
+      +   order.slice(0, 60).map(function(r,i){
+            return '<option value="' + i + '"' + ((T===r) ? ' selected' : '') + '>'
+              + esc(lbl(r,i)) + '</option>'; }).join('')
+      + '</select>'
+      + (mine.length ? '<span style="font-size:11px;color:#1565c0">우리 매물 ' + mine.length
+          + '건을 앞에 두었습니다</span>' : '')
+      + '</div>';
+
+    //  이 단지 매물 설명에서 실제로 쓰인 말 — 남의 단지 통계가 아니다
+    var kw = {};
+    rows.forEach(function(r){
+      String(r.주요정보||'').split(/\s+/).forEach(function(w){ if(w) kw[w] = (kw[w]||0)+1; });
+    });
+    var kws = Object.keys(kw).map(function(k){ return [k, kw[k]]; })
+      .sort(function(a,b){ return b[1]-a[1]; }).slice(0, 14);
+    if(kws.length){
+      h += '<div style="background:var(--bg3);border-radius:9px;padding:9px 11px;margin-bottom:11px">'
+        + '<div style="font-size:11.5px;font-weight:700;margin-bottom:5px">이 단지 매물 설명에 실제로 쓰인 말</div>'
+        + '<div style="display:flex;gap:5px;flex-wrap:wrap">'
+        + kws.map(function(k){
+            return '<span style="font-size:11.5px;background:var(--card);border:1px solid var(--border);'
+              + 'border-radius:12px;padding:2px 9px">' + esc(k[0])
+              + ' <b style="color:var(--text3)">' + k[1] + '</b></span>'; }).join('')
+        + '</div><div style="font-size:11px;color:var(--text3);margin-top:6px">'
+        + '다른 단지 통계가 아니라 <b>이 단지 ' + rows.length + '건에서 뽑은 말</b>입니다. '
+        + '내 물건에 <b>해당하는 사실일 때만</b> 쓰십시오.</div></div>';
+    }
+
+    ADTXT = [];
+    function put(grp, tag, text, why){
+      if(!text || !why) return;
+      var i = ADTXT.length; ADTXT.push(text);
+      (put.g[grp] = put.g[grp] || []).push(
+        '<div class="nv-p" style="min-width:300px">'
+        + '<div style="font-size:11px;color:var(--text3);margin-bottom:4px">' + esc(tag) + '</div>'
+        + '<div style="font-size:12.5px;font-weight:700;line-height:1.65">' + esc(text) + '</div>'
+        + '<div style="font-size:11px;color:var(--text3);margin:7px 0 6px;padding-top:6px;'
+        +   'border-top:1px solid var(--border)">근거 · ' + esc(why) + '</div>'
+        + '<button class="dj-bs" style="padding:3px 10px;font-size:11.5px" '
+        +   'onclick="nvbCopy(' + i + ',this)">📋 문구 복사</button></div>');
+    }
+    put.g = {};
+
+    var py = T ? (T.분양평수 || T.전용평수 || 0) : 0;
+    var sz = T ? (T['전용m²'] + (py ? '(' + Math.round(py) + '평)' : '')) : '';
+
+    // ── 제목형
+    if(m != null && aT && aT.med != null)
+      put('제목형', '시세 기준 제목',
+        danji + ' ' + (aT.k) + (aT.py ? '(' + Math.round(aT.py) + '평)' : '')
+          + ' 매매 ' + eok(aT.med) + ' 선',
+        '이 단지 ' + aT.k + ' 매매 중위 호가 ' + eok(aT.med) + ' (' + aT.n + '건 기준)');
+    if(T && cheapT)
+      put('제목형', '가격 강조 제목',
+        danji + ' ' + sz + ' ' + T.가격 + ' — 같은 면적형 시세보다 ' + cheapT.gap + '% 아래',
+        '같은 면적형 매매 중위 ' + eok(aT.med) + ' 대비 ' + cheapT.gap + '% 낮음');
+    if(aT && aT.gap != null)
+      put('제목형', '투자자용 제목',
+        danji + ' ' + aT.k + ' · 전세 끼고 실투자 ' + eok(aT.gap),
+        aT.k + ' 매매 중위 ' + eok(aT.med) + ' − 전세 중위 ' + eok(aT.jmed)
+          + ' = 갭 ' + eok(aT.gap) + ' (전세가율 ' + aT.rate + '%)');
+    if(T && T.자사매물==='★' && !T.중복등록수)
+      put('제목형', '단독 매물 제목',
+        danji + ' ' + sz + ' ' + [T.동, T.층].filter(Boolean).join(' ') + ' ' + T.가격
+          + ' — 저희에게만 나온 매물',
+        '이 매물은 다른 중개업소 등록이 없습니다 (중복 등록 0건)');
+
+    // ── 본문형
+    if(lo != null && hi != null && m != null)
+      put('본문형', '가격대 안내',
+        '지금 ' + danji + ' 매매 호가는 ' + eok(lo) + '부터 ' + eok(hi)
+          + '까지 나와 있습니다.' + (T ? ' 이 물건은 ' + T.가격
+          + ' 으로, 층·향·상태를 보시면 견줄 만한 자리입니다.' : ''),
+        '매매 호가 최저 ' + eok(lo) + ' · 중위 ' + eok(m) + ' · 최고 ' + eok(hi)
+          + ' (' + sale.length + '건)');
+    var rare = AG.filter(function(a){ return a.n > 0 && a.n <= 3; })
+      .sort(function(a,b){ return a.n - b.n; })[0];
+    if(rare)
+      put('본문형', '희소성 안내',
+        danji + ' ' + rare.k + ' 매물은 지금 단지 전체에서 ' + rare.n
+          + '건뿐입니다. 찾으시는 평형이라면 서두르시는 편이 낫습니다.',
+        rare.k + ' 매매 재고 ' + rare.n + '건 — 이 단지에서 가장 적은 평형');
+    var jA = AG.filter(function(a){ return a.rate != null; })[0];
+    if(jA)
+      put('본문형', '전세 안내',
+        '지금 ' + danji + ' ' + jA.k + ' 전세 시세는 ' + eok(jA.jmed)
+          + ' 선(전세가율 약 ' + jA.rate + '%)입니다. 세를 놓으실 계획이면 참고하십시오.',
+        '전세 중위 ' + eok(jA.jmed) + ' ÷ 매매 중위 ' + eok(jA.med) + ' = ' + jA.rate + '%');
+    if(aT && aT.n > 1)
+      put('본문형', '매도 상담용',
+        '지금 같은 ' + aT.k + ' 평형에 ' + aT.n + '건이 나와 있고, 가장 낮은 호가는 '
+          + eok(aT.lo) + ' 입니다. 값을 정하실 때 참고하십시오.',
+        aT.k + ' 매매 ' + aT.n + '건 · 최저 ' + eok(aT.lo) + ' · 중위 ' + eok(aT.med));
+
+    // ── 마무리형
+    put('마무리형', '상담 유도',
+      danji + ' 매물은 층·향·수리 상태에 따라 값 차이가 큽니다. 원하시는 조건을 '
+        + '말씀해 주시면 맞는 물건으로 골라 정리해 드리겠습니다.',
+      '이 단지 매매 호가 폭 ' + (m && lo!=null && hi!=null
+        ? eok(lo) + ' ~ ' + eok(hi) + ' (중위의 ' + Math.round((hi-lo)/m*100) + '%)' : '자료 기준'));
+    put('마무리형', '방문 유도',
+      '지금 ' + danji + '에 ' + rows.length + '건이 나와 있습니다. 보고 싶으신 조건을 '
+        + '알려 주시면 바로 확인해 연락드리겠습니다.',
+      '이번 조사에서 읽은 매물 ' + rows.length + '건');
+
+    ['제목형','본문형','마무리형'].forEach(function(g){
+      if(!put.g[g] || !put.g[g].length) return;
+      var sub = g==='제목형' ? '목록에서 눈에 띄는 한 줄'
+              : g==='본문형' ? '본문에 넣을 근거 문장' : '손님께 바로 보낼 말';
+      h += '<div style="font-size:12px;font-weight:700;color:var(--accent);margin:12px 0 6px">'
+        + g + ' <span style="font-weight:400;color:var(--text3)">— ' + sub + '</span></div>'
+        + '<div class="nv-grid" style="grid-template-columns:repeat(auto-fill,minmax(320px,1fr))">'
+        + put.g[g].join('') + '</div>';
+    });
+
+    /*  광고는 대표님 등록번호를 달고 나간다. 없는 사실을 적으면 과태료 사안이다.
+        그래서 문안 아래에 반드시 붙인다 — 편하자고 뺄 수 있는 줄이 아니다. */
+    h += '<div style="margin-top:12px;padding:10px 12px;border-radius:9px;'
+      + 'background:#fff8e1;border:1px solid #ffe082;color:#5d4037;font-size:11.5px;line-height:1.85">'
+      + '<b>⚠ 광고로 내보내시기 전에 — 공인중개사법 §18-2</b><br>'
+      + '· 표시·광고에는 <b>중개사무소 명칭·소재지·연락처·등록번호와 개업공인중개사 성명</b>을 '
+      +   '넣어야 합니다. 인터넷 광고는 <b>소재지·면적·가격</b>도 함께 적어야 합니다.<br>'
+      + '· <b>중개보조원</b>에 관한 사항은 표시·광고에 넣을 수 없습니다.<br>'
+      + '· <b>없는 매물</b>이나 거래할 수 없는 매물, <b>사실과 다르거나 부풀린 내용</b>은 '
+      +   '부당한 표시·광고입니다.<br>'
+      + '· 위 문안의 숫자는 <b>이번 조사 시점의 호가</b>입니다. 광고를 올리시는 날 다시 확인하십시오.'
+      + '</div></div>';
     return h;
   }
 
@@ -32477,7 +32643,7 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
   window.nvbFb = function(v){ FB = v; paint(); };
   window.nvbOpen = function(y){ OPEN[y] = !((OPEN[y] != null) ? OPEN[y] : false); paint(); };
   window.nvbSel = function(id, on){ if(on) SEL[id] = 1; else delete SEL[id]; paint(); };
-  window.nvbClearSel = function(){ SEL = {}; REP = null; paint(); };
+  window.nvbClearSel = function(){ SEL = {}; REP = null; ADPICK = null; paint(); };
   window.nvbPickDay = function(y){
     NVE.cached().forEach(function(e){ if(e.ymd === y) SEL[e.id] = 1; });
     paint();
@@ -32550,6 +32716,28 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
     amsg('되돌리는 중…', '#1565c0');
     var out = window.sdNvReg.push([{ kind:e.kind, danji:e.danji, dong:e.dong, rows:r }]);
     amsg('↩ ' + esc(e.danji) + ' 를 ' + esc(e.at) + ' 회차로 되돌렸습니다 — ' + esc(out), '#0a7');
+  };
+  window.nvbAdPick = function(i){ ADPICK = parseInt(i,10); nvbMake(); };
+  window.nvbCopy = function(i, btn){
+    var t = ADTXT[i]; if(t == null) return;
+    function done(ok){
+      if(!btn) return;
+      var old = btn.innerHTML;
+      btn.innerHTML = ok ? '✅ 복사했습니다' : '⚠ 복사 실패 — 글을 직접 끌어 쓰십시오';
+      setTimeout(function(){ btn.innerHTML = old; }, 1600);
+    }
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(t).then(function(){ done(true); }, function(){ done(false); });
+      return;
+    }
+    //  보안 맥락이 아니면 clipboard 가 없다 — 옛 방식으로 한 번 더
+    try{
+      var ta = document.createElement('textarea');
+      ta.value = t; ta.style.cssText = 'position:fixed;left:-9999px';
+      document.body.appendChild(ta); ta.select();
+      var ok = document.execCommand('copy');
+      document.body.removeChild(ta); done(ok);
+    }catch(e){ done(false); }
   };
   window.nvbReload = async function(){
     amsg('서버에서 다시 읽는 중…', '#1565c0');
