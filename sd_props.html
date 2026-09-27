@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>SJDWS - 매물관리 시스템</title>
+<title>SJRWS - 매물관리 시스템</title>
 <style>
 @keyframes spin{to{transform:rotate(360deg)}}
 @keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
@@ -899,7 +899,7 @@ window.addEventListener('load', function() {
 
 <div id="root" style="max-width:2560px;margin:0 auto;padding:1.5rem 1rem">
 <div style="margin-bottom:1.25rem">
-  <p style="font-size:13px;color:#666;margin:0 0 3px"><b style="color:#1a2035;letter-spacing:.3px">SJDWS</b> <span style="font-size:11px;color:#999">SongdoJeil Data &amp; Work System</span></p>
+  <p style="font-size:13px;color:#666;margin:0 0 3px"><b style="color:#1a2035;letter-spacing:.3px">SJRWS</b> <span style="font-size:11px;color:#999">송도제일부동산업무시스템 · SongdoJeil Realestate Work System</span></p>
   <h1 style="font-size:20px;font-weight:500;margin:0">매물 관리 시스템</h1>
   <p style="font-size:13px;color:#666;margin:5px 0 0">매물 등록 · 관리 · 상세페이지 생성 · 고객 브리핑 보고서</p>
 </div>
@@ -8106,7 +8106,7 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.09.25-1';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.09.25-2';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_props.html';      // 이 파일 이름
   var SD_NAME = '매물관리';      // 사람이 부르는 이름
 
@@ -8495,12 +8495,65 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
     return null;
   }
 
+  /*  거르개를 하나씩 풀어 보며 어느 것이 걸렀는지 센다.
+      「없습니다」 한 마디로 끝내면 왜 없는지 알 길이 없다.  */
+  function whyEmpty(){
+    var HIST=['자사계약완료','타사계약완료','의뢰인확인보류','미확인보류','만기보류','거래완료'];
+    var sec=($('mp-sector')||{}).value||'', typ=($('mp-type')||{}).value||'';
+    var deal=($('mp-deal')||{}).value||'', q=(($('mp-q')||{}).value||'').trim();
+    var live=(window.props||[]).filter(function(p){
+      return !p.naverImport && HIST.indexOf(p.status)<0;
+    });
+    function cnt(opt){
+      return live.filter(function(p){
+        var t=p.propertyType||'';
+        if(!opt.noSec  && sec  && sector(t)!==sec) return false;
+        if(!opt.noTyp  && typ  && t.indexOf(typ)<0) return false;
+        if(!opt.noDeal && deal){
+          if(deal==='매매'&&t.indexOf('매매')<0) return false;
+          if(deal==='전세'&&t.indexOf('전세')<0) return false;
+          if(deal==='월세'&&!/월세|임대/.test(t)) return false;
+        }
+        if(!opt.noQ && q && String(p.complexName||'').indexOf(q)<0) return false;
+        return true;
+      }).length;
+    }
+    var tips=[];
+    if(q){
+      var only=live.filter(function(p){ return String(p.complexName||'').indexOf(q)>=0; });
+      var kinds={};
+      only.forEach(function(p){ var k=p.propertyType||'(종류 없음)'; kinds[k]=(kinds[k]||0)+1; });
+      if(only.length) tips.push('「'+esc(q)+'」 로 찾은 매물은 <b>'+only.length+'건</b> 있습니다 — '
+        + Object.keys(kinds).map(function(k){ return esc(k)+' '+kinds[k]+'건'; }).join(', ')
+        + '. <b>거르개가 이것과 안 맞습니다.</b>');
+      else tips.push('「'+esc(q)+'」 라는 이름이 든 매물이 <b>하나도 없습니다</b>. 단지명을 확인해 주세요.');
+      if(cnt({noQ:1})) tips.push('검색어를 지우면 <b>'+cnt({noQ:1})+'건</b>');
+    }
+    if(typ  && cnt({noTyp:1}))  tips.push('물건 종류를 「전체」 로 바꾸면 <b>'+cnt({noTyp:1})+'건</b>');
+    if(sec  && cnt({noSec:1}))  tips.push('주거/상업 구분을 「전체」 로 바꾸면 <b>'+cnt({noSec:1})+'건</b>');
+    if(deal && cnt({noDeal:1})) tips.push('거래 방식을 「전체」 로 바꾸면 <b>'+cnt({noDeal:1})+'건</b>');
+    return { live: live.length, tips: tips };
+  }
+  function showEmpty(){
+    var box=$('mp-list'); if(!box) return;
+    var w=whyEmpty();
+    box.innerHTML='<div style="padding:18px 16px">'
+      +'<div style="font-size:13px;font-weight:700;color:#e65100;margin-bottom:8px">조건에 맞는 매물이 없습니다</div>'
+      +'<div style="font-size:11.5px;color:#666;margin-bottom:10px">활성 매물은 모두 <b>'+w.live+'건</b> 있습니다.</div>'
+      +(w.tips.length
+        ? '<ul style="margin:0;padding-left:17px;font-size:12px;color:#444;line-height:1.85">'
+          + w.tips.map(function(t){ return '<li>'+t+'</li>'; }).join('') + '</ul>'
+        : '<div style="font-size:12px;color:#888">거르개를 하나씩 「전체」 로 바꿔 보세요.</div>')
+      +'</div>';
+    var st=$('mp-status'); if(st) st.textContent='';
+  }
+
   window.mpLoad=async function(){
     if(BUSY) return;
     var list=targets();
     var names=[];
     list.forEach(function(p){ var n=(p.complexName||'').trim(); if(n && names.indexOf(n)<0) names.push(n); });
-    if(!names.length){ alert('조건에 맞는 매물이 없습니다.'); return; }
+    if(!names.length){ showEmpty(); return; }
 
     var over = names.length>LIMIT;
     var use = names.slice(0, LIMIT);
@@ -8782,7 +8835,11 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
       +   '<div style="display:grid;grid-template-columns:300px 1fr;gap:12px" id="mp-grid">'
       +     '<div style="border:0.5px solid #e0e0e0;border-radius:12px;overflow:hidden">'
       +       '<div style="padding:8px 10px;background:#f5f5f3;font-size:12px;font-weight:600;border-bottom:0.5px solid #e0e0e0">매물 목록</div>'
-      +       '<div id="mp-list" style="max-height:520px;overflow-y:auto"></div></div>'
+      +       '<div id="mp-list" style="max-height:520px;overflow-y:auto">'
+      +         '<div style="padding:18px 16px;font-size:12px;color:#888;line-height:1.8">'
+      +           '거르개를 고른 뒤 <b>[🗺 지도에 표시]</b> 를 눌러 주세요.<br>'
+      +           '단지명으로 위치를 찾아 지도에 찍고, 여기에 목록이 나옵니다.'
+      +         '</div></div></div>'
       +     '<div id="mp-canvas" style="height:560px;border:0.5px solid #e0e0e0;border-radius:12px;background:#f5f5f3"></div>'
       +   '</div>'
       +   '<div id="mp-fail" style="display:none;margin-top:12px;padding:12px 14px;background:#fffdf8;'
@@ -9971,7 +10028,7 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
       }catch(e){
         mark('익명 로그인 실패: '+((e&&e.code)||(e&&e.message)||e));
         if(window.sdAuthDone) window.sdAuthDone();
-        console.warn('[SJDWS] 익명 로그인 실패 — 파이어베이스 콘솔에서 익명 인증을 켜 주세요.', e);
+        console.warn('[SJRWS] 익명 로그인 실패 — 파이어베이스 콘솔에서 익명 인증을 켜 주세요.', e);
       }
     });
   }
@@ -10013,7 +10070,7 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
         catch(e){
           window.sdAuth.module = '익명 로그인 실패: ' + (e && e.code || e && e.message || e);
           if(window.sdAuthDone) window.sdAuthDone();
-          console.warn('[SJDWS] 익명 로그인(모듈) 실패 — 콘솔에서 익명 인증을 켜 주세요.', e);
+          console.warn('[SJRWS] 익명 로그인(모듈) 실패 — 콘솔에서 익명 인증을 켜 주세요.', e);
         }
       });
     };
