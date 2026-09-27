@@ -19353,7 +19353,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.09.27-34';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.09.27-36';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_data.html';      // 이 파일 이름
   var SD_NAME = '실거래가';      // 사람이 부르는 이름
 
@@ -29366,7 +29366,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
   var GROUPS = [
     { k:'sise', n:'📡 시황·시세', t:[18, 0, 12, 1, 2] },
     { k:'real', n:'📈 실거래·동향', t:[3, 4, 5, 15, 13] },
-    { k:'prop', n:'🏠 매물',        t:[16, 6, 7, 8, 21] },
+    { k:'prop', n:'🏠 매물',        t:[16, 6, 7, 8, 21, 22] },
     { k:'tool', n:'📊 자료·도구',   t:[9, 10, 11, 14, 20] }
   ];
   var WHERE = {};                       // 탭번호 → 묶음 열쇠
@@ -29566,63 +29566,366 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 </script>
 
 <!-- ══════════════════════════════════════════════════════════════════════
-     N 매물 분석 모듈 v2.0
+     N 매물 모듈 v3.0  —  📥 등록(탭21) + 🔎 분석(탭22)
      ──────────────────────────────────────────────────────────────────
-     ① 추출기 텍스트 파일을 50~100개 한꺼번에 골라
-     ② 파일마다 종류(아파트·상가·사무실·오피스텔·생숙)를 알아서 가리고
-     ③ 단지별로 갈라 합친 뒤
-     ④ 매물(APT/상가사무실/OP생숙) 탭에 바로 등록한다. 엑셀은 보관용이다.
+     v2 는 한 탭에서 읽고·등록하고·보고서까지 봤다. 그래서 100개를 올리면
+     단지 단추가 100개 쌓여 다음 등록을 할 수가 없었다 — 대표님이 잡아 주셨다.
+     등록은 자주·대량이고 분석은 가끔·선택이라 성질이 다르다. 그래서 나눴다.
+
+       📥 N 매물 등록  텍스트 파일 50~100개 → 종류 가리기 → 단지별로 갈라 합치기
+                       → 매물 탭에 등록 → **회차 기록**을 남기고 화면을 비운다
+       🔎 N 매물 분석  쌓인 회차를 골라 보고서. 고른 것에 따라 네 갈래:
+                         하나            → 그 시점 단지 보고서
+                         같은 단지 둘     → 시점 비교 (새 매물·값 내린 매물)
+                         같은 단지 셋 이상 → 호가 추이
+                         다른 단지 둘~셋  → 단지 비교
+
+     기록에 **행 자료까지** 담는다. 단지명·등록자·날짜만 남기면 「그때 뭐가
+     있었나」를 다시 그릴 수 없어 시점 비교가 아예 안 된다.
+     단지마다 최근 12회차만 행 자료를 두고, 그보다 오래된 회차는 요약만 남긴다
+     (100단지 주1회 1년이면 원본이 110MB — 무료 1GB 에 공시가격이 이미 40MB).
+     요약만 남아도 호가 추이는 그대로 그려진다.
+
+     같은 단지인지는 **이름이 아니라 정규화 열쇠**로 가린다. 네이버가 이름을
+     바꿔 적으면 이름으로 묶은 추이가 중간에서 끊긴다 — v2.1 에서 매물 탭
+     갈아 끼우기가 통째로 안 됐던 것이 같은 원인이었다.
 
      파이썬 변환기 세 벌(아파트 v2.8 · 상가사무실 v2.7 · OP생숙 v2.8)을 옮겼다.
-     세 벌은 지침이 서로 다르다 — 한 벌로 뭉개면 상가는 매물 시작을 못 찾고
-     (카테고리 줄이 시작이다), OP 는 타입 접미사(A1·(3단지))를 놓치며,
-     생숙이 오피스텔로 둔갑한다.
-
-     옮기면서 실제로 걸린 것 둘:
-     ① 파이썬의 \b(단어 경계)는 한글을 단어로 보지만 자바스크립트는 안 본다.
-        그대로 옮겼더니 「매매 6억 9,500」 줄이 단지 이름으로 잡혀 블록이 쪼개졌다.
-     ② 파이썬 원본은 블록 이름을 거를 때는 매물제공처 13곳을 쓰면서, 중개업소명을
-        고를 때는 11곳만 썼다. 그래서 중개업소가 안 적힌 매물에서 이실장플러스·
-        텐컴즈·알터·선방이 중개업소명으로 잡혔다. 두 곳 모두 전수 목록을 쓴다.
-
+     옮기면서 걸린 것:
+     ① 파이썬의 \b 는 한글을 단어로 보지만 자바스크립트는 안 본다.
+        그대로 옮기면 「매매 6억 9,500」이 단지 이름으로 잡혀 블록이 쪼개진다.
+     ② 파이썬 원본은 블록 이름을 거를 때는 매물제공처 13곳을 쓰면서 중개업소명을
+        고를 때는 11곳만 썼다 — 이실장플러스·텐컴즈가 중개업소명으로 잡혔다.
      그래서 「파이썬 엑셀과 대조」를 기능으로 두었다. 한 번 맞춰 보고 끝낼
-     일이 아니다 — 네이버가 화면을 바꾸면 또 어긋나고, 그때 말없이 틀린
-     표가 나가면 손님께 잘못된 값을 드리게 된다.
+     일이 아니다 — 네이버가 화면을 바꾸면 또 어긋나고, 그때 말없이 틀린 표가
+     나가면 손님께 잘못된 값을 드리게 된다.
+
+     ⚠ localStorage 를 쓰지 않는다. 공시가격 때 브라우저 칸을 채워
+       다른 설정 저장까지 조용히 실패한 적이 있다.
      ══════════════════════════════════════════════════════════════════ -->
 <style>
-#nv-root{padding:2px 0}
-#nv-root .nv-in{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:13px 15px}
-#nv-root textarea{width:100%;height:150px;padding:10px 12px;border:1px solid var(--border);
+#nv-root,#an-root{padding:2px 0}
+#nv-root .nv-in,#an-root .nv-in{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:13px 15px}
+#nv-root textarea,#an-root textarea{width:100%;height:150px;padding:10px 12px;border:1px solid var(--border);
   border-radius:9px;background:var(--bg3);color:var(--text);font-size:12px;font-family:inherit;
   line-height:1.6;resize:vertical}
-#nv-root textarea:focus{outline:none;border-color:var(--accent)}
-#nv-root .nv-h{display:flex;align-items:baseline;gap:8px;font-size:14px;font-weight:800;
+#nv-root textarea:focus,#an-root textarea:focus{outline:none;border-color:var(--accent)}
+#nv-root .nv-h,#an-root .nv-h{display:flex;align-items:baseline;gap:8px;font-size:14px;font-weight:800;
   margin:20px 0 9px;padding-bottom:6px;border-bottom:2px solid var(--border)}
-#nv-root .nv-h span{font-size:11px;font-weight:400;color:var(--text3)}
-#nv-root .nv-cards{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
-#nv-root .nv-c{background:var(--card);border:1px solid var(--border);border-radius:11px;padding:11px 13px}
-#nv-root .nv-cl{font-size:11px;color:var(--text3);margin-bottom:4px}
-#nv-root .nv-cv{font-size:20px;font-weight:800;line-height:1.2}
-#nv-root .nv-cv small{font-size:12px;font-weight:600;color:var(--text3);margin-left:1px}
-#nv-root .nv-cs{font-size:10.5px;color:var(--text3);margin-top:3px;line-height:1.5}
-#nv-root .nv-grid{display:grid;gap:9px;grid-template-columns:repeat(auto-fill,minmax(212px,1fr))}
-#nv-root .nv-p{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:9px 11px}
-#nv-root .nv-pt{font-size:12px;font-weight:700;margin-bottom:4px}
-#nv-root .nv-pd{font-size:11px;color:var(--text3);line-height:1.6}
-#nv-root .nv-bar{height:6px;background:var(--bg3);border-radius:4px;overflow:hidden}
-#nv-root .nv-bar i{display:block;height:100%;border-radius:4px}
-#nv-root table.nv-t{width:100%;border-collapse:collapse;background:var(--card);font-size:12px}
-#nv-root table.nv-t th{padding:7px 9px;background:var(--bg3);font-size:11px;font-weight:700;
+#nv-root .nv-h span,#an-root .nv-h span{font-size:11px;font-weight:400;color:var(--text3)}
+#nv-root .nv-cards,#an-root .nv-cards{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
+#nv-root .nv-c,#an-root .nv-c{background:var(--card);border:1px solid var(--border);border-radius:11px;padding:11px 13px}
+#nv-root .nv-cl,#an-root .nv-cl{font-size:11px;color:var(--text3);margin-bottom:4px}
+#nv-root .nv-cv,#an-root .nv-cv{font-size:20px;font-weight:800;line-height:1.2}
+#nv-root .nv-cv small,#an-root .nv-cv small{font-size:12px;font-weight:600;color:var(--text3);margin-left:1px}
+#nv-root .nv-cs,#an-root .nv-cs{font-size:10.5px;color:var(--text3);margin-top:3px;line-height:1.5}
+#nv-root .nv-grid,#an-root .nv-grid{display:grid;gap:9px;grid-template-columns:repeat(auto-fill,minmax(212px,1fr))}
+#nv-root .nv-p,#an-root .nv-p{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:9px 11px}
+#nv-root .nv-pt,#an-root .nv-pt{font-size:12px;font-weight:700;margin-bottom:4px;line-height:1.5}
+#nv-root .nv-pd,#an-root .nv-pd{font-size:11px;color:var(--text3);line-height:1.6}
+#nv-root .nv-bar,#an-root .nv-bar{height:6px;background:var(--bg3);border-radius:4px;overflow:hidden}
+#nv-root .nv-bar i,#an-root .nv-bar i{display:block;height:100%;border-radius:4px}
+#nv-root table.nv-t,#an-root table.nv-t{width:100%;border-collapse:collapse;background:var(--card);font-size:12px}
+#nv-root table.nv-t th,#an-root table.nv-t th{padding:7px 9px;background:var(--bg3);font-size:11px;font-weight:700;
   text-align:left;white-space:nowrap;position:sticky;top:0;z-index:1}
-#nv-root table.nv-t td{padding:6px 9px;border-top:1px solid var(--border);white-space:nowrap}
-#nv-root table.nv-t td.nv-info{white-space:normal;max-width:300px;color:var(--text3);font-size:11px}
-#nv-root tr.nv-mine td{color:#c62828;font-weight:700}
-#nv-root .nv-diff{margin:12px 0;padding:11px 13px;border-radius:10px;font-size:12px;line-height:1.8;
+#nv-root table.nv-t td,#an-root table.nv-t td{padding:6px 9px;border-top:1px solid var(--border);white-space:nowrap}
+#nv-root table.nv-t td.nv-info,#an-root table.nv-t td.nv-info{white-space:normal;max-width:300px;color:var(--text3);font-size:11px}
+#nv-root tr.nv-mine td,#an-root tr.nv-mine td{color:#c62828;font-weight:700}
+#nv-root .nv-diff,#an-root .nv-diff{margin:12px 0;padding:11px 13px;border-radius:10px;font-size:12px;line-height:1.8;
   background:#fff8e1;border:1px solid #ffe082;color:#5d4037}
-#nv-root .nv-diff.ok{background:#e8f5e9;border-color:#a5d6a7;color:#1b5e20}
-@media print{ #nv-root .nv-in{display:none} }
+#nv-root .nv-diff.ok,#an-root .nv-diff.ok{background:#e8f5e9;border-color:#a5d6a7;color:#1b5e20}
+@media print{ #nv-root .nv-in,#an-root .nv-in{display:none} }
 </style>
 <script>
+/*  ── 서식이 들어가는 엑셀 쓰기 ────────────────────────────────────────
+    왜 직접 만드나 — SheetJS 무료판은 칸 서식(색·굵기·글꼴)을 **못 쓴다**.
+    값만 들어가고 색이 통째로 빠진다(실제로 그렇게 나갔다). 대표님 엑셀은
+    거래구분별 머리글 색과 홀수행 교대색, 자사 빨강 볼드로 읽는 문서라
+    서식이 빠지면 쓸 수가 없다. 그래서 xlsx(=zip + xml)를 직접 쓴다.
+
+    압축은 브라우저에 있는 CompressionStream('deflate-raw')을 쓴다. 없으면
+    압축 없이(store) 담는다 — 파일이 커질 뿐 엑셀은 그대로 열린다.
+    ──────────────────────────────────────────────────────────────────── */
+(function(root){
+'use strict';
+
+// ── CRC32 ────────────────────────────────────────────────────────────
+var CRCT = (function(){
+  var t = new Uint32Array(256);
+  for(var n=0;n<256;n++){
+    var c = n;
+    for(var k=0;k<8;k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+    t[n] = c >>> 0;
+  }
+  return t;
+})();
+function crc32(buf){
+  var c = 0xFFFFFFFF;
+  for(var i=0;i<buf.length;i++) c = CRCT[(c ^ buf[i]) & 0xFF] ^ (c >>> 8);
+  return (c ^ 0xFFFFFFFF) >>> 0;
+}
+var TE = (typeof TextEncoder !== 'undefined') ? new TextEncoder() : null;
+function utf8(s){
+  if(TE) return TE.encode(s);
+  var a = []; for(var i=0;i<s.length;i++){
+    var c = s.charCodeAt(i);
+    if(c < 128) a.push(c);
+    else if(c < 2048){ a.push(192|c>>6, 128|c&63); }
+    else { a.push(224|c>>12, 128|(c>>6)&63, 128|c&63); }
+  }
+  return new Uint8Array(a);
+}
+
+// ── ZIP ──────────────────────────────────────────────────────────────
+async function deflateRaw(bytes){
+  if(typeof CompressionStream === 'undefined') return null;
+  try{
+    var cs = new CompressionStream('deflate-raw');
+    var st = new Blob([bytes]).stream().pipeThrough(cs);
+    var ab = await new Response(st).arrayBuffer();
+    return new Uint8Array(ab);
+  }catch(e){ return null; }
+}
+async function zip(files){          // files: [{name, data:Uint8Array}]
+  var parts = [], central = [], off = 0;
+  var d = new Date();
+  var dosT = ((d.getHours()&31)<<11) | ((d.getMinutes()&63)<<5) | ((d.getSeconds()/2)&31);
+  var dosD = (((d.getFullYear()-1980)&127)<<9) | (((d.getMonth()+1)&15)<<5) | (d.getDate()&31);
+  for(var i=0;i<files.length;i++){
+    var f = files[i], raw = f.data;
+    var crc = crc32(raw);
+    var comp = await deflateRaw(raw);
+    var method = 8, body = comp;
+    if(!comp || comp.length >= raw.length){ method = 0; body = raw; }
+    var nm = utf8(f.name);
+    var lh = new Uint8Array(30 + nm.length), dv = new DataView(lh.buffer);
+    dv.setUint32(0, 0x04034b50, true); dv.setUint16(4, 20, true); dv.setUint16(6, 0, true);
+    dv.setUint16(8, method, true); dv.setUint16(10, dosT, true); dv.setUint16(12, dosD, true);
+    dv.setUint32(14, crc, true); dv.setUint32(18, body.length, true);
+    dv.setUint32(22, raw.length, true); dv.setUint16(26, nm.length, true); dv.setUint16(28, 0, true);
+    lh.set(nm, 30);
+    parts.push(lh, body);
+    var ch = new Uint8Array(46 + nm.length), cv = new DataView(ch.buffer);
+    cv.setUint32(0, 0x02014b50, true); cv.setUint16(4, 20, true); cv.setUint16(6, 20, true);
+    cv.setUint16(8, 0, true); cv.setUint16(10, method, true);
+    cv.setUint16(12, dosT, true); cv.setUint16(14, dosD, true);
+    cv.setUint32(16, crc, true); cv.setUint32(20, body.length, true);
+    cv.setUint32(24, raw.length, true); cv.setUint16(28, nm.length, true);
+    cv.setUint32(42, off, true);
+    ch.set(nm, 46);
+    central.push(ch);
+    off += lh.length + body.length;
+  }
+  var cd = 0; central.forEach(function(c){ cd += c.length; });
+  var eo = new Uint8Array(22), ev = new DataView(eo.buffer);
+  ev.setUint32(0, 0x06054b50, true);
+  ev.setUint16(8, files.length, true); ev.setUint16(10, files.length, true);
+  ev.setUint32(12, cd, true); ev.setUint32(16, off, true);
+  return new Blob(parts.concat(central, [eo]), { type:
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+}
+
+// ── 서식판 ────────────────────────────────────────────────────────────
+/*  공통규칙 §4 그대로. HEX 를 바꾸지 않는다. */
+var HDR = { '매매':'FF2F5496', '전세':'FF548235', '월세':'FFBF8F00',
+            '단기':'FF1E2535', '기타':'FF1E2535' };
+var ALT = { '매매':'FFF2F7FB', '전세':'FFEBF1E8', '월세':'FFFDF8E8',
+            '단기':'FFF5F5F5', '기타':'FFF5F5F5' };
+var DEALS = ['매매','전세','월세','단기','기타'];
+var FN = '맑은 고딕';
+
+//  글꼴 0=보통 · 1=머리글(흰 볼드) · 2=자사(빨강 볼드)
+//  채움 0=없음 1=gray125(규격상 필요) 2~6=머리글색 7~11=교대색
+//  칸서식 0=기본(왼쪽) 1=가운데 2~6=머리글 7~11=교대왼쪽 12~16=교대가운데
+//         17=자사왼쪽 18=자사가운데
+function stylesXml(){
+  var fills = ['<fill><patternFill patternType="none"/></fill>',
+               '<fill><patternFill patternType="gray125"/></fill>'];
+  DEALS.forEach(function(d){ fills.push('<fill><patternFill patternType="solid">'
+    + '<fgColor rgb="' + HDR[d] + '"/><bgColor indexed="64"/></patternFill></fill>'); });
+  DEALS.forEach(function(d){ fills.push('<fill><patternFill patternType="solid">'
+    + '<fgColor rgb="' + ALT[d] + '"/><bgColor indexed="64"/></patternFill></fill>'); });
+  var xf = [];
+  function add(f, fill, center){
+    xf.push('<xf numFmtId="0" fontId="' + f + '" fillId="' + fill + '" borderId="0" xfId="0"'
+      + ' applyFont="1" applyFill="1" applyAlignment="1">'
+      + '<alignment horizontal="' + (center ? 'center' : 'left') + '" vertical="center"'
+      + '/></xf>');
+  }
+  add(0,0,false); add(0,0,true);
+  for(var i=0;i<5;i++) add(1, 2+i, true);          // 머리글
+  for(i=0;i<5;i++) add(0, 7+i, false);             // 교대 왼쪽
+  for(i=0;i<5;i++) add(0, 7+i, true);              // 교대 가운데
+  add(2,0,false); add(2,0,true);                   // 자사
+  return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+    + '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+    + '<fonts count="3">'
+    +   '<font><sz val="10"/><name val="' + FN + '"/></font>'
+    +   '<font><b/><sz val="10"/><color rgb="FFFFFFFF"/><name val="' + FN + '"/></font>'
+    +   '<font><b/><sz val="10"/><color rgb="FFFF0000"/><name val="' + FN + '"/></font>'
+    + '</fonts>'
+    + '<fills count="' + fills.length + '">' + fills.join('') + '</fills>'
+    + '<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>'
+    + '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>'
+    + '<cellXfs count="' + xf.length + '">' + xf.join('') + '</cellXfs>'
+    + '<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>'
+    + '</styleSheet>';
+}
+function dealIdx(d){ var i = DEALS.indexOf(d); return i < 0 ? 4 : i; }
+function sHdr(d){ return 2 + dealIdx(d); }
+function sAlt(d, center){ return (center ? 12 : 7) + dealIdx(d); }
+function sPlain(center){ return center ? 1 : 0; }
+function sMine(center){ return center ? 18 : 17; }
+
+function esc(s){
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    //  엑셀은 제어문자를 못 받는다 — 있으면 파일이 통째로 안 열린다
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g,'');
+}
+function colName(n){
+  var s = '';
+  while(n > 0){ var m = (n-1) % 26; s = String.fromCharCode(65+m) + s; n = (n-m-1)/26; }
+  return s;
+}
+
+/*  sheet = { name, cols:[{w,center}], rows:[ {cells:[v…], style} ] }
+    style: {kind:'hdr'|'data', deal, alt:bool, mine:bool} · null 이면 빈 행  */
+function sheetXml(sh){
+  var out = ['<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+    + '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'];
+  var nc = sh.cols.length;
+  out.push('<dimension ref="A1:' + colName(nc) + Math.max(1, sh.rows.length) + '"/>');
+  out.push('<sheetViews><sheetView workbookViewId="0">'
+    + '<pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/>'
+    + '<selection pane="bottomLeft" activeCell="A2" sqref="A2"/>'
+    + '</sheetView></sheetViews>');
+  out.push('<sheetFormatPr defaultRowHeight="15"/>');
+  out.push('<cols>' + sh.cols.map(function(c,i){
+    return '<col min="' + (i+1) + '" max="' + (i+1) + '" width="' + (c.w||10)
+      + '" customWidth="1"/>'; }).join('') + '</cols>');
+  out.push('<sheetData>');
+  sh.rows.forEach(function(row, ri){
+    var r = ri + 1;
+    if(!row || !row.cells){ out.push('<row r="' + r + '"/>'); return; }
+    var st = row.style || {}, buf = ['<row r="' + r + '">'];
+    for(var c=0;c<nc;c++){
+      var v = row.cells[c];
+      if(v == null || v === '') continue;
+      var center = !!sh.cols[c].center, s;
+      if(st.kind === 'hdr') s = sHdr(st.deal);
+      else if(st.mine)      s = sMine(center);
+      else if(st.alt)       s = sAlt(st.deal, center);
+      else                  s = sPlain(center);
+      var ref = colName(c+1) + r;
+      if(typeof v === 'number' && isFinite(v))
+        buf.push('<c r="' + ref + '" s="' + s + '"><v>' + v + '</v></c>');
+      else
+        buf.push('<c r="' + ref + '" s="' + s + '" t="inlineStr"><is><t xml:space="preserve">'
+          + esc(v) + '</t></is></c>');
+    }
+    buf.push('</row>');
+    out.push(buf.join(''));
+  });
+  out.push('</sheetData>');
+  out.push('<autoFilter ref="A1:' + colName(nc) + '1"/>');
+  out.push('</worksheet>');
+  return out.join('');
+}
+
+/*  시트 이름 — 31자 · [ ] : * ? / \ 금지 · 겹치면 안 된다 */
+function sheetName(s, used){
+  var n = String(s == null ? '' : s).replace(/[\[\]:*?\/\\]/g,'-').slice(0,28).trim() || '매물';
+  var base = n, i = 2;
+  while(used[n.toLowerCase()]){ n = base.slice(0,25) + '(' + i + ')'; i++; }
+  used[n.toLowerCase()] = 1;
+  return n;
+}
+
+async function write(sheets, filename){
+  var used = {}, files = [];
+  sheets = sheets.filter(function(s){ return s && s.rows && s.rows.length; });
+  if(!sheets.length) throw new Error('담을 시트가 없습니다');
+  sheets.forEach(function(s){ s._nm = sheetName(s.name, used); });
+
+  files.push({ name:'[Content_Types].xml', data: utf8(
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+    + '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+    + '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+    + '<Default Extension="xml" ContentType="application/xml"/>'
+    + '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
+    + sheets.map(function(_,i){ return '<Override PartName="/xl/worksheets/sheet' + (i+1)
+        + '.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'; }).join('')
+    + '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>'
+    + '</Types>') });
+  files.push({ name:'_rels/.rels', data: utf8(
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+    + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+    + '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>'
+    + '</Relationships>') });
+  files.push({ name:'xl/workbook.xml', data: utf8(
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+    + '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"'
+    + ' xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>'
+    + sheets.map(function(s,i){ return '<sheet name="' + esc(s._nm) + '" sheetId="' + (i+1)
+        + '" r:id="rId' + (i+1) + '"/>'; }).join('')
+    + '</sheets></workbook>') });
+  files.push({ name:'xl/_rels/workbook.xml.rels', data: utf8(
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+    + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+    + sheets.map(function(_,i){ return '<Relationship Id="rId' + (i+1)
+        + '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet"'
+        + ' Target="worksheets/sheet' + (i+1) + '.xml"/>'; }).join('')
+    + '<Relationship Id="rId' + (sheets.length+1)
+    + '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles"'
+    + ' Target="styles.xml"/></Relationships>') });
+  files.push({ name:'xl/styles.xml', data: utf8(stylesXml()) });
+  for(var i=0;i<sheets.length;i++)
+    files.push({ name:'xl/worksheets/sheet' + (i+1) + '.xml', data: utf8(sheetXml(sheets[i])) });
+
+  var blob = await zip(files);
+  if(filename){
+    var u = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = u; a.download = filename;
+    document.body.appendChild(a); a.click();
+    setTimeout(function(){ document.body.removeChild(a); URL.revokeObjectURL(u); }, 1500);
+  }
+  return blob;
+}
+
+/*  매물 표 한 장을 만든다 — 공통규칙 §8:
+    거래구분 차례(매매→전세→월세→단기), 구분이 바뀌면 빈 행 2개 + 머리글 다시,
+    홀수행 교대색, 자사는 빨강 볼드에 교대색 없음.  */
+function listSheet(name, cols, rows, at){
+  var head = cols.map(function(c){ return c.k; });
+  var last = head.length - 1;
+  if(/중복업소명/.test(String(head[last]))) head[last] = '중복업소명 (' + at + ')';
+  var by = {};
+  rows.forEach(function(r){ (by[r.거래구분] = by[r.거래구분] || []).push(r); });
+  var out = [], first = true;
+  DEALS.forEach(function(d){
+    if(!by[d] || !by[d].length) return;
+    if(!first){ out.push(null); out.push(null); }      // 구분 사이 빈 행 2개
+    first = false;
+    out.push({ cells: head, style:{ kind:'hdr', deal:d } });
+    var odd = true;
+    by[d].forEach(function(r){
+      var mine = (r.자사매물 === '★');
+      out.push({ cells: cols.map(function(c){
+                   var v = r[c.k];
+                   return (v == null || v === '') ? null : v; }),
+                 style:{ kind:'data', deal:d, alt:(odd && !mine), mine:mine } });
+      odd = !odd;
+    });
+  });
+  return { name:name, cols:cols.map(function(c){ return { w:c.w, center:c.center }; }), rows:out };
+}
+
+root.sdXl = { write:write, listSheet:listSheet, sheetName:sheetName,
+              HDR:HDR, ALT:ALT, _zip:zip, _crc32:crc32, _sheetXml:sheetXml,
+              _stylesXml:stylesXml };
+})(typeof window !== 'undefined' ? window : globalThis);
+
 /*  ── N 매물 · 유형별 파서 (아파트 / 상가·사무실 / 오피스텔·생숙) ─────────
     파이썬 변환기 세 벌을 옮긴 것이다. 세 벌은 지침이 서로 다르다 —
     한 벌로 뭉개면 상가는 매물 시작을 못 찾고(카테고리 줄이 시작이다),
@@ -29829,12 +30132,26 @@ function readMembers(blk, dpPrice, warns, tag){
   return { members: members, collapsed: collapsed };
 }
 
-/*  대표 고르기 — 자사가 있으면 자사, 없으면 확인일이 가장 최근인 것. */
+/*  대표 고르기 — 자사(송도제일)가 묶음에 끼어 있으면 **날짜와 상관없이 무조건**
+    자사를 대표로 올린다. 자사가 여럿이면 그중 확인일이 가장 최근인 것.
+    자사가 없을 때만 확인일이 가장 최근인 것을 대표로 한다.
+    손님께 「이 매물은 우리 것」이라고 말할 수 있어야 하므로 이 차례는 뒤집지 않는다. */
 function pickRep(list, dateOf){
   var jm = list.filter(function(x){ return isJasa(dateOf.agency(x)); });
   var pool = jm.length ? jm : list;
   var rep = pool.reduce(function(a,b){ return (dateOf.date(b) > dateOf.date(a)) ? b : a; });
   return { rep: rep, jasa: jm.length > 0 };
+}
+/*  중복업소명 — 대표(자사면 자사)가 맨 앞, 그 뒤로 남은 자사, 그 뒤 나머지.
+    자사가 둘(송도제일·문영은)일 때 하나가 뒤로 밀리지 않게 한다. */
+function dupList(allmem, rep, agOf){
+  var rest = allmem.filter(function(x){ return x !== rep; });
+  var ordered = [rep]
+    .concat(rest.filter(function(x){ return isJasa(agOf(x)); }))
+    .concat(rest.filter(function(x){ return !isJasa(agOf(x)); }));
+  var dup = [];
+  ordered.forEach(function(x){ var a = abbr(agOf(x)); if(a && dup.indexOf(a) < 0) dup.push(a); });
+  return dup;
 }
 
 /*  묶기 — (열쇠)가 같고 층이 어긋나지 않으면 한 매물.
@@ -29936,9 +30253,7 @@ function buildApt(entries){
     ents.forEach(function(e){ e.members.forEach(function(m){ allmem.push([m,e.floor]); }); });
     var pr = pickRep(allmem, { agency:function(x){return x[0][3];}, date:function(x){return x[0][1];} });
     var rep = pr.rep;
-    var ordered = [rep].concat(allmem.filter(function(x){ return x!==rep; }));
-    var dup = [];
-    ordered.forEach(function(x){ var a = abbr(x[0][3]); if(a && dup.indexOf(a)<0) dup.push(a); });
+    var dup = dupList(allmem, rep, function(x){ return x[0][3]; });
     var e0 = ents[0];
     rows.push({ 단지명:e0.danji, 거래구분:e0.deal, '분양m²':e0.bun, '전용m²':e0.typ,
       분양평수:e0.bunPy, 가격:rep[0][0], 동:e0.dong, 호수:null, 층:rep[1], 방향:e0.dir,
@@ -30042,9 +30357,7 @@ function buildOp(entries){
     ents.forEach(function(e){ e.members.forEach(function(m){ allmem.push([m,e.floor]); }); });
     var pr = pickRep(allmem, { agency:function(x){return x[0][3];}, date:function(x){return x[0][1];} });
     var rep = pr.rep;
-    var ordered = [rep].concat(allmem.filter(function(x){ return x!==rep; }));
-    var dup = [];
-    ordered.forEach(function(x){ var a = abbr(x[0][3]); if(a && dup.indexOf(a)<0) dup.push(a); });
+    var dup = dupList(allmem, rep, function(x){ return x[0][3]; });
     var e0 = ents[0];
     var row = { 단지명:e0.danji, 물건구분:e0.kind||'오피스텔', 거래구분:e0.deal, '전용m²':e0.typ,
       가격:rep[0][0], 동:e0.dong, 호수:null, 층:rep[1], 방향:e0.dir,
@@ -30217,9 +30530,7 @@ function buildSg(entries){
     ents.forEach(function(e){ e.members.forEach(function(m){ allmem.push([m,e]); }); });
     var pr = pickRep(allmem, { agency:function(x){return x[0][3];}, date:function(x){return x[0][1];} });
     var rep = pr.rep, repmem = rep[0], repent = rep[1];
-    var ordered = [rep].concat(allmem.filter(function(x){ return x!==rep; }));
-    var dup = [];
-    ordered.forEach(function(x){ var a = abbr(x[0][3]); if(a && dup.indexOf(a)<0) dup.push(a); });
+    var dup = dupList(allmem, rep, function(x){ return x[0][3]; });
     //  방향은 묶음 안에서 가장 많이 나온 것
     var cnt = {}, bestD = repent.dir, bn = 0;
     ents.forEach(function(e){ if(e.dir){ cnt[e.dir]=(cnt[e.dir]||0)+1; } });
@@ -30279,6 +30590,32 @@ function detect(raw, fname){
   return 'apt';
 }
 
+/*  ── 단지 이름 맞추기 ────────────────────────────────────────────────
+    네이버가 이름을 적는 차례를 바꾼다. 같은 단지가 시스템 안에 넉 자로 있다:
+      더샵그린애비뉴7단지 · 송도더샵그린애비뉴7단지 · 송도더샵그린애비뉴7
+      · 송도더샵7단지그린애비뉴  ← 지금 네이버 표기
+    매물 탭의 갈아 끼우기는 **이름이 정확히 같아야** 되므로, 그냥 두면 갈아
+    끼우지 못하고 옆에 같은 단지가 하나 더 생긴다(실제로 그랬다 — 9월 하순
+    자료가 매물 탭에 안 보였다). 그래서 견줄 때 쓸 열쇠를 따로 만든다.
+    합치기만 하고 이름을 바꾸지는 않는다 — 화면에 쓸 이름은 기존 것을 따른다. */
+function normDanji(nm){
+  var s = String(nm == null ? '' : nm).replace(/\(.*?\)/g, '').replace(/[\s\-_·,]/g, '');
+  if(!s) return '';
+  //  지역 접두·접미 「송도」는 붙었다 떨어졌다 한다
+  if(/^송도.{2,}/.test(s)) s = s.slice(2);
+  if(/.{3,}송도$/.test(s)) s = s.slice(0, -2);
+  var n = '';
+  var m = /(\d{1,2})단지/.exec(s);
+  if(m){ n = m[1]; s = s.replace(m[0], ''); }
+  else {
+    //  「송도더샵그린애비뉴7」처럼 단지 글자 없이 번호만 붙기도 한다.
+    //  「…1차」·「…2단계」처럼 다른 뜻의 글자가 붙은 것은 건드리지 않는다.
+    var m2 = /^(.{4,}?)(\d{1,2})$/.exec(s);
+    if(m2){ n = m2[2]; s = m2[1]; }
+  }
+  return s + (n ? '#' + n : '');
+}
+
 var COLS = {
   apt: ['단지명','거래구분','분양m²','전용m²','분양평수','가격','동','호수','층','방향',
         '주요정보','중개업소명','확인날짜','중복등록수','자사매물','중복업소명'],
@@ -30287,6 +30624,23 @@ var COLS = {
   sg:  ['공구','물건구분','단지명','거래구분','층','동','호수','전용m²','전용평수','가격','방향',
         '주요정보','중개업소명','확인날짜','중복등록수','자사매물','중복업소명']
 };
+/*  너비와 가운데맞춤은 파이썬 변환기의 것을 그대로 옮긴다. 숫자를 바꾸지 않는다 —
+    대표님이 매일 보시는 폭이다. [칸, 너비, 가운데맞춤] */
+var COLDEF = {
+  apt:[['단지명',22,0],['거래구분',6,1],['분양m²',12,1],['전용m²',12,1],['분양평수',8,1],
+       ['가격',12,1],['동',6,1],['호수',6,1],['층',8,1],['방향',6,1],['주요정보',40,0],
+       ['중개업소명',16,0],['확인날짜',10,1],['중복등록수',5,1],['자사매물',5,1],['중복업소명',30,0]],
+  op: [['단지명',22,0],['물건구분',10,1],['거래구분',6,1],['전용m²',12,1],['가격',12,1],['동',6,1],
+       ['호수',6,1],['층',8,1],['방향',6,1],['주요정보',40,0],['중개업소명',16,0],['확인날짜',10,1],
+       ['중복등록수',5,1],['자사매물',5,1],['중복업소명',30,0]],
+  sg: [['공구',6,1],['물건구분',10,1],['단지명',22,0],['거래구분',6,1],['층',8,1],['동',6,1],
+       ['호수',6,1],['전용m²',12,1],['전용평수',8,1],['가격',12,1],['방향',6,1],['주요정보',40,0],
+       ['중개업소명',16,0],['확인날짜',10,1],['중복등록수',5,1],['자사매물',5,1],['중복업소명',30,0]]
+};
+function xlCols(kind){
+  return (COLDEF[kind] || COLDEF.apt).map(function(a){
+    return { k:a[0], w:a[1], center:!!a[2] }; });
+}
 var KINDNM = { apt:'아파트·분양권', op:'오피스텔·생숙', sg:'상가·사무실' };
 var SHEETNM = { apt:'아파트', op:'오피스텔', sg:'상가' };
 
@@ -30315,9 +30669,329 @@ function dedupe(entries){
 }
 
 root.NVB = { detect:detect, collect:collect, build:build, dedupe:dedupe,
-             COLS:COLS, KINDNM:KINDNM, SHEETNM:SHEETNM, abbr:abbr, isJasa:isJasa,
+             COLS:COLS, COLDEF:COLDEF, xlCols:xlCols, normDanji:normDanji,
+             KINDNM:KINDNM, SHEETNM:SHEETNM, abbr:abbr, isJasa:isJasa,
              sgBigCat:sgBigCat, priceNum:priceNum,
              _apt:{area:APT_AREA}, _op:{area:OP_AREA}, _sg:{cat:SG_CAT} };
+})(typeof window !== 'undefined' ? window : globalThis);
+
+/*  ── N 매물 공용 조각 ────────────────────────────────────────────────
+    「N 매물 등록」(탭 21)과 「N 매물 분석」(탭 22)이 같이 쓴다.
+    한쪽에서만 고치면 두 화면이 서로 다른 값을 말하게 되므로 여기 모은다. */
+(function(root){
+'use strict';
+var NVB = root.NVB;
+
+function esc(s){ return String(s==null?'':s)
+  .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function fmtN(n){ return (n==null||isNaN(n)) ? '' : String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
+function eok(man){
+  if(man == null || isNaN(man)) return '';
+  if(man < 10000) return fmtN(Math.round(man)) + '만';
+  var e = Math.floor(man/10000), r = Math.round(man - e*10000);
+  return e + '억' + (r ? ' ' + fmtN(r) : '');
+}
+function med(a){
+  if(!a || !a.length) return null;
+  var b = a.slice().sort(function(x,y){ return x-y; }), m = b.length>>1;
+  return b.length % 2 ? b[m] : Math.round((b[m-1]+b[m])/2);
+}
+function card(t, v, sub, c){
+  return '<div class="nv-c"><div class="nv-cl">' + esc(t) + '</div>'
+    + '<div class="nv-cv"' + (c ? ' style="color:' + c + '"' : '') + '>' + v + '</div>'
+    + (sub ? '<div class="nv-cs">' + sub + '</div>' : '') + '</div>';
+}
+function bar(w, c){
+  return '<div class="nv-bar"><i style="width:' + Math.max(1,Math.min(100,w)) + '%;'
+    + 'background:' + c + '"></i></div>';
+}
+function today(){ return new Date().toISOString().slice(0,10).replace(/-/g,'.'); }
+function ymdOf(at){ return String(at||today()).replace(/\./g,''); }
+
+/*  누가 등록했는가 — 직원이 올린 것도 이름이 박혀야 한다 */
+function who(){
+  try{
+    var s = JSON.parse(localStorage.getItem('sd_auth_session') || '{}');
+    return { name: s.name || s.email || '(모름)', role: s.role || '' };
+  }catch(e){ return { name:'(모름)', role:'' }; }
+}
+function isBoss(){ var r = who().role; return r === 'master' || r === 'prime'; }
+
+/*  통계 — 값을 만들어 내지 않는다. 읽은 것만 센다. */
+function stats(rows){
+  var byDeal = {}, byArea = {}, agency = {}, dupTot = 0, mine = 0, only = 0;
+  rows.forEach(function(r){
+    byDeal[r.거래구분] = (byDeal[r.거래구분]||0) + 1;
+    if(r.거래구분 === '매매'){
+      var k = r['전용m²'];
+      (byArea[k] = byArea[k] || { k:k, py:(r.분양평수 || r.전용평수 || 0), ps:[], n:0 });
+      byArea[k].ps.push(r._p); byArea[k].n++;
+    }
+    var d = (r.중복등록수 || 0);
+    dupTot += d;
+    if(r.자사매물 === '★') mine++;
+    if(!d) only++;
+    (r.중복업소명 || '').split(', ').forEach(function(a){
+      if(a) agency[a] = (agency[a]||0) + 1;
+    });
+  });
+  var areas = Object.keys(byArea).map(function(k){
+    var o = byArea[k];
+    o.med = med(o.ps); o.lo = Math.min.apply(null,o.ps); o.hi = Math.max.apply(null,o.ps);
+    return o;
+  }).sort(function(a,b){ return parseFloat(a.k) - parseFloat(b.k); });
+  var cheap = rows.filter(function(r){
+    if(r.거래구분 !== '매매') return false;
+    var o = byArea[r['전용m²']];
+    return o && o.med && r._p < o.med;
+  }).map(function(r){
+    var o = byArea[r['전용m²']];
+    return { r:r, gap: Math.round((o.med - r._p)/o.med*1000)/10 };
+  }).sort(function(a,b){ return b.gap - a.gap; }).slice(0, 8);
+  var tops = Object.keys(agency).map(function(a){ return [a, agency[a]]; })
+    .sort(function(x,y){ return y[1] - x[1]; }).slice(0, 12);
+  return { byDeal:byDeal, areas:areas, cheap:cheap, tops:tops,
+           dupTot:dupTot, mine:mine, only:only, n:rows.length };
+}
+
+/*  회차가 오래돼 행 자료를 지운 뒤에도 남길 요약.
+    이것만으로 호가 추이 그래프가 그려진다 — 1KB 도 안 된다. */
+function summarize(rows){
+  var st = stats(rows);
+  return { n: rows.length, deal: st.byDeal, mine: st.mine, only: st.only, dupTot: st.dupTot,
+           areas: st.areas.map(function(a){
+             return { k:a.k, py:a.py, n:a.n, med:a.med, lo:a.lo, hi:a.hi }; }),
+           tops: st.tops.slice(0, 8) };
+}
+
+/*  매물 하나를 「같은 매물」로 알아보는 열쇠.
+    ⚠ 가격을 넣지 않는다 — 가격이 바뀐 것을 찾는 게 목적이기 때문이다.
+    가격을 넣으면 값을 내린 매물이 「빠진 매물 + 새 매물」 둘로 잡힌다. */
+function unitKey(r){
+  return [r.동 || '', r['전용m²'] || '', r.거래구분 || '', r.층 || ''].join('\u0001');
+}
+
+/*  두 회차 견주기 — 빠진 매물·새 매물·값이 바뀐 매물.
+    건수나 중위값보다 이게 손님 전화에 바로 쓰인다. */
+function compare(oldRows, newRows){
+  var A = {}, B = {};
+  oldRows.forEach(function(r){ A[unitKey(r)] = r; });
+  newRows.forEach(function(r){ B[unitKey(r)] = r; });
+  var gone = [], fresh = [], down = [], up = [];
+  Object.keys(A).forEach(function(k){ if(!B[k]) gone.push(A[k]); });
+  Object.keys(B).forEach(function(k){
+    if(!A[k]){ fresh.push(B[k]); return; }
+    var a = A[k], b = B[k];
+    if(a._p !== b._p){
+      var o = { r:b, was:a._p, now:b._p, gap: b._p - a._p };
+      if(b._p < a._p) down.push(o); else up.push(o);
+    }
+  });
+  down.sort(function(x,y){ return x.gap - y.gap; });
+  up.sort(function(x,y){ return y.gap - x.gap; });
+  return { gone:gone, fresh:fresh, down:down, up:up };
+}
+
+/*  작은 선 그래프 — 그림판을 안 쓴다. 인쇄해도 그대로 나온다. */
+function spark(pts, w, h, color){
+  if(!pts || pts.length < 2) return '';
+  w = w || 320; h = h || 64;
+  var vs = pts.map(function(p){ return p.v; });
+  var lo = Math.min.apply(null, vs), hi = Math.max.apply(null, vs);
+  var pad = (hi - lo) * 0.12 || Math.max(1, hi * 0.02);
+  lo -= pad; hi += pad;
+  var X = function(i){ return 4 + i * (w - 8) / (pts.length - 1); };
+  var Y = function(v){ return h - 6 - (v - lo) / (hi - lo || 1) * (h - 14); };
+  var d = pts.map(function(p,i){ return (i ? 'L' : 'M') + X(i).toFixed(1) + ' ' + Y(p.v).toFixed(1); }).join(' ');
+  var dots = pts.map(function(p,i){
+    return '<circle cx="' + X(i).toFixed(1) + '" cy="' + Y(p.v).toFixed(1) + '" r="2.6" fill="'
+      + (color||'#4c6ef5') + '"><title>' + esc(p.t + ' · ' + eok(p.v)) + '</title></circle>'; }).join('');
+  return '<svg width="' + w + '" height="' + h + '" viewBox="0 0 ' + w + ' ' + h + '" '
+    + 'style="overflow:visible">'
+    + '<path d="' + d + '" fill="none" stroke="' + (color||'#4c6ef5') + '" stroke-width="2" '
+    + 'stroke-linejoin="round" stroke-linecap="round"/>' + dots + '</svg>';
+}
+
+root.NVL = { esc:esc, fmtN:fmtN, eok:eok, med:med, card:card, bar:bar,
+             today:today, ymdOf:ymdOf, who:who, isBoss:isBoss,
+             stats:stats, summarize:summarize, unitKey:unitKey, compare:compare, spark:spark };
+})(typeof window !== 'undefined' ? window : globalThis);
+
+/*  ── 등록 이벤트 보관소 ──────────────────────────────────────────────
+    「N 매물 등록」이 한 회차를 끝낼 때마다 단지마다 한 건씩 남긴다.
+    「N 매물 분석」은 이 기록을 골라서 보고서를 만든다.
+
+    왜 행 자료까지 담는가 — 단지명·등록자·날짜만 남기면 「그때 뭐가 있었나」를
+    다시 그릴 수가 없다. 시점 비교가 목적이므로 그 시점의 행이 있어야 한다.
+
+    구조
+      sd_nv_ev_idx        목록만 (앱에서 이것만 먼저 읽는다 — 가볍다)
+      sd_nv_ev_{id}       그 회차 행 자료 (보고서를 열 때만 읽는다)
+
+    보관 — 단지마다 최근 12회만 행 자료를 두고, 그보다 오래된 것은 **요약만**
+    남기고 행 자료를 지운다. 요약은 1KB 도 안 되므로 몇 해를 둬도 된다.
+    요약만으로도 호가 추이 그래프는 그대로 그려진다.
+    (100단지 × 주1회 × 1년이면 원본을 다 두었을 때 110MB — 무료 1GB 에서
+     공시가격이 이미 40MB 를 쓰고 있어 그냥 두면 언젠가 막힌다.)
+
+    ⚠ localStorage 를 쓰지 않는다. 공시가격 때 브라우저 칸을 채워
+      **다른 설정 저장까지 조용히 실패**한 적이 있다. */
+(function(root){
+'use strict';
+var NVB = root.NVB, NVL = root.NVL;
+
+var IDX  = 'sd_nv_ev_idx';
+var PRE  = 'sd_nv_ev_';
+var KEEP = 12;                 // 단지마다 원본으로 둘 회차 수
+/*  목록(인덱스)은 분석 탭을 열 때마다 통째로 읽는다. 한 회차가 약 0.5KB 이니
+    100단지 주1회면 1년에 2.6MB, 3년이면 7.9MB 다 — 그냥 두면 탭 여는 게 느려진다.
+    52회차(1년)가 넘은 회차는 「매물 낸 업소 목록」을 떼어 낸다. 추이 그래프에
+    쓰는 면적형별 중위는 그대로 두므로 그래프는 안 끊긴다. */
+var SLIM = 52;
+
+var LIST = null;               // 목록 (한 번만 읽는다)
+
+//  파이어베이스 열쇠에 못 쓰는 글자를 바꾼다 ( . $ # [ ] / )
+function safe(s){ return String(s == null ? '' : s).replace(/[.$#\[\]\/\s]/g, '-'); }
+function idOf(kind, key, ymd){ return kind + '_' + safe(key) + '_' + ymd; }
+
+async function sGet(k){
+  try{
+    if(root.storage && root.storage.get){
+      var r = await root.storage.get(k);
+      if(r && r.value != null) return r.value;
+    }
+  }catch(e){}
+  return null;
+}
+async function sSet(k, v){
+  try{
+    if(root.storage && root.storage.set){ await root.storage.set(k, v); return true; }
+  }catch(e){}
+  return false;
+}
+async function sDel(k){
+  try{
+    if(root.storage && root.storage.delete){ await root.storage.delete(k); return true; }
+  }catch(e){}
+  return false;
+}
+
+async function load(force){
+  if(LIST && !force) return LIST;
+  var raw = await sGet(IDX);
+  try{ LIST = raw ? JSON.parse(raw) : []; }catch(e){ LIST = []; }
+  if(!Array.isArray(LIST)) LIST = [];
+  LIST.sort(function(a,b){ return (b.ymd||'') < (a.ymd||'') ? -1 : 1; });
+  return LIST;
+}
+function cached(){ return LIST || []; }
+async function saveIdx(){ return sSet(IDX, JSON.stringify(LIST || [])); }
+
+/*  행을 눕혀서 담는다 — 칸 이름을 행마다 되풀이하지 않으니 60% 쯤 줄어든다.  */
+function pack(kind, rows){
+  var cols = NVB.COLS[kind].concat(['_jeon']);
+  if(kind === 'sg') cols = cols.concat(['_cat']);
+  return { v:1, k:kind, c:cols,
+           r: rows.map(function(o){ return cols.map(function(c){
+                var v = o[c]; return (v === undefined) ? null : v; }); }) };
+}
+function unpack(blob){
+  if(!blob || !blob.c || !blob.r) return [];
+  var cols = blob.c;
+  return blob.r.map(function(a){
+    var o = {};
+    cols.forEach(function(c, i){ o[c] = a[i]; });
+    //  _p 는 가격에서 다시 센다 (담아 둘 필요가 없다)
+    o._p = NVB.priceNum(o.가격);
+    if(o._jeon == null) o._jeon = 0;
+    return o;
+  });
+}
+
+/*  한 회차를 담는다. 같은 단지·같은 날에 또 올리면 덮어쓴다 —
+    하루에 여러 번 올리셔도 기록이 하나만 남는다. */
+async function put(kind, danji, dong, rows, at, note){
+  if(!rows || !rows.length) return null;
+  var key = NVB.normDanji(danji) || danji;
+  var ymd = NVL.ymdOf(at);
+  var id  = idOf(kind, key, ymd);
+  var w   = NVL.who();
+  var ok  = await sSet(PRE + id, JSON.stringify(pack(kind, rows)));
+  var st  = NVL.stats(rows);
+  var ent = { id:id, kind:kind, danji:danji, dong:dong || '', key:key,
+              n:rows.length, deal:st.byDeal, mine:st.mine, only:st.only, dupTot:st.dupTot,
+              by:w.name, at:(at || NVL.today()), ymd:ymd, ts:Date.now(),
+              rows: ok ? 1 : 0, sum: NVL.summarize(rows) };
+  if(note) ent.note = note;
+  await load();
+  var i = LIST.findIndex(function(x){ return x.id === id; });
+  if(i >= 0) LIST[i] = ent; else LIST.unshift(ent);
+  return ent;
+}
+
+/*  보관 정리 — 단지마다 최근 KEEP 회차만 행 자료를 남긴다.
+    지워도 요약(sum)은 목록에 그대로 있으므로 추이 그래프는 안 끊긴다. */
+async function purge(keys){
+  await load();
+  var byKey = {};
+  LIST.forEach(function(e){ (byKey[e.kind + '|' + e.key] = byKey[e.kind + '|' + e.key] || []).push(e); });
+  var dropped = 0;
+  var todo = keys && keys.length ? keys : Object.keys(byKey);
+  for(var i=0;i<todo.length;i++){
+    var arr = byKey[todo[i]];
+    if(!arr || arr.length <= KEEP) continue;
+    arr.sort(function(a,b){ return (b.ymd||'') < (a.ymd||'') ? -1 : 1; });
+    for(var j=KEEP;j<arr.length;j++){
+      if(arr[j].rows){ await sDel(PRE + arr[j].id); arr[j].rows = 0; dropped++; }
+      if(j >= SLIM && arr[j].sum && arr[j].sum.tops) delete arr[j].sum.tops;
+    }
+  }
+  return dropped;
+}
+
+/*  여러 단지를 한 번에 담고 정리까지. 등록 한 판이 끝날 때 부른다. */
+async function putMany(items, at, note, onProg){
+  var saved = [], keys = {};
+  for(var i=0;i<items.length;i++){
+    var o = items[i];
+    if(onProg) onProg(i+1, items.length);
+    var e = await put(o.kind, o.danji, o.dong, o.rows, at, note);
+    if(e){ saved.push(e); keys[e.kind + '|' + e.key] = 1; }
+  }
+  var dropped = await purge(Object.keys(keys));
+  await saveIdx();
+  return { saved:saved, dropped:dropped };
+}
+
+async function rows(id){
+  var e = (LIST || []).filter(function(x){ return x.id === id; })[0];
+  if(e && !e.rows) return null;                  // 오래돼 요약만 남은 회차
+  var raw = await sGet(PRE + id);
+  if(!raw) return null;
+  try{ return unpack(JSON.parse(raw)); }catch(e2){ return null; }
+}
+
+async function remove(ids){
+  await load();
+  var n = 0;
+  for(var i=0;i<ids.length;i++){
+    var e = LIST.filter(function(x){ return x.id === ids[i]; })[0];
+    if(!e) continue;
+    if(e.rows) await sDel(PRE + e.id);
+    LIST = LIST.filter(function(x){ return x.id !== e.id; });
+    n++;
+  }
+  await saveIdx();
+  return n;
+}
+
+//  목록이 얼마나 커졌는지 — 화면에 보여 드려야 언젠가 손을 쓰실 수 있다
+function idxBytes(){ try{ return JSON.stringify(LIST || []).length; }catch(e){ return 0; } }
+
+root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, idxBytes:idxBytes,
+             rows:rows, remove:remove, saveIdx:saveIdx, pack:pack, unpack:unpack,
+             KEEP:KEEP, SLIM:SLIM, _id:idOf, _safe:safe };
 })(typeof window !== 'undefined' ? window : globalThis);
 
 (function(){
@@ -30327,7 +31001,7 @@ root.NVB = { detect:detect, collect:collect, build:build, dedupe:dedupe,
   /*  이름은 nva- 로 시작한다. 2단 탭 모듈이 nvFind(Ctrl+K)를 쓰고 있어서,
       같은 이름을 쓰면 빠른 이동이 통째로 망가진다 — 실제로 그랬다. */
   var TAB = 21;
-  var NVB = window.NVB;
+  var NVB = window.NVB, NVL = window.NVL, NVE = window.NVE, sdXl = window.sdXl;
 
 /* ══════════════════════════════════════════════════════════════════════
    N 매물 분석 · 화면 v2.0
@@ -30341,63 +31015,16 @@ root.NVB = { detect:detect, collect:collect, build:build, dedupe:dedupe,
   var NVS = null;       // 지금 보고 있는 한 단지 보고서
   var NVQ = '', NVDEAL = '전체', NVRAW = '';
   var BAT = null;       // 여러 파일 결과
-  var NVKIND = 'apt';   // 지금 보고서의 종류
   var XLON = true;      // 엑셀도 함께 내려받기 (기본 켬)
+  var RECONLY = false;  // 등록 안 하고 기록만
+  var FOLD = true;      // 단지가 많으면 표를 접는다
 
-  function esc(s){ return String(s==null?'':s)
-    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
-  function fmtN(n){ return (n==null||isNaN(n)) ? '' : String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
-  function eok(man){
-    if(man == null || isNaN(man)) return '';
-    if(man < 10000) return fmtN(Math.round(man)) + '만';
-    var e = Math.floor(man/10000), r = Math.round(man - e*10000);
-    return e + '억' + (r ? ' ' + fmtN(r) : '');
-  }
-  function med(a){
-    if(!a.length) return null;
-    var b = a.slice().sort(function(x,y){ return x-y; }), m = b.length>>1;
-    return b.length % 2 ? b[m] : Math.round((b[m-1]+b[m])/2);
-  }
+  var esc = NVL.esc, fmtN = NVL.fmtN, eok = NVL.eok, med = NVL.med,
+      card = NVL.card, bar = NVL.bar, stats = NVL.stats;
+
   function msg(t, c){
     var e = document.getElementById('nv-msg');
     if(e) e.innerHTML = t ? '<span style="color:' + (c||'var(--text3)') + '">' + esc(t) + '</span>' : '';
-  }
-
-  /*  통계 — 값을 만들어 내지 않는다. 읽은 것만 센다. */
-  function stats(rows){
-    var byDeal = {}, byArea = {}, agency = {}, dupTot = 0, mine = 0, only = 0;
-    rows.forEach(function(r){
-      byDeal[r.거래구분] = (byDeal[r.거래구분]||0) + 1;
-      if(r.거래구분 === '매매'){
-        var k = r['전용m²'];
-        (byArea[k] = byArea[k] || { k:k, py:(r.분양평수 || r.전용평수 || 0), ps:[], n:0 });
-        byArea[k].ps.push(r._p); byArea[k].n++;
-      }
-      var d = (r.중복등록수 || 0);
-      dupTot += d;
-      if(r.자사매물 === '★') mine++;
-      if(!d) only++;
-      (r.중복업소명 || '').split(', ').forEach(function(a){
-        if(a) agency[a] = (agency[a]||0) + 1;
-      });
-    });
-    var areas = Object.keys(byArea).map(function(k){
-      var o = byArea[k];
-      o.med = med(o.ps); o.lo = Math.min.apply(null,o.ps); o.hi = Math.max.apply(null,o.ps);
-      return o;
-    }).sort(function(a,b){ return parseFloat(a.k) - parseFloat(b.k); });
-    var cheap = rows.filter(function(r){
-      if(r.거래구분 !== '매매') return false;
-      var o = byArea[r['전용m²']];
-      return o && o.med && r._p < o.med;
-    }).map(function(r){
-      var o = byArea[r['전용m²']];
-      return { r:r, gap: Math.round((o.med - r._p)/o.med*1000)/10 };
-    }).sort(function(a,b){ return b.gap - a.gap; }).slice(0, 8);
-    var tops = Object.keys(agency).map(function(a){ return [a, agency[a]]; })
-      .sort(function(x,y){ return y[1] - x[1]; }).slice(0, 12);
-    return { byDeal:byDeal, areas:areas, cheap:cheap, tops:tops,
-             dupTot:dupTot, mine:mine, only:only, n:rows.length };
   }
 
   /*  붙여넣기 한 판 — 종류도 알아서 가린다 */
@@ -30444,6 +31071,11 @@ root.NVB = { detect:detect, collect:collect, build:build, dedupe:dedupe,
       +     '<input type="checkbox" id="nv-xlon"' + (XLON ? ' checked' : '')
       +     ' onchange="nvaXlOn(this.checked)" style="width:15px;height:15px;cursor:pointer">'
       +     '엑셀도 함께 내려받기</label>'
+      +   '<label style="display:flex;align-items:center;gap:5px;font-size:12px;cursor:pointer" '
+      +     'title="매물 탭은 건드리지 않고 분석용 기록만 남깁니다 — 남의 단지를 살펴볼 때">'
+      +     '<input type="checkbox" id="nv-reconly"' + (RECONLY ? ' checked' : '')
+      +     ' onchange="nvaRecOnly(this.checked)" style="width:15px;height:15px;cursor:pointer">'
+      +     '등록 안 하고 기록만</label>'
       +   (BAT ? '<button class="dj-bs" onclick="nvaBatClear()">결과 비우기</button>' : '')
       +   '<span id="nv-bmsg" style="font-size:12px;color:var(--text3)"></span>'
       + '</div></div>';
@@ -30489,11 +31121,15 @@ root.NVB = { detect:detect, collect:collect, build:build, dedupe:dedupe,
       + '</div>';
 
     h += '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:11px 0">'
-      + '<button class="dj-bp" onclick="nvaRegister()">📤 매물 탭에 등록</button>'
+      + '<button class="dj-bp" onclick="nvaRegister()">'
+      +   (RECONLY ? '🗂 기록만 남기기' : '📤 매물 탭에 등록') + '</button>'
       + '<button class="dj-bs" onclick="nvaBatXlsx()">📥 엑셀 내려받기</button>'
-      + '<span style="font-size:11px;color:var(--text3)">등록하면 '
-      + Object.keys(BAT.byKind).map(function(k){ return TABNM[k]; }).join(' · ')
-      + ' 탭의 <b>같은 단지만</b> 갈아 끼웁니다 — 다른 단지는 그대로 둡니다.</span>'
+      + '<span style="font-size:11px;color:var(--text3)">'
+      + (RECONLY
+          ? '매물 탭은 건드리지 않고 <b>분석용 기록만</b> 남깁니다.'
+          : '등록하면 ' + Object.keys(BAT.byKind).map(function(k){ return TABNM[k]; }).join(' · ')
+            + ' 탭의 <b>같은 단지만</b> 갈아 끼웁니다 — 다른 단지는 그대로 둡니다.')
+      + ' 끝나면 <b>🔎 N 매물 분석</b> 탭에 회차로 쌓입니다.</span>'
       + '</div>';
 
     if(BAT.warns.length)
@@ -30501,10 +31137,17 @@ root.NVB = { detect:detect, collect:collect, build:build, dedupe:dedupe,
         + BAT.warns.slice(0,4).map(esc).join(' · ')
         + (BAT.warns.length>4 ? ' 외 ' + (BAT.warns.length-4) + '가지' : '') + '</div>';
 
+    //  100개를 올리시면 100줄이 된다 — 20개가 넘으면 접어 둔다
+    var many = BAT.list.length > 20;
+    if(many)
+      h += '<div style="margin:0 0 7px"><button class="dj-bs" onclick="nvaFold()">'
+        + (FOLD ? '▸ 단지 ' + BAT.list.length + '개 펼쳐 보기' : '▾ 접기') + '</button></div>';
+    var show = (many && FOLD) ? [] : BAT.list;
+    if(show.length){
     h += '<div style="overflow-x:auto;max-height:340px"><table class="nv-t"><thead><tr>'
       + '<th>종류</th><th>단지</th><th>매물</th><th>거래</th><th>자사★</th><th>보고서</th>'
       + '</tr></thead><tbody>';
-    BAT.list.forEach(function(o, i){
+    show.forEach(function(o, i){
       var bd = {};
       o.rows.forEach(function(r){ bd[r.거래구분] = (bd[r.거래구분]||0)+1; });
       h += '<tr' + (o.mine ? ' class="nv-mine"' : '') + '>'
@@ -30518,6 +31161,7 @@ root.NVB = { detect:detect, collect:collect, build:build, dedupe:dedupe,
         +   'onclick="nvaPick(' + i + ')">열기</button></td></tr>';
     });
     h += '</tbody></table></div>';
+    }
     return h;
   }
 
@@ -30654,6 +31298,8 @@ root.NVB = { detect:detect, collect:collect, build:build, dedupe:dedupe,
   }
 
   window.nvaXlOn = function(v){ XLON = !!v; };
+  window.nvaRecOnly = function(v){ RECONLY = !!v; paint(); };
+  window.nvaFold = function(){ FOLD = !FOLD; paint(); };
 
   window.nvaFiles = async function(input){
     var files = input.files ? Array.prototype.slice.call(input.files) : [];
@@ -30731,53 +31377,56 @@ root.NVB = { detect:detect, collect:collect, build:build, dedupe:dedupe,
   };
 
   // ── 엑셀 ────────────────────────────────────────────────────────────
-  function sheetName(s, used){
-    var n = String(s||'매물').replace(/[\[\]:*?\/\\]/g,'-').slice(0,28) || '매물';
-    var base = n, i = 2;
-    while(used[n]){ n = base.slice(0,25) + '(' + i + ')'; i++; }
-    used[n] = 1; return n;
-  }
-  function sheetOf(kind, rows, at){
-    var COLS = NVB.COLS[kind];
-    var aoa = [COLS.slice()];
-    aoa[0][COLS.length-1] = '중복업소명 (' + at + ')';
-    rows.forEach(function(r){
-      aoa.push(COLS.map(function(c){ return r[c] == null ? '' : r[c]; }));
-    });
-    return XLSX.utils.aoa_to_sheet(aoa);
-  }
-  /*  단지가 100개면 파일도 100개가 된다 — 내려받기 창이 100번 뜬다.
-      그래서 한 권에 단지마다 시트 하나로 담는다. 보관하기도 쉽다. */
-  window.nvaBatXlsx = function(quiet){
-    if(!BAT) return;
-    if(typeof XLSX === 'undefined'){ bmsg('엑셀 기능을 불러오지 못했습니다.', '#c33'); return; }
-    var wb = XLSX.utils.book_new(), used = {}, n = 0;
+  /*  서식(거래구분별 머리글 색·홀수행 교대색·자사 빨강 볼드·구분 사이 빈 행
+      ·틀고정·자동필터·열 너비)은 sdXl 이 넣는다. SheetJS 무료판은 서식을
+      못 써서 색이 통째로 빠진 채 나갔다 — 대표님이 그걸 잡아 주셨다.
+      SheetJS 는 읽기(🧪 대조)에만 계속 쓴다. */
+  function xlSheets(){
+    var sheets = [];
     BAT.list.forEach(function(o){
-      //  상가·사무실은 대분류로 나눈다 (지침 v2.6 — 파일을 나누던 것을 시트로)
+      //  상가·사무실은 대분류로 시트를 나눈다 (지침 v2.6)
       var buckets = {};
       if(o.kind === 'sg') o.rows.forEach(function(r){
-        (buckets[r._cat || '상가'] = buckets[r._cat || '상가'] || []).push(r); });
+        var b = r._cat || '상가'; (buckets[b] = buckets[b] || []).push(r); });
       else buckets[''] = o.rows;
       Object.keys(buckets).sort().forEach(function(b){
-        var nm = (b ? b + '_' : '') + o.danji + (o.dong || '');
-        XLSX.utils.book_append_sheet(wb, sheetOf(o.kind, buckets[b], BAT.at),
-                                     sheetName(nm, used));
-        n++;
+        sheets.push(sdXl.listSheet((b ? b + '_' : '') + o.danji + (o.dong || ''),
+                    NVB.xlCols(o.kind), buckets[b], BAT.at));
       });
     });
-    if(!n) return;
-    XLSX.writeFile(wb, '네이버매물_' + BAT.at.replace(/\./g,'') + '_' + n + '개단지.xlsx');
-    if(!quiet) bmsg('✅ 엑셀 한 권(' + n + '개 시트)으로 내려받았습니다.', '#0a7');
+    return sheets;
+  }
+  /*  1개 단지면 「단지명_매물정리_일자」,
+      2개 이상이면 「대표단지명외N개단지_매물정리_일자」로 한 파일.
+      대표는 매물이 가장 많은 단지로 한다. */
+  function xlName(){
+    var L = BAT.list, d = BAT.at.replace(/\./g, '');
+    if(L.length === 1) return L[0].danji + (L[0].dong || '') + '_매물정리_' + d + '.xlsx';
+    var top = L.reduce(function(a, b){ return b.rows.length > a.rows.length ? b : a; });
+    return top.danji + (top.dong || '') + '외' + (L.length - 1) + '개단지_매물정리_'
+           + d + '.xlsx';
+  }
+  window.nvaBatXlsx = async function(quiet){
+    if(!BAT) return;
+    if(typeof sdXl === 'undefined'){ bmsg('엑셀 기능을 불러오지 못했습니다.', '#c33'); return; }
+    try{
+      var sheets = xlSheets();
+      if(!sheets.length) return;
+      var nm = xlName();
+      await sdXl.write(sheets, nm);
+      if(!quiet) bmsg('✅ ' + esc(nm) + ' 으로 내려받았습니다 (시트 ' + sheets.length + '개).', '#0a7');
+    }catch(e){ bmsg('엑셀을 만들지 못했습니다 — ' + esc(e && e.message || e), '#c33'); }
   };
-
-  window.nvaXlsx = function(){
+  window.nvaXlsx = async function(){
     if(!NVS) return;
-    if(typeof XLSX === 'undefined'){ msg('엑셀 기능을 불러오지 못했습니다.', '#c33'); return; }
+    if(typeof sdXl === 'undefined'){ msg('엑셀 기능을 불러오지 못했습니다.', '#c33'); return; }
     var kind = NVS.kind || 'apt';
-    var wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, sheetOf(kind, NVS.rows, NVS.at), NVB.SHEETNM[kind]);
-    XLSX.writeFile(wb, (NVS.danji || '매물') + '_매물정리_' + NVS.at.replace(/\./g,'') + '.xlsx');
-    msg('내려받았습니다.', '#0a7');
+    try{
+      var nm = (NVS.danji || '매물').replace(/\s+/g, '') + '_매물정리_'
+             + NVS.at.replace(/\./g, '') + '.xlsx';
+      await sdXl.write([sdXl.listSheet(NVS.danji || '매물', NVB.xlCols(kind), NVS.rows, NVS.at)], nm);
+      msg('✅ ' + nm + ' 으로 내려받았습니다.', '#0a7');
+    }catch(e){ msg('엑셀을 만들지 못했습니다 — ' + (e && e.message || e), '#c33'); }
   };
 
   // ── 매물 탭에 등록 ──────────────────────────────────────────────────
@@ -30789,6 +31438,56 @@ root.NVB = { detect:detect, collect:collect, build:build, dedupe:dedupe,
     BAT.list.forEach(function(o){ if(o.kind === kind) out = out.concat(o.rows); });
     return out;
   }
+  var GKEY = { apt:'naverData', op:'naverOpData', sg:'naverSanggaData' };
+  /*  ── 등록하기 전에 단지 이름을 맞춘다 ──────────────────────────────
+      네이버가 이름 적는 차례를 바꾸면(「더샵그린애비뉴7단지」→
+      「송도더샵7단지그린애비뉴」) 갈아 끼우기가 이름을 못 찾아 그냥 넘어가고,
+      매물 탭에 같은 단지가 하나 더 생긴다. 새 자료는 안 보이고 옛 자료만
+      보인다 — 실제로 9월 하순 자료가 그렇게 묻혔다.
+      그래서 ① 이미 있는 이름으로 맞추고 ② 갈라져 있던 다른 표기는 지운다.
+      이름을 새로 만들지 않는다. 매물 탭이 쓰던 이름을 그대로 따른다. */
+  function canonName(kind, danji){
+    var arr = window.G[GKEY[kind]] || [];
+    var k = NVB.normDanji(danji);
+    if(!k) return danji;
+    var names = {}, best = danji, bn = 0;
+    arr.forEach(function(r){
+      if(r.단지명 && NVB.normDanji(r.단지명) === k)
+        names[r.단지명] = (names[r.단지명] || 0) + 1;
+    });
+    Object.keys(names).forEach(function(n){ if(names[n] > bn){ bn = names[n]; best = n; } });
+    return best;
+  }
+  function alignDanji(kind, rows){
+    var renames = [], seen = {};
+    rows.forEach(function(r){
+      var nm = r.단지명; if(!nm) return;
+      if(seen[nm] !== undefined){ r.단지명 = seen[nm]; return; }
+      var best = canonName(kind, nm);
+      seen[nm] = best;
+      if(best !== nm) renames.push([nm, best]);
+      r.단지명 = best;
+    });
+    return renames;
+  }
+  /*  갈라져 있던 다른 표기의 옛 매물을 지운다. 이걸 안 하면 같은 단지가
+      두 이름으로 남아 건수가 두 배로 보인다. */
+  function purgeAliases(kind, rows){
+    var key = GKEY[kind], arr = window.G[key];
+    if(!arr || !arr.length) return 0;
+    var want = {}, keep = {};
+    rows.forEach(function(r){
+      var k = NVB.normDanji(r.단지명);
+      if(k){ want[k] = 1; keep[r.단지명] = 1; }
+    });
+    var n0 = arr.length;
+    window.G[key] = arr.filter(function(r){
+      var k = NVB.normDanji(r.단지명);
+      return !(k && want[k] && !keep[r.단지명]);
+    });
+    return n0 - window.G[key].length;
+  }
+
   function regOp(rows){
     rows.forEach(function(r){ r.__kind__ = r.물건구분 || '오피스텔'; });
     var np = window.parseNaverRows(rows);
@@ -30829,34 +31528,86 @@ root.NVB = { detect:detect, collect:collect, build:build, dedupe:dedupe,
     if(typeof window.renderTab8 === 'function') try{ window.renderTab8(); }catch(e){}
     return np.length;
   }
-  window.nvaRegister = function(){
+  /*  items: [{kind, danji, dong, rows}] → 매물 탭에 등록.
+      「N 매물 분석」의 되돌리기도 이 길로 온다 — 길이 둘이면 언젠가 갈라진다. */
+  function pushToTabs(items){
+    var done = [], ren = [], purged = 0;
+    function cp(r){ var o = {}; for(var k in r) if(k.charAt(0) !== '_') o[k] = r[k]; return o; }
+    function flatK(kind){
+      var out = [];
+      items.forEach(function(o){ if(o.kind === kind) out = out.concat(o.rows.map(cp)); });
+      return out;
+    }
+    function prep(kind, rows){
+      ren = ren.concat(alignDanji(kind, rows));
+      purged += purgeAliases(kind, rows);
+      return rows;
+    }
+    var a = flatK('apt');
+    if(a.length && typeof window.processNaverRows === 'function'){
+      //  APT 는 엑셀 업로드와 똑같은 길로 보낸다 (공구 맞추기·이력 쌓기까지 그대로)
+      window.processNaverRows(prep('apt', a), items.length);
+      done.push('매물(APT) ' + fmtN(a.length) + '건');
+    }
+    var o2 = flatK('op');
+    if(o2.length){ var n2 = regOp(prep('op', o2)); if(n2) done.push('매물(OP/생숙) ' + fmtN(n2) + '건'); }
+    var s2 = flatK('sg');
+    if(s2.length){ var n3 = regSg(prep('sg', s2)); if(n3) done.push('매물(상가/사무실) ' + fmtN(n3) + '건'); }
+    return { done:done, ren:ren, purged:purged };
+  }
+  window.sdNvReg = {
+    push: function(items){
+      var r = pushToTabs(items);
+      return r.done.length ? r.done.join(' · ') : '등록할 것이 없습니다';
+    },
+    canon: canonName
+  };
+
+  window.nvaRegister = async function(){
     if(!BAT) return;
     if(typeof window.parseNaverRows !== 'function'){
       bmsg('매물 탭을 찾지 못했습니다 — 화면을 새로 고쳐 주십시오.', '#c33'); return;
     }
-    var done = [];
-    function cp(r){ var o = {}; for(var k in r) if(k.charAt(0) !== '_') o[k] = r[k]; return o; }
-    try{
-      var a = flat('apt');
-      if(a.length && typeof window.processNaverRows === 'function'){
-        //  APT 는 엑셀 업로드와 똑같은 길로 보낸다 (공구 맞추기·이력 쌓기까지 그대로)
-        window.processNaverRows(a.map(function(r){
-          var o = {}; for(var k in r) if(k.charAt(0) !== '_') o[k] = r[k]; return o;
-        }), BAT.nFile);
-        done.push('매물(APT) ' + fmtN(a.length) + '건');
-      }
-      var o2 = flat('op');
-      if(o2.length){ var n2 = regOp(o2.map(cp)); if(n2) done.push('매물(OP/생숙) ' + fmtN(n2) + '건'); }
-      var s2 = flat('sg');
-      if(s2.length){ var n3 = regSg(s2.map(cp)); if(n3) done.push('매물(상가/사무실) ' + fmtN(n3) + '건'); }
-    }catch(e){
-      bmsg('등록 중 막혔습니다 — ' + esc(e && e.message || e), '#c33');
-      return;
+    var res = { done:[], ren:[], purged:0 };
+    if(!RECONLY){
+      try{ res = pushToTabs(BAT.list); }
+      catch(e){ bmsg('등록 중 막혔습니다 — ' + esc(e && e.message || e), '#c33'); return; }
+      if(!res.done.length){ bmsg('등록할 것이 없습니다.', '#c33'); return; }
     }
-    if(!done.length){ bmsg('등록할 것이 없습니다.', '#c33'); return; }
-    bmsg('✅ ' + done.join(' · ') + ' 등록했습니다.', '#0a7');
-    if(typeof window.showToast === 'function')
-      window.showToast('✅ ' + done.join(' · ') + ' 등록 완료');
+    //  기록에 남길 단지 이름도 매물 탭이 쓰는 이름으로 맞춘다 (열쇠는 어차피
+    //  정규화된 것이지만, 두 화면에 다른 이름이 뜨면 대표님이 헷갈리신다)
+    var items = BAT.list.map(function(o){
+      return { kind:o.kind, danji:canonName(o.kind, o.danji), dong:o.dong, rows:o.rows };
+    });
+    var ev = null;
+    try{
+      bmsg('기록하는 중… (' + items.length + '개 단지)', '#1565c0');
+      ev = await NVE.putMany(items, BAT.at, null, function(i, n){
+        if(i % 5 === 0 || i === n) bmsg('기록하는 중… ' + i + ' / ' + n, '#1565c0');
+      });
+    }catch(e){ ev = null; }
+
+    var t = RECONLY ? '🗂 기록만 남겼습니다.' : '✅ ' + res.done.join(' · ') + ' 등록했습니다.';
+    if(res.ren.length) t += '<br><span style="color:#1565c0">단지 이름을 매물 탭이 쓰던 것으로 '
+      + res.ren.length + '곳 맞췄습니다 — '
+      + res.ren.slice(0,3).map(function(x){ return '「' + esc(x[0]) + '」→「' + esc(x[1]) + '」'; }).join(' · ')
+      + (res.ren.length > 3 ? ' 외 ' + (res.ren.length-3) + '곳' : '') + '</span>';
+    if(res.purged) t += '<br><span style="color:#1565c0">다른 표기로 갈라져 있던 옛 매물 '
+      + fmtN(res.purged) + '건을 정리했습니다.</span>';
+    if(ev && ev.saved.length) t += '<br><span style="color:#0a7">🔎 <b>N 매물 분석</b> 탭에 '
+      + ev.saved.length + '개 단지 회차로 담았습니다'
+      + (ev.dropped ? ' (오래된 회차 ' + ev.dropped + '건은 요약만 남기고 매물은 지웠습니다)' : '')
+      + ' — 다음에 또 올리시면 그때 견주실 수 있습니다.</span>';
+    else t += '<br><span style="color:#c80">회차 기록은 남기지 못했습니다 — '
+      + '인터넷이 끊겼는지 봐 주십시오. 매물 등록 자체는 위에 적은 대로 끝났습니다.</span>';
+
+    if(typeof window.showToast === 'function' && res.done.length)
+      window.showToast('✅ ' + res.done.join(' · ') + ' 등록 완료');
+
+    //  쌓이지 않게 결과를 비운다 — 회차는 분석 탭에 남아 있다
+    BAT = null; NVS = null; FOLD = true;
+    paint();
+    bmsg(t, '#0a7');
   };
 
   // ── 붙여넣기 한 판 ──────────────────────────────────────────────────
@@ -30969,7 +31720,6 @@ root.NVB = { detect:detect, collect:collect, build:build, dedupe:dedupe,
     };
     rd.readAsArrayBuffer(f);
   };
-
   // ── 탭 만들기 ───────────────────────────────────────────────────────
   function build(){
     if(document.getElementById('tc' + TAB)) return true;
@@ -30979,7 +31729,7 @@ root.NVB = { detect:detect, collect:collect, build:build, dedupe:dedupe,
     var b = document.createElement('button');
     b.className = 'tab-btn';
     b.setAttribute('onclick', 'sw(' + TAB + ')');
-    b.innerHTML = '🔎 N 매물 분석';
+    b.innerHTML = '📥 N 매물 등록';
     nav.appendChild(b);
     var panel = document.createElement('div');
     panel.id = 'tc' + TAB; panel.className = 'tc';
@@ -31006,8 +31756,543 @@ root.NVB = { detect:detect, collect:collect, build:build, dedupe:dedupe,
   })();
   window.sdNv = { parse:parse, stats:stats, tab:TAB, core:NVB,
                   last:function(){ return NVS; },
-                  batch:function(){ return BAT; } };
+                  batch:function(){ return BAT; },
+                  setBatch:function(b){ BAT = b; } };
 })();
+
+/*  ══════════════════════════════════════════════════════════════════════
+    N 매물 분석 (탭 22)
+    ──────────────────────────────────────────────────────────────────
+    등록할 때 남긴 회차 기록을 골라 보고서를 만든다. 고른 것에 따라 네 갈래:
+
+      하나            → 그 시점의 단지 보고서
+      같은 단지 둘     → 시점 비교 (빠진 매물·새 매물·내린 값)
+      같은 단지 셋 이상 → 호가 추이
+      다른 단지 둘~셋  → 단지 비교
+
+    같은 단지인지는 **이름이 아니라 정규화 열쇠**로 가린다. 네이버가 이름을
+    바꿔 적으면(「더샵그린애비뉴7단지」→「송도더샵7단지그린애비뉴」) 이름으로
+    묶었을 때 추이가 중간에서 끊기기 때문이다.
+    ══════════════════════════════════════════════════════════════════ */
+(function(){
+  'use strict';
+  if(window.__nvAn2On) return; window.__nvAn2On = true;
+  var TAB = 22;
+  var NVB = window.NVB, NVL = window.NVL, NVE = window.NVE, sdXl = window.sdXl;
+  var esc = NVL.esc, fmtN = NVL.fmtN, eok = NVL.eok, med = NVL.med,
+      card = NVL.card, bar = NVL.bar;
+
+  var SEL = {};            // 고른 회차 id
+  var REP = null;          // 지금 만든 보고서
+  var Q = '', FK = 'all', FB = 'all', OPEN = {};
+  var READY = false, BUSY = false;
+
+  function amsg(t, c){
+    var e = document.getElementById('an-msg');
+    if(e) e.innerHTML = t ? '<span style="color:' + (c||'var(--text3)') + '">' + t + '</span>' : '';
+  }
+  function selList(){
+    return NVE.cached().filter(function(e){ return SEL[e.id]; });
+  }
+
+  // ── 목록 ────────────────────────────────────────────────────────────
+  function listBox(){
+    var all = NVE.cached();
+    if(!all.length)
+      return '<div class="nv-in" style="margin-top:12px;color:var(--text3);font-size:12.5px;line-height:1.8">'
+        + '아직 기록이 없습니다. <b>📥 N 매물 등록</b> 탭에서 한 번 등록하시면 '
+        + '단지마다 한 건씩 여기 쌓입니다 — 그 뒤로는 올릴 때마다 회차가 늘고, '
+        + '회차를 둘 고르시면 <b>지난번과 견준 보고서</b>가 나옵니다.</div>';
+
+    var rows = all.filter(function(e){
+      if(FK !== 'all' && e.kind !== FK) return false;
+      if(FB !== 'all' && e.by !== FB) return false;
+      if(Q && (e.danji + ' ' + e.by).toLowerCase().indexOf(Q.toLowerCase()) < 0) return false;
+      return true;
+    });
+    var bys = {};
+    all.forEach(function(e){ bys[e.by] = (bys[e.by]||0) + 1; });
+
+    var h = '<div class="nv-in" style="margin-top:12px">'
+      + '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">'
+      + '<input class="dj-in" style="width:180px;padding:5px 9px;font-size:12px" '
+      + 'placeholder="단지·등록자 찾기" value="' + esc(Q) + '" oninput="nvbQ(this.value)">'
+      + [['all','전체'],['apt','아파트'],['sg','상가·사무실'],['op','OP·생숙']].map(function(x){
+          return '<button class="dj-bs" onclick="nvbFk(\'' + x[0] + '\')"'
+            + (FK === x[0] ? ' style="border-color:transparent;background:var(--accent);color:#fff"' : '')
+            + '>' + x[1] + '</button>'; }).join('');
+    if(Object.keys(bys).length > 1)
+      h += '<select class="dj-in" style="padding:5px 8px;font-size:12px" onchange="nvbFb(this.value)">'
+        + '<option value="all">등록자 전체</option>'
+        + Object.keys(bys).sort().map(function(b){
+            return '<option value="' + esc(b) + '"' + (FB === b ? ' selected' : '') + '>'
+              + esc(b) + ' (' + bys[b] + ')</option>'; }).join('')
+        + '</select>';
+    h += '<span style="font-size:11.5px;color:var(--text3);margin-left:auto">'
+      + fmtN(rows.length) + ' / ' + fmtN(all.length) + '회차</span></div>';
+
+    var nSel = Object.keys(SEL).length;
+    h += '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:9px">'
+      + '<button class="dj-bp" onclick="nvbMake()"' + (nSel ? '' : ' disabled style="opacity:.45"') + '>'
+      + '📊 보고서 만들기' + (nSel ? ' (' + nSel + ')' : '') + '</button>'
+      + (nSel ? '<button class="dj-bs" onclick="nvbClearSel()">고른 것 풀기</button>'
+              + '<button class="dj-bs" onclick="nvbDel()" style="color:#c33">🗑 고른 회차 지우기</button>' : '')
+      + (nSel === 1 ? '<button class="dj-bs" onclick="nvbRestore()">↩ 이 회차로 되돌리기</button>' : '')
+      + '<span id="an-msg" style="font-size:12px;color:var(--text3)"></span>'
+      + '</div>';
+
+    //  날짜로 접는다 — 주 1회 100개면 1년에 5,200줄이 된다
+    var byYmd = {};
+    rows.forEach(function(e){ (byYmd[e.ymd] = byYmd[e.ymd] || []).push(e); });
+    var ymds = Object.keys(byYmd).sort().reverse();
+    h += '<div style="margin-top:11px;max-height:420px;overflow:auto">';
+    ymds.forEach(function(y, yi){
+      var L = byYmd[y], open = (OPEN[y] != null) ? OPEN[y] : (yi === 0);
+      var tot = L.reduce(function(a,e){ return a + e.n; }, 0);
+      var mine = L.reduce(function(a,e){ return a + (e.mine||0); }, 0);
+      h += '<div style="margin-bottom:6px">'
+        + '<div onclick="nvbOpen(\'' + y + '\')" style="cursor:pointer;display:flex;gap:8px;'
+        + 'align-items:center;padding:6px 9px;background:var(--bg3);border-radius:8px;font-size:12px">'
+        + '<span>' + (open ? '▾' : '▸') + '</span>'
+        + '<b>' + esc(L[0].at) + '</b>'
+        + '<span style="color:var(--text3)">단지 ' + L.length + '개 · 매물 ' + fmtN(tot) + '건'
+        + (mine ? ' · 자사 ' + mine : '') + '</span>'
+        + '<button class="dj-bs" style="margin-left:auto;padding:1px 7px;font-size:11px" '
+        + 'onclick="event.stopPropagation();nvbPickDay(\'' + y + '\')">이 날 전체 고르기</button>'
+        + '</div>';
+      if(open){
+        h += '<table class="nv-t" style="margin-top:3px"><tbody>';
+        L.slice().sort(function(a,b){ return a.danji < b.danji ? -1 : 1; }).forEach(function(e){
+          var d = Object.keys(e.deal||{}).map(function(k){ return k + ' ' + e.deal[k]; }).join(' · ');
+          h += '<tr' + (e.mine ? ' class="nv-mine"' : '') + '>'
+            + '<td style="width:26px"><input type="checkbox"' + (SEL[e.id] ? ' checked' : '')
+            +   ' onchange="nvbSel(\'' + e.id + '\',this.checked)" style="width:15px;height:15px;cursor:pointer"></td>'
+            + '<td style="color:var(--text3);font-size:11px">' + esc(NVB.KINDNM[e.kind]) + '</td>'
+            + '<td><b>' + esc(e.danji) + '</b>' + (e.dong ? ' ' + esc(e.dong) : '') + '</td>'
+            + '<td>' + e.n + '건</td>'
+            + '<td style="color:var(--text3);font-size:11px">' + esc(d) + '</td>'
+            + '<td>' + (e.mine ? '★' + e.mine : '') + '</td>'
+            + '<td style="color:var(--text3);font-size:11px">' + esc(e.by) + '</td>'
+            + '<td style="font-size:11px;color:' + (e.rows ? 'var(--text3)' : '#c80') + '">'
+            +   (e.rows ? '' : '요약만') + '</td>'
+            + '</tr>';
+        });
+        h += '</tbody></table>';
+      }
+      h += '</div>';
+    });
+    h += '</div>';
+    h += '<div style="font-size:11px;color:var(--text3);margin-top:8px;line-height:1.7">'
+      + '회차 <b>하나</b>를 고르면 그 시점 보고서, <b>같은 단지 둘</b>이면 지난번과 견준 보고서, '
+      + '<b>셋 이상</b>이면 호가 추이, <b>다른 단지 둘~셋</b>이면 단지끼리 견준 보고서가 나옵니다.<br>'
+      + '단지마다 최근 <b>' + NVE.KEEP + '회차</b>까지 매물을 그대로 두고, 그보다 오래된 회차는 '
+      + '<b>요약만</b> 남깁니다 — 요약만 남아도 호가 추이는 그대로 그려집니다.'
+      + ' <span style="color:var(--text3)">(목록 ' + fmtN(Math.round(NVE.idxBytes()/1024))
+      + 'KB · 회차 ' + fmtN(all.length) + '개)</span>'
+      + '</div></div>';
+    return h;
+  }
+
+  // ── 보고서 ──────────────────────────────────────────────────────────
+  function head(t, sub){
+    return '<div class="nv-h">' + t + (sub ? ' <span>' + esc(sub) + '</span>' : '') + '</div>';
+  }
+  function unitLine(r){
+    return esc([r.동, r.층, r['전용m²'], r.방향].filter(Boolean).join(' · '));
+  }
+  function repOne(e, rows){
+    var S = NVL.stats(rows), kind = e.kind, h = '';
+    h += head('📋 ' + esc(e.danji) + (e.dong ? ' ' + esc(e.dong) : ''),
+              NVB.KINDNM[kind] + ' · 매물 ' + S.n + '건 · ' + e.at + ' 읽음 · 등록 ' + e.by);
+    var ps = rows.filter(function(r){ return r.거래구분==='매매'; }).map(function(r){ return r._p; });
+    h += '<div class="nv-cards">'
+      + card('매물 수', S.n + '<small>건</small>',
+             Object.keys(S.byDeal).map(function(k){ return k + ' ' + S.byDeal[k]; }).join(' · '))
+      + card('매매 중위', ps.length ? eok(med(ps)) : '—',
+             ps.length ? eok(Math.min.apply(null,ps)) + ' ~ ' + eok(Math.max.apply(null,ps)) : '')
+      + card('우리 매물', S.mine + '<small>건</small>', S.mine ? '자사 ★' : '이 목록에 없음',
+             S.mine ? '#1565c0' : '')
+      + card('우리만 가진 매물', S.only + '<small>건</small>',
+             '전체의 ' + Math.round(S.only/S.n*100) + '%')
+      + card('중복 등록', fmtN(S.dupTot) + '<small>건</small>', '한 매물을 여러 곳이 같이 냄')
+      + '</div>';
+    if(S.areas.length){
+      h += head('📐 전용면적형별 매매 시세', '중위값 기준')
+        + '<div style="overflow-x:auto"><table class="nv-t"><thead><tr>'
+        + '<th>전용</th><th>평</th><th>건수</th><th>중위</th><th>최저~최고</th><th>폭</th>'
+        + '</tr></thead><tbody>';
+      var top = Math.max.apply(null, S.areas.map(function(a){ return a.hi; }));
+      S.areas.forEach(function(a){
+        h += '<tr><td>' + esc(a.k) + '</td><td>' + (a.py||'') + '</td><td>' + a.n + '</td>'
+          + '<td><b>' + eok(a.med) + '</b></td>'
+          + '<td style="color:var(--text3)">' + eok(a.lo) + ' ~ ' + eok(a.hi) + '</td>'
+          + '<td style="min-width:120px">' + bar(a.hi/top*100, '#4c6ef5') + '</td></tr>';
+      });
+      h += '</tbody></table></div>';
+    }
+    if(S.cheap.length){
+      h += head('💡 같은 면적형보다 싼 매물', '중위값 대비') + '<div class="nv-grid">';
+      S.cheap.forEach(function(c){
+        h += '<div class="nv-p"><div class="nv-pt">' + unitLine(c.r)
+          + ' <b style="color:#2b8a3e">-' + c.gap + '%</b></div>'
+          + '<div class="nv-pd">' + esc(c.r.가격) + '<br>' + esc(c.r.중개업소명)
+          + (c.r.중복등록수 ? ' 외 ' + c.r.중복등록수 + '곳' : ' <b>단독</b>') + '</div></div>';
+      });
+      h += '</div>';
+    }
+    if(S.tops.length){
+      h += head('🏢 이 단지에 매물을 낸 중개업소', '같은 매물을 여럿이 내면 각각 셉니다')
+        + '<div class="nv-grid">';
+      var mx = S.tops[0][1];
+      S.tops.forEach(function(t){
+        var ours = /송도제일/.test(t[0]);
+        h += '<div class="nv-p"' + (ours ? ' style="border-color:#1565c0"' : '') + '>'
+          + '<div class="nv-pt">' + esc(t[0]) + (ours ? ' ★' : '') + ' <b>' + t[1] + '</b></div>'
+          + bar(t[1]/mx*100, ours ? '#1565c0' : '#adb5bd') + '</div>';
+      });
+      h += '</div>';
+    }
+    h += table(kind, rows);
+    return h;
+  }
+  function table(kind, rows){
+    var COLS = NVB.COLS[kind];
+    var h = head('📄 매물 목록', '엑셀과 같은 칸')
+      + '<div style="overflow-x:auto;max-height:520px"><table class="nv-t"><thead><tr>'
+      + COLS.map(function(c){ return '<th>' + esc(c) + '</th>'; }).join('')
+      + '</tr></thead><tbody>';
+    rows.forEach(function(r){
+      h += '<tr' + (r.자사매물 === '★' ? ' class="nv-mine"' : '') + '>'
+        + COLS.map(function(c){
+            var v = r[c] == null ? '' : r[c];
+            if(c === '주요정보') return '<td class="nv-info">' + esc(v) + '</td>';
+            if(c === '가격') return '<td><b>' + esc(v) + '</b></td>';
+            return '<td>' + esc(v) + '</td>';
+          }).join('') + '</tr>';
+    });
+    return h + '</tbody></table></div>';
+  }
+
+  /*  시점 비교 — 빠진 매물이 가장 값이 크다. 팔렸거나 거뒀다는 뜻이고,
+      그게 손님 전화에 바로 쓰인다. */
+  function repDiff(eA, rA, eB, rB){
+    var D = NVL.compare(rA, rB);
+    var sA = NVL.stats(rA), sB = NVL.stats(rB);
+    var psA = rA.filter(function(r){return r.거래구분==='매매';}).map(function(r){return r._p;});
+    var psB = rB.filter(function(r){return r.거래구분==='매매';}).map(function(r){return r._p;});
+    var mA = med(psA), mB = med(psB);
+    function delta(a, b, unit){
+      var d = b - a;
+      if(!d) return '<span style="color:var(--text3)">그대로</span>';
+      return '<span style="color:' + (d>0 ? '#c62828' : '#2b8a3e') + '">'
+        + (d>0 ? '▲' : '▼') + ' ' + (unit==='eok' ? eok(Math.abs(d)) : fmtN(Math.abs(d))) + '</span>';
+    }
+    var h = head('🔁 ' + esc(eB.danji) + ' 시점 비교',
+                 eA.at + ' → ' + eB.at + ' · ' + NVB.KINDNM[eB.kind]);
+    h += '<div class="nv-cards">'
+      + card('매물 수', sB.n + '<small>건</small>', eA.at + ' ' + sA.n + '건 → ' + delta(sA.n, sB.n))
+      + card('빠진 매물', D.gone.length + '<small>건</small>', '거래·보류·거둠', '')
+      + card('새 매물', D.fresh.length + '<small>건</small>', '이번에 새로 나온 것', D.fresh.length ? '#1565c0' : '')
+      + card('값 내린 매물', D.down.length + '<small>건</small>', D.up.length ? '값 올린 것 ' + D.up.length + '건' : '',
+             D.down.length ? '#2b8a3e' : '')
+      + card('매매 중위', mB != null ? eok(mB) : '—',
+             (mA != null && mB != null) ? eok(mA) + ' → ' + delta(mA, mB, 'eok') : '')
+      + '</div>';
+
+    function grid(title, sub, list, paint, color){
+      if(!list.length) return '';
+      var s = head(title, sub) + '<div class="nv-grid">';
+      list.slice(0, 24).forEach(function(x){ s += paint(x); });
+      s += '</div>';
+      if(list.length > 24) s += '<div style="font-size:11px;color:var(--text3);margin-top:6px">'
+        + '외 ' + (list.length-24) + '건</div>';
+      return s;
+    }
+    /*  빠진 매물은 목록으로 펼치지 않는다 — 대표님 말씀대로 거래된 것은
+        실거래가 자료로 남고 나머지는 보류·사정 변경이며, 99% 이상이 타 부동산
+        매물이다. 자사 매물은 매물관리시스템에서 따로 관리한다.
+        다만 건수는 카드에 남긴다 — 매물 수가 왜 줄었는지 읽으려면 필요하다. */
+    h += grid('🔵 새로 나온 매물', eB.at + ' 에 새로 보입니다', D.fresh, function(r){
+      return '<div class="nv-p" style="border-color:#90caf9"><div class="nv-pt">' + unitLine(r) + '</div>'
+        + '<div class="nv-pd"><b>' + esc(r.가격) + '</b> · ' + esc(r.중개업소명)
+        + (r.중복등록수 ? ' 외 ' + r.중복등록수 + '곳' : ' <b>단독</b>')
+        + (r.자사매물 === '★' ? ' <b style="color:#c62828">★</b>' : '')
+        + '</div></div>'; });
+    h += grid('🟩 값을 내린 매물', '같은 매물인데 호가가 내렸습니다', D.down, function(x){
+      return '<div class="nv-p" style="border-color:#a5d6a7"><div class="nv-pt">' + unitLine(x.r)
+        + ' <b style="color:#2b8a3e;white-space:nowrap">▼ ' + eok(Math.abs(x.gap)) + '</b></div>'
+        + '<div class="nv-pd">' + eok(x.was) + ' → <b>' + eok(x.now) + '</b><br>'
+        + esc(x.r.중개업소명) + '</div></div>'; });
+    h += grid('🟥 값을 올린 매물', '', D.up, function(x){
+      return '<div class="nv-p" style="border-color:#ef9a9a"><div class="nv-pt">' + unitLine(x.r)
+        + ' <b style="color:#c62828;white-space:nowrap">▲ ' + eok(Math.abs(x.gap)) + '</b></div>'
+        + '<div class="nv-pd">' + eok(x.was) + ' → <b>' + eok(x.now) + '</b><br>'
+        + esc(x.r.중개업소명) + '</div></div>'; });
+
+    //  면적형별 중위 변동
+    var byA = {};
+    sA.areas.forEach(function(a){ byA[a.k] = a; });
+    if(sB.areas.length){
+      h += head('📐 전용면적형별 중위 변동', eA.at + ' → ' + eB.at)
+        + '<div style="overflow-x:auto"><table class="nv-t"><thead><tr>'
+        + '<th>전용</th><th>' + esc(eA.at) + '</th><th>' + esc(eB.at) + '</th><th>변동</th>'
+        + '<th>건수</th></tr></thead><tbody>';
+      sB.areas.forEach(function(b){
+        var a = byA[b.k];
+        h += '<tr><td>' + esc(b.k) + '</td>'
+          + '<td style="color:var(--text3)">' + (a ? eok(a.med) : '—') + '</td>'
+          + '<td><b>' + eok(b.med) + '</b></td>'
+          + '<td>' + (a ? delta(a.med, b.med, 'eok') : '<span style="color:#1565c0">새 면적형</span>') + '</td>'
+          + '<td>' + (a ? a.n + ' → ' + b.n : b.n) + '</td></tr>';
+      });
+      h += '</tbody></table></div>';
+    }
+    h += table(eB.kind, rB);
+    return h;
+  }
+
+  /*  호가 추이 — 요약만 남은 회차도 그대로 쓰인다 */
+  function repTrend(list){
+    var L = list.slice().sort(function(a,b){ return a.ymd < b.ymd ? -1 : 1; });
+    var e0 = L[L.length-1];
+    var h = head('📈 ' + esc(e0.danji) + ' 호가 추이',
+                 L[0].at + ' ~ ' + e0.at + ' · ' + L.length + '회차');
+    //  면적형을 모아 면적형마다 선을 그린다
+    var byArea = {};
+    L.forEach(function(e){
+      ((e.sum && e.sum.areas) || []).forEach(function(a){
+        (byArea[a.k] = byArea[a.k] || []).push({ t:e.at, v:a.med, n:a.n });
+      });
+    });
+    var cnt = L.map(function(e){ return { t:e.at, v:e.n }; });
+    h += '<div class="nv-cards">'
+      + card('회차', L.length + '<small>회</small>', L[0].at + ' ~ ' + e0.at)
+      + card('매물 수', e0.n + '<small>건</small>',
+             '처음 ' + L[0].n + '건 → 지금 ' + e0.n + '건')
+      + card('우리 매물', (e0.mine||0) + '<small>건</small>', '', e0.mine ? '#1565c0' : '')
+      + '</div>';
+    h += '<div class="nv-p" style="margin-top:10px"><div class="nv-pt">매물 수</div>'
+      + NVL.spark(cnt, 420, 70, '#868e96')
+      + '<div class="nv-pd">' + L.map(function(e){ return e.at.slice(5) + ' ' + e.n; }).join(' · ')
+      + '</div></div>';
+    var keys = Object.keys(byArea).filter(function(k){ return byArea[k].length >= 2; })
+      .sort(function(a,b){ return parseFloat(a) - parseFloat(b); });
+    if(keys.length){
+      h += head('📐 전용면적형별 중위 호가', '점에 손을 올리면 값이 보입니다') + '<div class="nv-grid">';
+      keys.forEach(function(k){
+        var pts = byArea[k], a0 = pts[0].v, a1 = pts[pts.length-1].v;
+        var d = a1 - a0;
+        h += '<div class="nv-p" style="min-width:300px"><div class="nv-pt">전용 ' + esc(k)
+          + ' <b style="color:' + (d>0?'#c62828':(d<0?'#2b8a3e':'var(--text3)')) + '">'
+          + (d>0?'▲ ':(d<0?'▼ ':'')) + (d ? eok(Math.abs(d)) : '그대로') + '</b></div>'
+          + NVL.spark(pts, 300, 64, d>0 ? '#c62828' : (d<0 ? '#2b8a3e' : '#4c6ef5'))
+          + '<div class="nv-pd">' + eok(a0) + ' → <b>' + eok(a1) + '</b> · '
+          + pts.length + '회차</div></div>';
+      });
+      h += '</div>';
+    } else {
+      h += '<div style="font-size:12px;color:var(--text3);margin-top:10px">'
+        + '면적형별 추이를 그리려면 같은 면적형이 두 회차 이상 있어야 합니다.</div>';
+    }
+    return h;
+  }
+
+  /*  단지 비교 */
+  function repCmp(items){
+    var h = head('⚖ 단지 비교', items.map(function(x){ return x.e.danji; }).join(' · '));
+    h += '<div class="nv-cards">';
+    items.forEach(function(x){
+      var ps = x.rows.filter(function(r){return r.거래구분==='매매';}).map(function(r){return r._p;});
+      h += card(x.e.danji, ps.length ? eok(med(ps)) : '—',
+        '매물 ' + x.rows.length + '건 · 자사 ' + x.st.mine + ' · ' + x.e.at);
+    });
+    h += '</div>';
+    //  면적형을 행으로, 단지를 열로
+    var areaSet = {};
+    items.forEach(function(x){ x.st.areas.forEach(function(a){ areaSet[a.k] = 1; }); });
+    var areas = Object.keys(areaSet).sort(function(a,b){ return parseFloat(a) - parseFloat(b); });
+    if(areas.length){
+      h += head('📐 전용면적형별 중위 호가', '나란히 견주기')
+        + '<div style="overflow-x:auto"><table class="nv-t"><thead><tr><th>전용</th>'
+        + items.map(function(x){ return '<th>' + esc(x.e.danji) + '</th>'; }).join('')
+        + '<th>차이</th></tr></thead><tbody>';
+      areas.forEach(function(k){
+        var vals = items.map(function(x){
+          var a = x.st.areas.filter(function(y){ return y.k === k; })[0];
+          return a ? a.med : null; });
+        var got = vals.filter(function(v){ return v != null; });
+        var lo = got.length ? Math.min.apply(null, got) : null;
+        h += '<tr><td>' + esc(k) + '</td>'
+          + vals.map(function(v, i){
+              if(v == null) return '<td style="color:var(--text3)">—</td>';
+              var a = items[i].st.areas.filter(function(y){ return y.k === k; })[0];
+              return '<td><b>' + eok(v) + '</b> <span style="color:var(--text3);font-size:10.5px">('
+                + a.n + ')</span></td>'; }).join('')
+          + '<td style="color:var(--text3)">'
+          + (got.length > 1 ? eok(Math.max.apply(null, got) - lo) : '') + '</td></tr>';
+      });
+      h += '</tbody></table></div>';
+    }
+    h += head('🏢 경쟁 강도', '매물을 낸 중개업소 수 · 우리 몫') + '<div class="nv-grid">';
+    items.forEach(function(x){
+      var mx = x.st.tops.length ? x.st.tops[0][1] : 1;
+      var ours = x.st.tops.filter(function(t){ return /송도제일/.test(t[0]); })[0];
+      h += '<div class="nv-p"><div class="nv-pt">' + esc(x.e.danji) + '</div>'
+        + '<div class="nv-pd">업소 ' + x.st.tops.length + '곳 · 중복 ' + fmtN(x.st.dupTot) + '건<br>'
+        + '우리 ' + (ours ? '<b style="color:#1565c0">' + ours[1] + '건</b>' : '없음')
+        + ' · 단독 매물 ' + x.st.only + '건</div>'
+        + bar(x.st.mine / Math.max(1, x.rows.length) * 100 * 5, '#1565c0') + '</div>';
+    });
+    h += '</div>';
+    return h;
+  }
+
+  // ── 그리기 ──────────────────────────────────────────────────────────
+  function paint(){
+    var root = document.getElementById('an-root'); if(!root) return;
+    var h = '<div class="nv-in">'
+      + '<div style="font-weight:800;font-size:13px;margin-bottom:6px">🔎 등록 기록으로 보고서 만들기</div>'
+      + '<div style="font-size:12px;line-height:1.75;color:var(--text2)">'
+      + '<b>📥 N 매물 등록</b>에서 올릴 때마다 단지별로 한 회차씩 쌓입니다. '
+      + '여기서 골라 보고서를 만드시면 됩니다 — 다시 읽을 필요가 없습니다.'
+      + '</div></div>';
+    if(!READY){
+      h += '<div class="nv-in" style="margin-top:12px;color:var(--text3);font-size:12.5px">'
+        + (BUSY ? '⏳ 기록을 읽는 중…' : '기록을 아직 못 읽었습니다.') + '</div>';
+    } else {
+      h += listBox();
+      if(REP) h += REP;
+    }
+    root.innerHTML = h;
+  }
+
+  // ── 바깥에서 부르는 것 ──────────────────────────────────────────────
+  window.nvbQ = function(v){ Q = v; paint(); };
+  window.nvbFk = function(v){ FK = v; paint(); };
+  window.nvbFb = function(v){ FB = v; paint(); };
+  window.nvbOpen = function(y){ OPEN[y] = !((OPEN[y] != null) ? OPEN[y] : false); paint(); };
+  window.nvbSel = function(id, on){ if(on) SEL[id] = 1; else delete SEL[id]; paint(); };
+  window.nvbClearSel = function(){ SEL = {}; REP = null; paint(); };
+  window.nvbPickDay = function(y){
+    NVE.cached().forEach(function(e){ if(e.ymd === y) SEL[e.id] = 1; });
+    paint();
+  };
+  window.nvbDel = async function(){
+    var ids = Object.keys(SEL);
+    if(!ids.length) return;
+    var L = selList();
+    var mine = NVL.who().name;
+    var other = L.filter(function(e){ return e.by !== mine; });
+    if(other.length && !NVL.isBoss()){
+      amsg('다른 분이 등록한 회차 ' + other.length + '건이 들어 있어 지울 수 없습니다.', '#c33');
+      return;
+    }
+    amsg('지우는 중…', '#1565c0');
+    var n = await NVE.remove(ids);
+    SEL = {}; REP = null;
+    paint();
+    amsg('회차 ' + n + '건을 지웠습니다.', '#0a7');
+  };
+  window.nvbMake = async function(){
+    var L = selList();
+    if(!L.length) return;
+    amsg('읽는 중…', '#1565c0');
+    try{
+      var keys = {};
+      L.forEach(function(e){ keys[e.kind + '|' + e.key] = 1; });
+      var oneDanji = Object.keys(keys).length === 1;
+
+      if(L.length === 1){
+        var r = await NVE.rows(L[0].id);
+        if(!r){ amsg('이 회차는 오래돼 요약만 남았습니다 — 매물 목록은 볼 수 없습니다. '
+          + '회차를 둘 이상 고르시면 추이는 그대로 나옵니다.', '#c80'); return; }
+        REP = repOne(L[0], r);
+      } else if(oneDanji && L.length === 2){
+        var s = L.slice().sort(function(a,b){ return a.ymd < b.ymd ? -1 : 1; });
+        var rA = await NVE.rows(s[0].id), rB = await NVE.rows(s[1].id);
+        if(!rA || !rB){ amsg('견주려면 두 회차 모두 매물이 남아 있어야 합니다 — '
+          + '오래된 회차는 요약만 있습니다. 셋 이상 고르시면 추이로 보실 수 있습니다.', '#c80'); return; }
+        REP = repDiff(s[0], rA, s[1], rB);
+      } else if(oneDanji){
+        REP = repTrend(L);
+      } else {
+        if(L.length > 3){ amsg('단지 비교는 세 곳까지입니다 — ' + Object.keys(keys).length
+          + '곳을 고르셨습니다.', '#c80'); return; }
+        var items = [];
+        for(var i=0;i<L.length;i++){
+          var rr = await NVE.rows(L[i].id);
+          if(!rr){ amsg('「' + L[i].danji + '」 회차는 요약만 남아 견줄 수 없습니다.', '#c80'); return; }
+          items.push({ e:L[i], rows:rr, st:NVL.stats(rr) });
+        }
+        REP = repCmp(items);
+      }
+      paint();
+      amsg('보고서를 아래에 적었습니다.', '#0a7');
+      var hs = document.querySelectorAll('#an-root .nv-h');
+      if(hs.length) hs[0].scrollIntoView({ behavior:'smooth', block:'start' });
+    }catch(e){ amsg('보고서를 만들지 못했습니다 — ' + esc(e && e.message || e), '#c33'); }
+  };
+  /*  되돌리기 — 100개를 잘못 등록했을 때 되돌릴 길이 있어야 한다.
+      이벤트에 행 자료가 있으니 그 회차를 다시 등록하면 된다. */
+  window.nvbRestore = async function(){
+    var L = selList(); if(L.length !== 1) return;
+    var e = L[0];
+    var r = await NVE.rows(e.id);
+    if(!r){ amsg('이 회차는 요약만 남아 되돌릴 수 없습니다.', '#c80'); return; }
+    if(!window.sdNvReg || !window.sdNvReg.push){
+      amsg('등록 탭을 찾지 못했습니다 — 화면을 새로 고쳐 주십시오.', '#c33'); return;
+    }
+    amsg('되돌리는 중…', '#1565c0');
+    var out = window.sdNvReg.push([{ kind:e.kind, danji:e.danji, dong:e.dong, rows:r }]);
+    amsg('↩ ' + esc(e.danji) + ' 를 ' + esc(e.at) + ' 회차로 되돌렸습니다 — ' + esc(out), '#0a7');
+  };
+  window.sdNvAn = { tab:TAB, sel:function(){ return SEL; }, paint:paint,
+                    repDiff:repDiff, repTrend:repTrend };
+
+  // ── 탭 만들기 ───────────────────────────────────────────────────────
+  function build(){
+    if(document.getElementById('tc' + TAB)) return true;
+    var nav  = document.querySelector('.tab-nav-inner') || document.querySelector('.tab-nav');
+    var host = document.getElementById('tc0');
+    if(!nav || !host || !host.parentNode) return false;
+    var b = document.createElement('button');
+    b.className = 'tab-btn';
+    b.setAttribute('onclick', 'sw(' + TAB + ')');
+    b.innerHTML = '🔎 N 매물 분석';
+    nav.appendChild(b);
+    var panel = document.createElement('div');
+    panel.id = 'tc' + TAB; panel.className = 'tc';
+    panel.innerHTML = '<div id="an-root"></div>';
+    host.parentNode.appendChild(panel);
+    return true;
+  }
+  function hookSw(){
+    if(typeof window.sw !== 'function') return false;
+    if(window.sw.__nvAn) return true;
+    var orig = window.sw;
+    var w = function(n){
+      var out = orig.apply(this, arguments);
+      if(n === TAB) setTimeout(open, 0);
+      return out;
+    };
+    w.__nvAn = true; window.sw = w;
+    return true;
+  }
+  async function open(){
+    paint();
+    if(READY || BUSY) return;
+    BUSY = true; paint();
+    try{ await NVE.load(); READY = true; }
+    catch(e){ READY = false; }
+    BUSY = false; paint();
+  }
+  var tries = 0;
+  (function start(){
+    var ok = build() && hookSw();
+    if(!ok && tries++ < 80) return void setTimeout(start, 200);
+  })();
+})();
+
 </script>
 
 </body>
