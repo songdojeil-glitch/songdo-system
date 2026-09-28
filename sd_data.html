@@ -6800,8 +6800,12 @@ function hsOpenModal(nm){
       var cells=[];
       if(g.map) cells.push({u:g.map,c:'위치지도'});
       if(g.layout) cells.push({u:g.layout,c:'단지배치도'});
+      (g.layouts||[]).forEach(function(u,i){ cells.push({u:u,c:'단지배치도 '+(i+2)}); });
+      (g.aerials||[]).forEach(function(u,i){ cells.push({u:u,c:'조감도'+(i+1)}); });
       if(g.dongho) cells.push({u:g.dongho,c:'동호수배치도'});
+      (g.donghos||[]).forEach(function(u,i){ cells.push({u:u,c:'동호수배치도 '+(i+2)}); });
       if(g.price)  cells.push({u:g.price,c:'분양가'});
+      (g.prices||[]).forEach(function(u,i){ cells.push({u:u,c:'분양가 '+(i+2)}); });
       g.photos.forEach(function(u,i){ cells.push({u:u,c:'전경'+(i+1)}); });
       g.plans.forEach(function(p){ cells.push({u:p.url,c:'평면도 '+p.타입+(p.전용?' (전용'+p.전용+'㎡)':'')}); });
       if(!cells.length){ box.innerHTML=''; return; }
@@ -6834,10 +6838,12 @@ function initHousingTab(){
 var G_DI = { selDist:'all', selDanji:'', index:{}, curImgs:{} };
 var DI_FIXED=[
   {key:'map',label:'📍 위치지도',multi:false},
-  {key:'layout',label:'🏗️ 단지배치도',multi:false},
-  {key:'dongho',label:'🏢 동호수배치도',multi:false},
+  //  단지배치도 — 블록이 나뉜 단지(엑스포·하버뷰·센트럴파크 등)는 두 장이다. 첫 장은 종전 이름 layout.jpg (bare1).
+  {key:'layout',label:'🏗️ 단지배치도',multi:true,max:2,bare1:true},
+  //  동호수배치도 — 동이 많은 단지는 두세 장으로 나뉘어 있다. 첫 장은 종전 이름 dongho.jpg (bare1).
+  {key:'dongho',label:'🏢 동호수배치도',multi:true,max:3,bare1:true},
   //  조감도 — 홈페이지 첫 화면에 쓸 대표 그림. 분양 홍보물에 두세 장 있는 단지가 많다.
-  {key:'aerial',label:'🏙️ 조감도',multi:true,max:3},
+  {key:'aerial',label:'🏙️ 조감도',multi:true,max:5},
   //  분양가 — 표가 여러 장인 단지가 있다(평형대별). 첫 장은 종전 이름 price.jpg 를
   //  그대로 쓴다(bare1) — 이미 올린 분양가가 사라지지 않게.
   {key:'price',label:'💰 분양가',multi:true,max:3,bare1:true},
@@ -7159,7 +7165,7 @@ function diZoomImage(url, caption){
   // 예전에는 여기서 true 로 만들어 이후 차트 확대(openZoom)가 전부 막혔다.
 }
 async function diGetImages(nm){
-  var out={map:null,layout:null,dongho:null,price:null,photos:[],plans:[],aerials:[],prices:[]};
+  var out={map:null,layout:null,dongho:null,price:null,photos:[],plans:[],aerials:[],prices:[],donghos:[],layouts:[]};
   if(!diStorageReady()||!nm) return out;
   try{
     var dirRef=window._fbSRef(window._fbStorage,'sd_danji_images/'+nm);
@@ -7168,7 +7174,9 @@ async function diGetImages(nm){
       var item=res.items[i], url=await window._fbGetURL(item), f=item.name;
       if(f==='map.jpg') out.map=url;
       else if(f==='layout.jpg') out.layout=url;
+      else if(/^layout\d+\.jpg$/.test(f)) out.layouts.push(url);
       else if(f==='dongho.jpg') out.dongho=url;
+      else if(/^dongho\d+\.jpg$/.test(f)) out.donghos.push(url);
       else if(f==='price.jpg')  out.price=url;
       else if(/^price\d+\.jpg$/.test(f)) out.prices.push(url);
       else if(f.indexOf('aerial')===0) out.aerials.push(url);
@@ -7198,7 +7206,9 @@ async function diGetImagesB64(nm){
   try{
     if(g.map){ var b=await urlToB64(g.map); out.push({label:'['+nm+' 위치지도]',type:b.type,data:b.data}); }
     if(g.layout){ var b2=await urlToB64(g.layout); out.push({label:'['+nm+' 단지배치도]',type:b2.type,data:b2.data}); }
+    for(var li2=0;li2<(g.layouts||[]).length;li2++){ var blx=await urlToB64(g.layouts[li2]); out.push({label:'['+nm+' 단지배치도 '+(li2+2)+']',type:blx.type,data:blx.data}); }
     if(g.dongho){ var b2b=await urlToB64(g.dongho); out.push({label:'['+nm+' 동호수배치도]',type:b2b.type,data:b2b.data}); }
+    for(var di2=0;di2<(g.donghos||[]).length;di2++){ var bdx=await urlToB64(g.donghos[di2]); out.push({label:'['+nm+' 동호수배치도 '+(di2+2)+']',type:bdx.type,data:bdx.data}); }
     if(g.price){  var b2c=await urlToB64(g.price);  out.push({label:'['+nm+' 분양가표]',type:b2c.type,data:b2c.data}); }
     for(var pi=0;pi<(g.prices||[]).length;pi++){ var bpx=await urlToB64(g.prices[pi]); out.push({label:'['+nm+' 분양가표 '+(pi+2)+']',type:bpx.type,data:bpx.data}); }
     for(var ai=0;ai<(g.aerials||[]).length;ai++){ var bax=await urlToB64(g.aerials[ai]); out.push({label:'['+nm+' 조감도'+(ai+1)+']',type:bax.type,data:bax.data}); }
@@ -19407,7 +19417,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.09.28-46';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.09.28-48';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_data.html';      // 이 파일 이름
   var SD_NAME = '실거래가';      // 사람이 부르는 이름
 
