@@ -19417,7 +19417,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.09.28-48';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.09.28-49';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_data.html';      // 이 파일 이름
   var SD_NAME = '실거래가';      // 사람이 부르는 이름
 
@@ -35083,6 +35083,11 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
       ④ 세대수 이름이 비슷한 후보 가운데 총세대수가 같은 단지
       못 맞춘 것은 목록에서 직접 고르거나, 「폴더 이름 그대로」(오피스텔 등 마스터 밖) 로.
 
+    지난번 선택 기억 — 직접 고른 짝은 sd/sd_dib_map 에 {폴더: 단지} 로 남겨 다음부터 그대로 쓴다.
+      기억이 없는 폴더(기억 기능 전에 올린 것)는 저장소를 보고 되살린다:
+        · 저장소에 폴더 이름 그대로의 칸이 있으면 → 「폴더 이름 그대로」
+        · 평면도 파일 이름이 거의 다(80% 이상) 들어 있는 단지가 하나뿐이면 → 그 단지
+
     평면도 타입 — 파일의 전용㎡(반올림)와 마스터 면적형의 전용㎡ 를 맞추고,
       같은 전용이 여럿이면 A/B/C 글자로 가른다. 마스터가 없으면 파일의 면적표기 그대로.
 
@@ -35094,7 +35099,7 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
   'use strict';
   if(window.__dibOn) return; window.__dibOn = true;
   var W = window;
-  var ROWS = [], INFO = {}, RUN = null, OVERWRITE = false;
+  var ROWS = [], INFO = {}, RUN = null, OVERWRITE = false, MAP = null, mapT = null;
   var SKIP_EXT = /\.(csv|json|txt|ps1|bat|md|xlsx?|pdf|zip|db|ini)$/i;
   var IMG_EXT  = /\.(jpe?g|png|gif|webp|bmp)$/i;
 
@@ -35239,6 +35244,74 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
       W.G_DI.extra = (res.prefixes || []).map(function(p){ return p.name; });
     }catch(e){}
   }
+  // ── 지난번 선택 기억 ────────────────────────────────────────────────
+  async function mapLoad(){
+    MAP = {};
+    try{ var r = W.storage && await W.storage.get('sd_dib_map'); if(r && r.value) MAP = JSON.parse(r.value) || {}; }catch(e){ MAP = {}; }
+    return MAP;
+  }
+  function mapSave(){
+    if(!W.storage || !MAP) return;
+    clearTimeout(mapT);
+    mapT = setTimeout(function(){ try{ W.storage.set('sd_dib_map', JSON.stringify(MAP)); }catch(e){} }, 600);
+  }
+  function remember(r){
+    if(!MAP) MAP = {};
+    if(r.sel) MAP[r.folder] = r.sel; else delete MAP[r.folder];
+    mapSave();
+  }
+  function applyMap(){
+    var names = {}; masters().forEach(function(d){ names[d.단지명] = 1; });
+    var n = 0;
+    ROWS.forEach(function(r){
+      var v = MAP && MAP[r.folder];
+      if(!v || !(v === '__self' || v === '__skip' || names[v])) return;
+      if(r.sel !== v){ r.sel = v; plan(r); }
+      r.by = v === '__skip' ? '지난번에 건너뜀' : '지난번 선택'; n++;
+    });
+    return n;
+  }
+  //  저장소 전체 목록 { 폴더: {파일:1} } — 여덟 개씩 나눠 읽는다
+  async function listStore(){
+    var S = {};
+    if(!ready() || !W._fbListAll) return S;
+    var names = [];
+    try{ names = ((await W._fbListAll(W._fbSRef(W._fbStorage, 'sd_danji_images'))).prefixes || []).map(function(p){ return p.name; }); }catch(e){ return S; }
+    if(W.G_DI) W.G_DI.extra = names.slice();
+    for(var i=0;i<names.length;i+=8){
+      await Promise.all(names.slice(i, i+8).map(function(n){ return existing(n).then(function(set){ S[n] = set; }); }));
+    }
+    return S;
+  }
+  //  기억이 없는 노란 줄 → 저장소에 남은 흔적으로 지난번 짝 되살리기
+  function recover(S){
+    var M = masters().filter(function(d){ return S[d.단지명]; });
+    var names = {}; masters().forEach(function(d){ names[d.단지명] = 1; });
+    var n = 0;
+    ROWS.forEach(function(r){
+      if(r.sel) return;
+      if(S[r.folder] && !names[r.folder]){ r.sel = '__self'; r.by = '지난 업로드(폴더 이름)'; plan(r); remember(r); n++; return; }
+      var ps = r.files.filter(function(f){ return kindOf(f.name) === 'plan'; })
+                      .sort(function(a,b){ return a.name.localeCompare(b.name, 'ko', { numeric:true }); });
+      if(!ps.length) return;
+      //  점수 — ① 이 폴더 평면도 가운데 저장소에 있는 비율  ② 같으면 그 단지 저장소 평면도 가운데 이 폴더로 설명되는 비율
+      //  (전용 ±1㎡ 로 타입을 맞추므로 남의 단지 평면도 한두 장이 우연히 겹칠 수 있다 → ② 로 가른다)
+      var best = null, second = null;
+      function key(x){ return x ? x.sc * 1000 + x.cov : -1; }
+      M.forEach(function(d){
+        var have = S[d.단지명], used = {}, hit = 0;
+        ps.forEach(function(f){ var q = planFile(d.단지명, planInfo(f.name), used); if(have[q.fn]) hit++; });
+        if(!hit) return;                  //  타입이 없는 단지는 파일의 면적표기 이름 그대로 올라갔으니 그 이름으로 찾는다
+        var np = Object.keys(have).filter(function(k){ return k.indexOf('plan__') === 0; }).length;
+        var c = { nm:d.단지명, sc:hit / ps.length, cov:hit / Math.max(1, np), hit:hit };
+        if(key(c) > key(best)){ second = best; best = c; } else if(key(c) > key(second)) second = c;
+      });
+      if(best && best.sc >= 0.8 && key(best) > key(second)){
+        r.sel = best.nm; r.by = '지난 업로드(평면도 ' + best.hit + '/' + ps.length + ' 일치)'; plan(r); remember(r); n++;
+      }
+    });
+    return n;
+  }
   function readRaw(file){
     return new Promise(function(res, rej){ var r = new FileReader(); r.onload = function(){ res(r.result); }; r.onerror = rej; r.readAsDataURL(file); });
   }
@@ -35328,13 +35401,18 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
       return { folder:folder, files:g.by[folder], sel:m.nm || '', by:m.by, cand:m.cand || [] };
     });
     ROWS.forEach(plan);
+    await mapLoad();
+    var nMap = applyMap();
     paint();
-    toast('📁 ' + ROWS.length + '개 폴더를 읽었습니다 — 이미 있는 이미지를 확인하는 중…', 4000);
-    for(var i=0;i<ROWS.length;i++){ var t = target(ROWS[i]); if(t) ROWS[i].have = await existing(t); }
+    toast('📁 ' + ROWS.length + '개 폴더를 읽었습니다 — 저장소에 이미 있는 이미지를 확인하는 중…', 5000);
+    var S = await listStore();
+    var nRec = recover(S);
+    for(var i=0;i<ROWS.length;i++){ var t = target(ROWS[i]); if(t) ROWS[i].have = S[t] || await existing(t); }
     paint();
+    if(nMap || nRec) toast('🔁 지난 업로드대로 ' + (nMap + nRec) + '개 폴더의 단지를 다시 지정했습니다', 5000);
     try{ input.value = ''; }catch(e){}
   };
-  W.dibSel = function(i, v){ var r = ROWS[i]; if(!r) return; r.sel = v; r.by = ''; plan(r); r.have = null;
+  W.dibSel = function(i, v){ var r = ROWS[i]; if(!r) return; r.sel = v; r.by = ''; plan(r); r.have = null; remember(r);
     var t = target(r); paint(); if(t) existing(t).then(function(s){ r.have = s; paint(); }); };
   W.dibOver = function(on){ OVERWRITE = !!on; paint(); };
   W.dibClear = function(){ if(RUN) return; ROWS = []; paint(); };
@@ -35370,7 +35448,7 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
       + (fails.length ? ' · <b style="color:#c33">실패 ' + fails.length + '</b><div style="font-size:11px;color:#c33;margin-top:4px">' + fails.slice(0,12).map(esc).join('<br>') + '</div>' : '');
   };
   W.sdDib = { kindOf:kindOf, match:match, planInfo:planInfo, planFile:planFile, group:group,
-              rows:function(){ return ROWS; }, loadExtra:loadExtra, nb:nb };
+              rows:function(){ return ROWS; }, loadExtra:loadExtra, nb:nb, map:function(){ return MAP; } };
 
   // ── 탭 14 에 단추 달기 ──────────────────────────────────────────────
   function mount(){
