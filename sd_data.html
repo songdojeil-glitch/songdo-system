@@ -6836,9 +6836,14 @@ var DI_FIXED=[
   {key:'map',label:'📍 위치지도',multi:false},
   {key:'layout',label:'🏗️ 단지배치도',multi:false},
   {key:'dongho',label:'🏢 동호수배치도',multi:false},
-  {key:'price',label:'💰 분양가',multi:false},
+  //  조감도 — 홈페이지 첫 화면에 쓸 대표 그림. 분양 홍보물에 두세 장 있는 단지가 많다.
+  {key:'aerial',label:'🏙️ 조감도',multi:true,max:3},
+  //  분양가 — 표가 여러 장인 단지가 있다(평형대별). 첫 장은 종전 이름 price.jpg 를
+  //  그대로 쓴다(bare1) — 이미 올린 분양가가 사라지지 않게.
+  {key:'price',label:'💰 분양가',multi:true,max:3,bare1:true},
   {key:'photo',label:'📷 단지전경',multi:true,max:4}
 ];
+function diSlotFile(s, i){ return (s.bare1 && i===1) ? s.key+'.jpg' : s.key+i+'.jpg'; }
 // 슬롯별 리사이즈 옵션 (긴 변 px, JPEG 품질).
 // 동호수배치도는 호실마다 분양가 숫자가 박혀 있어 잔글씨 밀도가 가장 높다.
 // 압축률(q)이 낮으면 픽셀을 키워도 숫자 획이 뭉개지므로 px 와 q 를 함께 올린다.
@@ -6848,6 +6853,7 @@ var DI_FIXED=[
 var DI_OPT={
   dongho:{raw:true},
   price :{px:3000,q:0.92},
+  aerial:{px:2400,q:0.90},
   _def  :{px:1200,q:0.85}
 };
 var DI_RAW_WARN=12*1024*1024;   // 이보다 크면 업로드 전에 한 번 확인받는다
@@ -6887,8 +6893,14 @@ function diRenderChips(){
   var el=document.getElementById('di-unit-chips'); if(!el) return;
   var kw=((document.getElementById('di-search-input')||{}).value||'').trim();
   var src=(G_HS.danji||[]);
-  if(!src.length){ el.innerHTML='<span style="font-size:11px;color:var(--yellow)">주택공급현황 탭에서 마스터를 먼저 불러오세요</span>'; return; }
+  //  마스터(주택공급현황)에 없는 단지 — 오피스텔·생숙 등. 이미지 저장소에 폴더가 있으면
+  //  단지명으로 찾을 때 함께 보여 준다 (일괄 등록으로 「폴더 이름 그대로」 올린 것들).
+  var inM={}; src.forEach(function(d){ inM[d.단지명]=1; });
+  var extra=(G_DI.extra||[]).filter(function(nm){ return !inM[nm]; }).map(function(nm){ return {단지명:nm, 공구:null, _extra:true}; });
+  if(!src.length && !extra.length){ el.innerHTML='<span style="font-size:11px;color:var(--yellow)">주택공급현황 탭에서 마스터를 먼저 불러오세요</span>'; return; }
+  src=src.concat(kw ? extra : []);
   var list=src.filter(function(d){
+    if(d._extra) return !kw || String(d.단지명).indexOf(kw)>=0;
     if(G_DI.selDist!=='all' && parseInt(d.공구)!==parseInt(G_DI.selDist)) return false;
     if(kw && String(d.단지명).indexOf(kw)<0) return false;
     return true;
@@ -6938,7 +6950,7 @@ function diRenderPanel(){
   var fixedHtml=singleHtml+DI_FIXED.filter(function(x){return x.multi;}).map(function(s){
     if(s.multi){
       var cells='';
-      for(var i=1;i<=s.max;i++){ var fn=s.key+i+'.jpg'; cells+=diSlotCell(nm,fn,s.label+' '+i,imgs[fn]); }
+      for(var i=1;i<=s.max;i++){ var fn=diSlotFile(s,i); cells+=diSlotCell(nm,fn,s.label+' '+i,imgs[fn]); }
       return '<div style="margin-bottom:14px"><div style="font-size:12px;font-weight:700;margin-bottom:8px">'+s.label+' <span style="font-size:11px;color:var(--text3)">(최대 '+s.max+'장)</span></div><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px">'+cells+'</div></div>';
     } else {
       var fn=s.key+'.jpg';
@@ -7147,7 +7159,7 @@ function diZoomImage(url, caption){
   // 예전에는 여기서 true 로 만들어 이후 차트 확대(openZoom)가 전부 막혔다.
 }
 async function diGetImages(nm){
-  var out={map:null,layout:null,dongho:null,price:null,photos:[],plans:[]};
+  var out={map:null,layout:null,dongho:null,price:null,photos:[],plans:[],aerials:[],prices:[]};
   if(!diStorageReady()||!nm) return out;
   try{
     var dirRef=window._fbSRef(window._fbStorage,'sd_danji_images/'+nm);
@@ -7158,6 +7170,8 @@ async function diGetImages(nm){
       else if(f==='layout.jpg') out.layout=url;
       else if(f==='dongho.jpg') out.dongho=url;
       else if(f==='price.jpg')  out.price=url;
+      else if(/^price\d+\.jpg$/.test(f)) out.prices.push(url);
+      else if(f.indexOf('aerial')===0) out.aerials.push(url);
       else if(f.indexOf('photo')===0) out.photos.push(url);
       else if(f.indexOf('plan__')===0){
         var m=f.replace('plan__','').replace('.jpg','').split('_');
@@ -7186,6 +7200,8 @@ async function diGetImagesB64(nm){
     if(g.layout){ var b2=await urlToB64(g.layout); out.push({label:'['+nm+' 단지배치도]',type:b2.type,data:b2.data}); }
     if(g.dongho){ var b2b=await urlToB64(g.dongho); out.push({label:'['+nm+' 동호수배치도]',type:b2b.type,data:b2b.data}); }
     if(g.price){  var b2c=await urlToB64(g.price);  out.push({label:'['+nm+' 분양가표]',type:b2c.type,data:b2c.data}); }
+    for(var pi=0;pi<(g.prices||[]).length;pi++){ var bpx=await urlToB64(g.prices[pi]); out.push({label:'['+nm+' 분양가표 '+(pi+2)+']',type:bpx.type,data:bpx.data}); }
+    for(var ai=0;ai<(g.aerials||[]).length;ai++){ var bax=await urlToB64(g.aerials[ai]); out.push({label:'['+nm+' 조감도'+(ai+1)+']',type:bax.type,data:bax.data}); }
     for(var i=0;i<g.photos.length;i++){ var bp=await urlToB64(g.photos[i]); out.push({label:'['+nm+' 전경'+(i+1)+']',type:bp.type,data:bp.data}); }
     for(var j=0;j<g.plans.length;j++){ var pl=g.plans[j]; var bpl=await urlToB64(pl.url);
       out.push({label:'['+nm+' 평면도 '+pl.타입+(pl.전용?' 전용'+pl.전용+'㎡':'')+']',type:bpl.type,data:bpl.data}); }
@@ -19391,7 +19407,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.09.28-45';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.09.28-46';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_data.html';      // 이 파일 이름
   var SD_NAME = '실거래가';      // 사람이 부르는 이름
 
@@ -29192,7 +29208,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
       { i:'📊', n:'단지모델 리포트', go:9, d:'단지 하나를 한 장으로 정리해 인쇄' },
       { i:'🎯', n:'매물 제안서', go:10, d:'고른 매물을 제안서로 묶어 드린다' },
       { i:'🎬', n:'유튜브 리포트', go:11, d:'송도 시황 리포트 슬라이드' },
-      { i:'🖼️', n:'단지 이미지', go:14, d:'단지 배치도·조감도 보관함' }
+      { i:'🖼️', n:'단지 이미지', go:14, d:'단지 조감도·배치도·동호수·분양가·평면도 보관함 — 📁 폴더 일괄 등록' }
     ]},
     { n:'콘텐츠 · 마케팅', d:'알리는 일', items:[
       { i:'📣', n:'마케팅', href:'sd_marketing.html', d:'디지털 명함·홍보물' },
@@ -35028,6 +35044,352 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
     var ok = build() && hookSw();
     if(!ok && tries++ < 80) return void setTimeout(start, 200);
   })();
+})();
+</script>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     단지이미지 📁 폴더 일괄 등록 v1.0 (탭 14)
+     PC 폴더를 통째로 골라 단지 짝 맞추기 → 칸 나누기 → 미리보기 → 한 번에 올리기.
+     ══════════════════════════════════════════════════════════════════ -->
+<script>
+/*  ══════════════════════════════════════════════════════════════════════
+    단지이미지 📁 폴더 일괄 등록 (탭 14 에 붙는다)
+    ──────────────────────────────────────────────────────────────────
+    PC 폴더를 통째로 고르면 → 단지 폴더마다 SJRWS 단지와 짝을 맞추고
+    → 파일 이름으로 칸을 나누고 → 미리보기 → 확인하면 한 번에 올린다.
+
+    폴더 모양은 둘 다 된다
+      {고른 폴더}\{단지}\조감도_1.jpg                     (송도제일닷컴 받기 키트)
+      {고른 폴더}\{단지}\단지이미지\조감도.jpg             (대표님 PC 단지 폴더)
+
+    파일 이름 → 칸  (이름에 이 말이 들어 있으면 — 차례가 중요: 동호수를 배치도보다 먼저)
+      동호수 → 동호수배치도 · 조감도 → 조감도 · 배치도 → 단지배치도 · 분양가 → 분양가
+      평면도 → 평면도(타입) · 위치 → 위치지도 · 전경 → 단지전경 · 참고_/약도 → 건너뜀
+
+    단지 짝 맞추기 — 네 단계, 앞에서 맞으면 멈춘다
+      ① 이름   NVB.normDanji 로 표기를 맞춰 같으면
+      ② 이름(블록 뗌)  「(D7-1BL)」「G5-3블록」 같은 블록 표기를 떼고 하나만 맞으면
+      ③ 지번   단지정보.json 의 소재지 지번 → 단지 사전(sd_apt.json) → 단지명
+      ④ 세대수 이름이 비슷한 후보 가운데 총세대수가 같은 단지
+      못 맞춘 것은 목록에서 직접 고르거나, 「폴더 이름 그대로」(오피스텔 등 마스터 밖) 로.
+
+    평면도 타입 — 파일의 전용㎡(반올림)와 마스터 면적형의 전용㎡ 를 맞추고,
+      같은 전용이 여럿이면 A/B/C 글자로 가른다. 마스터가 없으면 파일의 면적표기 그대로.
+
+    올리는 규칙은 탭 14 의 것 그대로(DI_OPT): 동호수배치도 원본 그대로, 분양가 3000px,
+      조감도 2400px, 평면도 1400px, 나머지 1200px.
+    이미 있는 칸은 건너뛴다(「덮어쓰기」를 켜면 바꾼다).
+    ══════════════════════════════════════════════════════════════════ */
+(function(){
+  'use strict';
+  if(window.__dibOn) return; window.__dibOn = true;
+  var W = window;
+  var ROWS = [], INFO = {}, RUN = null, OVERWRITE = false;
+  var SKIP_EXT = /\.(csv|json|txt|ps1|bat|md|xlsx?|pdf|zip|db|ini)$/i;
+  var IMG_EXT  = /\.(jpe?g|png|gif|webp|bmp)$/i;
+
+  function $(id){ return document.getElementById(id); }
+  function esc(s){ return String(s==null?'':s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  function toast(t, ms){ if(typeof W.showToast === 'function') W.showToast(t, ms); }
+  function ready(){ return !!(W._fbStorageReady && W._fbStorage && W._fbSRef && W._fbUploadStr); }
+  function nd(s){ var f = W.NVB && W.NVB.normDanji; var t = String(s||'').replace(/아파트$/,''); return f ? f(t) : t.replace(/\s/g,''); }
+  //  블록 표기 떼기 — 「D7-1BL」「F20-1BL」「G5-3블록」「A1블록」
+  function nb(s){ return nd(String(s||'').replace(/\(.*?\)/g,'').replace(/[A-Za-z]{1,2}\d{1,2}(?:-\d{1,2})?\s*(?:BL|블록|블럭)?$/i,'')); }
+  function mb(n){ return n > 1048576 ? (Math.round(n/104857.6)/10) + 'MB' : Math.round(n/1024) + 'KB'; }
+
+  // ── 파일 이름 → 칸 ──────────────────────────────────────────────────
+  function kindOf(name){
+    var b = String(name).replace(/\.[^.]+$/,'');
+    if(/^참고_|약도/.test(b)) return 'skip';
+    if(/동호수/.test(b)) return 'dongho';
+    if(/조감도/.test(b)) return 'aerial';
+    if(/배치도/.test(b)) return 'layout';
+    if(/분양가/.test(b)) return 'price';
+    if(/평면도/.test(b)) return 'plan';
+    if(/위치/.test(b))   return 'map';
+    if(/전경|사진/.test(b)) return 'photo';
+    return '';
+  }
+  var KNM = { aerial:'조감도', layout:'배치도', dongho:'동호수', price:'분양가', plan:'평면도', map:'위치', photo:'전경' };
+  //  같은 칸에 여러 장 — 파일 이름의 번호(_1, _2 …) 차례로
+  function seqOf(name){ var m = /_(\d+)\.[^.]+$/.exec(name) || /(\d+)\.[^.]+$/.exec(name); return m ? parseInt(m[1],10) : 1; }
+
+  // ── 폴더 → 단지별 묶음 ──────────────────────────────────────────────
+  function group(files){
+    var by = {}, info = null;
+    [].forEach.call(files, function(f){
+      var rp = String(f.webkitRelativePath || f.name).split('/');
+      var fn = rp[rp.length-1];
+      if(/단지정보\.json$/.test(fn)){ info = f; return; }
+      if(SKIP_EXT.test(fn) || !IMG_EXT.test(fn)) return;
+      var dj;
+      if(rp.length >= 3 && rp[rp.length-2] === '단지이미지') dj = rp[rp.length-3];
+      else if(rp.length >= 3) dj = rp[rp.length-2];
+      else dj = rp[0] !== fn ? rp[0] : '(이름 없음)';
+      (by[dj] = by[dj] || []).push(f);
+    });
+    return { by:by, info:info };
+  }
+
+  // ── 단지 짝 맞추기 ──────────────────────────────────────────────────
+  function masters(){ return (W.G_HS && W.G_HS.danji) || []; }
+  function jibunOf(addr){ var m = /(\S+동)\s+(산?\s*\d+(?:-\d+)?)/.exec(String(addr||'')); return m ? { dong:m[1], jb:m[2].replace(/\s/g,'') } : null; }
+  function match(folder){
+    //  「더샵센트럴시티_166」 — 키트가 같은 이름 두 번째 단지(대개 오피스텔)에 번호를 붙인 폴더.
+    //  이름·지번으로는 첫째 단지와 구분이 안 되므로 세대수가 맞을 때만 자동으로 잇고, 아니면 직접 고르게 한다.
+    var dup = /_\d{2,4}$/.test(folder), base = dup ? folder.replace(/_\d{2,4}$/,'') : folder;
+    var M = masters(), k1 = nd(base), k2 = nb(base);
+    var a = M.filter(function(d){ return nd(d.단지명) === k1; });
+    if(!dup && a.length === 1) return { nm:a[0].단지명, by:'이름' };
+    var b = M.filter(function(d){ return nb(d.단지명) === k2; });
+    if(!dup && b.length === 1) return { nm:b[0].단지명, by:'이름(블록 뗌)' };
+    var inf = INFO[folder] || {};
+    var j = jibunOf(inf.addr);
+    if(!dup && j && W.sdKR && W.sdKR.aptFind){
+      var ap = null; try{ ap = W.sdKR.aptFind(null, j.dong, j.jb); }catch(e){}
+      if(ap && ap.n){
+        var c = M.filter(function(d){ return nd(d.단지명) === nd(ap.n) || nb(d.단지명) === nb(ap.n); });
+        if(c.length === 1) return { nm:c[0].단지명, by:'지번 ' + j.jb };
+      }
+    }
+    var hh = parseInt(String(inf.hh||'').replace(/[^\d]/g,''), 10);
+    if(hh){
+      var pool = ((b.length && !dup) ? b : M.filter(function(d){ var x = nb(d.단지명); return x && k2 && (x.indexOf(k2) >= 0 || k2.indexOf(x) >= 0); }));
+      var c2 = pool.filter(function(d){ return d.세대수 === hh; });
+      if(c2.length === 1) return { nm:c2[0].단지명, by:'세대수 ' + hh };
+    }
+    if(dup){ var pool2 = M.filter(function(d){ var x = nb(d.단지명); return x && k2 && (x.indexOf(k2) >= 0 || k2.indexOf(x) >= 0); });
+      return { nm:'', by:'같은 이름 둘째 단지(오피스텔 등) — 직접 고르세요', dup:true, cand:pool2.map(function(d){ return d.단지명; }) }; }
+    return { nm:'', by:'', cand:(b.length ? b : a).map(function(d){ return d.단지명; }) };
+  }
+
+  // ── 평면도 → 마스터 타입 ────────────────────────────────────────────
+  //  파일 이름: 평면도_{면적표기}_전용{전용}_{n}.jpg  (키트)  ·  평면도_84A.jpg (직접 정리)
+  function planInfo(name){
+    var b = String(name).replace(/\.[^.]+$/,'');
+    var ex = (/전용\s*([\d.]+)/.exec(b) || [])[1];
+    var tag = (/평면도[_\s-]*([\d.]+\s*[A-Za-z]*)/.exec(b) || [])[1] || '';
+    var letter = (tag.match(/[A-Za-z]+$/) || [''])[0].toUpperCase();
+    return { ex: ex ? parseFloat(ex) : null, tag: tag.replace(/\s/g,''), letter: letter, n: seqOf(name) };
+  }
+  function planFile(nm, pi, used){
+    var d = masters().filter(function(x){ return x.단지명 === nm; })[0];
+    var T = (d && d.types) || [];
+    var t = null;
+    if(T.length && pi.ex){
+      var ex = Math.round(pi.ex);
+      var c = T.filter(function(x){ return Math.round(x['전용㎡']||0) === ex; });
+      if(!c.length) c = T.filter(function(x){ return Math.abs((x['전용㎡']||0) - pi.ex) <= 1; });
+      if(c.length > 1 && pi.letter){ var cl = c.filter(function(x){ return String(x.타입||'').toUpperCase().slice(-pi.letter.length) === pi.letter; }); if(cl.length) c = cl; }
+      t = c.filter(function(x){ return !used[String(x.타입) + '_' + Math.round(x['전용㎡']||0)]; })[0] || c[0] || null;
+    }
+    var base = t ? String(t.타입).replace(/[_\/\\]/g,'') + '_' + Math.round(t['전용㎡']||0)
+                 : (pi.tag || '타입') + (pi.ex ? '_' + Math.round(pi.ex) : '');
+    var fn = 'plan__' + base + (pi.n > 1 ? '_' + pi.n : '') + '.jpg';
+    var k = 2; while(used[fn]){ fn = 'plan__' + base + '_' + (k++) + '.jpg'; }
+    used[fn] = 1; if(t) used[String(t.타입) + '_' + Math.round(t['전용㎡']||0)] = 1;
+    return { fn:fn, typed:!!t };
+  }
+
+  //  한 단지 폴더의 파일들 → 올릴 파일 이름
+  function plan(row){
+    var used = {}, cnt = {}, out = [], unk = [];
+    var fs = row.files.slice().sort(function(a,b){ return a.name.localeCompare(b.name, 'ko', { numeric:true }); });
+    fs.forEach(function(f){
+      var k = kindOf(f.name);
+      if(k === 'skip') return;
+      if(!k){ unk.push(f.name); return; }
+      if(k === 'plan'){
+        var pi = planInfo(f.name), r = planFile(target(row) || row.folder, pi, used);
+        out.push({ f:f, key:'plan', fn:r.fn, typed:r.typed }); return;
+      }
+      var slot = (W.DI_FIXED || []).filter(function(s){ return s.key === k; })[0];
+      var i = (cnt[k] = (cnt[k]||0) + 1);
+      if(!slot || (!slot.multi && i > 1) || (slot.multi && i > slot.max)){ unk.push(f.name + ' (칸이 모자람)'); return; }
+      var fn = slot.multi ? (typeof W.diSlotFile === 'function' ? W.diSlotFile(slot, i) : slot.key + i + '.jpg') : slot.key + '.jpg';
+      out.push({ f:f, key:k, fn:fn });
+    });
+    row.jobs = out; row.unk = unk;
+  }
+
+  // ── 저장소 ──────────────────────────────────────────────────────────
+  async function existing(nm){
+    var set = {};
+    try{
+      var res = await W._fbListAll(W._fbSRef(W._fbStorage, 'sd_danji_images/' + nm));
+      res.items.forEach(function(it){ set[it.name] = 1; });
+    }catch(e){}
+    return set;
+  }
+  async function loadExtra(){
+    if(!ready() || !W._fbListAll) return;
+    try{
+      var res = await W._fbListAll(W._fbSRef(W._fbStorage, 'sd_danji_images'));
+      W.G_DI.extra = (res.prefixes || []).map(function(p){ return p.name; });
+    }catch(e){}
+  }
+  function readRaw(file){
+    return new Promise(function(res, rej){ var r = new FileReader(); r.onload = function(){ res(r.result); }; r.onerror = rej; r.readAsDataURL(file); });
+  }
+  function resized(file, px, q){
+    return new Promise(function(res){ W.diResizeImage(file, px, function(u){ res(u); }, q); });
+  }
+  async function put(nm, job){
+    var o = job.key === 'plan' ? { px:1400, q:0.85 } : ((W.DI_OPT || {})[job.key] || (W.DI_OPT || {})._def || { px:1200, q:0.85 });
+    var url = o.raw ? await readRaw(job.f) : await resized(job.f, o.px, o.q);
+    if(!url) throw new Error('이미지를 읽지 못했습니다');
+    await W._fbUploadStr(W._fbSRef(W._fbStorage, 'sd_danji_images/' + nm + '/' + job.fn), url, 'data_url');
+  }
+
+  // ── 화면 ────────────────────────────────────────────────────────────
+  function opts(sel){
+    var M = masters().map(function(d){ return d.단지명; }).sort(function(a,b){ return a.localeCompare(b,'ko'); });
+    return '<option value="">— 못 맞춤: 골라 주세요 —</option>'
+      + '<option value="__self"' + (sel === '__self' ? ' selected' : '') + '>📁 폴더 이름 그대로 (마스터 밖 · 오피스텔 등)</option>'
+      + '<option value="__skip"' + (sel === '__skip' ? ' selected' : '') + '>건너뛰기</option>'
+      + M.map(function(n){ return '<option' + (n === sel ? ' selected' : '') + '>' + esc(n) + '</option>'; }).join('');
+  }
+  function target(r){ return r.sel === '__self' ? r.folder : (r.sel === '__skip' ? '' : r.sel); }
+  function counts(r){
+    var c = {}; (r.jobs||[]).forEach(function(j){ c[j.key] = (c[j.key]||0) + 1; });
+    return ['aerial','layout','dongho','price','plan','map','photo'].filter(function(k){ return c[k]; })
+      .map(function(k){ return KNM[k] + (c[k] > 1 ? ' ' + c[k] : ''); }).join(' · ');
+  }
+  function paint(){
+    var p = $('dib-panel'); if(!p) return;
+    if(!ROWS.length){ p.innerHTML = ''; return; }
+    var ok = ROWS.filter(function(r){ return target(r); });
+    var jobs = 0, bytes = 0, skip = 0;
+    ok.forEach(function(r){ (r.jobs||[]).forEach(function(j){ if(!OVERWRITE && r.have && r.have[j.fn]) skip++; else { jobs++; bytes += j.f.size; } }); });
+    var h = '<div class="card" style="padding:14px;margin-bottom:12px">'
+      + '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px">'
+      + '<div style="font-size:13.5px;font-weight:800">📁 폴더 일괄 등록 — 미리보기 <span style="font-size:11px;font-weight:400;color:var(--text3)">'
+      +   ROWS.length + '개 폴더 · 맞춤 ' + ok.length + ' · 올릴 파일 ' + jobs + '장 (약 ' + mb(bytes) + ')'
+      +   (skip ? ' · 이미 있어서 건너뜀 ' + skip + '장' : '') + '</span></div>'
+      + '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">'
+      +   '<label style="font-size:11.5px;display:inline-flex;gap:4px;align-items:center"><input type="checkbox" id="dib-ow"' + (OVERWRITE ? ' checked' : '') + ' onchange="dibOver(this.checked)"> 이미 있는 칸 덮어쓰기</label>'
+      +   (RUN ? '<button class="filter-btn" onclick="dibStop()">■ 멈추기</button>'
+               : '<button class="filter-btn on" onclick="dibRun()"' + (jobs ? '' : ' disabled style="opacity:.5"') + '>⬆ ' + ok.length + '개 단지 올리기</button>')
+      +   '<button class="filter-btn" onclick="dibClear()">✕ 닫기</button></div></div>'
+      + '<div id="dib-prog" style="font-size:12px;margin-bottom:6px">' + (RUN ? esc(RUN.msg||'') : '') + '</div>'
+      + '<div style="max-height:460px;overflow:auto;border:1px solid var(--border);border-radius:8px">'
+      + '<table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="background:var(--bg3);position:sticky;top:0">'
+      + '<th style="padding:6px 8px;text-align:left">폴더</th><th style="padding:6px 8px;text-align:left">→ SJRWS 단지</th>'
+      + '<th style="padding:6px 8px;text-align:left">근거</th><th style="padding:6px 8px;text-align:left">올릴 것</th>'
+      + '<th style="padding:6px 8px;text-align:left">평면도 타입</th><th style="padding:6px 8px;text-align:left">상태</th></tr></thead><tbody>'
+      + ROWS.map(function(r, i){
+          var pl = (r.jobs||[]).filter(function(j){ return j.key === 'plan'; });
+          var ty = pl.filter(function(j){ return j.typed; }).length;
+          var have = r.have ? Object.keys(r.have).length : 0;
+          var st = r.done != null ? (r.fail ? '⚠ ' + r.done + '장 · 실패 ' + r.fail : '✅ ' + r.done + '장')
+                 : (have ? '이미 ' + have + '장 있음' : '');
+          return '<tr style="border-top:1px solid var(--border)' + (target(r) ? '' : ';background:#fff8e1') + '">'
+            + '<td style="padding:5px 8px;white-space:nowrap"><b>' + esc(r.folder) + '</b></td>'
+            + '<td style="padding:5px 8px"><select data-i="' + i + '" onchange="dibSel(' + i + ',this.value)" style="max-width:230px;font-size:11.5px;background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:5px;padding:2px 4px">'
+            +   opts(r.sel) + '</select></td>'
+            + '<td style="padding:5px 8px;color:var(--text3);white-space:nowrap">' + esc(r.by || (r.sel ? '직접 고름' : '')) + '</td>'
+            + '<td style="padding:5px 8px">' + esc(counts(r)) + (r.unk && r.unk.length ? ' <span title="' + esc(r.unk.join('\n')) + '" style="color:#c80">· 못 알아봄 ' + r.unk.length + '</span>' : '') + '</td>'
+            + '<td style="padding:5px 8px;white-space:nowrap">' + (pl.length ? ty + '/' + pl.length + (ty < pl.length ? ' <span style="color:var(--text3)">(나머지는 면적표기로)</span>' : '') : '') + '</td>'
+            + '<td style="padding:5px 8px;white-space:nowrap">' + st + '</td></tr>';
+        }).join('')
+      + '</tbody></table></div>'
+      + '<div style="font-size:11px;color:var(--text3);margin-top:7px;line-height:1.7">노란 줄은 단지를 못 맞춘 폴더입니다 — 목록에서 고르시거나 「폴더 이름 그대로」(오피스텔 등 마스터 밖 단지)로 올리세요. '
+      + '올리는 화질은 이 탭의 규칙 그대로입니다 (동호수배치도 원본 · 분양가 3000px · 조감도 2400px · 평면도 1400px).</div></div>';
+    p.innerHTML = h;
+  }
+
+  // ── 바깥에서 부르는 것 ──────────────────────────────────────────────
+  W.dibPick = async function(input){
+    var files = input && input.files; if(!files || !files.length) return;
+    if(!masters().length && typeof W.hsFbLoad === 'function'){ try{ await W.hsFbLoad(); }catch(e){} }
+    if(W.sdKR && W.sdKR.aptLoad){ try{ await W.sdKR.aptLoad(); }catch(e){} }
+    var g = group(files);
+    INFO = {};
+    if(g.info){
+      try{
+        JSON.parse(await g.info.text()).forEach(function(x){
+          INFO[x.단지] = { addr:(x.정보||{}).소재지 || '', hh:(x.정보||{}).총세대수 || '' };
+        });
+      }catch(e){}
+    }
+    ROWS = Object.keys(g.by).sort(function(a,b){ return a.localeCompare(b,'ko'); }).map(function(folder){
+      var m = match(folder);
+      return { folder:folder, files:g.by[folder], sel:m.nm || '', by:m.by, cand:m.cand || [] };
+    });
+    ROWS.forEach(plan);
+    paint();
+    toast('📁 ' + ROWS.length + '개 폴더를 읽었습니다 — 이미 있는 이미지를 확인하는 중…', 4000);
+    for(var i=0;i<ROWS.length;i++){ var t = target(ROWS[i]); if(t) ROWS[i].have = await existing(t); }
+    paint();
+    try{ input.value = ''; }catch(e){}
+  };
+  W.dibSel = function(i, v){ var r = ROWS[i]; if(!r) return; r.sel = v; r.by = ''; plan(r); r.have = null;
+    var t = target(r); paint(); if(t) existing(t).then(function(s){ r.have = s; paint(); }); };
+  W.dibOver = function(on){ OVERWRITE = !!on; paint(); };
+  W.dibClear = function(){ if(RUN) return; ROWS = []; paint(); };
+  W.dibStop = function(){ if(RUN) RUN.stop = true; };
+  W.dibRun = async function(){
+    if(RUN || !ready()){ if(!ready()) toast('⚠️ Storage 연결 대기 중'); return; }
+    var list = ROWS.filter(function(r){ return target(r); });
+    var total = 0; list.forEach(function(r){ total += (r.jobs||[]).filter(function(j){ return OVERWRITE || !(r.have && r.have[j.fn]); }).length; });
+    if(!total){ toast('올릴 파일이 없습니다'); return; }
+    RUN = { stop:false, n:0, total:total, msg:'' }; paint();
+    var fails = [];
+    for(var i=0;i<list.length && !RUN.stop;i++){
+      var r = list[i], nm = target(r); r.done = 0; r.fail = 0;
+      for(var j=0;j<r.jobs.length && !RUN.stop;j++){
+        var jb = r.jobs[j];
+        if(!OVERWRITE && r.have && r.have[jb.fn]) continue;
+        RUN.n++;
+        RUN.msg = '⏳ ' + RUN.n + ' / ' + total + ' · ' + nm + ' · ' + jb.fn;
+        var pe = $('dib-prog'); if(pe) pe.textContent = RUN.msg;
+        try{ await put(nm, jb); r.done++; (r.have = r.have || {})[jb.fn] = 1; }
+        catch(e){ r.fail++; fails.push(nm + ' · ' + jb.f.name + ' — ' + (e && e.message || e)); }
+      }
+    }
+    var stopped = RUN.stop;
+    RUN = null;
+    await loadExtra();
+    paint();
+    if(typeof W.diRenderChips === 'function') W.diRenderChips();
+    if(W.G_DI && W.G_DI.selDanji && typeof W.diLoadDanjiImages === 'function') W.diLoadDanjiImages(W.G_DI.selDanji);
+    var pe2 = $('dib-prog');
+    if(pe2) pe2.innerHTML = (stopped ? '■ 멈췄습니다 — ' : '✅ 끝났습니다 — ')
+      + list.reduce(function(a,r){ return a + (r.done||0); }, 0) + '장 올림'
+      + (fails.length ? ' · <b style="color:#c33">실패 ' + fails.length + '</b><div style="font-size:11px;color:#c33;margin-top:4px">' + fails.slice(0,12).map(esc).join('<br>') + '</div>' : '');
+  };
+  W.sdDib = { kindOf:kindOf, match:match, planInfo:planInfo, planFile:planFile, group:group,
+              rows:function(){ return ROWS; }, loadExtra:loadExtra, nb:nb };
+
+  // ── 탭 14 에 단추 달기 ──────────────────────────────────────────────
+  function mount(){
+    var tc = $('tc14'); if(!tc) return false;
+    if($('dib-btn')) return true;
+    var rb = [].slice.call(tc.querySelectorAll('button')).filter(function(b){ return /목록 새로고침/.test(b.textContent); })[0];
+    if(!rb) return false;
+    var lab = document.createElement('label');
+    lab.id = 'dib-btn';
+    lab.style.cssText = 'padding:7px 14px;background:var(--accent);color:#fff;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;margin-right:6px';
+    lab.innerHTML = '📁 폴더 일괄 등록<input type="file" webkitdirectory directory multiple style="display:none" onchange="dibPick(this)">';
+    lab.title = '단지별 폴더가 들어 있는 상위 폴더를 고르세요 — 파일 이름으로 칸을 나눠 한 번에 올립니다';
+    rb.parentNode.insertBefore(lab, rb);
+    var card = rb.closest('.card');
+    var pn = document.createElement('div'); pn.id = 'dib-panel';
+    card.parentNode.insertBefore(pn, card.nextSibling);
+    return true;
+  }
+  function hookSw(){
+    if(typeof W.sw !== 'function') return false;
+    if(W.sw.__dib) return true;
+    var orig = W.sw;
+    var w = function(n){ var out = orig.apply(this, arguments);
+      if(n === 14){ try{ mount(); loadExtra().then(function(){ if(typeof W.diRenderChips === 'function') W.diRenderChips(); }); }catch(e){} }
+      return out; };
+    w.__dib = true; W.sw = w; return true;
+  }
+  var tries = 0;
+  (function start(){ var ok = mount() && hookSw(); if(!ok && tries++ < 80) setTimeout(start, 250); })();
 })();
 </script>
 
