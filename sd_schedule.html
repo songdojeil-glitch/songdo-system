@@ -2551,7 +2551,7 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.09.23-7';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.09.28-1';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_schedule.html';      // 이 파일 이름
   var SD_NAME = '일정관리';      // 사람이 부르는 이름
 
@@ -3143,27 +3143,48 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
     });
   }
   function haveTok(){ return tok && Date.now() < tokExp - 60000; }
+  //  구글 창 요청은 한 번에 하나 — 지금 기다리는 요청을 pend 에 둔다.
+  //  (예전에는 tokenClient 를 처음 만들 때의 res/rej 를 계속 붙들고 있어서,
+  //   토큰이 한 시간 뒤 끝난 다음 다시 연결하면 대답이 옛 요청으로 가 버려
+  //   「구글 창을 여는 중…」에서 영원히 멈췄다.)
+  var pend=null;
+  function settle(ok, v){
+    var p=pend; pend=null; if(!p) return;
+    clearTimeout(p.t); if(ok) p.res(v); else p.rej(v);
+  }
+  function popupMsg(type){
+    if(type==='popup_failed_to_open') return '구글 창이 열리지 않았습니다 — 주소창 오른쪽의 「팝업 차단」 표시를 눌러 이 사이트를 항상 허용한 뒤 다시 눌러 주세요';
+    if(type==='popup_closed') return '구글 창이 닫혔습니다 — 다시 눌러 계정을 고르고 「허용」까지 눌러 주세요';
+    return type || '구글 창 오류';
+  }
   async function getTok(interactive){
     if(haveTok()) return tok;
     var ok=await loadGis();
     if(!ok) throw new Error('구글 로그인 기능을 불러오지 못했습니다');
+    if(!tokenClient){
+      tokenClient=google.accounts.oauth2.initTokenClient({
+        client_id: CLIENT_ID, scope: SCOPE,
+        callback: function(r){
+          if(r && r.access_token){
+            tok=r.access_token; tokExp=Date.now()+((r.expires_in||3600)*1000);
+            paint(); settle(true, tok);
+          } else settle(false, new Error((r&&r.error_description)||(r&&r.error)||'허용되지 않았습니다'));
+        },
+        error_callback: function(e){ settle(false, new Error(popupMsg(e&&e.type))); }
+      });
+    }
+    if(pend) settle(false, new Error('앞선 요청을 취소하고 다시 엽니다'));
     return new Promise(function(res, rej){
-      if(!tokenClient){
-        tokenClient=google.accounts.oauth2.initTokenClient({
-          client_id: CLIENT_ID, scope: SCOPE,
-          callback: function(r){
-            if(r && r.access_token){
-              tok=r.access_token; tokExp=Date.now()+((r.expires_in||3600)*1000);
-              paint(); res(tok);
-            } else rej(new Error((r&&r.error_description)||(r&&r.error)||'허용되지 않았습니다'));
-          },
-          error_callback: function(e){ rej(new Error((e&&e.type)||'창이 닫혔습니다')); }
-        });
-      }
+      pend={ res:res, rej:rej, t:setTimeout(function(){
+        settle(false, new Error('구글 창에서 2분 동안 대답이 없습니다 — 팝업이 막혔거나 창이 뒤에 숨어 있을 수 있습니다. 주소창 오른쪽 「팝업 차단」 표시를 확인하고 다시 눌러 주세요'));
+      }, 120000) };
       try{ tokenClient.requestAccessToken({ prompt: interactive ? 'consent' : '' }); }
-      catch(e){ rej(e); }
+      catch(e){ settle(false, e); }
     });
   }
+  //  구글 로그인 스크립트를 미리 불러 둔다 — 단추를 누른 뒤에 불러오면
+  //  그 사이에 '사용자가 누름' 표시가 사라져 브라우저가 구글 창을 팝업으로 막는다.
+  setTimeout(function(){ loadGis(); }, 1200);
   async function api(path, opts){
     opts=opts||{};
     var t=await getTok(false);
