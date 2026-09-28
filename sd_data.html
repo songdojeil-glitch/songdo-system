@@ -19391,7 +19391,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.09.27-44';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.09.28-45';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_data.html';      // 이 파일 이름
   var SD_NAME = '실거래가';      // 사람이 부르는 이름
 
@@ -29215,6 +29215,8 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
       { i:'📜', n:'등기부 요점정리', soon:1, d:'등기사항증명서에서 봐야 할 것만 뽑아 정리' },
       { i:'🚇', n:'역세권 · 학군', soon:1, d:'단지에서 역·학교까지 걸어서 몇 분' },
       { i:'🏗️', n:'건폐율 · 용적률', soon:1, d:'용도지역별 인천시 조례 한눈에' },
+      { i:'🔑', n:'추출기 열쇠 관리', go:25, tag:'마스터',
+        d:'네이버 매물 추출기를 직원마다 다른 열쇠로 — 지우면 해지, 한 번 올리면 모두 최신판, 파일에 누가 뽑았는지 표시' },
       { i:'🏗️', n:'건축물대장 조회', go:24, tag:'새로',
         d:'아파트·상가·오피스텔 — 단지·건물 이름·주소·지번으로 국토부 건축물대장을 바로. 표제부·층별개요·호실별 전유부까지 (발급본은 정부24)' }
     ]}
@@ -34566,6 +34568,459 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
       return out;
     };
     w.__br = true; W.sw = w;
+    return true;
+  }
+  var tries = 0;
+  (function start(){
+    var ok = build() && hookSw();
+    if(!ok && tries++ < 80) return void setTimeout(start, 200);
+  })();
+})();
+</script>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     추출기 열쇠 관리 v1.0  (탭 25) — 마스터 전용
+     네이버 매물 추출기를 사람마다 다른 열쇠로 나눠 주고, 지우면 해지한다.
+     본체는 파이어베이스 sd_ext 에 두고 북마크에는 짧은 로더만 남긴다.
+     ══════════════════════════════════════════════════════════════════ -->
+<style>
+#xk-root{padding:2px 0}
+#xk-root .xk-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:13px 15px;margin-bottom:11px}
+#xk-root .xk-new{border-color:#0a7;background:#f1fbf6}
+#xk-root .xk-hd{font-size:13.5px;font-weight:800;margin:0 0 9px;display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+#xk-root .xk-hd span{font-size:11px;font-weight:400;color:var(--text3)}
+#xk-root .xk-fr{display:flex;gap:7px;flex-wrap:wrap;align-items:center}
+#xk-root .xk-in{padding:5px 10px;border:1px solid var(--border);border-radius:7px;background:var(--bg3);color:var(--text);font-size:12.5px;width:210px;font-family:inherit}
+#xk-root .xk-in:focus{outline:none;border-color:var(--accent)}
+#xk-root .xk-pill{display:inline-block;background:var(--accent);color:#fff;border-radius:10px;padding:1px 9px;font-size:12px;font-weight:700}
+#xk-root .xk-bm{display:inline-block;padding:7px 16px;background:#2F5496;color:#fff!important;text-decoration:none;border-radius:7px;font-weight:700;cursor:grab;box-shadow:0 2px 6px rgba(0,0,0,.2)}
+#xk-root table.xk-tb{width:100%;border-collapse:collapse;font-size:12.5px}
+#xk-root table.xk-tb th{padding:6px 8px;background:var(--bg3);font-size:11px;text-align:left;white-space:nowrap}
+#xk-root table.xk-tb td{padding:6px 8px;border-top:1px solid var(--border);white-space:nowrap}
+#xk-root .xk-note{font-size:11.5px;line-height:1.85;color:var(--text3);padding:4px 2px}
+</style>
+<script>
+/*  ══════════════════════════════════════════════════════════════════════
+    추출기 열쇠 관리 (탭 25) — 마스터 전용
+    ──────────────────────────────────────────────────────────────────
+    네이버 매물 추출기(북마클릿)를 「사람마다 다른 열쇠」로 나눠 준다.
+
+      북마크 = 짧은 로더 + 열쇠
+      로더를 누르면 → 파이어베이스 sd_ext/keys/{열쇠} 에서 추출기 본체를 받아 실행
+
+    그래서
+      · 해지    — 그 사람 열쇠만 지우면 다음 클릭부터 「사용 권한이 없습니다」
+      · 업데이트 — 여기서 새 버전을 한 번 올리면 모든 북마크가 다음 클릭부터 최신판
+                   (옛 북마크를 지우고 다시 드래그할 일이 없다)
+      · 워터마크 — 저장·복사하는 txt 끝에 [추출: 이름 · 날짜]
+                   (파일 끝에 붙인다 — N매물 파서 결과가 한 칸도 안 바뀌는 것을 확인)
+
+    ⚠ 확인된 전제 (2026-09-28, 대표님 PC · fin.land.naver.com 에서 점검 북마클릿)
+      CSP 없음 · 받아온 코드 실행 허용 · 파이어베이스 연결 됨(401)
+      네이버가 나중에 막으면 로더는 「불러오지 못했습니다」를 띄운다 —
+      그때는 대표님 PC의 통째 버전(Extractor_V5.x.html)을 비상용으로 쓴다.
+
+    ⚠ 막지 못하는 것: 열쇠를 가진 사람이 받아 온 코드를 따로 저장해 두는 것.
+      이 장치가 막는 것은 「퇴사자·외부인이 계속 쓰는 것」이다.
+
+    ⚠ 파이어베이스 규칙이 먼저 들어가 있어야 한다 (sd_ext 블록).
+      · 열쇠 한 개는 로그인 없이 읽힌다 (로더가 네이버 화면에서 읽어야 하므로)
+      · 열쇠 목록은 로그인 없이는 안 읽힌다
+      · 쓰기는 마스터만 (.validate)
+      🩺 규칙 점검 단추가 이 셋을 실제로 확인한다.
+    ══════════════════════════════════════════════════════════════════ */
+(function(){
+  'use strict';
+  if(window.__xkOn) return; window.__xkOn = true;
+  var TAB = 25;
+  var W = window;
+  var OWNER = 'songdojeil@gmail.com';
+
+  var SRC = null, KEYS = {}, BUSY = false, MSG = '', LAST = null, CHK = null;
+
+  function $(id){ return document.getElementById(id); }
+  function esc(s){ return String(s==null?'':s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  function fmtDt(t){ if(!t) return ''; var d = new Date(t);
+    return d.getFullYear() + '.' + ('0'+(d.getMonth()+1)).slice(-2) + '.' + ('0'+d.getDate()).slice(-2)
+         + ' ' + ('0'+d.getHours()).slice(-2) + ':' + ('0'+d.getMinutes()).slice(-2); }
+  function msg(t, c){
+    MSG = t ? '<span style="color:' + (c||'var(--text3)') + '">' + t + '</span>' : '';
+    var e = $('xk-msg'); if(e) e.innerHTML = MSG;
+  }
+
+  // ── 누구인가 ────────────────────────────────────────────────────────
+  function sess(){ try{ return JSON.parse(localStorage.getItem('sd_auth_session')||'{}') || {}; }catch(e){ return {}; } }
+  function fbOk(){ return !!(W.firebase && W.firebase.database && W.firebase.auth); }
+  function user(){ try{ return fbOk() ? W.firebase.auth().currentUser : null; }catch(e){ return null; } }
+  //  규칙과 같은 기준 — 소유자 메일이거나 역할이 master
+  function isMaster(){
+    var u = user();
+    if(u && u.email === OWNER) return true;
+    return sess().role === 'master';
+  }
+  function authReady(ms){
+    return new Promise(function(res){
+      if(!fbOk()) return res(null);
+      var a = W.firebase.auth();
+      if(a.currentUser) return res(a.currentUser);
+      var done = false, off = a.onAuthStateChanged(function(u){ if(done) return; done = true; try{off();}catch(e){} res(u); });
+      setTimeout(function(){ if(!done){ done = true; try{off();}catch(e){} res(a.currentUser); } }, ms||8000);
+    });
+  }
+  function db(){ return W.firebase.database(); }
+  function dbURL(){
+    try{ var u = W.firebase.app().options.databaseURL; if(u) return String(u).replace(/\/$/,''); }catch(e){}
+    return 'https://songdojeil-202604-default-rtdb.asia-southeast1.firebasedatabase.app';
+  }
+
+  // ── 열쇠 ────────────────────────────────────────────────────────────
+  //  24자 무작위(영문 대소문자+숫자) ≈ 143비트 — 맞혀서 들어올 수 없다
+  var ABC = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
+  function newKey(){
+    var a = new Uint8Array(24), s = '';
+    (W.crypto || W.msCrypto).getRandomValues(a);
+    for(var i=0;i<a.length;i++) s += ABC[a[i] % ABC.length];
+    return s;
+  }
+  function mask(k){ return String(k).slice(0,4) + '····' + String(k).slice(-2); }
+
+  /*  로더 — 북마크에 들어가는 짧은 코드.
+      큰따옴표·%·# 를 쓰지 않는다 (북마크 주소 안에서 깨진다).
+      끝을 void(...) 로 감싼다 — 값을 돌려주면 크롬이 화면을 그 값으로 바꿔 버린다. */
+  function loader(k){
+    var U = dbURL() + '/sd_ext/keys/' + k + '.json';
+    return "javascript:void((function(){var U='" + U + "';"
+      + "fetch(U,{cache:'no-store'}).then(function(r){if(r.status===401||r.status===403)throw new Error('권한 설정이 아직 없습니다');return r.json();})"
+      + ".then(function(d){if(!d){alert('SJDWS 추출기: 사용 권한이 없습니다.\\n송도제일공인중개사사무소에 문의해 주세요.');return;}"
+      + "if(!d.code){alert('SJDWS 추출기: 아직 올린 버전이 없습니다.');return;}"
+      + "window.__SJDWS_WHO=d.n||'';new Function(d.code)();})"
+      + ".catch(function(e){alert('SJDWS 추출기를 불러오지 못했습니다 — '+e.message);});})())";
+  }
+
+  // ── 추출기 파일 읽기 ────────────────────────────────────────────────
+  /*  Extractor_V5.x.html 에서 북마클릿을 꺼낸다.
+      브라우저가 드래그할 때 쓰는 값과 똑같이 하려고 DOMParser 로 읽는다
+      (파일에는 && 가 그대로 들어 있고, 사람 손으로 풀면 어긋날 수 있다). */
+  function pickBookmarklet(html){
+    var doc = new DOMParser().parseFromString(html, 'text/html');
+    var as = [].slice.call(doc.querySelectorAll('a[href^="javascript:"]'));
+    if(!as.length) throw new Error('이 파일에서 북마클릿 단추를 찾지 못했습니다 — 추출기 등록 페이지(Extractor_V5.x.html)가 맞는지 확인해 주세요.');
+    var a = doc.querySelector('a.bookmarklet-link[href^="javascript:"]') || as.sort(function(x,y){
+      return y.getAttribute('href').length - x.getAttribute('href').length; })[0];
+    var href = a.getAttribute('href');
+    var ver = ((a.textContent + ' ' + (doc.title||'')).match(/v\s?\d+(?:\.\d+)*[a-z]?/i) || [''])[0].replace(/\s/g,'');
+    return { code: href.replace(/^javascript:/i, ''), ver: ver, label: a.textContent.trim() };
+  }
+  /*  워터마크 — 추출기의 bt()(저장·복사 직전에 머리말을 붙이는 함수) 맨 앞에서
+      본문 끝에 [추출: 이름 · 날짜] 를 붙인다. 파일 **끝**이라 파서 결과는 그대로다.
+      자리를 못 찾으면 워터마크 없이 올리고 그렇다고 알린다 — 추출기를 망가뜨리지 않는다. */
+  var WM_AT = 'function bt(r){';
+  var WM_JS = "r=String(r)+'\\n\\n[추출: '+(window.__SJDWS_WHO||'?')+' · '"
+            + "+(function(){var d=new Date();return d.getFullYear()+'.'+('0'+(d.getMonth()+1)).slice(-2)+'.'+('0'+d.getDate()).slice(-2);})()+']';";
+  function watermark(code){
+    var i = code.indexOf(WM_AT);
+    if(i < 0 || code.indexOf(WM_AT, i+1) >= 0) return { code:code, wm:false };
+    var out = code.slice(0, i + WM_AT.length) + WM_JS + code.slice(i + WM_AT.length);
+    try{ new Function(out); }catch(e){ return { code:code, wm:false }; }
+    return { code:out, wm:true };
+  }
+
+  // ── 파이어베이스 ────────────────────────────────────────────────────
+  async function load(){
+    var u = await authReady();
+    if(!u) throw new Error('로그인 상태를 확인하지 못했습니다 — 허브에서 다시 로그인해 주세요.');
+    var s = await db().ref('sd_ext').once('value');
+    var v = s.val() || {};
+    SRC = v.src || null; KEYS = v.keys || {};
+  }
+  function denied(e){
+    return /PERMISSION_DENIED|permission/i.test(String(e && (e.code||e.message) || e))
+      ? '파이어베이스가 쓰기를 거절했습니다 — 규칙(sd_ext 블록)이 들어가 있는지, 마스터 계정인지 확인해 주세요.'
+      : String(e && e.message || e);
+  }
+  //  로그인 없이 읽어 본다 — 로더가 네이버 화면에서 읽는 것과 같은 조건
+  async function pubGet(path){
+    try{
+      var r = await fetch(dbURL() + '/' + path + '.json', { cache:'no-store' });
+      var j = null; try{ j = await r.json(); }catch(e){}
+      return { status:r.status, body:j };
+    }catch(e){ return { status:0, err:String(e && e.message || e) }; }
+  }
+
+  async function publish(file){
+    if(!isMaster()) throw new Error('마스터 계정만 올릴 수 있습니다.');
+    var html = await file.text();
+    var b = pickBookmarklet(html);
+    try{ new Function(b.code); }catch(e){ throw new Error('북마클릿 코드가 깨져 있습니다 — ' + e.message); }
+    if(!/NV_|확인매물|네이버/.test(b.code)) throw new Error('매물 추출기 코드로 보이지 않습니다 — 다른 파일을 고르신 것 같습니다.');
+    var w = watermark(b.code);
+    var now = Date.now(), who = (user() && user().email) || sess().name || '';
+    var up = { 'src': { code:w.code, v:b.ver||'', at:now, by:who, file:file.name, wm:w.wm, len:w.code.length } };
+    Object.keys(KEYS).forEach(function(k){
+      up['keys/' + k + '/code'] = w.code;
+      up['keys/' + k + '/v'] = b.ver || '';
+      up['keys/' + k + '/up'] = now;
+    });
+    await db().ref('sd_ext').update(up);
+    await load();
+    //  열쇠마다 로그인 없이 읽어 새 버전이 실제로 나가는지 확인
+    var ok = 0, bad = [];
+    for(var k in KEYS){
+      var r = await pubGet('sd_ext/keys/' + k);
+      if(r.status === 200 && r.body && r.body.code && r.body.code.length === w.code.length) ok++;
+      else bad.push((KEYS[k].n||mask(k)) + '(' + r.status + ')');
+    }
+    return { ver:b.ver, wm:w.wm, len:w.code.length, ok:ok, bad:bad, n:Object.keys(KEYS).length };
+  }
+
+  async function issue(name){
+    if(!isMaster()) throw new Error('마스터 계정만 발급할 수 있습니다.');
+    name = String(name||'').trim();
+    if(!name) throw new Error('받을 사람 이름을 넣어 주세요.');
+    if(!SRC || !SRC.code) throw new Error('먼저 「새 버전 올리기」로 추출기를 한 번 올려 주세요.');
+    var k = newKey(), now = Date.now();
+    await db().ref('sd_ext/keys/' + k).set({ n:name, code:SRC.code, v:SRC.v||'', at:now, up:now });
+    await load();
+    var r = await pubGet('sd_ext/keys/' + k);
+    LAST = { k:k, n:name, pub:(r.status === 200 && r.body && r.body.code ? 'ok' : r.status) };
+    return LAST;
+  }
+
+  async function revoke(k){
+    if(!isMaster()) throw new Error('마스터 계정만 해지할 수 있습니다.');
+    await db().ref('sd_ext/keys/' + k).remove();
+    await load();
+    var r = await pubGet('sd_ext/keys/' + k);
+    return r.status === 200 && r.body == null;
+  }
+
+  /*  규칙 점검 — 로그인 없이 세 곳을 읽어 본다.
+        ① 열쇠 하나   → 200 이어야 (로더가 읽어야 하므로)
+        ② 열쇠 목록   → 401 이어야 (목록이 새면 누구나 열쇠를 줍는다)
+        ③ 데이터 전체 → 401 이어야 (사무소 자료) */
+  async function check(){
+    var ks = Object.keys(KEYS), one = ks[0];
+    var a = one ? await pubGet('sd_ext/keys/' + one) : { status:'-' };
+    var b = await pubGet('sd_ext/keys');
+    var c = await pubGet('');
+    CHK = {
+      one:  one ? (a.status === 200 && a.body && a.body.code ? 'ok' : (a.status === 401 ? 'rule' : 'bad:' + a.status)) : 'none',
+      list: b.status === 401 ? 'ok' : (b.status === 200 ? 'leak' : 'bad:' + b.status),
+      root: c.status === 401 ? 'ok' : (c.status === 200 ? 'leak' : 'bad:' + c.status),
+      at: Date.now()
+    };
+    return CHK;
+  }
+
+  // ── 등록 페이지 내려받기 ────────────────────────────────────────────
+  function regPage(k, name){
+    var href = loader(k);
+    var ttl = 'SJDWS 추출기 — ' + name;
+    return '<!DOCTYPE html>\n<html lang="ko"><head><meta charset="UTF-8">'
+      + '<meta name="viewport" content="width=device-width, initial-scale=1"><title>' + esc(ttl) + '</title>'
+      + '<style>body{font-family:\'Malgun Gothic\',Arial,sans-serif;max-width:640px;margin:40px auto;padding:20px;background:#f5f5f5;color:#222}'
+      + 'h1{color:#2F5496;font-size:21px;margin-bottom:4px}.sub{font-size:13px;color:#888;margin-bottom:16px}'
+      + '.bm{display:inline-block;padding:14px 28px;background:#2F5496;color:#fff!important;text-decoration:none;border-radius:8px;font-size:16px;font-weight:bold;margin:14px 0;cursor:grab;box-shadow:0 2px 8px rgba(0,0,0,.2)}'
+      + '.step{background:#fff;padding:12px 18px;margin:9px 0;border-radius:8px;border-left:4px solid #2F5496;font-size:14px;line-height:1.7}'
+      + '.n{color:#2F5496;font-weight:bold;font-size:17px;margin-right:4px}'
+      + '.warn{background:#FFF3CD;padding:12px 16px;border-radius:8px;border-left:4px solid #FFC107;margin:15px 0;font-size:13.5px;line-height:1.75}'
+      + 'code{background:#e8e8e8;padding:1px 5px;border-radius:3px;font-size:12.5px}</style></head><body>'
+      + '<h1>SJDWS 추출기 · ' + esc(name) + '</h1>'
+      + '<div class="sub">송도제일공인중개사사무소 · 네이버부동산 매물 추출 · 이 북마크는 ' + esc(name) + ' 님 전용입니다</div>'
+      + '<a class="bm" href="' + esc(href) + '">📋 SJDWS 추출기</a>'
+      + '<div class="step"><span class="n">1.</span> 예전 추출기 북마크(v5.x)가 있으면 <b>지웁니다.</b></div>'
+      + '<div class="step"><span class="n">2.</span> 위 파란 단추를 <b>북마크바로 드래그</b>합니다 (북마크바가 안 보이면 <code>Ctrl+Shift+B</code>).</div>'
+      + '<div class="step"><span class="n">3.</span> 네이버부동산 매물 화면에서 북마크를 누르면 <b>늘 최신 추출기</b>가 돕니다. '
+      + '앞으로 버전이 올라가도 <b>다시 등록할 필요가 없습니다.</b></div>'
+      + '<div class="warn">이 북마크에는 <b>' + esc(name) + ' 님의 열쇠</b>가 들어 있습니다. 다른 분께 넘기지 마십시오. '
+      + '저장한 파일 끝에 <code>[추출: ' + esc(name) + ' · 날짜]</code>가 붙습니다.<br>'
+      + '「사용 권한이 없습니다」가 뜨면 사무소에 문의해 주세요.</div>'
+      + '</body></html>';
+  }
+  function download(name, text){
+    var b = new Blob([text], { type:'text/html;charset=utf-8' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(b); a.download = name;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(function(){ URL.revokeObjectURL(a.href); }, 4000);
+  }
+
+  // ── 화면 ────────────────────────────────────────────────────────────
+  function chkLine(){
+    if(!CHK) return '<span style="color:var(--text3)">아직 점검하지 않았습니다.</span>';
+    function b(ok, t){ return '<div>' + (ok ? '✅ ' : '❌ ') + t + '</div>'; }
+    var h = '';
+    if(CHK.one === 'none') h += '<div>· 열쇠가 아직 없어 ①은 건너뛰었습니다</div>';
+    else h += b(CHK.one === 'ok', '① 열쇠 하나는 로그인 없이 읽힘 (로더가 쓰는 길)'
+      + (CHK.one === 'rule' ? ' — <b>규칙(sd_ext 블록)이 아직 안 들어갔습니다</b>' : CHK.one !== 'ok' ? ' — ' + esc(CHK.one) : ''));
+    h += b(CHK.list === 'ok', '② 열쇠 목록은 로그인 없이 안 읽힘'
+      + (CHK.list === 'leak' ? ' — <b style="color:#c33">목록이 공개돼 있습니다! 규칙을 바로 확인해 주세요</b>' : CHK.list !== 'ok' ? ' — ' + esc(CHK.list) : ''));
+    h += b(CHK.root === 'ok', '③ 사무소 자료 전체는 로그인 없이 안 읽힘'
+      + (CHK.root === 'leak' ? ' — <b style="color:#c33">자료가 공개돼 있습니다!</b>' : CHK.root !== 'ok' ? ' — ' + esc(CHK.root) : ''));
+    return h + '<div style="color:var(--text3);font-size:11px;margin-top:3px">점검한 때 ' + fmtDt(CHK.at) + '</div>';
+  }
+
+  function paint(){
+    var root = $('xk-root'); if(!root) return;
+    if(!isMaster()){
+      root.innerHTML = '<div class="xk-card" style="color:var(--text3);font-size:13px;line-height:1.9">'
+        + '🔑 <b>대표(마스터) 전용 화면</b>입니다. 추출기 북마크가 필요하시면 대표님께 등록 페이지를 받아 주세요.</div>';
+      return;
+    }
+    var ks = Object.keys(KEYS).sort(function(a,b){ return (KEYS[a].at||0) - (KEYS[b].at||0); });
+    var h = '<div class="xk-card">'
+      + '<div class="xk-hd">🔑 추출기 열쇠 관리 <span>사람마다 다른 열쇠 · 지우면 해지 · 한 번 올리면 모두 최신판</span></div>'
+      + '<div class="xk-fr">'
+      +   '<b style="font-size:12.5px">지금 올라가 있는 버전</b> '
+      +   (SRC && SRC.code
+          ? '<span class="xk-pill">' + esc(SRC.v || '(버전 표기 없음)') + '</span>'
+            + '<span style="font-size:11.5px;color:var(--text3)">' + esc(SRC.file||'') + ' · ' + fmtDt(SRC.at)
+            + ' · ' + Math.round((SRC.len||SRC.code.length)/1024) + 'KB · 워터마크 ' + (SRC.wm ? '들어감' : '<b style="color:#c80">없음</b>') + '</span>'
+          : '<span style="color:#c80;font-size:12px">아직 없습니다 — 아래에서 추출기 파일을 한 번 올려 주세요</span>')
+      + '</div>'
+      + '<div class="xk-fr" style="margin-top:9px">'
+      +   '<label class="filter-btn on" style="cursor:pointer">⬆ 새 버전 올리기 (Extractor_V5.x.html)'
+      +   '<input type="file" id="xk-file" accept=".html,.htm" style="display:none" onchange="xkPublish(this)"></label>'
+      +   '<span style="font-size:11px;color:var(--text3)">올리면 모든 열쇠가 다음 클릭부터 새 버전을 씁니다</span>'
+      + '</div>'
+      + '<div class="xk-fr" style="margin-top:9px">'
+      +   '<input class="xk-in" id="xk-name" placeholder="받을 사람 이름 (예: 이서정)" onkeydown="if(event.key===\'Enter\')xkIssue()">'
+      +   '<button class="filter-btn on" onclick="xkIssue()">🔑 열쇠 발급</button>'
+      +   '<button class="filter-btn" onclick="xkCheck()">🩺 규칙 점검</button>'
+      +   '<span id="xk-msg" style="font-size:12px">' + MSG + '</span>'
+      + '</div></div>';
+
+    if(LAST && KEYS[LAST.k]){
+      h += '<div class="xk-card xk-new">'
+        + '<div class="xk-hd">✅ ' + esc(LAST.n) + ' 님 열쇠를 만들었습니다'
+        + (LAST.pub === 'ok' ? '' : ' <span style="color:#c33">— 로그인 없이 읽히지 않습니다(' + esc(LAST.pub) + '). 규칙을 확인해 주세요</span>') + '</div>'
+        + '<div style="font-size:12.5px;line-height:1.9">'
+        + '<b>① 등록 페이지 내려받기</b> — ' + esc(LAST.n) + ' 님께 보내면, 받은 분이 열어서 단추를 북마크바로 드래그합니다. '
+        + '<button class="filter-btn on" onclick="xkPage(\'' + LAST.k + '\')">📄 등록 페이지 내려받기</button><br>'
+        + '<b>② 지금 이 PC에 바로</b> — 아래 단추를 북마크바로 드래그: '
+        + '<a class="xk-bm" href="' + esc(loader(LAST.k)) + '">📋 SJDWS 추출기 (' + esc(LAST.n) + ')</a>'
+        + '</div></div>';
+    }
+
+    h += '<div class="xk-card"><div class="xk-hd">발급한 열쇠 <span>' + ks.length + '개</span></div>';
+    if(!ks.length){
+      h += '<div style="font-size:12.5px;color:var(--text3)">아직 없습니다.</div>';
+    } else {
+      h += '<table class="xk-tb"><thead><tr><th>이름</th><th>열쇠</th><th>버전</th><th>발급</th><th>마지막 반영</th><th></th></tr></thead><tbody>'
+        + ks.map(function(k){
+            var o = KEYS[k] || {};
+            var stale = SRC && SRC.at && (o.up||0) < SRC.at;
+            return '<tr><td><b>' + esc(o.n||'') + '</b></td>'
+              + '<td style="font-family:monospace">' + esc(mask(k)) + '</td>'
+              + '<td>' + esc(o.v||'') + (stale ? ' <span style="color:#c80">(옛 버전)</span>' : '') + '</td>'
+              + '<td>' + fmtDt(o.at) + '</td><td>' + fmtDt(o.up) + '</td>'
+              + '<td style="text-align:right;white-space:nowrap">'
+              + '<button class="filter-btn" onclick="xkPage(\'' + k + '\')">📄 등록 페이지</button> '
+              + '<button class="filter-btn" style="color:#c33" onclick="xkRevoke(\'' + k + '\')">해지</button></td></tr>';
+          }).join('')
+        + '</tbody></table>';
+    }
+    h += '</div>';
+
+    h += '<div class="xk-card"><div class="xk-hd">🩺 규칙 점검 <span>로그인 없이 세 곳을 읽어 봅니다</span></div>'
+      + '<div style="font-size:12.5px;line-height:1.9">' + chkLine() + '</div></div>';
+
+    h += '<div class="xk-note">'
+      + '<b>막는 것</b> — 퇴사자·외부인이 추출기를 계속 쓰는 것 (열쇠만 지우면 다음 클릭부터 멈춤). '
+      + '<b>못 막는 것</b> — 열쇠를 가진 사람이 받아 온 코드를 따로 저장해 두는 것.<br>'
+      + '직원이 그만두면 <b>그 사람 열쇠 해지</b>와 함께 허브의 <b>계정 승인도 끄십시오.</b> '
+      + '그만둔 사람이 다른 직원의 북마크를 베껴 갔을까 걱정되면 모든 열쇠를 해지하고 새로 발급하면 됩니다.<br>'
+      + '네이버가 나중에 외부 코드를 막으면 로더는 「불러오지 못했습니다」를 띄웁니다 — 그때는 대표님 PC의 통째 버전을 비상용으로 쓰십시오.'
+      + '</div>';
+    root.innerHTML = h;
+  }
+
+  async function refresh(){
+    if(!isMaster()){ paint(); return; }
+    try{ await load(); }catch(e){ msg(denied(e), '#c33'); }
+    paint();
+  }
+
+  // ── 바깥에서 부르는 것 ──────────────────────────────────────────────
+  W.xkPublish = async function(inp){
+    var f = inp && inp.files && inp.files[0]; if(!f || BUSY) return;
+    BUSY = true; msg('올리는 중…', '#1565c0');
+    try{
+      var r = await publish(f);
+      paint();
+      msg('✅ ' + (r.ver || '새 버전') + ' 을(를) 올렸습니다 (' + Math.round(r.len/1024) + 'KB'
+        + (r.wm ? ' · 워터마크 들어감' : ' · <b style="color:#c80">워터마크 자리를 못 찾아 없이 올림</b>') + ')'
+        + (r.n ? ' · 열쇠 ' + r.ok + '/' + r.n + '개 반영 확인' + (r.bad.length ? ' — <b style="color:#c33">안 됨: ' + esc(r.bad.join(', ')) + '</b>' : '') : ''),
+        r.bad.length ? '#c80' : '#0a7');
+    }catch(e){ msg(esc(denied(e)), '#c33'); }
+    BUSY = false; try{ inp.value = ''; }catch(e){}
+  };
+  W.xkIssue = async function(){
+    if(BUSY) return;
+    var nm = ($('xk-name')||{}).value || '';
+    BUSY = true; msg('발급하는 중…', '#1565c0');
+    try{
+      var r = await issue(nm);
+      paint(); msg('');
+    }catch(e){ msg(esc(denied(e)), '#c33'); }
+    BUSY = false;
+  };
+  W.xkRevoke = async function(k){
+    var o = KEYS[k]; if(!o || BUSY) return;
+    if(!confirm((o.n||'') + ' 님 열쇠를 해지할까요?\n\n다음 클릭부터 그 북마크는 「사용 권한이 없습니다」가 뜹니다.\n되돌릴 수 없습니다 — 다시 쓰려면 새로 발급해야 합니다.')) return;
+    BUSY = true; msg('해지하는 중…', '#1565c0');
+    try{
+      var ok = await revoke(k);
+      if(LAST && LAST.k === k) LAST = null;
+      paint();
+      msg(ok ? '✅ ' + esc(o.n||'') + ' 님 열쇠를 해지했습니다 — 로그인 없이 읽어 보니 비어 있습니다(확인됨).'
+             : '해지했지만 확인 읽기가 예상과 다릅니다 — 🩺 규칙 점검을 눌러 주세요.', ok ? '#0a7' : '#c80');
+    }catch(e){ msg(esc(denied(e)), '#c33'); }
+    BUSY = false;
+  };
+  W.xkPage = function(k){
+    var o = KEYS[k]; if(!o) return;
+    download('SJDWS_추출기_' + String(o.n||'').replace(/[\\/:*?"<>|\s]/g,'') + '.html', regPage(k, o.n||''));
+  };
+  W.xkCheck = async function(){
+    if(BUSY) return;
+    BUSY = true; msg('점검하는 중…', '#1565c0');
+    try{ await load(); await check(); paint(); msg(''); }
+    catch(e){ msg(esc(denied(e)), '#c33'); }
+    BUSY = false;
+  };
+  W.sdXk = { tab:TAB, loader:loader, pick:pickBookmarklet, watermark:watermark, newKey:newKey,
+             regPage:regPage, check:check, publish:publish, issue:issue, revoke:revoke, load:load,
+             state:function(){ return { src:SRC, keys:KEYS, last:LAST, chk:CHK }; } };
+
+  // ── 탭 만들기 ───────────────────────────────────────────────────────
+  function build(){
+    if($('tc' + TAB)) return true;
+    var nav  = document.querySelector('.tab-nav-inner') || document.querySelector('.tab-nav');
+    var host = $('tc0');
+    if(!nav || !host || !host.parentNode) return false;
+    var b = document.createElement('button');
+    b.className = 'tab-btn';
+    b.setAttribute('onclick', 'sw(' + TAB + ')');
+    b.innerHTML = '🔑 추출기 열쇠';
+    nav.appendChild(b);
+    var panel = document.createElement('div');
+    panel.id = 'tc' + TAB; panel.className = 'tc';
+    panel.innerHTML = '<div id="xk-root"></div>';
+    host.parentNode.appendChild(panel);
+    return true;
+  }
+  function hookSw(){
+    if(typeof W.sw !== 'function') return false;
+    if(W.sw.__xk) return true;
+    var orig = W.sw;
+    var w = function(n){
+      var out = orig.apply(this, arguments);
+      if(n === TAB){ try{ paint(); refresh(); }catch(e){ console.warn('[추출기 열쇠]', e); } }
+      return out;
+    };
+    w.__xk = true; W.sw = w;
     return true;
   }
   var tries = 0;
