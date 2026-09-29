@@ -242,6 +242,8 @@ header.top{display:flex;align-items:center;gap:14px;padding:0 18px;height:52px;f
 @media (max-width:1100px){
   #colCat{flex:0 0 150px} #colTopic{flex:0 0 250px}
 }
+textarea.keymask{-webkit-text-security:disc;text-security:disc}
+.keyeye{margin-left:8px;border:1px solid var(--line2,#e4e6e1);background:#fff;border-radius:6px;font-size:11px;padding:1px 7px;cursor:pointer;color:#666}
 </style>
 </head>
 <body>
@@ -866,6 +868,43 @@ async function fetchOpenAIModels(key){
   const d = await r.json().catch(()=>({}));
   if(!r.ok) throw new Error('모델 목록을 받지 못했습니다 ' + r.status + ': ' + (((d.error||{}).message)||'').slice(0,160));
   return (d.data||[]).map(m=>m.id).filter(id=>/^(gpt|o\d|chatgpt)/i.test(id) && !/audio|realtime|image|tts|whisper|embedding|moderation/i.test(id)).sort();
+}
+async function fetchClaudeModels(key){
+  const r = await fetch('https://api.anthropic.com/v1/models?limit=100', { headers:{
+    'x-api-key': key, 'anthropic-version':'2023-06-01', 'anthropic-dangerous-direct-browser-access':'true' } });
+  const d = await r.json().catch(()=>({}));
+  if(!r.ok) throw new Error('모델 목록을 받지 못했습니다 ' + r.status + ': ' + (((d.error||{}).message)||'').slice(0,160));
+  /* 최신 것이 먼저 오도록 — 만든 날짜 기준 */
+  return (d.data||[]).slice().sort((a,b)=> String(b.created_at||'').localeCompare(String(a.created_at||'')))
+    .map(m => ({ id:m.id, name:m.display_name||'' })).filter(m => m.id);
+}
+/* 설정 창의 「사용 가능한 모델 불러오기」 단추 공통 — 누르면 목록, 목록을 누르면 칸에 채움 */
+function wireModelButton(host, o){
+  const btn = host.querySelector(o.btn); if(!btn) return;
+  btn.onclick = async ()=>{
+    const box = host.querySelector(o.box), kb = host.querySelector('[data-k="' + o.keyField + '"]');
+    const key = String(kb ? kb.value : '').split(/[\n,]/).map(x=>x.trim()).filter(Boolean)[0];
+    box.style.display = 'block';
+    if(!key){ box.innerHTML = '<div class="emptynote">먼저 위에 ' + o.label + ' API 키를 넣어 주세요.</div>'; return; }
+    btn.disabled = true; const t0 = btn.textContent; btn.textContent = '⏳ 물어보는 중...';
+    box.innerHTML = '';
+    try{
+      const list = await o.fetch(key);
+      box.innerHTML = list.length
+        ? '<div style="font-size:12px;color:var(--muted);margin-bottom:5px">누르면 「' + o.label + ' 모델」 칸에 채워집니다</div>'
+          + list.map(m => '<button class="btn sm" data-fill="' + esc(m.id) + '" title="' + esc(m.name||'') + '" style="margin:0 5px 5px 0">'
+                        + esc(m.id) + (m.name ? ' <span style="color:var(--muted)">· ' + esc(m.name) + '</span>' : '') + '</button>').join('')
+        : '<div class="emptynote">쓸 수 있는 모델이 없습니다. 키를 확인해 주세요.</div>';
+      box.querySelectorAll('[data-fill]').forEach(b => b.onclick = () => {
+        const inp = host.querySelector('[data-k="' + o.target + '"]');
+        if(inp){ inp.value = b.dataset.fill; inp.style.background = '#fffde7'; setTimeout(()=>{ inp.style.background=''; }, 900); }
+        toast(b.dataset.fill + ' 로 바꿨습니다. [저장]을 눌러 주세요.');
+      });
+    }catch(e){
+      box.innerHTML = '<div class="emptynote" style="color:#c0392b">' + esc(e.message) + '</div>';
+    }
+    btn.disabled = false; btn.textContent = t0;
+  };
 }
 async function callGemini(key, prompt, json, maxTokens, images){
   const model = state.settings.geminiModel || DEF_SETTINGS.geminiModel;
@@ -2152,7 +2191,9 @@ function openSettings(){
       <textarea data-k="claudeKeys" placeholder="sk-ant-...">${esc(s.claudeKeys)}</textarea>
       <div class="hint">console.anthropic.com 에서 발급. 클로드는 사진 생성은 하지 않습니다.</div></div>
     <div class="field"><label>클로드 모델</label><input data-k="claudeModel" value="${esc(s.claudeModel)}">
-      <div class="hint">모델 이름이 바뀌면 여기만 고치면 됩니다.</div></div>
+      <button class="btn" data-claudemodels style="width:100%;margin-top:7px">🔄 사용 가능한 클로드 모델 불러오기</button>
+      <div id="claudeModelList" style="display:none;margin-top:8px"></div>
+      <div class="hint">앤트로픽에 내 키로 쓸 수 있는 모델을 직접 물어봅니다. 최신 모델이 맨 앞에 옵니다.</div></div>
     <div class="field"><label>챗GPT API 키</label>
       <textarea data-k="openaiKeys" placeholder="sk-...">${esc(s.openaiKeys)}</textarea>
       <div class="hint">platform.openai.com 에서 발급. 챗GPT도 사진 생성은 이 스튜디오에서 쓰지 않습니다.</div></div>
@@ -2173,6 +2214,20 @@ function openSettings(){
     </div>
   `, `<button class="btn" data-cancel>취소</button><button class="btn primary" data-save>저장</button>`);
   $('#modalHost').querySelector('[data-cancel]').onclick = close;
+  wireModelButton($('#modalHost'), { btn:'[data-claudemodels]', box:'#claudeModelList', keyField:'claudeKeys', target:'claudeModel',
+                                    label:'클로드', fetch: fetchClaudeModels });
+  wireModelButton($('#modalHost'), { btn:'[data-gptmodels]', box:'#gptModelList', keyField:'openaiKeys', target:'openaiModel',
+                                    label:'챗GPT', fetch: async k => (await fetchOpenAIModels(k)).map(id => ({ id })) });
+  /* API 키 칸은 평소 가려 둔다 — 화면 캡처로 키가 새지 않게. 👁 를 누르면 잠깐 보인다 */
+  $('#modalHost').querySelectorAll('textarea[data-k$="Keys"]').forEach(ta => {
+    ta.classList.add('keymask');
+    const lb = ta.parentElement.querySelector('label');
+    if(lb && !lb.querySelector('.keyeye')){
+      const eye = document.createElement('button'); eye.type = 'button'; eye.className = 'keyeye'; eye.textContent = '👁 보기';
+      eye.onclick = ()=>{ const on = ta.classList.toggle('keymask'); eye.textContent = on ? '👁 보기' : '🙈 가리기'; };
+      lb.appendChild(eye);
+    }
+  });
   $('#modalHost').querySelector('[data-models]').onclick = async (ev)=>{
     const btn = ev.currentTarget, box = $('#modalHost').querySelector('#modelList');
     const keyBox = $('#modalHost').querySelector('[data-k="geminiKeys"]');
@@ -2838,33 +2893,8 @@ function bxNext(i){
 (function(){
   var _rp=window.renderPost;
   window.renderPost=function(){ _rp.apply(this, arguments); try{ bxMount(); }catch(e){ console.warn('[보강모듈]', e); } };
-  /* 설정 모달의 챗GPT 모델 불러오기 */
-  var _os=window.openSettings;
-  window.openSettings=function(){
-    _os.apply(this, arguments);
-    var host=document.getElementById('modalHost'); if(!host) return;
-    var btn=host.querySelector('[data-gptmodels]'); if(!btn) return;
-    btn.onclick=async function(){
-      var box=host.querySelector('#gptModelList');
-      var kb=host.querySelector('[data-k="openaiKeys"]');
-      var key=String(kb?kb.value:'').split(/[\n,]/).map(function(x){return x.trim();}).filter(Boolean)[0];
-      box.style.display='block';
-      if(!key){ box.innerHTML='<div class="emptynote">먼저 위에 챗GPT API 키를 넣어 주세요.</div>'; return; }
-      btn.disabled=true; var t0=btn.textContent; btn.textContent='⏳ 물어보는 중...';
-      try{
-        var ids=await fetchOpenAIModels(key);
-        box.innerHTML=ids.length
-          ? ids.map(function(id){ return '<button class="btn sm" data-fill="'+id+'" style="margin:0 5px 5px 0">'+id+'</button>'; }).join('')
-          : '<div class="emptynote">쓸 수 있는 모델이 없습니다.</div>';
-        box.querySelectorAll('[data-fill]').forEach(function(b){ b.onclick=function(){
-          var inp=host.querySelector('[data-k="openaiModel"]');
-          if(inp){ inp.value=b.dataset.fill; inp.style.background='#fffde7'; setTimeout(function(){inp.style.background='';},900); }
-          toast(b.dataset.fill+' 로 바꿨습니다. [저장]을 눌러 주세요.');
-        };});
-      }catch(e){ box.innerHTML='<div class="emptynote" style="color:#c0392b">'+esc(e.message)+'</div>'; }
-      btn.disabled=false; btn.textContent=t0;
-    };
-  };
+  /* 챗GPT·클로드 모델 불러오기는 openSettings 안(wireModelButton)으로 옮겼다 —
+     여기서 window.openSettings 를 감싸도 #chipSettings 는 처음 함수를 붙들고 있어 한 번도 돌지 않았다. */
 })();
 </script>
 
@@ -3192,7 +3222,7 @@ function vdPaintLen(){ var e=document.getElementById('vdLen'); if(e) e.textConte
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.09.29-1';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.09.29-2';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_blog.html';      // 이 파일 이름
   var SD_NAME = '블로그 스튜디오';      // 사람이 부르는 이름
 
