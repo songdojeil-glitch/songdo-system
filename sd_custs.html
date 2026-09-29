@@ -3474,7 +3474,7 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.09.29-3';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.09.29-4';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_custs.html';      // 이 파일 이름
   var SD_NAME = '고객관리';      // 사람이 부르는 이름
 
@@ -3926,7 +3926,7 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
 
   var MODEL = 'claude-sonnet-4-6';
   var PRICE = { inp:3, out:15, krw:1400 };      // 100만 토큰당 달러 (대략) · 환율 (대략)
-  var MAX_ROWS = 3, MAX_LIST = 12, MIN_TRADES = 3, WINDOWS = [3, 6, 12], KEY_TRADES = 5;   // 백데이터로 넘기는 실거래는 핵심 5건
+  var MAX_ROWS = 3, MAX_LIST = 12, MIN_TRADES = 5, WINDOWS = [3, 6, 12], KEY_TRADES = 5;   // 5건이 될 때까지 3→6→12개월 · 거래사례는 5건
   var KIND = { apt:{ n:'아파트', path:'sd_naver_apt' }, op:{ n:'오피스텔·생숙', path:'sd_naver_op' }, sg:{ n:'상가·사무실', path:'sd_naver_sangga' } };
 
   var D = { ok:false, busy:null, apt:[], op:[], sg:[], sale:[], rent:[], hs:[], upd:{}, err:'' };
@@ -4081,7 +4081,7 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
     return { total:out.length, own:out.filter(isOwn).length, rows:out.slice(0, MAX_LIST) };
   }
   function cutYM(months){ var d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - (months - 1)); return d.getFullYear()*100 + d.getMonth() + 1; }
-  function trades(nm, key){                              // 3 → 6 → 12개월, 3건이 될 때까지 넓힌다
+  function trades(nm, key){                              // 3 → 6 → 12개월, 5건이 될 때까지 넓힌다
     var deal = dealOf(), sale = deal==='매매';
     var tn = sale ? saleNm(nm) : rentNm(nm);
     if(!tn) return { name:'', months:0, rows:[] };
@@ -4098,41 +4098,51 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
     pickRows.sort(function(a,b){ return (b.ym - a.ym) || (b.d - a.d); });
     return { name:tn, months:used, rows:pickRows, sale:sale };
   }
+  //  가격 분포 — 권유 기준은 중위가와 「주요 가격대」(가운데 50%). 저가 거래는 저층·즉시입주 불가·조망 제약·
+  //  집 상태·급매 같은 개별 사정이 많아 기준으로 쓰지 않는다 (대표님 지정)
+  function quant(a, q){ var s = a.slice().sort(function(x,y){return x-y;}); if(!s.length) return 0; var p = (s.length-1)*q, i = Math.floor(p); return s[i] + (s[Math.min(i+1, s.length-1)] - s[i])*(p - i); }
+  function band(a){
+    var lo = a.length >= 4 ? quant(a, 0.25) : Math.min.apply(null, a), hi = a.length >= 4 ? quant(a, 0.75) : Math.max.apply(null, a);
+    lo = Math.floor(lo/1000)*1000; hi = Math.ceil(hi/1000)*1000;             // 1,000만 단위로 다듬는다
+    return lo === hi ? won(lo) + ' 선' : won(lo) + ' ~ ' + won(hi);
+  }
+  function buckets(a){                                                        // 억 단위 분포 「7억대 4건 · 8억대 3건」
+    var m = {}; a.forEach(function(v){ var k = Math.floor(v/10000); m[k] = (m[k]||0) + 1; });
+    return Object.keys(m).sort(function(x,y){ return x-y; }).map(function(k){ return (k>0 ? k + '억대' : '1억 미만') + ' ' + m[k] + '건'; }).join(' · ');
+  }
   function tradeText(t){
     if(!t.name) return '실거래 자료에서 이 단지 이름을 찾지 못함';
     if(!t.rows.length) return '최근 1년 실거래 없음';
     var R = t.rows, s = '최근 ' + t.months + '개월 ' + R.length + '건';
     if(t.sale){
       var a = R.map(function(r){ return r.amt; }), pp = R.map(function(r){ return r.pp; }).filter(function(v){ return v>0; });
-      s += ' · ' + won(Math.min.apply(null,a)) + ' ~ ' + won(Math.max.apply(null,a)) + ' · 평균 ' + won(avg(a)) + ' · 중간값 ' + won(median(a))
-         + (pp.length ? ' · 평당 평균 ' + Math.round(avg(pp)).toLocaleString() + '만' : '');
+      s += ' · 중위가 ' + won(median(a)) + ' · 주요 가격대 ' + band(a) + (a.length >= 4 ? '(가운데 50%)' : '')
+         + ' · 분포 ' + buckets(a) + ' · 평균 ' + won(avg(a))
+         + (pp.length ? ' · 평당 중위 ' + Math.round(median(pp)).toLocaleString() + '만' : '')
+         + ' · (전체 범위 ' + won(Math.min.apply(null,a)) + ' ~ ' + won(Math.max.apply(null,a)) + ')';
     } else {
       var dep = R.map(function(r){ return r.dep; });
-      s += ' · 보증금 ' + won(Math.min.apply(null,dep)) + ' ~ ' + won(Math.max.apply(null,dep)) + ' · 평균 ' + won(avg(dep));
+      s += ' · 보증금 중위 ' + won(median(dep)) + ' · 주요 보증금대 ' + band(dep) + (dep.length >= 4 ? '(가운데 50%)' : '') + ' · 분포 ' + buckets(dep)
+         + ' · (전체 범위 ' + won(Math.min.apply(null,dep)) + ' ~ ' + won(Math.max.apply(null,dep)) + ')';
       var mon = R.map(function(r){ return r.mon; }).filter(function(v){ return v>0; });
-      if(mon.length) s += ' · 월세 평균 ' + Math.round(avg(mon)).toLocaleString() + '만';
+      if(mon.length) s += ' · 월세 중위 ' + Math.round(median(mon)).toLocaleString() + '만';
     }
     return s;
   }
-  //  핵심 거래 고르기 — 요약(건수·범위·평균)은 기간 안 전부로 계산하고,
-  //  한 건씩 적어 넘기는 것은 최고·최저 + 최근 거래로 5건만 (10건이 있어도 다 넘기지 않는다)
+  //  거래사례 — 5건 이하면 전부(최근순), 5건을 넘으면 거래가 상위 5건만 (가격 높은 순)
   function keyTrades(t){
-    var R = t.rows; if(R.length <= KEY_TRADES) return R.map(function(r){ return { r:r, tag:'' }; });
-    var val = function(r){ return t.sale ? r.amt : r.dep; };
-    var hi = R.reduce(function(a,b){ return val(b) > val(a) ? b : a; }), lo = R.reduce(function(a,b){ return val(b) < val(a) ? b : a; });
-    var pick = [hi, lo], tag = new Map([[hi,'최고'],[lo,'최저']]);
-    R.forEach(function(r){ if(pick.length < KEY_TRADES && pick.indexOf(r) < 0) pick.push(r); });   // R 은 최근순
-    pick.sort(function(a,b){ return (b.ym - a.ym) || (b.d - a.d); });
-    return pick.map(function(r){ return { r:r, tag:tag.get(r) || '' }; });
+    var R = t.rows, val = function(r){ return t.sale ? r.amt : r.dep; };
+    if(R.length <= KEY_TRADES) return R.slice();
+    return R.slice().sort(function(a,b){ return (val(b) - val(a)) || (b.ym - a.ym) || (b.d - a.d); }).slice(0, KEY_TRADES);
   }
   function tradeLines(t){
     var ks = keyTrades(t);
-    return (t.rows.length > ks.length ? '    (핵심 ' + ks.length + '건 — 최고·최저·최근, 전체 ' + t.rows.length + '건은 위 요약에 반영)\n' : '')
-      + ks.map(function(o){ var r = o.r;
+    return (t.rows.length > ks.length ? '    (거래사례: 거래가 상위 ' + ks.length + '건 · 전체 ' + t.rows.length + '건은 위 중위가·가격대에 반영)\n' : '')
+      + ks.map(function(r){
       var ym = String(r.ym), when = ym.slice(0,4) + '.' + ym.slice(4) + (r.d ? '.' + String(r.d).padStart(2,'0') : '');
       var price = t.sale ? won(r.amt) + (r.pp ? ' (평당 ' + Math.round(r.pp).toLocaleString() + '만)' : '')
                          : '보증금 ' + won(r.dep) + (r.mon ? ' / 월 ' + Math.round(r.mon) + '만' : '');
-      return '    - ' + (o.tag ? '[' + o.tag + '] ' : '') + when + ' · ' + price + ' · ' + (r.fl ? r.fl + '층' : '층 미상') + (r.py ? ' · ' + Math.floor(r.py) + '평' : '') + (r.ex ? ' · 전용 ' + r.ex + '㎡' : '');
+      return '    - ' + when + ' · ' + price + ' · ' + (r.fl ? r.fl + '층' : '층 미상') + (r.py ? ' · ' + Math.floor(r.py) + '평' : '') + (r.ex ? ' · 전용 ' + r.ex + '㎡' : '');
     }).join('\n');
   }
   function listingLine(r){
@@ -4279,10 +4289,12 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
       + '■ 1. 고객 희망 조건 요약\n'
       + '■ 2. 단지별 검토 (단지마다 2-1, 2-2 …)\n'
       + '   ① 단지 개요 — [자료]의 기본정보만 (없으면 "현장 확인 필요")\n'
-      + '   ② 최근 실거래 요약 — [자료]에 적힌 기간(3·6·12개월)을 그대로 밝히고, 건수·범위·평균·흐름과 핵심 거래(최대 5건)를 표로\n'
-      + '   ③ 추천 매물 — ★자사 매물 먼저, 가격·타입·동·층·향·특징, 실거래 평균 대비 호가 차이 한 줄\n'
+      + '   ② 최근 실거래 요약 — [자료]에 적힌 기간(3·6·12개월)을 그대로 밝히고, 중위가와 주요 가격대(예: 7억 ~ 8억 선)·억 단위 분포를 중심으로.\n'
+      + '      거래사례는 [자료]의 거래사례(최대 5건, 5건 초과 시 거래가 상위 5건)를 표로. 낮은 가격 거래는 저층·즉시입주 불가·조망 제약·집 상태·급매 등\n'
+      + '      개별 사정인 경우가 많으므로 매수·임차 권유의 기준으로 쓰지 말고, 필요하면 「특수 사정 거래 가능성」 정도로만 언급\n'
+      + '   ③ 추천 매물 — ★자사 매물 먼저, 가격·타입·동·층·향·특징, 실거래 중위가·주요 가격대 대비 호가 위치 한 줄\n'
       + (blocks.length > 1 ? '■ 3. 단지 비교 — 가격대·실거래 흐름·매물 수를 한 표로, 고객 조건에 가장 맞는 순서\n■ 4. 전문가 종합 의견\n' : '■ 3. 전문가 종합 의견\n')
-      + '   시장 판단(매수자/매도자 우위), 적정가 범위, 고객 맞춤 조언 2~3줄\n\n'
+      + '   시장 판단(매수자/매도자 우위), 적정가 범위(중위가·주요 가격대 기준), 고객 맞춤 조언 2~3줄\n\n'
       + '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n'
       + '※ 본 제안서는 국토교통부 실거래가와 사무소 보유 매물 정보를 바탕으로 작성되었으며, 참고 자료로만 활용하시기 바랍니다.\n'
       + '   송도제일공인중개사사무소  ☎ 010-6401-9345 / 032-851-6688\n'
@@ -4354,7 +4366,7 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
       +   '<datalist id="pr2-names"></datalist><div id="pr2-rows"></div>'
       +   '<button type="button" id="pr2-add" class="btn-s" onclick="pr2Add()" style="margin-top:8px">＋ 단지 추가</button>'
       +   '<div class="pr2-stat"><span id="pr2-stat"></span> <span id="pr2-data"></span></div>'
-      +   '<div class="pr2-stat">실거래는 최근 3개월 → 3건이 안 되면 6개월 → 그래도 안 되면 1년까지 넓혀 요약합니다. 해제된 거래는 뺍니다.</div>'
+      +   '<div class="pr2-stat">실거래는 최근 3개월 → 5건이 안 되면 6개월 → 그래도 안 되면 1년까지 넓힙니다. 중위가·주요 가격대(가운데 50%)로 요약하고, 거래사례는 5건(넘으면 거래가 상위 5건)만 넣습니다. 해제된 거래는 뺍니다.</div>'
       + '</div>';
     tc.insertBefore(w, cards[0]);
     if(custSel) $('pr2-c-slot').appendChild(custSel);
