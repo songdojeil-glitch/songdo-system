@@ -19425,7 +19425,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.09.30-59';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.09.30-60';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_data.html';      // 이 파일 이름
   var SD_NAME = '실거래가';      // 사람이 부르는 이름
 
@@ -35828,6 +35828,7 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
   var LENS = [500, 700, 900, 1100, 1300];
   var OFFICE = '송도제일공인중개사사무소', TEL = '032-851-6688 · 010-6401-9345', YT = 'www.youtube.com/@songdojeil';
 
+  var OLD_RULE7 = '7. 「현재 세입자가 살고 있지 않아요」는 공실이 아니라 집주인이 현재 거주 중이라는 뜻이다 — 입주 시기는 협의가 필요하다.';
   var DEFAULT_RULES = [
     '1. 제안가는 최근 실거래가보다 높게, 네이버 매물 호가 중위가에 알파를 더해 근접하게 제시한다.',
     '2. 같은 단지·같은 평형의 층수·방향·입주(이사) 가능 시기·인테리어 수리 정도를 감안한 호가 예시와 실거래를 근거로 든다.',
@@ -35835,15 +35836,16 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
     '4. 의뢰를 승낙하시면 적정 기간 안에 거래가 성사되도록 그동안의 영업 노하우와 다양한 루트(네이버·직방 노출, 유튜브 유입, 보유 매수 대기 고객 연결, 인근 공동중개망)로 노력하겠다는 멘트를 넣는다.',
     '5. 중개 의뢰 후에도 매매가는 언제든 매도인의 의견에 따라 바꿀 수 있다는 점을 분명히 적는다.',
     '6. 마지막에 송도제일공인중개사(032-851-6688, 010-6401-9345)와 유튜브 송도제일부동산TV(www.youtube.com/@songdojeil)를 소개한다.',
-    '7. 「현재 세입자가 살고 있지 않아요」는 공실이 아니라 집주인이 현재 거주 중이라는 뜻이다 — 입주 시기는 협의가 필요하다.'
+    '7. 거주 형태(집주인 거주 / 세입자 거주 / 공실)와 수리 상태(올수리 / 부분수리 / 기본형)는 [요청 매물]의 값을 그대로 따른다. 직방 문구 「현재 세입자가 살고 있지 않아요」는 공실이 아니라 집주인 거주를 뜻한다.'
   ].join('\n');
 
+  function NEW_RULE7(){ return DEFAULT_RULES.split('\n').filter(function(l){ return /^7\./.test(l); })[0] || ''; }
   // ── 상태 ────────────────────────────────────────────────────────
   var S = newState();
   var LIST = {}, RULES = DEFAULT_RULES, LOADED = false;
   function newState(){
     return { id:'', at:'', raw:'', req:{}, trName:'', lsName:'', trade:null, list:null, cands:[],
-             alpha:500, price:0, priceNote:'', len:700, proposal:'', briefing:'', usage:null,
+             alpha:500, price:0, calc:0, priceManual:false, priceNote:'', len:700, proposal:'', briefing:'', usage:null,
              status:'제안 전', owner:'', ownerTel:'', memo:'', by:'', propId:'', propAt:'' };
   }
 
@@ -35903,23 +35905,43 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
   function listRows(){ return (W.G && W.G.naverData) || []; }
 
   // ── ① 요청서 해석 ──────────────────────────────────────────────
+  //  직방 화면을 복사하면 「상세 주소」 같은 이름과 값이 다른 줄로 오기도 한다 — 이름만 있는 줄은 다음 줄과 붙인다
+  var LABEL_ONLY = /^(요청\s*일시|주소|상세\s*주소|평형|향|세입자\s*거주|세입자|거주|리모델링\s*\/?\s*수리|리모델링|수리)\s*[:：]?$/;
+  function occOf(txt){
+    var t = String(txt||'');
+    if(/살고\s*있지\s*않/.test(t)) return '집주인';          // 직방 「현재 세입자가 살고 있지 않아요」 = 집주인 거주 (대표님 지정)
+    if(/공실|비어\s*있|비워/.test(t)) return '공실';
+    if(/집주인|본인\s*거주|주인\s*거주/.test(t)) return '집주인';
+    if(/살고\s*있어|거주\s*중|세입자|임차인/.test(t)) return '세입자';
+    return '';
+  }
+  function repOf(txt){
+    var t = String(txt||'');
+    if(!t) return '';
+    if(/^(올수리|부분수리|기본형)$/.test(t)) return t;
+    if(/올\s*수리|전체\s*수리|전면|풀\s*리모델링|리모델링\s*완료|싹\s*수리/.test(t)) return '올수리';
+    if(/부분|일부|도배|장판|주방|욕실|샷시|섀시|싱크/.test(t)) return '부분수리';
+    if(/해당\s*없음|없음|안\s*함|기본|입주\s*당시|순정/.test(t)) return '기본형';
+    return /수리|리모델링|인테리어/.test(t) ? '부분수리' : '';
+  }
+  function parseDetail(R, d){
+    var x;
+    if(!R.dong && (x = /(\d+[A-Za-z]?|[A-Za-z]\d*)\s*동(?![가-힣])/.exec(d))) R.dong = x[1] + '동';
+    if(!R.floorTxt && (x = /(저층|중층|고층|\d+\s*층(?:\s*\/\s*\d+\s*층)?)/.exec(d))) R.floorTxt = x[1].replace(/\s/g,'');
+    if(!R.tier && (x = /(저|중|고)\s*층/.exec(d))) R.tier = x[1];
+    if(!R.floorNo && (x = /(\d+)\s*층/.exec(d))) R.floorNo = +x[1];
+    if(!R.ho && (x = /(\d+\s*호|호\s*비공개)/.exec(d))) R.ho = x[1];
+  }
   function parse(raw){
-    var t = String(raw||'').replace(/\r/g,''), L = t.split('\n').map(function(s){ return s.trim(); }).filter(Boolean);
+    var t = String(raw||'').replace(/\r/g,''), L0 = t.split('\n').map(function(s){ return s.trim(); }).filter(Boolean), L = [];
+    for(var i=0;i<L0.length;i++){ if(LABEL_ONLY.test(L0[i]) && L0[i+1] && !LABEL_ONLY.test(L0[i+1])){ L.push(L0[i] + ' ' + L0[i+1]); i++; } else L.push(L0[i]); }
     var R = { deal:'매매' };
     var m;
-    if((m = /요청\s*일시\s*[:：]?\s*([0-9.\-\/\s:]+)/.exec(t))) R.when = m[1].trim();
+    if((m = /요청\s*일시\s*[:：]?\s*([0-9.\-\/\s:]+)/.exec(L.join('\n')))) R.when = m[1].trim().split('\n')[0].trim();
     L.forEach(function(s){
       var mm;
       if(!R.cx && (mm = /^(.+?)\s*[·ㆍ・]\s*(매매|전세|월세)\s*요청/.exec(s))){ R.cx = mm[1].trim(); R.deal = mm[2]; }
-      else if(/^상세\s*주소/.test(s)){
-        R.detail = s.replace(/^상세\s*주소\s*[:：]?\s*/,'');
-        R.detail.split(/[·ㆍ・,]/).forEach(function(p){
-          p = p.trim(); var x;
-          if((x = /^(\S+?)\s*동$/.exec(p))) R.dong = x[1] + '동';
-          else if(/층/.test(p)){ R.floorTxt = p; var y = /(\d+)\s*층/.exec(p); if(y) R.floorNo = +y[1]; R.tier = /저/.test(p) ? '저' : /고/.test(p) ? '고' : /중/.test(p) ? '중' : ''; }
-          else if(/호/.test(p)) R.ho = p;
-        });
-      }
+      else if(/^상세\s*주소/.test(s)){ R.detail = s.replace(/^상세\s*주소\s*[:：]?\s*/,''); parseDetail(R, R.detail); }
       else if(/^주소/.test(s)) R.addr = s.replace(/^주소\s*[:：]?\s*/,'');
       else if(/^평형|전용\s*[\d.]+\s*㎡/.test(s)){
         if((mm = /평형\s*([\d.]+)/.exec(s))) R.pyType = mm[1];
@@ -35927,18 +35949,32 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
         if((mm = /공급\s*([\d.]+)/.exec(s))) R.sup = num(mm[1]);
       }
       else if(/^향/.test(s)) R.dir = normDir(s.replace(/^향\s*[:：]?\s*/,''));
-      else if(/^세입자/.test(s)) R.tenant = s.replace(/^세입자\s*(거주)?\s*[:：]?\s*/,'');
-      else if(/^(리모델링|수리)/.test(s)) R.repair = s.replace(/^(리모델링\s*\/?\s*수리|리모델링|수리)\s*[:：]?\s*/,'');
+      else if(/^(세입자|거주)/.test(s)) R.tenant = s.replace(/^(세입자\s*거주|세입자|거주)\s*[:：]?\s*/,'');
+      else if(/^(리모델링|수리)/.test(s)) R.repairTxt = s.replace(/^(리모델링\s*\/?\s*수리|리모델링|수리)\s*[:：]?\s*/,'');
     });
+    //  상세 주소 줄을 못 찾았으면 글 전체에서 동·층을 찾는다
+    if(!R.dong || !R.tier) parseDetail(R, L.filter(function(s){ return !/^주소|송도동|연수구/.test(s); }).join(' '));
     if(!R.cx){ var z = L.filter(function(s){ return /(매매|전세|월세)\s*요청/.test(s); })[0]; if(z) R.cx = z.replace(/[·ㆍ・]?\s*(매매|전세|월세)\s*요청.*/,'').trim(); }
-    R.ownerLives = /살고\s*있지\s*않/.test(R.tenant||'');
+    R.occ = occOf(R.tenant);
+    R.ownerLives = R.occ === '집주인';
+    R.repair = repOf(R.repairTxt);
     return R;
   }
-  function normDir(d){ d = String(d||'').trim(); if(!d || d === '-') return ''; return /향$/.test(d) ? d : d + '향'; }
-  function tenantTxt(r){
-    if(r.ownerLives) return '현재 세입자 없음 → 집주인 거주 중 (공실 아님 · 매도 시 이사 일정 협의)';
-    return r.tenant || '-';
+  //  옛 기록(거주 ownerLives · 수리 글) → 3가지 구분으로
+  function normReq(q){
+    if(!q) return q;
+    if(!q.occ) q.occ = q.ownerLives ? '집주인' : occOf(q.tenant);
+    q.ownerLives = q.occ === '집주인';
+    if(q.repair && !/^(올수리|부분수리|기본형)$/.test(q.repair)){ q.repairTxt = q.repairTxt || q.repair; q.repair = repOf(q.repair); }
+    return q;
   }
+  function normDir(d){ d = String(d||'').trim(); if(!d || d === '-') return ''; return /향$/.test(d) ? d : d + '향'; }
+  var OCC = { '집주인':'집주인 거주 중 (공실 아님 · 이사 일정 협의)', '세입자':'세입자 거주 중 (임대차 만기·갱신요구권 확인 · 세 안고 매매 또는 만기 맞춰 입주)', '공실':'공실 (즉시 입주 가능)' };
+  function tenantTxt(r){
+    var o = (r && r.occ) || (r && r.ownerLives ? '집주인' : '');
+    return o ? OCC[o] + (r.tenant ? ' — 직방: 「' + r.tenant + '」' : '') : (r && r.tenant) || '-';
+  }
+  function repairTxt(r){ return ((r && r.repair) || '-') + (r && r.repairTxt && r.repairTxt !== r.repair ? ' (직방: 「' + r.repairTxt + '」)' : ''); }
 
   // ── ② 실거래 ────────────────────────────────────────────────────
   function tradeOf(){
@@ -36056,11 +36092,13 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
     var qdir = normDir(q.dir);
     if(qdir && o.dir){ if(qdir === o.dir){ s += 15; why.push('향 일치'); } else if(o.dir.indexOf(qdir.replace('향','')) >= 0 || qdir.indexOf(o.dir.replace('향','')) >= 0){ s += 6; why.push('향 비슷(' + o.dir + ')'); } else { s -= 15; why.push('향 다름(' + o.dir + ')'); } }
     var n = o.note;
-    if(q.ownerLives){
-      if(/주인\s*거주|집주인|입주\s*협의|협의\s*입주|날짜\s*협의|이사\s*협의/.test(n)){ s += 10; why.push('특이사항: 주인 거주·입주 협의'); }
-      if(/세\s*안고|세안|전세\s*끼|월세\s*끼|임대\s*중|임차인/.test(n)){ s -= 15; why.push('특이사항: 세입자 있음'); }
-    }
-    if(/수리|올수리|리모델링|인테리어/.test(n) && /해당\s*없음|없음/.test(q.repair||'')){ s -= 5; why.push('특이사항: 수리함(요청은 수리 없음)'); }
+    var occ = q.occ || (q.ownerLives ? '집주인' : '');
+    var nTen = /세\s*안고|세안|전세\s*끼|월세\s*끼|임대\s*중|임차인|세입자/.test(n), nOwn = /주인\s*거주|집주인|입주\s*협의|협의\s*입주|날짜\s*협의|이사\s*협의/.test(n), nVac = /공실|즉시\s*입주|바로\s*입주/.test(n);
+    if(occ === '집주인'){ if(nOwn){ s += 10; why.push('특이사항: 주인 거주·입주 협의'); } if(nTen){ s -= 15; why.push('특이사항: 세입자 있음'); } if(nVac){ s -= 10; why.push('특이사항: 공실'); } }
+    else if(occ === '세입자'){ if(nTen){ s += 10; why.push('특이사항: 세 안고·세입자'); } if(nOwn || nVac){ s -= 10; why.push('특이사항: 주인 거주·공실'); } }
+    else if(occ === '공실'){ if(nVac){ s += 10; why.push('특이사항: 공실·즉시 입주'); } if(nTen || nOwn){ s -= 10; why.push('특이사항: 거주 중'); } }
+    var lr = repOf(/수리|리모델링|인테리어|도배|장판|기본/.test(n) ? n : '');
+    if(q.repair && lr){ if(lr === q.repair){ s += 5; why.push('수리 상태 같음(' + lr + ')'); } else if(q.repair === '기본형' || lr === '기본형' || q.repair === '올수리'){ s -= 5; why.push('수리 상태 다름(' + lr + ')'); } }
     if(o.dup > 0){ s += 5; why.push('여러 업소 등록 ' + (o.dup + 1) + '곳'); }
     if(o.own) why.push('★ 자사 매물');
     o.score = s; o.why = why;
@@ -36135,7 +36173,7 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
     out.push('단지: ' + (q.cx||'-') + ' · 거래: ' + (q.deal||'매매') + (q.addr ? ' · 주소: ' + q.addr : ''));
     out.push('동·층·호: ' + [q.dong||'동 미상', q.floorTxt||'층 미상', q.ho||'호 비공개'].join(' · ') + (qTier() ? ' — 집주인이 입력한 층 구분: 「' + qTier() + '층」(구체 층수 비공개)' : ''));
     out.push('면적: ' + (q.pyType ? q.pyType + '형 · ' : '') + '전용 ' + (q.ex||'-') + '㎡' + (q.sup ? ' / 공급 ' + q.sup + '㎡(약 ' + Math.round(q.sup/3.3058) + '평)' : ''));
-    out.push('향: ' + (q.dir||'-') + ' · 거주: ' + tenantTxt(q) + ' · 수리: ' + (q.repair||'-'));
+    out.push('향: ' + (q.dir||'-') + ' · 거주: ' + tenantTxt(q) + ' · 수리: ' + repairTxt(q));
     out.push('');
     out.push('[' + (isSale() ? '매매' : q.deal) + ' 실거래 — ' + (t.name||'단지 미확인') + ' · 전용 ±' + AREA_TOL + '㎡ · 해제 거래 제외 · 3→6→12개월 5건 이상]');
     out.push(tradeSummary(t));
@@ -36153,10 +36191,31 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
     }).join('\n'));
     if(forOwner && ls.rows.length) out.push('호가 예시(업소명·동 표기 없이 써야 함):\n' + ls.rows.slice(0, 12).map(function(o){ return '- ' + won(o.price) + ' · ' + o.fl + '층(' + (o.tier||'?') + ') · ' + (o.dir||'향 미상') + (o.note ? ' · ' + o.note.slice(0, 30) : ''); }).join('\n'));
     out.push('');
-    out.push('[제안가 — 대표님 확정] ' + wonFull(S.price) + (S.priceNote ? ' (' + S.priceNote + ')' : ''));
+    var diff = S.calc && num(S.price) !== num(S.calc);
+    out.push('[제안가 — 대표님 확정] ' + wonFull(S.price) + (diff ? ' · 대표님이 직접 정한 금액(시스템 계산값 ' + won(S.calc) + ')' + (S.priceNote ? ' · 사유: ' + S.priceNote : ' · 사유 미기재') : ' · 시스템 계산값 그대로') + (!diff && S.priceNote ? ' (' + S.priceNote + ')' : ''));
     out.push('산식: ' + sg.note + (sg.T ? ' · 실거래 중위 ' + won(sg.T) + ' 대비 ' + (S.price >= sg.T ? '+' : '') + won(S.price - sg.T) : '')
       + (sg.Tq ? ' · ' + sg.tier + '층 실거래 중위 ' + won(sg.Tq) + ' 대비 ' + (S.price >= sg.Tq ? '+' : '') + won(S.price - sg.Tq) : ''));
     return out.join('\n');
+  }
+  function occLine(){
+    var o = (S.req||{}).occ;
+    if(!o) return '';
+    var g = { '집주인':'이사 일정은 매도인 일정에 맞춰 협의한다는 점을 자연스럽게 담습니다.',
+              '세입자':'세입자 거주 중이므로 임대차 만기·갱신 여부에 따라 세를 안고 매매하거나 만기에 맞춰 입주하는 조건으로 안내하고, 집 보여 주기 일정은 세입자와 우리가 조율한다는 점을 담습니다.',
+              '공실':'공실이라 즉시 입주가 가능한 점을 장점으로 짚습니다.' }[o];
+    return '- 거주 형태는 「' + (o === '집주인' ? '집주인 거주' : o === '세입자' ? '세입자 거주' : '공실') + '」입니다. 이것과 다른 거주 형태를 가정하는 문장(예: 「거주 중이시라면」, 「공실이라면」)은 쓰지 않습니다. ' + g + '\n';
+  }
+  function repLine(){
+    var r = (S.req||{}).repair;
+    if(!r) return '';
+    var g = { '올수리':'수리된 상태를 가격 강점으로 짚습니다.', '부분수리':'부분 수리된 점을 감안한 금액임을 밝힙니다.', '기본형':'기본형(수리 없음) 상태를 감안한 금액임을 밝힙니다.' }[r];
+    return '- 수리 상태는 「' + r + '」입니다. 이것과 다른 상태를 가정하지 않습니다. ' + g + '\n';
+  }
+  function priceLine(){
+    var diff = S.calc && num(S.price) !== num(S.calc);
+    return '- 제안가 근거는 위 자료의 수치로만 설명합니다. 자료에 없는 감액·가산 사유(실거래 흐름 둔화, 향·이사 협의에 따른 할인 등)를 지어내지 마세요.\n'
+      + (diff ? (S.priceNote ? '- 제안가는 대표님이 계산값과 다르게 정했습니다. 사유는 「' + S.priceNote + '」이니 이 사유로만 설명합니다.\n'
+                             : '- 제안가는 대표님이 계산값과 다르게 정했고 사유는 적혀 있지 않습니다. 제안가와 어긋나는 계산값·호가 중위 숫자는 인용하지 말고, 실거래·같은 조건 호가 범위 안에서 제안가를 담담히 제시만 합니다.\n') : '');
   }
   function q2dir(){ return normDir((S.req||{}).dir); }
   function proposalPrompt(n){
@@ -36169,7 +36228,7 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
       + '- 제안가는 위 [제안가]를 그대로 씁니다(「○억 ○,○○○만 원 선」). 실거래 요약과 같은 조건 호가 수준을 근거로 짧게 설명합니다.\n'
       + (qTier() ? '- 집주인이 입력한 「' + qTier() + '층」은 구체 층수가 없어도 가격을 가르는 핵심 조건입니다. [층 구분별 시세]의 ' + qTier() + '층 실거래·호가를 1순위 근거로 들고, 제안가가 「' + qTier() + '층' + (q2dir() ? '·' + q2dir() : '') + '」 조건을 반영한 금액임을 분명히 적습니다. 다른 층 구분과의 차이도 한 줄로 짚어 주면 좋습니다.\n' : '')
       + '- 다른 중개업소 이름, 특정 동·호의 매물 정보, 내부 판단(이미 다른 곳에 내놓았을 가능성 등)은 쓰지 않습니다.\n'
-      + '- 집주인이 거주 중이면 이사 일정은 협의해 맞춘다는 점을 자연스럽게 담습니다.\n'
+      + occLine() + repLine() + priceLine()
       + '- 마지막 줄: ' + OFFICE + ' ☎ 032-851-6688 / 010-6401-9345 · 유튜브 송도제일부동산TV ' + YT + '\n'
       + '출력은 제안서 본문만.';
   }
@@ -36186,7 +36245,8 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
       + '■ 1. 한 줄 결론 (제안가·승낙 가능성·핵심 전략)\n'
       + '■ 2. 가격 제안 근거 (집주인 입력 층 구분「' + (qTier()||'-') + '층」의 실거래·호가를 1순위로 — [층 구분별 시세]로 저·중·고층 차이를 짚고, 전체 실거래 중위·주요 가격대·상위 사례, 같은 조건 호가 중위, α 판단, 향·거주·수리 반영, 제안가의 위치: 실거래 대비·같은 층 구분 대비·호가 대비)\n'
       + '■ 3. 네이버 기등록 가능성 (위 점수와 근거로 판단 — 이미 다른 업소에 내놓은 집이 가격 비교차 물었을 가능성, 그 경우 집주인 심리와 우리가 차별화할 점. 단정하지 말고 가능성으로)\n'
-      + '■ 4. 소유주 소통 방법 (승낙 후 첫 연락 시점·채널, 첫 통화 핵심 멘트 3~4줄 예시, 방문·사진 촬영 약속 잡기, 집주인 거주에 따른 방문 시간·이사 일정 협의)\n'
+      + '■ 4. 소유주 소통 방법 (승낙 후 첫 연락 시점·채널, 첫 통화 핵심 멘트 3~4줄 예시, 방문·사진 촬영 약속 잡기, 거주 형태「' + (S.req.occ ? (S.req.occ === '공실' ? '공실' : S.req.occ + ' 거주') : '-') + '」에 맞춘 방문·입주 일정 — 다른 거주 형태를 가정하지 말 것)\n'
+      + '※ 제안가가 시스템 계산값과 다르면 그 차이와 사유(메모)를 ■2에 적고, 자료에 없는 사유를 지어내지 않는다.\n'
       + '■ 5. 응대 방향 (예상 질문과 답 3~5개 — 가격을 더 받을 수 있나, 다른 곳보다 나은 점, 중개보수, 언제 팔리나 등 / 가격 조정 시나리오: 문의 적을 때·많을 때)\n'
       + '■ 6. 다음 할 일 체크리스트\n'
       + '분량 1,500~2,500자. 마크다운 표·굵은 글씨 없이.';
@@ -36199,7 +36259,7 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
     try{
       await waitFb();
       var s = await W._fbGet(W._fbRef(W._fbDb, PATH)); LIST = (s && s.val && s.val()) || {};
-      var r = await W._fbGet(W._fbRef(W._fbDb, RULES_PATH)); var rv = r && r.val && r.val(); if(rv && typeof rv === 'string') RULES = rv;
+      var r = await W._fbGet(W._fbRef(W._fbDb, RULES_PATH)); var rv = r && r.val && r.val(); if(rv && typeof rv === 'string') RULES = rv.replace(OLD_RULE7, NEW_RULE7());
       LOADED = true;
       //  매물관리에서 「매물 등록 완료」로 바꾼 것을 지금 열린 기록에도 반영 — 그대로 저장해 되돌리지 않게
       var cur = S.id && LIST[S.id];
@@ -36216,7 +36276,7 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
       listSum: S.list ? listSummary(S.list) : '', tier:qTier(), tierSum: S.trade ? tierText() : '',
       cands: S.list ? S.list.rows.filter(function(o){ return o.level !== '낮음'; }).sort(function(a,b){ return b.score - a.score; }).slice(0, 8)
                        .map(function(o){ return { level:o.level, score:o.score, price:o.price, dong:o.dong, fl:o.fl, tier:o.tier || '', dir:o.dir, agents:o.agents.join(', '), date:o.date, why:o.why.join(', ') }; }) : [],
-      alpha:num(S.alpha), price:num(S.price), priceNote:S.priceNote || '', calc: suggest().note, len:S.len,
+      alpha:num(S.alpha), price:num(S.price), calcPrice:num(S.calc), priceManual:!!S.priceManual, priceNote:S.priceNote || '', calc: suggest().note, len:S.len,
       proposal:S.proposal || '', briefing:S.briefing || '', usage:S.usage || null,
       status:S.status, owner:S.owner || '', ownerTel:S.ownerTel || '', memo:S.memo || '', propId:S.propId || '', propAt:S.propAt || '' };
   }
@@ -36286,7 +36346,8 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
     e.textContent = '· 자료: 매매 실거래 ' + ((W.G && W.G.saleData) || []).length.toLocaleString() + '건 · 전월세 ' + ((W.G && W.G.rentData) || []).length.toLocaleString() + '건 · 네이버 아파트 매물 ' + listRows().length.toLocaleString() + '건';
   }
   function field(id, label, v, opts){
-    if(opts) return '<div><label>' + label + '</label><select id="po-f-' + id + '" onchange="poField()">' + opts.map(function(o){ return '<option' + (o===v?' selected':'') + '>' + o + '</option>'; }).join('') + '</select></div>';
+    var NM = { occ:{ '':'— 고르세요 —', '집주인':'집주인 거주', '세입자':'세입자 거주', '공실':'공실' }, repair:{ '':'— 고르세요 —' }, tier:{ '':'—' } }[id] || {};
+    if(opts) return '<div><label>' + label + '</label><select id="po-f-' + id + '" onchange="poField()">' + opts.map(function(o){ return '<option value="' + esc(o) + '"' + (o===v?' selected':'') + '>' + esc(NM[o] != null ? NM[o] : o) + '</option>'; }).join('') + '</select></div>';
     return '<div><label>' + label + '</label><input id="po-f-' + id + '" value="' + esc(v==null?'':v) + '" onchange="poField()"></div>';
   }
   function paintReq(){
@@ -36300,12 +36361,13 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
       + field('cx','단지명 (직방)', q.cx) + field('deal','거래', q.deal, ['매매','전세','월세'])
       + field('dong','동', q.dong) + field('floorTxt','층', q.floorTxt) + field('tier','층 구분', q.tier||'', ['','저','중','고'])
       + field('ex','전용㎡', q.ex) + field('sup','공급㎡', q.sup) + field('dir','향', q.dir)
-      + field('repair','수리', q.repair) + field('when','요청 일시', q.when)
-      + '<div><label>거주</label><select id="po-f-own" onchange="poField()"><option value="1"' + (q.ownerLives?' selected':'') + '>집주인 거주 중 (세입자 없음)</option><option value="0"' + (q.ownerLives?'':' selected') + '>' + esc(q.ownerLives ? '세입자 있음 · 공실' : (q.tenant||'세입자 있음 · 공실')) + '</option></select></div>'
+      + field('repair','수리', q.repair||'', ['','올수리','부분수리','기본형']) + field('when','요청 일시', q.when)
+      + field('occ','거주', q.occ||'', ['','집주인','세입자','공실'])
       + '</div><div class="po-grid" style="margin-top:8px;grid-template-columns:1fr 1fr">'
       + '<div><label>📈 실거래 단지명</label>' + sel('po-trn', tn, S.trName) + '</div>'
       + '<div><label>🏠 네이버 매물 단지명</label>' + sel('po-lsn', ln, S.lsName) + '</div></div>'
-      + (q.ownerLives ? '<div style="margin-top:8px;font-size:12px;color:#a06800">ℹ️ 「현재 세입자가 살고 있지 않아요」 → 공실이 아니라 <b>집주인이 거주 중</b>으로 봅니다 (이사 일정 협의).</div>' : '');
+      + (q.tenant || q.repairTxt ? '<div style="margin-top:6px;font-size:11.5px;color:var(--text3)">직방 원문 — 거주: 「' + esc(q.tenant||'-') + '」 · 수리: 「' + esc(q.repairTxt||'-') + '」</div>' : '')
+      + (q.occ === '집주인' && /살고\s*있지\s*않/.test(q.tenant||'') ? '<div style="margin-top:8px;font-size:12px;color:#a06800">ℹ️ 「현재 세입자가 살고 있지 않아요」 → 공실이 아니라 <b>집주인이 거주 중</b>으로 봅니다 (이사 일정 협의).</div>' : '');
   }
   W.poField = function(){
     var g = function(id){ var e = $('po-f-' + id); return e ? e.value.trim() : ''; };
@@ -36314,7 +36376,7 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
     var fx = /(\d+)\s*층/.exec(q.floorTxt); q.floorNo = fx ? +fx[1] : 0;
     if(!q.tier && /[저중고]/.test(q.floorTxt)) q.tier = /저/.test(q.floorTxt) ? '저' : /고/.test(q.floorTxt) ? '고' : '중';
     q.ex = num(g('ex')); q.sup = num(g('sup')); q.dir = normDir(g('dir')); q.repair = g('repair'); q.when = g('when');
-    q.ownerLives = g('own') === '1';
+    q.occ = g('occ'); q.ownerLives = q.occ === '집주인';
     analyze(false);
   };
   W.poPickName = function(){ S.trName = ($('po-trn')||{}).value || ''; S.lsName = ($('po-lsn')||{}).value || ''; analyze(false); };
@@ -36359,15 +36421,22 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
         + '<span class="po-cnt">계산값: ' + esc(sg.note) + '</span></div>'
         + '<div class="po-row" style="margin-top:8px"><span>제안가</span><input id="po-price" style="width:120px" value="' + (S.price||'') + '" oninput="poPrice(this.value)"> <span>만원</span> <span class="po-price" id="po-pricew">' + wonFull(S.price) + '</span>'
         + '<button class="po-btn" onclick="poUseCalc()">↺ 계산값으로</button></div>'
+        + '<div id="po-pdiff" style="color:#c62828;font-size:12px;margin-top:6px"></div>'
         + '<div class="po-row" style="margin-top:6px"><span>메모(선택)</span><input id="po-pnote" style="flex:1" placeholder="예: 로열동·남향 가산, 기본 상태 감안" value="' + esc(S.priceNote||'') + '" oninput="poPNote(this.value)"></div>'
         + (sg.T && S.price && S.price <= sg.T ? '<div style="color:#c62828;font-size:12px;margin-top:6px">⚠ 제안가가 실거래 중위 이하입니다 — 기준(실거래보다 높게)에 맞지 않습니다.</div>' : '')
         + (sg.Tq && S.price && S.price <= sg.Tq ? '<div style="color:#c62828;font-size:12px;margin-top:6px">⚠ 제안가가 ' + sg.tier + '층 실거래 중위(' + won(sg.Tq) + ') 이하입니다.</div>' : '');
+      paintDiff();
     }
   }
-  W.poAlpha = function(v){ S.alpha = num(v); S.price = suggest().price; paintMarket(); };
-  W.poPrice = function(v){ S.price = num(v); var e = $('po-pricew'); if(e) e.textContent = wonFull(S.price); };
+  W.poAlpha = function(v){ S.alpha = num(v); S.calc = suggest().price; S.price = S.calc; S.priceManual = false; paintMarket(); };
+  W.poPrice = function(v){ S.price = num(v); S.priceManual = num(v) !== num(S.calc); var e = $('po-pricew'); if(e) e.textContent = wonFull(S.price); paintDiff(); };
+  function paintDiff(){
+    var e = $('po-pdiff'); if(!e) return;
+    var d = S.calc && S.price && num(S.price) !== num(S.calc);
+    e.innerHTML = d ? '⚠ 계산값(' + won(S.calc) + ')과 다릅니다 — 직접 정한 금액이면 아래 메모에 사유를 적어 주세요. 사유가 없으면 제안서에 근거 숫자를 억지로 맞추지 않게 지시합니다.' : '';
+  }
   W.poPNote = function(v){ S.priceNote = v; };
-  W.poUseCalc = function(){ S.price = suggest().price; paintMarket(); };
+  W.poUseCalc = function(){ S.calc = suggest().price; S.price = S.calc; S.priceManual = false; paintMarket(); };
   W.poLen = function(v){ S.len = num(v) || 700; W.poCount(); };
 
   function analyze(resetPrice){
@@ -36377,7 +36446,9 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
     (S.trade.pool12 || []).concat(S.trade.rows).forEach(function(r){ r.tier = tierOf(r.fl, MAXF); });
     S.list = listOf(MAXF);
     var sg = suggest();
-    if(resetPrice || !S.price) S.price = sg.price;
+    S.calc = sg.price;
+    //  직접 고치지 않은 제안가는 조건이 바뀌면 계산값을 따라간다 (예전 값이 남아 설명과 어긋나지 않게)
+    if(resetPrice || !S.price || !S.priceManual){ S.price = sg.price; S.priceManual = false; }
     ['po-mk','po-pr','po-ai','po-sv'].forEach(function(id){ var e = $(id); if(e) e.style.display = q.cx ? '' : 'none'; });
     dataLine(); paintMarket();
   }
@@ -36425,6 +36496,12 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
   function busy(on, t){ ['po-go','po-go1','po-go2','po-fit'].forEach(function(id){ var e = $(id); if(e) e.disabled = !!on; }); if(t != null) msg(t, on ? '#1565c0' : ''); }
   W.poGenProposal = async function(silent){
     grab(); if(!S.price){ alert('제안가를 먼저 정해 주세요.'); return; }
+    S.calc = suggest().price;
+    if(S.calc && num(S.price) !== num(S.calc)){
+      if(confirm('제안가 ' + wonFull(S.price) + '이(가) 지금 계산값 ' + wonFull(S.calc) + '과 다릅니다.\n\n[확인] 계산값 ' + won(S.calc) + '으로 바꿔서 만들기\n[취소] 지금 제안가 ' + won(S.price) + ' 그대로 만들기' + (S.priceNote ? '' : ' (사유 메모 없음)'))){
+        S.price = S.calc; S.priceManual = false; paintMarket();
+      }
+    }
     busy(true, '✍️ 제안서를 쓰는 중… (' + S.len + '자)');
     try{
       var t = await claude(proposalPrompt(S.len), Math.max(1200, S.len * 3));
@@ -36508,6 +36585,8 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
     S = newState();
     S.id = r.id; S.at = r.at; S.by = r.by; S.raw = r.raw || ''; S.req = r.req || {}; S.trName = r.trName || ''; S.lsName = r.lsName || '';
     S.alpha = num(r.alpha); S.price = num(r.price); S.priceNote = r.priceNote || ''; S.len = num(r.len) || 700;
+    S.priceManual = r.priceManual != null ? !!r.priceManual : true;        // 옛 기록은 저장된 금액을 지키고, 계산값과 다르면 경고만
+    normReq(S.req);
     S.proposal = r.proposal || ''; S.briefing = r.briefing || ''; S.usage = r.usage || null;
     S.status = r.status || '제안 전'; S.owner = r.owner || ''; S.ownerTel = r.ownerTel || ''; S.memo = r.memo || '';
     S.propId = r.propId || ''; S.propAt = r.propAt || '';
@@ -36532,7 +36611,7 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
       + '<tr><th>단지 · 거래</th><td>' + esc(q.cx||'') + ' · ' + esc(q.deal||'') + (q.addr ? ' · ' + esc(q.addr) : '') + '</td></tr>'
       + '<tr><th>동 · 층 · 호</th><td>' + esc([q.dong, q.floorTxt, q.ho].filter(Boolean).join(' · ')) + '</td></tr>'
       + '<tr><th>면적 · 향</th><td>' + (q.pyType ? esc(q.pyType) + '형 · ' : '') + '전용 ' + esc(q.ex||'') + '㎡' + (q.sup ? ' / 공급 ' + esc(q.sup) + '㎡' : '') + ' · ' + esc(q.dir||'') + '</td></tr>'
-      + '<tr><th>거주 · 수리</th><td>' + esc(tenantTxt(q)) + ' · 수리 ' + esc(q.repair||'-') + '</td></tr>'
+      + '<tr><th>거주 · 수리</th><td>' + esc(tenantTxt(q)) + ' · 수리 ' + esc(repairTxt(q)) + '</td></tr>'
       + '<tr><th>요청 일시</th><td>' + esc(q.when||'') + '</td></tr>'
       + (r.owner || r.ownerTel ? '<tr><th>소유주</th><td>' + esc(r.owner||'') + ' ' + esc(r.ownerTel||'') + '</td></tr>' : '')
       + '</table>'
