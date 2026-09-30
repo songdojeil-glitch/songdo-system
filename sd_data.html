@@ -19425,7 +19425,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.09.30-57';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.09.30-58';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_data.html';      // 이 파일 이름
   var SD_NAME = '실거래가';      // 사람이 부르는 이름
 
@@ -35844,7 +35844,7 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
   function newState(){
     return { id:'', at:'', raw:'', req:{}, trName:'', lsName:'', trade:null, list:null, cands:[],
              alpha:500, price:0, priceNote:'', len:700, proposal:'', briefing:'', usage:null,
-             status:'제안 전', owner:'', ownerTel:'', memo:'', by:'' };
+             status:'제안 전', owner:'', ownerTel:'', memo:'', by:'', propId:'', propAt:'' };
   }
 
   // ── 도움 함수 ───────────────────────────────────────────────────
@@ -36157,6 +36157,12 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
       var s = await W._fbGet(W._fbRef(W._fbDb, PATH)); LIST = (s && s.val && s.val()) || {};
       var r = await W._fbGet(W._fbRef(W._fbDb, RULES_PATH)); var rv = r && r.val && r.val(); if(rv && typeof rv === 'string') RULES = rv;
       LOADED = true;
+      //  매물관리에서 「매물 등록 완료」로 바꾼 것을 지금 열린 기록에도 반영 — 그대로 저장해 되돌리지 않게
+      var cur = S.id && LIST[S.id];
+      if(cur && cur.propId && cur.propId !== S.propId){
+        S.propId = cur.propId; S.propAt = cur.propAt || ''; S.status = cur.status || S.status;
+        var st = $('po-st'); if(st) st.value = S.status; propState();
+      }
     }catch(e){ msg('저장된 가격 제안을 읽지 못했습니다: ' + e.message, '#c33'); }
     paintRules(); paintList();
   }
@@ -36168,7 +36174,7 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
                        .map(function(o){ return { level:o.level, score:o.score, price:o.price, dong:o.dong, fl:o.fl, dir:o.dir, agents:o.agents.join(', '), date:o.date, why:o.why.join(', ') }; }) : [],
       alpha:num(S.alpha), price:num(S.price), priceNote:S.priceNote || '', calc: suggest().note, len:S.len,
       proposal:S.proposal || '', briefing:S.briefing || '', usage:S.usage || null,
-      status:S.status, owner:S.owner || '', ownerTel:S.ownerTel || '', memo:S.memo || '' };
+      status:S.status, owner:S.owner || '', ownerTel:S.ownerTel || '', memo:S.memo || '', propId:S.propId || '', propAt:S.propAt || '' };
   }
   function clean(o){ return JSON.parse(JSON.stringify(o, function(k, v){ return v === undefined ? null : v; })); }
   W.poSave = async function(){
@@ -36225,7 +36231,8 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
       +   '<div class="po-grid"><div><label>진행 상태</label><select id="po-st">' + ['제안 전','제안 보냄','의뢰 승낙','거절 · 무응답','매물 등록 완료'].map(function(s){ return '<option>' + s + '</option>'; }).join('') + '</select></div>'
       +     '<div><label>소유주 성함 (승낙 후)</label><input id="po-own"></div><div><label>소유주 연락처 (승낙 후)</label><input id="po-tel"></div></div>'
       +   '<div style="margin-top:8px"><label style="font-size:11px;color:var(--text3)">상담 메모</label><textarea id="po-memo" rows="3" placeholder="통화 내용 · 희망가 · 이사 일정 · 방문 가능 시간 등"></textarea></div>'
-      +   '<div class="po-row" style="margin-top:8px"><button class="po-btn pri" onclick="poSave()">💾 저장</button><button class="po-btn" onclick="poPrint()">🖨 상담 자료 인쇄</button></div></div>'
+      +   '<div class="po-row" style="margin-top:8px"><button class="po-btn pri" onclick="poSave()">💾 저장</button><button class="po-btn" onclick="poPrint()">🖨 상담 자료 인쇄</button>'
++     '<button class="po-btn grn" id="po-toprops" onclick="poToProps()">🏠 매물 등록으로 넘기기</button><span id="po-propst" class="po-cnt"></span></div></div>'
       + '<div class="po-card"><div class="po-h">🗃 저장된 가격 제안 <small id="po-lcnt"></small><input id="po-q" placeholder="단지·동·상태 찾기" oninput="poListFind()" style="margin-left:auto;width:200px"></div><div id="po-list"></div></div>';
     paintRules();
   }
@@ -36344,6 +36351,7 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
     var st = $('po-st'); if(st) st.value = S.status || '제안 전';
     var o = $('po-own'); if(o) o.value = S.owner || ''; var t = $('po-tel'); if(t) t.value = S.ownerTel || ''; var m = $('po-memo'); if(m) m.value = S.memo || '';
     var u = $('po-use'); if(u) u.textContent = usageTxt();
+    propState();
     W.poCount();
   }
   function grab(){
@@ -36392,6 +36400,31 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
     else { p.select(); document.execCommand('copy'); done(); }
   };
 
+  // ── 매물 등록으로 넘기기 (매물관리 sd_props.html?po=id) ───────────
+  //  연락처가 들어 있어 주소창에는 id 만 — 내용은 같은 PC 의 localStorage 로 넘기고 매물관리가 받자마자 지운다
+  W.poToProps = async function(id){
+    if(id && id !== S.id) W.poOpen(id);
+    grab();
+    if(!S.req.cx){ alert('넘길 가격 제안이 없습니다.'); return; }
+    if(S.status !== '의뢰 승낙' && S.status !== '매물 등록 완료'
+       && !confirm('진행 상태가 「' + S.status + '」입니다. 보통은 집주인이 의뢰를 승낙한 뒤에 넘깁니다.\n그래도 매물 등록으로 넘길까요?')) return;
+    if(!S.owner || !S.ownerTel){
+      if(!confirm('소유주 성함·연락처가 비어 있습니다.\n매물 등록 화면에서 직접 적으시겠어요? (확인 = 그대로 넘기기)')) return;
+    }
+    if(S.status === '매물 등록 완료' && S.propId && !confirm('이미 매물로 등록한 가격 제안입니다. 다시 넘길까요?\n(매물관리에서 그 매물을 수정으로 열지 묻습니다)')) return;
+    await W.poSave();
+    if(!S.id) return;
+    var rec = clean(record());
+    try{ localStorage.setItem('sjrws_po_handoff', JSON.stringify({ id:S.id, at:Date.now(), rec:rec })); }catch(e){}
+    var w = window.open('sd_props.html?po=' + encodeURIComponent(S.id), 'sjrws_props');
+    if(!w){ msg('팝업이 막혔습니다 — 이 사이트의 팝업을 허용한 뒤 다시 눌러 주세요.', '#c33'); return; }
+    msg('🏠 매물관리 「매물 등록」을 열어 채웠습니다 — 그 화면에서 확인 후 「매물 저장」을 누르면 이 기록이 「매물 등록 완료」로 바뀝니다.', '#1a7f3c');
+  };
+  function propState(){
+    var e = $('po-propst'); if(!e) return;
+    e.textContent = S.propId ? '✅ 매물 등록 완료' + (S.propAt ? ' (' + String(S.propAt).slice(0,10) + ')' : '') : '';
+  }
+
   // ── 저장 목록 ──────────────────────────────────────────────────
   var LQ = '';
   W.poListFind = function(){ LQ = (($('po-q')||{}).value || '').replace(/\s/g,''); paintList(); };
@@ -36409,7 +36442,8 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
           return '<tr class="po-list-i" onclick="poOpen(\'' + esc(r.id) + '\')"><td>' + esc(q.when || '') + '<div class="po-cnt">' + esc(String(r.at||'').slice(0,10)) + ' · ' + esc(r.by||'') + '</div></td>'
             + '<td><b>' + esc(q.cx||'') + '</b> <span class="po-tag">' + esc(q.deal||'') + '</span></td><td>' + esc([q.dong, q.floorTxt, q.dir].filter(Boolean).join(' · ')) + '</td>'
             + '<td>' + (q.ex ? '전용 ' + q.ex + '㎡' : '') + '</td><td class="n"><b>' + won(r.price) + '</b></td><td><span class="po-tag ' + tg + '">' + esc(st) + '</span></td>'
-            + '<td>' + esc(r.owner || '') + '</td><td><button class="po-btn" style="padding:3px 8px" onclick="event.stopPropagation();poDel(\'' + esc(r.id) + '\')">🗑</button></td></tr>';
+            + '<td>' + esc(r.owner || '') + '</td><td style="white-space:nowrap">' + (st === '의뢰 승낙' ? '<button class="po-btn grn" style="padding:3px 8px" title="매물 등록으로 넘기기" onclick="event.stopPropagation();poToProps(\'' + esc(r.id) + '\')">🏠</button> ' : '')
+            + '<button class="po-btn" style="padding:3px 8px" onclick="event.stopPropagation();poDel(\'' + esc(r.id) + '\')">🗑</button></td></tr>';
         }).join('') + '</table>';
   }
   W.poOpen = function(id){
@@ -36419,6 +36453,7 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
     S.alpha = num(r.alpha); S.price = num(r.price); S.priceNote = r.priceNote || ''; S.len = num(r.len) || 700;
     S.proposal = r.proposal || ''; S.briefing = r.briefing || ''; S.usage = r.usage || null;
     S.status = r.status || '제안 전'; S.owner = r.owner || ''; S.ownerTel = r.ownerTel || ''; S.memo = r.memo || '';
+    S.propId = r.propId || ''; S.propAt = r.propAt || '';
     var raw = $('po-raw'); if(raw) raw.value = S.raw;
     paintReq(); analyze(false); paintOut();
     S._saved = r;
@@ -36471,7 +36506,7 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
     if(typeof W.sw !== 'function') return false;
     if(W.sw.__po) return true;
     var orig = W.sw;
-    var w = function(n){ var out = orig.apply(this, arguments); if(n === TAB){ try{ shell(); dataLine(); if(!LOADED) loadAll(); }catch(e){ console.warn('[가격 제안]', e); } } return out; };
+    var w = function(n){ var out = orig.apply(this, arguments); if(n === TAB){ try{ shell(); dataLine(); loadAll(); }catch(e){ console.warn('[가격 제안]', e); } } return out; };
     w.__po = true; W.sw = w; return true;
   }
   W.sdPo = { tab:TAB, parse:parse, bestName:bestName, state:function(){ return S; }, suggest:suggest, tierOf:tierOf,

@@ -8114,7 +8114,7 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.09.30-4';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.09.30-5';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_props.html';      // 이 파일 이름
   var SD_NAME = '매물관리';      // 사람이 부르는 이름
 
@@ -10571,6 +10571,155 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
 
   window.sdPln = { list:function(){ return PL.slice(); }, pending:function(){ return PL_DEL.slice(); }, sync:sync, isRes:isRes };
   var n = 0; (function t(){ var a = mount(), b = wrap(); if(!(a && b) && n++ < 160) setTimeout(t, 250); })();
+})();
+</script>
+<!-- ═══════════════════════════════════════════════════════════════════════
+     직방 가격 제안 → 매물 등록 (데이터관리 탭 26 「🏠 매물 등록으로 넘기기」)
+     · sd_props.html?po={가격제안 id} 로 열린다. 내용은 같은 PC의 localStorage 'sjrws_po_handoff'
+       (연락처가 들어 있어 주소창에 싣지 않는다 — 받자마자 지운다), 없으면 파이어베이스 sd/sd_price_offers/{id}
+     · 매물 등록 양식을 비우고 채운다: 종류·단지·동/호·전용·공급·층·향·제안가·접수일·경로(직방)·소유주·입주(집주인 거주→협의)·주요정보·메모
+     · 「매물 저장」이 끝나면 매물에 poId 를 붙이고, 가격 제안 기록은 상태 「매물 등록 완료」 + propId 로 바꾼다
+     · 이미 이 가격 제안으로 등록한 매물이 있으면 새로 만들지 않고 그 매물을 수정으로 열지 묻는다
+     ═══════════════════════════════════════════════════════════════════════ -->
+<script>
+(function(){
+  'use strict';
+  if(window.__ppoOn) return; window.__ppoOn = true;
+  var W = window, KEY = 'sjrws_po_handoff', CUR = null;   // CUR = { id, rec }
+
+  function $(id){ return document.getElementById(id); }
+  function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  function num(v){ var n = parseFloat(String(v==null?'':v).replace(/,/g,'')); return isNaN(n) ? 0 : n; }
+  function wonTxt(m){ m = Math.round(num(m)); if(!m) return ''; var e = Math.floor(m/10000), r = m%10000; return (e ? e + '억' : '') + (r ? (e ? ' ' : '') + r.toLocaleString() + '만원' : '원'); }
+  function today(){ var d = new Date(); return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); }
+  function qid(){ var m = /[?&]po=([^&#]+)/.exec(location.search); return m ? decodeURIComponent(m[1]) : ''; }
+  function toast(t){
+    var e = document.createElement('div');
+    e.style.cssText = 'position:fixed;top:18px;left:50%;transform:translateX(-50%);z-index:10050;background:#1a2744;color:#fff;padding:10px 16px;border-radius:10px;font-size:13px;box-shadow:0 6px 20px rgba(0,0,0,.2);max-width:90vw;line-height:1.6';
+    e.textContent = t; document.body.appendChild(e); setTimeout(function(){ e.remove(); }, 5000);
+  }
+  function db(){ try{ return (typeof firebase !== 'undefined' && firebase.database) ? firebase.database() : null; }catch(e){ return null; } }
+
+  async function fetchRec(id){
+    var h = null;
+    try{ h = JSON.parse(localStorage.getItem(KEY) || 'null'); }catch(e){}
+    if(h && h.id === id && h.rec){ try{ localStorage.removeItem(KEY); }catch(e){} return h.rec; }
+    var d = db(); if(!d) return null;
+    for(var i = 0; i < 3; i++){
+      try{ var s = await d.ref('sd/sd_price_offers/' + id).once('value'); var v = s && s.val && s.val(); if(v) return v; }catch(e){}
+      await new Promise(function(r){ setTimeout(r, 800); });
+    }
+    return null;
+  }
+  function setVal(id, v){ var e = $(id); if(!e || v == null || v === '') return false; e.value = v; try{ e.dispatchEvent(new Event('input', { bubbles:true })); }catch(x){} return true; }
+  function setSel(id, v){
+    var e = $(id); if(!e || !v) return false;
+    var ok = [].some.call(e.options, function(o){ return (o.value || o.text) === v; });
+    if(!ok){ var o = document.createElement('option'); o.textContent = v; e.appendChild(o); }
+    e.value = v; return true;
+  }
+
+  function fill(rec){
+    var q = rec.req || {}, deal = q.deal || '매매';
+    if(typeof W.sw === 'function') W.sw(1);
+    if(typeof W.clearF === 'function') W.clearF();
+    var type = '아파트 ' + (deal === '전세' ? '전세' : deal === '월세' ? '월세' : '매매');
+    setSel('f-type', type); if(typeof W.onTC === 'function') W.onTC();
+    setVal('f-cx', rec.lsName || rec.trName || q.cx);
+    var ho = q.ho && !/비공개/.test(q.ho) ? q.ho : '';
+    setVal('f-un', [q.dong, ho].filter(Boolean).join(' '));
+    if(q.ex) setVal('f-ar', q.ex + '㎡');
+    setVal('f-fl', q.floorTxt || '');
+    if(q.dir) setSel('f-di', q.dir);
+    if(num(rec.price)) setVal('fp-ma', wonTxt(rec.price));
+    if(q.sup) setVal('px-gross', String(q.sup));
+    setVal('f-rdate', today());
+    setSel('f-route', '직방');
+    var who = deal === '매매' ? '매도인' : '임대인';
+    if(rec.owner) setVal('f-c1name', who + ' ' + rec.owner);
+    if(rec.ownerTel) setVal('f-c1tel', rec.ownerTel);
+    if(q.ownerLives){ var mi = $('f-mi'); if(mi){ mi.value = '협의'; if(typeof W.onMI === 'function') W.onMI(); } }
+    var info = ['직방 가격 제안 의뢰' + (q.when ? '(요청 ' + q.when + ')' : '') + ' · 제안가 ' + (wonTxt(rec.price) || '-'),
+                q.pyType ? q.pyType + '형' : '', q.sup ? '공급 ' + q.sup + '㎡' : '',
+                q.ownerLives ? '집주인 거주 중(이사 일정 협의)' : (q.tenant || ''), q.repair ? '수리 ' + q.repair : ''].filter(Boolean).join(' · ');
+    setVal('f-mo', info);
+    var lm = String(rec.memo || '').replace(/\s+/g,' ').trim();
+    setVal('f-lastmemo', ('직방 승낙' + (lm ? ' — ' + lm : '')).slice(0, 50));
+    banner(rec);
+  }
+  function banner(rec){
+    var old = $('ppo-bar'); if(old) old.remove();
+    var cx = $('f-cx'); if(!cx) return;
+    var card = cx.closest('.card') || cx.parentNode;
+    var q = rec.req || {};
+    var b = document.createElement('div'); b.id = 'ppo-bar';
+    b.style.cssText = 'background:#eef8ef;border:1px solid #a5d6a7;border-radius:10px;padding:10px 14px;margin-bottom:12px;font-size:12.5px;line-height:1.7;color:#1a5c2e';
+    b.innerHTML = '🤝 <b>직방 가격 제안에서 넘어온 매물</b> — ' + esc(q.cx || '') + ' ' + esc(q.dong || '') + ' · 제안가 <b>' + esc(wonTxt(rec.price) || '-') + '</b>'
+      + (rec.owner ? ' · 소유주 ' + esc(rec.owner) : ' · <span style="color:#c62828">소유주 연락처가 비어 있습니다</span>')
+      + '<br>값을 확인·보완한 뒤 「💾 매물 저장」을 누르면 가격 제안 기록이 「매물 등록 완료」로 바뀝니다. '
+      + '<button type="button" onclick="ppoCancel()" style="margin-left:6px;padding:2px 9px;font-size:11.5px;border:1px solid #a5d6a7;background:#fff;border-radius:6px;cursor:pointer">연결 끊기</button>';
+    card.parentNode.insertBefore(b, card);
+  }
+  W.ppoCancel = function(){ CUR = null; var b = $('ppo-bar'); if(b) b.remove(); toast('가격 제안과의 연결을 끊었습니다 — 저장해도 가격 제안 기록은 바뀌지 않습니다.'); };
+
+  function wrap(){
+    if(W.__ppoWrapped) return true;
+    if(typeof W.saveProp !== 'function' || typeof W.clearF !== 'function') return false;
+    var _save = W.saveProp;
+    W.saveProp = function(){
+      var cur = CUR, wasEdit = W.editId, before = (W.props||[]).length;
+      _save.apply(this, arguments);
+      if(!cur) return;
+      var list = W.props || [];
+      if(wasEdit){ if(String(W.editId||'') === String(wasEdit)) return; }
+      else if(list.length === before) return;
+      var t = wasEdit ? list.find(function(x){ return String(x.id) === String(wasEdit); }) : list[0];
+      if(!t) return;
+      t.poId = cur.id; t.srcRoute = '직방 가격 제안';
+      try{ if(typeof W.toStore === 'function') W.toStore(); }catch(e){}
+      CUR = null; var b = $('ppo-bar'); if(b) b.remove();
+      var d = db();
+      if(d){
+        d.ref('sd/sd_price_offers/' + cur.id).update({ status:'매물 등록 완료', propId:String(t.id), propAt:new Date().toISOString() })
+          .then(function(){ toast('✅ 매물을 저장하고, 직방 가격 제안 기록을 「매물 등록 완료」로 바꿨습니다.'); })
+          .catch(function(e){ toast('매물은 저장됐지만 가격 제안 기록 상태를 바꾸지 못했습니다: ' + (e && e.message || e)); });
+      }
+    };
+    //  비우기를 누르면 연결도 끊는다 (다른 매물에 잘못 붙지 않게) — 채우는 도중의 비우기는 제외
+    var _clear = W.clearF;
+    W.clearF = function(){ _clear.apply(this, arguments); if(!W.__ppoFilling && CUR){ CUR = null; var b = $('ppo-bar'); if(b) b.remove(); } };
+    W.__ppoWrapped = true;
+    return true;
+  }
+
+  async function start(id){
+    var rec = await fetchRec(id);
+    try{ history.replaceState(null, '', location.pathname + location.search.replace(/([?&])po=[^&#]*&?/, '$1').replace(/[?&]$/, '') + location.hash); }catch(e){}
+    if(!rec){ toast('직방 가격 제안 기록(' + id + ')을 찾지 못했습니다 — 데이터관리에서 저장했는지 확인해 주세요.'); return; }
+    rec.id = rec.id || id;
+    var dup = (W.props || []).find(function(p){ return p.poId === rec.id; });
+    if(dup){
+      if(confirm('이 가격 제안으로 이미 등록한 매물이 있습니다.\n(' + (dup.complexName||'') + ' ' + (dup.unitInfo||'') + ')\n\n새로 만들지 않고 그 매물을 수정으로 열까요?')){
+        if(typeof W.editP === 'function') W.editP(dup.id);
+        return;
+      }
+    }
+    W.__ppoFilling = true;
+    try{ fill(rec); } finally { W.__ppoFilling = false; }
+    CUR = { id:rec.id, rec:rec };
+    toast('🤝 직방 가격 제안 내용을 매물 등록 양식에 채웠습니다 — 확인 후 저장해 주세요.');
+  }
+
+  W.sdPpo = { cur:function(){ return CUR; }, fill:fill, start:start };
+  var id = qid(), n = 0;
+  (function t(){
+    var ready = wrap() && $('f-cx') && $('px-gross') && typeof W.sw === 'function' && W.__useAprWrapped && W.__plnWrapped;
+    if(!ready && n++ < 160) return void setTimeout(t, 250);
+    if(!id) return;
+    //  매물 목록(props)이 불러와진 뒤에 채운다 — 첫 화면이 목록 탭으로 바뀌는 것과 겹치지 않게, 중복 등록도 알아보게
+    var k = 0;
+    (function w(){ if(!((W.props||[]).length) && k++ < 16) return void setTimeout(w, 250); setTimeout(function(){ start(id); }, 300); })();
+  })();
 })();
 </script>
 </body>
