@@ -8114,7 +8114,7 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.09.30-3';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.09.30-4';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_props.html';      // 이 파일 이름
   var SD_NAME = '매물관리';      // 사람이 부르는 이름
 
@@ -10130,8 +10130,9 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
   window.pdiOpen = function(){
     var q = (($('f-cx')||{}).value || '').trim();
     var ex = parseFloat(String((($('f-ar')||{}).value || '')).replace(/[^\d.]/g,'')) || 0;
-    var url = 'sd_data.html?popup=di' + (q ? '&q=' + encodeURIComponent(q) : '') + (ex ? '&ex=' + ex : '') + '&v=' + Date.now();
-    try{ sessionStorage.setItem('sjrws_di_q', q); sessionStorage.setItem('sjrws_di_ex', ex ? String(ex) : ''); }catch(e){}
+    //  att=1 — 새 창의 평면도 카드에 「📎 이 매물에 첨부」를 붙인다 (📐 평면도 첨부 칸)
+    var url = 'sd_data.html?popup=di' + (q ? '&q=' + encodeURIComponent(q) : '') + (ex ? '&ex=' + ex : '') + '&att=1&v=' + Date.now();
+    try{ sessionStorage.setItem('sjrws_di_q', q); sessionStorage.setItem('sjrws_di_ex', ex ? String(ex) : ''); sessionStorage.setItem('sjrws_di_att', '1'); }catch(e){}
     var w = Math.min(1320, screen.availWidth - 40), h = Math.min(960, screen.availHeight - 60);
     if(WIN2 && !WIN2.closed){ try{ WIN2.location.href = url; WIN2.focus(); return; }catch(e){} }
     WIN2 = window.open(url, 'sjrws_di', 'width=' + w + ',height=' + h + ',left=60,top=40,resizable=yes,scrollbars=yes');
@@ -10241,6 +10242,337 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
 })();
 </script>
 
+<!-- ═══════════════════════════════════════════════════════════════════════
+     매물 등록 — 📐 평면도 · 도면 첨부  (매물에 plans 로 저장)
+     · 아파트 · 오피스텔 · 생활형숙박시설 : 「🖼 단지 평면도에서 고르기」 새 창(단지이미지)의
+       평면도 카드마다 「📎 이 매물에 첨부」 → 여기에 붙는다. 단지이미지 원본은 링크만 걸고 지우지 않는다.
+     · 상가 · 사무실(그 밖의 물건 포함) : 「🔎 인터넷에서 도면 찾기」(네이버·구글 이미지) ·
+       「📂 PC에서 도면 파일」(그림 · PDF) · 캡처한 도면 붙여넣기(Ctrl+V) · 끌어다 놓기
+     · 올린 파일은 Storage images/props/{사진과 같은 묶음}/plan_… — 빼기는 「저장」을 눌렀을 때 실제로 지운다
+     ═══════════════════════════════════════════════════════════════════════ -->
+<script>
+(function(){
+  'use strict';
+  if(window.__plnOn) return; window.__plnOn = true;
+  var MAX = 8, PL = [], PL_DEL = [], BUSY = 0;
+
+  function $(id){ return document.getElementById(id); }
+  function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+  function toast(t){
+    var e = document.createElement('div');
+    e.style.cssText = 'position:fixed;top:18px;left:50%;transform:translateX(-50%);z-index:10050;background:#1a2744;color:#fff;'
+      + 'padding:10px 16px;border-radius:10px;font-size:13px;box-shadow:0 6px 20px rgba(0,0,0,.2);max-width:90vw;line-height:1.6';
+    e.textContent = t; document.body.appendChild(e);
+    setTimeout(function(){ e.remove(); }, 4200);
+  }
+  function curType(){ return (($('f-type')||{}).value || ''); }
+  //  주거(단지 평면도) · 그 밖(도면 찾기)
+  function isRes(t){ return /아파트|오피스텔|생활형숙박/.test(t == null ? curType() : t); }
+  function keyOf(x){ return String(x.path || x.url || ''); }
+
+  // ── 칸 만들기 ─────────────────────────────────────────────
+  function css(){
+    if($('pln-css')) return;
+    var st = document.createElement('style'); st.id = 'pln-css';
+    st.textContent = '#pln-card .pln-btn{margin:0 6px 6px 0;padding:6px 12px;font-size:12px;border-radius:8px;cursor:pointer;border:1px solid #cfd6e4;background:#fff;color:#1a2744}'
+      + '#pln-card .pln-btn.pri{border-color:#a5d6a7;background:#eef8ef;color:#1a5c2e;font-weight:600}'
+      + '#pln-drop{margin-top:4px;border:1.5px dashed #b8c4d8;border-radius:10px;padding:12px;text-align:center;font-size:12px;color:#6b778c;cursor:pointer;outline:none;background:#fafbfd}'
+      + '#pln-drop:focus,#pln-drop.over{border-color:#1a7f3c;background:#f1faf3;color:#1a5c2e}'
+      + '#pln-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-top:10px}'
+      + '.pln-it{position:relative;border:1px solid #e2e5ea;border-radius:10px;overflow:hidden;background:#fff}'
+      + '.pln-it .th{width:100%;height:120px;object-fit:contain;background:#fff;display:block;cursor:zoom-in}'
+      + '.pln-it .pdf{height:120px;display:flex;align-items:center;justify-content:center;font-size:34px;background:#fdf1f0;cursor:pointer}'
+      + '.pln-it .cap{padding:5px 8px;font-size:11px;line-height:1.45;border-top:1px solid #eee;word-break:keep-all}'
+      + '.pln-it .tg{display:inline-block;font-size:10px;border-radius:8px;padding:0 6px;margin-right:4px;background:#e8f5e9;color:#2e7d32}'
+      + '.pln-it .tg.f{background:#e3f2fd;color:#1565c0}'
+      + '.pln-it .x{position:absolute;top:4px;right:4px;width:22px;height:22px;border-radius:50%;border:none;background:rgba(0,0,0,.55);color:#fff;cursor:pointer;font-size:12px;line-height:22px;padding:0}'
+      + '#pln-zoom{position:fixed;inset:0;z-index:10040;background:rgba(0,0,0,.82);display:flex;align-items:center;justify-content:center;cursor:zoom-out}'
+      + '#pln-zoom img{max-width:94vw;max-height:92vh;background:#fff;border-radius:6px}';
+    document.head.appendChild(st);
+  }
+  function mount(){
+    if($('pln-card')) return true;
+    var after = $('px-card');
+    if(!after) return false;
+    css();
+    var d = document.createElement('div');
+    d.className = 'card'; d.id = 'pln-card';
+    d.innerHTML = '<p class="sec"><span id="pln-title">📐 평면도 첨부</span> <span id="pln-cnt" style="font-size:11px;font-weight:400;color:#888"></span></p>'
+      + '<div id="pln-help" style="font-size:11.5px;color:#666;line-height:1.7;margin-bottom:8px"></div>'
+      + '<div id="pln-btns"></div>'
+      + '<input id="pln-file" type="file" accept="image/*,application/pdf" multiple style="display:none">'
+      + '<div id="pln-drop" tabindex="0">여기에 파일을 끌어다 놓거나, <b>이 칸을 한 번 누르고 Ctrl+V</b> — 캡처한 도면을 바로 붙여 넣습니다</div>'
+      + '<div id="pln-prog" style="font-size:11.5px;color:#1565c0;margin-top:6px"></div>'
+      + '<div id="pln-grid"></div>';
+    after.parentNode.insertBefore(d, after.nextSibling);
+
+    var fi = $('pln-file');
+    fi.addEventListener('change', function(){ var fs = [].slice.call(fi.files || []); fi.value = ''; addFiles(fs, '첨부'); });
+    var dz = $('pln-drop');
+    dz.addEventListener('click', function(){ dz.focus(); });
+    dz.addEventListener('dragover', function(e){ e.preventDefault(); dz.classList.add('over'); });
+    dz.addEventListener('dragleave', function(){ dz.classList.remove('over'); });
+    dz.addEventListener('drop', function(e){
+      e.preventDefault(); dz.classList.remove('over');
+      addFiles([].slice.call((e.dataTransfer && e.dataTransfer.files) || []), '첨부');
+    });
+    //  붙여넣기: 도면 칸(또는 이 카드 안)에 초점이 있을 때만 — 다른 입력칸의 붙여넣기는 건드리지 않는다
+    document.addEventListener('paste', function(e){
+      var a = document.activeElement, card = $('pln-card');
+      if(!card || !(a === $('pln-drop') || (card.contains(a) && a.tagName !== 'INPUT' && a.tagName !== 'TEXTAREA'))) return;
+      var items = (e.clipboardData && e.clipboardData.items) || [], fs = [];
+      for(var i = 0; i < items.length; i++){
+        if(items[i].kind === 'file'){ var f = items[i].getAsFile(); if(f) fs.push(f); }
+      }
+      if(!fs.length){ toast('붙여 넣을 그림이 클립보드에 없습니다 — 도면 그림을 「이미지 복사」하거나 캡처(Win+Shift+S)한 뒤 다시 해 주세요.'); return; }
+      e.preventDefault();
+      addFiles(fs, '붙여넣은 도면');
+    });
+    sync();
+    return true;
+  }
+
+  //  물건 종류에 따라 제목 · 도움말 · 단추를 바꾼다
+  function sync(){
+    var ti = $('pln-title'), he = $('pln-help'), bt = $('pln-btns');
+    if(!ti) return;
+    if(isRes()){
+      ti.textContent = '📐 평면도 첨부';
+      he.innerHTML = '「🖼 단지 평면도에서 고르기」로 단지이미지의 평면도를 새 창에 띄운 뒤, 맞는 평면도의 <b>「📎 이 매물에 첨부」</b>를 누르면 여기에 붙습니다. '
+        + '단지이미지에 없는 평면도는 PC 파일이나 캡처로 붙일 수 있습니다.';
+      bt.innerHTML = '<button type="button" class="pln-btn pri" onclick="pdiOpen()">🖼 단지 평면도에서 고르기 (새 창)</button>'
+        + '<button type="button" class="pln-btn" onclick="document.getElementById(\'pln-file\').click()">📂 PC에서 평면도 파일</button>';
+    }else{
+      ti.textContent = '📐 도면 첨부';
+      he.innerHTML = '상가·사무실은 단지이미지에 평면도가 없어 <b>도면을 찾아 붙입니다</b>. '
+        + '「🔎 인터넷에서 도면 찾기」로 분양 홈페이지·분양 광고의 층별 도면을 찾아 <b>그림을 복사(또는 캡처)</b>한 뒤 아래 칸에 Ctrl+V, 받아 둔 파일은 「📂 PC에서 도면 파일」(그림·PDF). '
+        + '<span style="color:#888">건축물현황도(평면도)는 정부24에서 소유자 본인이나 위임받은 사람이 발급받을 수 있으니, 매도·임대인에게 받은 파일도 여기에 붙이면 됩니다.</span>';
+      bt.innerHTML = '<button type="button" class="pln-btn pri" onclick="plnWeb(\'naver\')">🔎 인터넷에서 도면 찾기 (네이버 이미지)</button>'
+        + '<button type="button" class="pln-btn" onclick="plnWeb(\'google\')">🔎 구글 이미지</button>'
+        + '<button type="button" class="pln-btn" onclick="document.getElementById(\'pln-file\').click()">📂 PC에서 도면 파일</button>';
+    }
+    render();
+  }
+
+  //  인터넷 이미지 검색 — 건물명 + 층 + 「도면」
+  window.plnWeb = function(which){
+    var cx = (($('f-cx')||{}).value || '').trim();
+    if(!cx){ toast('단지명 / 건물명을 먼저 넣어 주세요.'); var c = $('f-cx'); if(c) c.focus(); return; }
+    var fl = /(B?\d+)\s*층/.exec((($('f-fl')||{}).value || ''));
+    var q = cx + (fl ? ' ' + fl[1] + '층' : '') + ' 도면';
+    var url = which === 'google'
+      ? 'https://www.google.com/search?tbm=isch&q=' + encodeURIComponent(q)
+      : 'https://search.naver.com/search.naver?where=image&query=' + encodeURIComponent(q);
+    window.open(url, '_blank', 'noopener');
+    toast('「' + q + '」로 찾았습니다 — 맞는 도면을 「이미지 복사」한 뒤 도면 칸을 누르고 Ctrl+V 하세요.');
+  };
+
+  // ── 목록 그리기 ───────────────────────────────────────────
+  function render(){
+    var g = $('pln-grid'), c = $('pln-cnt');
+    if(c) c.textContent = PL.length ? '(' + PL.length + ' / ' + MAX + ')' : '';
+    if(!g) return;
+    g.innerHTML = PL.map(function(x, i){
+      var tag = x.src === 'danji' ? '<span class="tg">단지이미지</span>' : '<span class="tg f">' + (x.kind === 'pdf' ? 'PDF' : '첨부') + '</span>';
+      var pic = x.kind === 'pdf'
+        ? '<div class="pdf" onclick="plnView(' + i + ')" title="PDF 열기">📄</div>'
+        : '<img class="th" src="' + esc(x.thumbUrl || x.url) + '" onclick="plnView(' + i + ')" onerror="plnFix(' + i + ',this)" alt="">';
+      return '<div class="pln-it">' + pic
+        + '<button type="button" class="x" title="이 매물에서 빼기" onclick="plnDel(' + i + ')">✕</button>'
+        + '<div class="cap">' + tag + esc(x.name || '평면도') + '</div></div>';
+    }).join('');
+  }
+  window.plnView = function(i){
+    var x = PL[i]; if(!x) return;
+    if(x.kind === 'pdf'){ window.open(x.url, '_blank', 'noopener'); return; }
+    var z = document.createElement('div'); z.id = 'pln-zoom';
+    z.innerHTML = '<img src="' + esc(x.url) + '" alt="">';
+    z.onclick = function(){ z.remove(); };
+    document.body.appendChild(z);
+  };
+  //  단지이미지를 다시 올리면 주소 표(token)가 바뀔 수 있다 — 저장 경로로 새 주소를 받아 고친다
+  window.plnFix = function(i, img){
+    var x = PL[i]; if(!x || !x.path || x._fixed) return;
+    x._fixed = 1;
+    try{
+      firebase.storage().ref(x.path).getDownloadURL().then(function(u){ x.url = u; if(x.src === 'danji') x.thumbUrl = u; if(img) img.src = u; });
+    }catch(e){}
+  };
+  window.plnDel = function(i){
+    var x = PL[i]; if(!x) return;
+    if(!confirm('「' + (x.name || '평면도') + '」을(를) 이 매물에서 뺄까요?' + (x.src === 'danji' ? '\n(단지이미지 원본은 그대로 둡니다)' : '\n(매물을 저장할 때 올린 파일도 지웁니다)'))) return;
+    PL.splice(i, 1);
+    if(x.src !== 'danji' && x.path) PL_DEL.push({ path:x.path, thumbPath:x.thumbPath || '' });
+    render(); tellPopup();
+  };
+
+  // ── 파일 올리기 (그림은 긴 쪽 2400px JPEG — 글씨가 읽히게, 투명 배경은 흰색) ──
+  function toJpeg(file, maxSide, q){
+    return new Promise(function(res, rej){
+      var r = new FileReader();
+      r.onerror = function(){ rej(new Error('파일 읽기 실패')); };
+      r.onload = function(){
+        var im = new Image();
+        im.onerror = function(){ rej(new Error('그림을 읽지 못했습니다')); };
+        im.onload = function(){
+          var w = im.width, h = im.height, s = Math.min(1, maxSide / Math.max(w, h));
+          w = Math.round(w * s); h = Math.round(h * s);
+          var cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+          var cx = cv.getContext('2d'); cx.fillStyle = '#fff'; cx.fillRect(0, 0, w, h); cx.drawImage(im, 0, 0, w, h);
+          cv.toBlob(function(b){ b ? res(b) : rej(new Error('변환 실패')); }, 'image/jpeg', q);
+        };
+        im.src = r.result;
+      };
+      r.readAsDataURL(file);
+    });
+  }
+  function group(){
+    try{
+      if(!window._formPhotoPropId) window._formPhotoPropId = window.editId || ('new' + Date.now());
+      return String(window._formPhotoPropId);
+    }catch(e){ return 'new' + Date.now(); }
+  }
+  async function putOne(file, label){
+    var st = firebase.storage();
+    var isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name || '');
+    var base = (file.name || label || 'plan').replace(/\.[^.]+$/, '');
+    var safe = base.replace(/[^\w가-힣-]/g, '_').slice(0, 40) || 'plan';
+    var fn = 'plan_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7) + '_' + safe;
+    var dir = 'images/props/' + group() + '/';
+    if(isPdf){
+      if(file.size > 20 * 1024 * 1024) throw new Error('PDF가 20MB를 넘습니다');
+      var pr = st.ref(dir + fn + '.pdf');
+      await pr.put(file, { contentType:'application/pdf' });
+      return { kind:'pdf', url: await pr.getDownloadURL(), thumbUrl:'', path: dir + fn + '.pdf', thumbPath:'' };
+    }
+    if(!/^image\//.test(file.type || '')) throw new Error('그림이나 PDF가 아닙니다');
+    var big = await toJpeg(file, 2400, 0.9), sm = await toJpeg(file, 480, 0.8);
+    var mr = st.ref(dir + fn + '.jpg'), tr = st.ref(dir + 'thumbs/' + fn + '.jpg');
+    await mr.put(big, { contentType:'image/jpeg' });
+    await tr.put(sm, { contentType:'image/jpeg' });
+    return { kind:'img', url: await mr.getDownloadURL(), thumbUrl: await tr.getDownloadURL(),
+             path: dir + fn + '.jpg', thumbPath: dir + 'thumbs/' + fn + '.jpg' };
+  }
+  async function addFiles(fs, label){
+    fs = (fs || []).filter(Boolean);
+    if(!fs.length) return;
+    var room = MAX - PL.length;
+    if(room <= 0){ toast('평면도·도면은 매물당 ' + MAX + '장까지입니다. 빼고 다시 붙여 주세요.'); return; }
+    if(fs.length > room){ toast(MAX + '장까지라 앞의 ' + room + '장만 올립니다.'); fs = fs.slice(0, room); }
+    if(typeof firebase === 'undefined' || !firebase.storage){ toast('저장소(Storage)가 아직 준비되지 않았습니다. 잠시 뒤 다시 해 주세요.'); return; }
+    var pg = $('pln-prog'), ok = 0, bad = [];
+    BUSY++;
+    try{
+      for(var i = 0; i < fs.length; i++){
+        if(pg) pg.textContent = '⏫ 올리는 중… ' + (i + 1) + ' / ' + fs.length;
+        try{
+          var r = await putOne(fs[i], label);
+          var nm = fs[i].name && !/^image\.(png|jpe?g)$/i.test(fs[i].name) ? fs[i].name.replace(/\.[^.]+$/, '') : label + (fs.length > 1 ? ' ' + (i + 1) : '');
+          PL.push(Object.assign({ src:'file', name: nm, at: new Date().toISOString() }, r));
+          ok++; render();
+        }catch(e){
+          bad.push((fs[i].name || label) + ' — ' + (e && e.message || e));
+        }
+      }
+    }finally{ BUSY--; if(pg) pg.textContent = ''; }
+    if(ok) toast('📐 ' + ok + '장 붙였습니다 — 「매물 저장」을 눌러야 매물에 남습니다.');
+    if(bad.length) alert('올리지 못한 파일:\n' + bad.join('\n') + (bad.some(function(b){ return /pdf/i.test(b); }) ? '\n\nPDF가 안 되면 그림으로 캡처해 붙여 넣어 주세요.' : ''));
+  }
+
+  // ── 평면도 새 창(단지이미지)에서 온 첨부 ─────────────────────
+  var POPWIN = null;
+  function tellPopup(src){
+    var w = src || POPWIN; if(!w) return;
+    try{ w.postMessage({ type:'sjrws-di-state', keys: PL.map(keyOf), n: PL.length, max: MAX }, location.origin); }catch(e){}
+  }
+  window.addEventListener('message', function(ev){
+    if(ev.origin !== location.origin) return;
+    var d = ev.data; if(!d || typeof d !== 'object') return;
+    if(d.type === 'sjrws-di-hello'){ POPWIN = ev.source; tellPopup(ev.source); return; }
+    if(d.type !== 'sjrws-di-plan') return;
+    POPWIN = ev.source;
+    var k = String(d.path || d.url || ''), reply = function(ok, m){
+      try{ ev.source.postMessage({ type:'sjrws-di-ack', key:k, ok:ok, msg:m || '', keys: PL.map(keyOf), n: PL.length, max: MAX }, location.origin); }catch(e){}
+    };
+    if(!d.url){ reply(false, '주소가 없습니다'); return; }
+    if(!$('pln-card')){ reply(false, '매물 등록 화면이 준비되지 않았습니다'); return; }
+    if(PL.some(function(x){ return keyOf(x) === k; })){ reply(true, '이미 붙어 있습니다'); return; }
+    if(PL.length >= MAX){ reply(false, MAX + '장까지입니다 — 매물 등록에서 하나를 빼 주세요'); return; }
+    var nm = [d.danji, d.typeName ? d.typeName + '타입' : '', d.ex ? '전용 ' + d.ex + '㎡' : ''].filter(Boolean).join(' ');
+    PL.push({ src:'danji', kind:'img', url:d.url, thumbUrl:d.url, path:d.path || '', name: nm || '단지 평면도',
+              danji:d.danji || '', type:d.typeName || '', ex:d.ex || '', at:new Date().toISOString() });
+    render(); reply(true);
+    var cd = $('pln-card'); if(cd){ cd.style.transition = 'background .3s'; cd.style.background = '#f1faf3'; setTimeout(function(){ cd.style.background = ''; }, 1400); }
+    toast('📐 평면도를 붙였습니다 — ' + (nm || '단지 평면도') + ' · 「매물 저장」을 눌러야 남습니다.');
+  });
+
+  // ── 저장 · 수정 · 비우기 · 종류 바꾸기 · 상세 보기 ────────────
+  function wrap(){
+    if(window.__plnWrapped) return true;
+    if(typeof window.saveProp !== 'function' || typeof window.editP !== 'function' || typeof window.clearF !== 'function' || typeof window.onTC !== 'function') return false;
+    var _save = window.saveProp;
+    window.saveProp = function(){
+      if(BUSY){ alert('평면도·도면을 올리는 중입니다. 끝난 뒤 저장해 주세요.'); return; }
+      var keep = PL.map(function(x){ var o = Object.assign({}, x); delete o._fixed; return o; }), del = PL_DEL.slice();
+      var wasEdit = window.editId, before = (window.props||[]).length;
+      _save.apply(this, arguments);
+      var list = window.props || [];
+      if(wasEdit){ if(String(window.editId||'') === String(wasEdit)) return; }
+      else if(list.length === before) return;
+      var t = wasEdit ? list.find(function(x){ return String(x.id) === String(wasEdit); }) : list[0];
+      if(!t) return;
+      if(keep.length) t.plans = keep; else delete t.plans;
+      try{ if(typeof toStore === 'function') toStore(); }catch(e){}
+      //  뺀 파일은 저장이 끝난 뒤에 지운다 (아직 이 파일을 쓰는 매물이 없게 된 다음)
+      del.forEach(function(x){
+        if(!/^images\/props\//.test(x.path)) return;   // 단지이미지 등 다른 곳은 절대 지우지 않는다
+        try{ window.sdImage.remove(x.path, x.thumbPath || undefined).catch(function(){}); }catch(e){}
+      });
+    };
+    var _edit = window.editP;
+    window.editP = function(id){
+      _edit.apply(this, arguments);
+      var p = (window.props||[]).find(function(x){ return String(x.id) === String(id); });
+      PL = ((p && p.plans) || []).map(function(x){ return Object.assign({}, x); }); PL_DEL = [];
+      sync(); tellPopup();
+    };
+    var _clear = window.clearF;
+    window.clearF = function(){ _clear.apply(this, arguments); PL = []; PL_DEL = []; render(); tellPopup(); };
+    var _tc = window.onTC;
+    window.onTC = function(){ var r = _tc.apply(this, arguments); try{ sync(); }catch(e){} return r; };
+    if(typeof window.openDetail === 'function'){
+      var _od = window.openDetail;
+      window.openDetail = function(id){ var r = _od.apply(this, arguments); try{ dtl(id); }catch(e){} return r; };
+    }
+    window.__plnWrapped = true;
+    return true;
+  }
+  function dtl(id){
+    var box = $('pln-dtl');
+    if(!box){
+      var ph = $('dtl-photos-box'); if(!ph) return;
+      box = document.createElement('div'); box.id = 'pln-dtl';
+      box.style.cssText = 'padding:0 20px;margin-bottom:14px;display:none';
+      ph.parentNode.insertBefore(box, ph);
+    }
+    var p = (window.props||[]).find(function(x){ return String(x.id) === String(id); });
+    var ls = (p && p.plans) || [];
+    if(!ls.length){ box.style.display = 'none'; box.innerHTML = ''; return; }
+    box.style.display = 'block';
+    box.innerHTML = '<div style="font-size:10px;color:#aaa;margin-bottom:6px">📐 평면도 · 도면 <span style="color:#1565c0">(' + ls.length + '장)</span></div>'
+      + '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(80px,1fr));gap:6px">'
+      + ls.map(function(x){
+          var inner = x.kind === 'pdf'
+            ? '<div style="height:100%;display:flex;align-items:center;justify-content:center;font-size:26px;background:#fdf1f0">📄</div>'
+            : '<img src="' + esc(x.thumbUrl || x.url) + '" style="width:100%;height:100%;object-fit:contain;background:#fff">';
+          return '<a href="' + esc(x.url) + '" target="_blank" rel="noopener" title="' + esc(x.name||'') + '" style="display:block;aspect-ratio:1;border-radius:6px;overflow:hidden;border:0.5px solid #e0e0e0">' + inner + '</a>';
+        }).join('') + '</div>';
+  }
+
+  window.sdPln = { list:function(){ return PL.slice(); }, pending:function(){ return PL_DEL.slice(); }, sync:sync, isRes:isRes };
+  var n = 0; (function t(){ var a = mount(), b = wrap(); if(!(a && b) && n++ < 160) setTimeout(t, 250); })();
+})();
+</script>
 </body>
 </html>
 

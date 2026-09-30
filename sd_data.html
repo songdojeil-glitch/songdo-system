@@ -7191,7 +7191,7 @@ async function diGetImages(nm){
       else if(f.indexOf('photo')===0) out.photos.push(url);
       else if(f.indexOf('plan__')===0){
         var m=f.replace('plan__','').replace('.jpg','').split('_');
-        out.plans.push({타입:m[0]||'',전용:m[1]||'',url:url});
+        out.plans.push({타입:m[0]||'',전용:m[1]||'',url:url,path:item.fullPath||('sd_danji_images/'+nm+'/'+f)});
       }
     }
   }catch(e){}
@@ -19425,7 +19425,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.09.30-55';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.09.30-56';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_data.html';      // 이 파일 이름
   var SD_NAME = '실거래가';      // 사람이 부르는 이름
 
@@ -35571,7 +35571,9 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
     · 단지이미지(Firebase Storage)의 평면도를 크게 모아 보여 준다 — 방·욕실 수 확인용
     · 매물 전용면적(ex)과 ±1.5㎡ 안의 평면도를 맨 앞에, 표시해 둔다
     · 단지배치도·동호수배치도·조감도도 아래에 참고로
-    · 보기만 한다 (올리기·지우기 단추 없음). 누르면 크게 — 기존 diZoomImage
+    · 올리기·지우기 단추 없음. 누르면 크게 — 기존 diZoomImage
+    · att=1 (매물 등록에서 열었을 때): 평면도 카드마다 「📎 이 매물에 첨부」 → opener 로
+      {type:'sjrws-di-plan', url, path, danji, typeName, ex}. 매물 등록이 붙은 목록을 sjrws-di-state/ack 로 돌려준다
     ══════════════════════════════════════════════════════════════════ */
 (function(){
   'use strict';
@@ -35587,6 +35589,9 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
   var Q  = (qp('q') || ss('sjrws_di_q')).trim();
   var EX = parseFloat(qp('ex') || ss('sjrws_di_ex')) || 0;
   var CUR = '';
+  //  첨부 모드 — 매물 등록 창(opener)이 살아 있을 때만
+  var ATT = (qp('att') === '1' || ss('sjrws_di_att') === '1') && !!W.opener;
+  var PLS = [], HAVE = {}, HAVE_N = 0, HAVE_MAX = 8;
 
   function msg(t, c){ var e = $('dip-msg'); if(e){ e.textContent = t; e.style.color = c || ''; } }
 
@@ -35624,6 +35629,9 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
       + '.dip-card.hit{border:2px solid #1a7f3c;box-shadow:0 0 0 3px rgba(26,127,60,.12)}'
       + '.dip-card img{width:100%;height:320px;object-fit:contain;background:#fff;cursor:zoom-in;display:block}'
       + '.dip-cap{padding:8px 12px;font-size:12.5px;display:flex;justify-content:space-between;gap:8px;align-items:center;border-top:1px solid var(--border,#eee)}'
+      + '.dip-att{border:1px solid #1a7f3c;background:#1a7f3c;color:#fff;border-radius:8px;padding:4px 10px;font-size:12px;cursor:pointer;white-space:nowrap;font-weight:600}'
+      + '.dip-att.on{background:#fff;color:#1a7f3c;cursor:default}'
+      + '.dip-card.att{outline:3px solid #1a7f3c}'
       + '.dip-tag{font-size:11px;background:#1a7f3c;color:#fff;border-radius:10px;padding:1px 8px;white-space:nowrap}'
       + '.dip-h{font-size:13.5px;font-weight:800;margin:18px 0 8px}'
       + '.dip-chip{display:inline-block;margin:0 6px 6px 0;padding:4px 10px;border:1px solid #cfd6e4;border-radius:14px;background:#fff;cursor:pointer;font-size:12px}'
@@ -35639,6 +35647,7 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
       + '<input id="dip-q" list="dip-names" placeholder="단지명" value="' + esc(Q) + '" onkeydown="if(event.key===\'Enter\')dipGo(this.value)">'
       + '<datalist id="dip-names"></datalist><button type="button" onclick="dipGo(document.getElementById(\'dip-q\').value)">찾기</button>'
       + (EX ? '<span>매물 전용 <b>' + EX + '㎡</b> — 비슷한 평면도를 먼저 보여 줍니다</span>' : '')
+      + (ATT ? '<span id="dip-attn" style="background:#1a7f3c;border-radius:10px;padding:2px 9px;font-size:12px">📎 첨부하면 매물 등록에 들어갑니다</span>' : '')
       + '<span class="sp"></span><span id="dip-msg" style="font-size:12px"></span>'
       + '<button type="button" class="x" onclick="dipClose()">✕ 창 닫기</button></div><div id="dip-in"></div>';
     document.body.appendChild(w); document.body.classList.add('dip-open');
@@ -35646,10 +35655,16 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
   }
   W.dipClose = function(){ window.close(); setTimeout(function(){ msg('이 창은 직접 닫아 주세요 (브라우저가 스스로 닫는 것을 막았습니다).', '#ffb4b4'); }, 300); };
 
-  function card(url, cap, sub, hit){
-    return '<div class="dip-card' + (hit ? ' hit' : '') + '"><img loading="lazy" src="' + esc(url) + '" onclick="diZoomImage(\'' + esc(url) + '\',\'' + esc(cap) + '\')" alt="' + esc(cap) + '">'
+  function attBtn(i){
+    if(!ATT || i == null) return '';
+    var on = !!HAVE[pkey(PLS[i])];
+    return '<button type="button" class="dip-att' + (on ? ' on' : '') + '" data-i="' + i + '" onclick="event.stopPropagation();dipAtt(' + i + ')">' + (on ? '✓ 첨부됨' : '📎 이 매물에 첨부') + '</button>';
+  }
+  function pkey(p){ return p ? String(p.path || p.url || '') : ''; }
+  function card(url, cap, sub, hit, i){
+    return '<div class="dip-card' + (hit ? ' hit' : '') + (ATT && i != null && HAVE[pkey(PLS[i])] ? ' att' : '') + '" data-i="' + (i == null ? '' : i) + '"><img loading="lazy" src="' + esc(url) + '" onclick="diZoomImage(\'' + esc(url) + '\',\'' + esc(cap) + '\')" alt="' + esc(cap) + '">'
       + '<div class="dip-cap"><span><b>' + esc(cap) + '</b>' + (sub ? ' <span style="color:var(--text3,#888)">' + esc(sub) + '</span>' : '') + '</span>'
-      + (hit ? '<span class="dip-tag">이 매물과 비슷한 면적</span>' : '') + '</div></div>';
+      + '<span style="display:flex;gap:6px;align-items:center">' + (hit ? '<span class="dip-tag">이 매물과 비슷한 면적</span>' : '') + attBtn(i) + '</span></div></div>';
   }
   function typeInfo(nm, t){
     var d = masters().filter(function(x){ return x.단지명 === nm; })[0];
@@ -35672,10 +35687,11 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
     var h = '<div class="dip-h">📐 평면도 ' + plans.length + '장'
       + (EX ? (hits ? ' · <span style="color:#1a7f3c">전용 ' + EX + '㎡와 비슷한 ' + hits + '장을 맨 앞에</span>' : ' · <span style="color:#c80">전용 ' + EX + '㎡와 맞는 평면도가 없습니다 — 전체에서 골라 보세요</span>') : '')
       + ' <span style="font-size:11.5px;font-weight:400;color:var(--text3,#888)">그림을 누르면 크게 봅니다</span></div>';
+    PLS = plans.map(function(x){ return x.p; });
     h += plans.length
-      ? '<div class="dip-grid">' + plans.map(function(x){
+      ? '<div class="dip-grid">' + plans.map(function(x, i){
           var cap = (x.p.타입 || '타입') + (x.p.전용 ? ' · 전용 약 ' + x.p.전용 + '㎡' : '');
-          return card(x.p.url, cap, typeInfo(nm, x.p.타입), x.hit);
+          return card(x.p.url, cap, typeInfo(nm, x.p.타입), x.hit, i);
         }).join('') + '</div>'
       : '<div style="padding:16px;background:#fff8e1;border-radius:10px;font-size:13px">이 단지에는 올라간 평면도가 없습니다. 데이터관리 「단지이미지」 탭에서 올릴 수 있습니다.</div>';
     var ref = [];
@@ -35690,6 +35706,37 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
     box.innerHTML = h;
     msg('');
   }
+  //  ── 첨부 ──────────────────────────────────────────────
+  function paint(){
+    [].forEach.call(document.querySelectorAll('.dip-card[data-i]'), function(c){
+      var i = c.getAttribute('data-i'); if(i === '') return;
+      var on = !!HAVE[pkey(PLS[+i])], b = c.querySelector('.dip-att');
+      c.classList.toggle('att', on);
+      if(b){ b.classList.toggle('on', on); b.textContent = on ? '✓ 첨부됨' : '📎 이 매물에 첨부'; b.disabled = false; }
+    });
+    var a = $('dip-attn'); if(a) a.textContent = '📎 매물에 첨부 ' + HAVE_N + ' / ' + HAVE_MAX + '장';
+  }
+  function setHave(keys, n, max){ HAVE = {}; (keys||[]).forEach(function(k){ HAVE[k] = 1; }); HAVE_N = n == null ? (keys||[]).length : n; if(max) HAVE_MAX = max; paint(); }
+  W.dipAtt = function(i){
+    var p = PLS[i]; if(!p) return;
+    if(HAVE[pkey(p)]){ msg('이미 붙어 있습니다 — 빼는 것은 매물 등록 화면에서 합니다.', '#b9f6ca'); return; }
+    if(!W.opener || W.opener.closed){ msg('매물 등록 창이 닫혀 있어 첨부할 수 없습니다.', '#ffb4b4'); return; }
+    var b = document.querySelector('.dip-card[data-i="' + i + '"] .dip-att'); if(b){ b.disabled = true; b.textContent = '보내는 중…'; }
+    try{
+      W.opener.postMessage({ type:'sjrws-di-plan', v:1, url:p.url, path:p.path || '', danji:CUR, typeName:p.타입 || '', ex:p.전용 || '' }, location.origin);
+    }catch(e){ msg('보내지 못했습니다: ' + e.message, '#ffb4b4'); paint(); }
+    setTimeout(function(){ if(b && b.disabled){ b.disabled = false; paint(); msg('매물 등록 화면이 답하지 않습니다 — 매물관리 화면을 새로고침(Ctrl+F5)한 뒤 다시 열어 주세요.', '#ffb4b4'); } }, 4000);
+  };
+  W.addEventListener('message', function(ev){
+    if(ev.origin !== location.origin) return;
+    var d = ev.data; if(!d || typeof d !== 'object') return;
+    if(d.type === 'sjrws-di-state'){ setHave(d.keys, d.n, d.max); return; }
+    if(d.type === 'sjrws-di-ack'){
+      setHave(d.keys, d.n, d.max);
+      msg(d.ok ? (d.msg || '📎 매물 등록에 붙였습니다 — 매물 저장을 눌러야 남습니다.') : ('붙이지 못했습니다: ' + (d.msg || '')), d.ok ? '#b9f6ca' : '#ffb4b4');
+    }
+  });
+
   W.dipGo = function(q){
     q = String(q||'').trim(); if(!q) return;
     var hit = findNames(q);
@@ -35710,10 +35757,11 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
     try{ if(W.sdDib && W.sdDib.loadExtra) await W.sdDib.loadExtra(); }catch(e){}
     var dl = $('dip-names'); if(dl) dl.innerHTML = allNames().map(function(x){ return '<option value="' + esc(x) + '">'; }).join('');
     msg('');
+    if(ATT){ try{ W.opener.postMessage({ type:'sjrws-di-hello' }, location.origin); }catch(e){} }
     if(Q) W.dipGo(Q); else $('dip-in').innerHTML = '<div style="padding:24px;font-size:13px">위 칸에 단지명을 넣어 주세요.</div>';
   }
   if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
-  W.sdDip = { findNames:findNames, show:show, cur:function(){ return CUR; } };
+  W.sdDip = { findNames:findNames, show:show, cur:function(){ return CUR; }, att:function(){ return ATT; }, have:function(){ return Object.keys(HAVE); } };
 })();
 </script>
 </body>
