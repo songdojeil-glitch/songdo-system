@@ -19425,7 +19425,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.09.30-54';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.09.30-55';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_data.html';      // 이 파일 이름
   var SD_NAME = '실거래가';      // 사람이 부르는 이름
 
@@ -35563,5 +35563,158 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
 })();
 </script>
 
+<script>
+/*  ══════════════════════════════════════════════════════════════════════
+    단지이미지 평면도 보기 — 새 창 전용 (매물관리 「매물 등록」에서 연다)
+    ──────────────────────────────────────────────────────────────────
+    sd_data.html?popup=di&q=단지명&ex=전용㎡  (창 이름 sjrws_di 로도 알아본다)
+    · 단지이미지(Firebase Storage)의 평면도를 크게 모아 보여 준다 — 방·욕실 수 확인용
+    · 매물 전용면적(ex)과 ±1.5㎡ 안의 평면도를 맨 앞에, 표시해 둔다
+    · 단지배치도·동호수배치도·조감도도 아래에 참고로
+    · 보기만 한다 (올리기·지우기 단추 없음). 누르면 크게 — 기존 diZoomImage
+    ══════════════════════════════════════════════════════════════════ */
+(function(){
+  'use strict';
+  var W = window;
+  var POP = /[?&]popup=di(&|$)/.test(location.search) || W.name === 'sjrws_di';
+  W.__diPopup = POP;
+  if(!POP || W.__dipOn) return; W.__dipOn = true;
+
+  function $(id){ return document.getElementById(id); }
+  function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+  function qp(k){ var m = new RegExp('[?&]' + k + '=([^&]*)').exec(location.search); return m ? decodeURIComponent(m[1].replace(/\+/g,' ')) : ''; }
+  function ss(k){ try{ return sessionStorage.getItem(k) || ''; }catch(e){ return ''; } }
+  var Q  = (qp('q') || ss('sjrws_di_q')).trim();
+  var EX = parseFloat(qp('ex') || ss('sjrws_di_ex')) || 0;
+  var CUR = '';
+
+  function msg(t, c){ var e = $('dip-msg'); if(e){ e.textContent = t; e.style.color = c || ''; } }
+
+  function nd(s){ var f = W.NVB && W.NVB.normDanji; var t = String(s||'').replace(/아파트$/,''); return f ? f(t) : t.replace(/\s/g,''); }
+  function masters(){ return (W.G_HS && W.G_HS.danji) || []; }
+  function allNames(){
+    var o = {}, out = [];
+    masters().forEach(function(d){ if(d.단지명 && !o[d.단지명]){ o[d.단지명] = 1; out.push(d.단지명); } });
+    ((W.G_DI && W.G_DI.extra) || []).forEach(function(n){ if(n && !o[n]){ o[n] = 1; out.push(n); } });
+    return out.sort(function(a,b){ return a.localeCompare(b,'ko'); });
+  }
+  //  이름 맞추기: 그대로 → 표기 맞춤(normDanji) → 한쪽이 다른 쪽을 품는 것 (하나일 때만)
+  function findNames(q){
+    var N = allNames(); if(!q) return [];
+    if(N.indexOf(q) >= 0) return [q];
+    var k = nd(q), a = N.filter(function(n){ return nd(n) === k; });
+    if(a.length) return a;
+    //  괄호·붙임표·블록 표기를 걷어 내고 견준다: 「송도더샵퍼스트파크(F13-1BL)」 ↔ 「송도더샵퍼스트파크F13」
+    function kb(s){ return String(s||'').toUpperCase().replace(/^송도/,'').replace(/[\s()\[\]{}\-_.·,]/g,'').replace(/(BL|블록|블럭)/g,''); }
+    var b = kb(q);
+    return N.filter(function(n){ var x = kb(n); return x && b && (x.indexOf(b) >= 0 || b.indexOf(x) >= 0); });
+  }
+
+  function css(){
+    var st = document.createElement('style');
+    st.textContent = '#dip-wrap{position:fixed;inset:0;z-index:9000;background:var(--bg,#f7f8fa);overflow:auto}'
+      + '#dip-bar{position:sticky;top:0;z-index:2;display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 16px;background:#1a2744;color:#fff;font-size:13px}'
+      + '#dip-bar b{font-size:14.5px}#dip-bar .sp{flex:1}'
+      + '#dip-bar input{padding:5px 9px;border-radius:7px;border:1px solid rgba(255,255,255,.5);background:#fff;color:#222;font-size:13px;width:230px}'
+      + '#dip-bar button{border:1px solid rgba(255,255,255,.5);background:transparent;color:#fff;border-radius:7px;padding:5px 12px;cursor:pointer;font-size:12.5px}'
+      + '#dip-bar button.x{background:#fff;color:#1a2744;font-weight:700}'
+      + '#dip-in{max-width:1400px;margin:0 auto;padding:14px 16px 40px}'
+      + '.dip-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:14px}'
+      + '.dip-card{background:var(--bg2,#fff);border:1px solid var(--border,#e2e5ea);border-radius:12px;overflow:hidden}'
+      + '.dip-card.hit{border:2px solid #1a7f3c;box-shadow:0 0 0 3px rgba(26,127,60,.12)}'
+      + '.dip-card img{width:100%;height:320px;object-fit:contain;background:#fff;cursor:zoom-in;display:block}'
+      + '.dip-cap{padding:8px 12px;font-size:12.5px;display:flex;justify-content:space-between;gap:8px;align-items:center;border-top:1px solid var(--border,#eee)}'
+      + '.dip-tag{font-size:11px;background:#1a7f3c;color:#fff;border-radius:10px;padding:1px 8px;white-space:nowrap}'
+      + '.dip-h{font-size:13.5px;font-weight:800;margin:18px 0 8px}'
+      + '.dip-chip{display:inline-block;margin:0 6px 6px 0;padding:4px 10px;border:1px solid #cfd6e4;border-radius:14px;background:#fff;cursor:pointer;font-size:12px}'
+      + '.dip-ref{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}'
+      + '.dip-ref img{width:100%;height:170px;object-fit:contain;background:#fff;cursor:zoom-in;border:1px solid var(--border,#e2e5ea);border-radius:8px}'
+      + 'body.dip-open{overflow:hidden}';
+    document.head.appendChild(st);
+  }
+  function mount(){
+    css();
+    var w = document.createElement('div'); w.id = 'dip-wrap';
+    w.innerHTML = '<div id="dip-bar"><b>🖼 평면도 보기</b>'
+      + '<input id="dip-q" list="dip-names" placeholder="단지명" value="' + esc(Q) + '" onkeydown="if(event.key===\'Enter\')dipGo(this.value)">'
+      + '<datalist id="dip-names"></datalist><button type="button" onclick="dipGo(document.getElementById(\'dip-q\').value)">찾기</button>'
+      + (EX ? '<span>매물 전용 <b>' + EX + '㎡</b> — 비슷한 평면도를 먼저 보여 줍니다</span>' : '')
+      + '<span class="sp"></span><span id="dip-msg" style="font-size:12px"></span>'
+      + '<button type="button" class="x" onclick="dipClose()">✕ 창 닫기</button></div><div id="dip-in"></div>';
+    document.body.appendChild(w); document.body.classList.add('dip-open');
+    document.title = '평면도 보기 — SJRWS';
+  }
+  W.dipClose = function(){ window.close(); setTimeout(function(){ msg('이 창은 직접 닫아 주세요 (브라우저가 스스로 닫는 것을 막았습니다).', '#ffb4b4'); }, 300); };
+
+  function card(url, cap, sub, hit){
+    return '<div class="dip-card' + (hit ? ' hit' : '') + '"><img loading="lazy" src="' + esc(url) + '" onclick="diZoomImage(\'' + esc(url) + '\',\'' + esc(cap) + '\')" alt="' + esc(cap) + '">'
+      + '<div class="dip-cap"><span><b>' + esc(cap) + '</b>' + (sub ? ' <span style="color:var(--text3,#888)">' + esc(sub) + '</span>' : '') + '</span>'
+      + (hit ? '<span class="dip-tag">이 매물과 비슷한 면적</span>' : '') + '</div></div>';
+  }
+  function typeInfo(nm, t){
+    var d = masters().filter(function(x){ return x.단지명 === nm; })[0];
+    var ty = d && (d.types||[]).filter(function(x){ return String(x.타입) === String(t); })[0];
+    if(!ty) return '';
+    return [ty['전용㎡'] ? '전용 ' + ty['전용㎡'] + '㎡' : '', ty.평 ? ty.평 + '평형' : '', ty.세대수 ? ty.세대수 + '세대' : ''].filter(Boolean).join(' · ');
+  }
+  async function show(nm){
+    CUR = nm; var box = $('dip-in'); if(!box) return;
+    var q = $('dip-q'); if(q) q.value = nm;
+    box.innerHTML = '<div style="padding:30px;color:var(--text3,#888)">「' + esc(nm) + '」 이미지를 불러오는 중…</div>';
+    var g = null;
+    try{ g = await W.diGetImages(nm); }catch(e){ g = null; }
+    if(!g){ box.innerHTML = '<div style="padding:30px;color:#c33">이미지를 불러오지 못했습니다.</div>'; return; }
+    var plans = (g.plans||[]).map(function(p){
+      var ex = parseFloat(p.전용) || 0;
+      return { p:p, ex:ex, hit: EX > 0 && ex > 0 && Math.abs(ex - EX) <= 1.5 };
+    }).sort(function(a,b){ return (b.hit - a.hit) || (a.ex - b.ex) || String(a.p.타입).localeCompare(String(b.p.타입), 'ko', { numeric:true }); });
+    var hits = plans.filter(function(x){ return x.hit; }).length;
+    var h = '<div class="dip-h">📐 평면도 ' + plans.length + '장'
+      + (EX ? (hits ? ' · <span style="color:#1a7f3c">전용 ' + EX + '㎡와 비슷한 ' + hits + '장을 맨 앞에</span>' : ' · <span style="color:#c80">전용 ' + EX + '㎡와 맞는 평면도가 없습니다 — 전체에서 골라 보세요</span>') : '')
+      + ' <span style="font-size:11.5px;font-weight:400;color:var(--text3,#888)">그림을 누르면 크게 봅니다</span></div>';
+    h += plans.length
+      ? '<div class="dip-grid">' + plans.map(function(x){
+          var cap = (x.p.타입 || '타입') + (x.p.전용 ? ' · 전용 약 ' + x.p.전용 + '㎡' : '');
+          return card(x.p.url, cap, typeInfo(nm, x.p.타입), x.hit);
+        }).join('') + '</div>'
+      : '<div style="padding:16px;background:#fff8e1;border-radius:10px;font-size:13px">이 단지에는 올라간 평면도가 없습니다. 데이터관리 「단지이미지」 탭에서 올릴 수 있습니다.</div>';
+    var ref = [];
+    if(g.dongho) ref.push([g.dongho, '동호수배치도']);
+    (g.donghos||[]).forEach(function(u,i){ ref.push([u, '동호수배치도 ' + (i+2)]); });
+    if(g.layout) ref.push([g.layout, '단지배치도']);
+    (g.layouts||[]).forEach(function(u,i){ ref.push([u, '단지배치도 ' + (i+2)]); });
+    (g.aerials||[]).forEach(function(u,i){ ref.push([u, '조감도 ' + (i+1)]); });
+    if(ref.length) h += '<div class="dip-h">참고</div><div class="dip-ref">' + ref.map(function(r){
+      return '<div><img loading="lazy" src="' + esc(r[0]) + '" onclick="diZoomImage(\'' + esc(r[0]) + '\',\'' + esc(r[1]) + '\')" alt="' + esc(r[1]) + '"><div style="font-size:12px;margin-top:4px">' + esc(r[1]) + '</div></div>';
+    }).join('') + '</div>';
+    box.innerHTML = h;
+    msg('');
+  }
+  W.dipGo = function(q){
+    q = String(q||'').trim(); if(!q) return;
+    var hit = findNames(q);
+    if(hit.length === 1) return show(hit[0]);
+    var box = $('dip-in');
+    if(!hit.length){ box.innerHTML = '<div style="padding:24px;font-size:13px">「' + esc(q) + '」 단지를 찾지 못했습니다. 위 칸에서 목록을 열어 골라 주세요.</div>'; return; }
+    box.innerHTML = '<div class="dip-h">「' + esc(q) + '」 비슷한 단지 ' + hit.length + '곳 — 골라 주세요</div>'
+      + hit.map(function(n){ return '<span class="dip-chip" onclick="dipGo(\'' + esc(n).replace(/\\/g,'\\\\') + '\')">' + esc(n) + '</span>'; }).join('');
+  };
+
+  async function boot(){
+    mount();
+    msg('단지 목록을 불러오는 중…');
+    var n = 0;
+    while(!(typeof W.diGetImages === 'function' && typeof W.diStorageReady === 'function' && W.diStorageReady()) && n++ < 120)
+      await new Promise(function(r){ setTimeout(r, 250); });
+    if(!masters().length && typeof W.hsFbLoad === 'function'){ try{ await W.hsFbLoad(); }catch(e){} }
+    try{ if(W.sdDib && W.sdDib.loadExtra) await W.sdDib.loadExtra(); }catch(e){}
+    var dl = $('dip-names'); if(dl) dl.innerHTML = allNames().map(function(x){ return '<option value="' + esc(x) + '">'; }).join('');
+    msg('');
+    if(Q) W.dipGo(Q); else $('dip-in').innerHTML = '<div style="padding:24px;font-size:13px">위 칸에 단지명을 넣어 주세요.</div>';
+  }
+  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
+  W.sdDip = { findNames:findNames, show:show, cur:function(){ return CUR; } };
+})();
+</script>
 </body>
 </html>

@@ -8114,7 +8114,7 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.09.30-2';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.09.30-3';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_props.html';      // 이 파일 이름
   var SD_NAME = '매물관리';      // 사람이 부르는 이름
 
@@ -10095,12 +10095,15 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
        (sd_data.html?popup=br&q=단지명 — 이름이 있으면 바로 찾아 준다)
      · 그 창의 호실 표에서 「↩ 매물등록에 넣기」를 누르면 동/호수·전용면적·층/전체층이 여기로 들어온다
      · 조회가 끝나면 그 창의 「✕ 창 닫기」로 닫는다
+     · 사용승인일 칸 (공인중개사법 표시·광고 의무 항목) — 대장에서 넣기 하면 함께 들어온다. 매물에 useApr 로 저장
+     · 「방 / 욕실 수」 칸 아래 「🖼 평면도 보기 (새 창)」 → 단지이미지의 평면도만 새 창으로
+       (sd_data.html?popup=di&q=단지명&ex=전용㎡ — 전용이 비슷한 평면도를 맨 앞에)
      ═══════════════════════════════════════════════════════════════════════ -->
 <script>
 (function(){
   'use strict';
   if(window.__pbrOn) return; window.__pbrOn = true;
-  var WIN = null;
+  var WIN = null, WIN2 = null;
 
   function $(id){ return document.getElementById(id); }
   function toast(t){
@@ -10122,6 +10125,20 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
     WIN = window.open(url, 'sjrws_br', 'width=' + w + ',height=' + h + ',left=40,top=30,resizable=yes,scrollbars=yes');
     if(!WIN) toast('팝업이 막혔습니다 — 주소창 오른쪽 「팝업 차단」 표시를 눌러 이 사이트를 허용해 주세요.');
   };
+
+  //  평면도 보기 — 단지이미지(평면도)만 새 창으로
+  window.pdiOpen = function(){
+    var q = (($('f-cx')||{}).value || '').trim();
+    var ex = parseFloat(String((($('f-ar')||{}).value || '')).replace(/[^\d.]/g,'')) || 0;
+    var url = 'sd_data.html?popup=di' + (q ? '&q=' + encodeURIComponent(q) : '') + (ex ? '&ex=' + ex : '') + '&v=' + Date.now();
+    try{ sessionStorage.setItem('sjrws_di_q', q); sessionStorage.setItem('sjrws_di_ex', ex ? String(ex) : ''); }catch(e){}
+    var w = Math.min(1320, screen.availWidth - 40), h = Math.min(960, screen.availHeight - 60);
+    if(WIN2 && !WIN2.closed){ try{ WIN2.location.href = url; WIN2.focus(); return; }catch(e){} }
+    WIN2 = window.open(url, 'sjrws_di', 'width=' + w + ',height=' + h + ',left=60,top=40,resizable=yes,scrollbars=yes');
+    if(!WIN2) toast('팝업이 막혔습니다 — 주소창 오른쪽 「팝업 차단」 표시를 눌러 이 사이트를 허용해 주세요.');
+  };
+  //  대장의 사용승인일 「20160310」 → 입력칸 날짜 「2016-03-10」
+  function ymd(v){ var s = String(v||'').replace(/[^\d]/g,''); return s.length === 8 ? s.slice(0,4) + '-' + s.slice(4,6) + '-' + s.slice(6,8) : ''; }
 
   //  동·호 다듬기: 「101」 → 「101동」, 「2904」 → 「2904호」
   function dongTxt(d){ d = String(d||'').trim(); if(!d || /^(0|-)$/.test(d)) return ''; return /[동棟]$/.test(d) || /[가-힣]$/.test(d) && !/\d$/.test(d) ? d : d + '동'; }
@@ -10146,6 +10163,8 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
     if(ar && d.exc > 0){ ar.value = (Math.round(d.exc * 100) / 100) + '㎡'; flash(ar); got.push('전용 ' + ar.value); }
     var fl = $('f-fl'), f = flrTxt(d.flr, d.grnd);
     if(fl && f){ fl.value = f; flash(fl); got.push(f); }
+    var ua = $('f-useapr'), uv = ymd(d.useApr);
+    if(ua && uv){ ua.value = uv; flash(ua); got.push('사용승인일 ' + uv); }
     toast(got.length ? '🏗 건축물대장에서 넣었습니다 — ' + got.join(' · ') + (d.purp ? ' (용도: ' + d.purp + ')' : '')
                      : '넣을 값이 없었습니다');
     try{ window.focus(); }catch(e){}
@@ -10163,7 +10182,62 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
     cx.parentNode.appendChild(b);
     return true;
   }
-  var n = 0; (function t(){ if(!mount() && n++ < 60) setTimeout(t, 250); })();
+  //  ── 사용승인일 칸 — 「층수 / 전체층」 줄 바로 아래 ───────────────
+  function mountUseApr(){
+    if($('f-useapr')) return true;
+    var fl = $('f-fl'); if(!fl) return false;
+    var row = fl.parentNode && fl.parentNode.parentNode; if(!row) return false;
+    var d = document.createElement('div');
+    d.id = 'f-useapr-row';
+    d.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px';
+    d.innerHTML = '<div><label class="fl">사용승인일 <span style="font-size:11px;color:#c62828">표시·광고 필수</span></label>'
+      + '<input id="f-useapr" type="date" class="fi" title="건축물대장 조회 창에서 「↩ 넣기」를 누르면 자동으로 들어옵니다"></div>'
+      + '<div style="font-size:11px;color:#888;align-self:end;padding-bottom:10px;line-height:1.6">공인중개사법 표시·광고 명시사항 — 건축물대장의 사용승인일.<br>🏗 건축물대장 조회에서 넣기 하면 자동으로 채워집니다.</div>';
+    row.parentNode.insertBefore(d, row.nextSibling);
+    return true;
+  }
+  //  저장 · 수정 · 비우기 — 앞선 모듈과 같은 방식으로 감싼다 (저장 전에 값을 잡아 두고, 저장된 매물에 붙인다)
+  function wrap(){
+    if(window.__useAprWrapped) return true;
+    if(typeof window.saveProp !== 'function' || typeof window.editP !== 'function' || typeof window.clearF !== 'function') return false;
+    var _save = window.saveProp;
+    window.saveProp = function(){
+      var v = (($('f-useapr')||{}).value || '').trim();
+      var wasEdit = window.editId, before = (window.props||[]).length;
+      _save.apply(this, arguments);
+      var list = window.props || [];
+      if(wasEdit){ if(String(window.editId||'') === String(wasEdit)) return; }
+      else if(list.length === before) return;
+      var t = wasEdit ? list.find(function(x){ return String(x.id) === String(wasEdit); }) : list[0];
+      if(!t) return;
+      t.useApr = v;
+      try{ if(typeof toStore === 'function') toStore(); }catch(e){}
+    };
+    var _edit = window.editP;
+    window.editP = function(id){
+      _edit.apply(this, arguments);
+      var p = (window.props||[]).find(function(x){ return String(x.id) === String(id); });
+      var el = $('f-useapr'); if(el) el.value = (p && p.useApr) || '';
+    };
+    var _clear = window.clearF;
+    window.clearF = function(){ _clear.apply(this, arguments); var el = $('f-useapr'); if(el) el.value = ''; };
+    window.__useAprWrapped = true;
+    return true;
+  }
+  //  ── 「방 / 욕실 수」 아래 평면도 보기 단추 ──────────────────────
+  function mountPlan(){
+    if($('pdi-btn')) return true;
+    var rm = $('px-rooms'); if(!rm) return false;
+    var b = document.createElement('button');
+    b.type = 'button'; b.id = 'pdi-btn';
+    b.textContent = '🖼 평면도 보기 (새 창)';
+    b.title = '단지이미지에 올려 둔 평면도를 새 창으로 엽니다 — 전용면적이 비슷한 평면도를 맨 앞에 보여 줍니다.';
+    b.style.cssText = 'margin-top:6px;padding:5px 11px;font-size:11.5px;border:1px solid #a5d6a7;background:#eef8ef;color:#1a5c2e;border-radius:7px;cursor:pointer';
+    b.onclick = window.pdiOpen;
+    rm.parentNode.appendChild(b);
+    return true;
+  }
+  var n = 0; (function t(){ var a = mount(), b = mountUseApr(), c = wrap(), d = mountPlan(); if(!(a && b && c && d) && n++ < 120) setTimeout(t, 250); })();
 })();
 </script>
 
