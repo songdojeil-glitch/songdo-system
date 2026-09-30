@@ -19425,7 +19425,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.09.30-61';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.09.30-62';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_data.html';      // 이 파일 이름
   var SD_NAME = '실거래가';      // 사람이 부르는 이름
 
@@ -35773,7 +35773,7 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
        ② 같은 단지·같은 면적의 매매 실거래(3→6→12개월, 5건 이상) · 네이버 매물 호가 분석
        ③ 제안가 = 호가 중위(비슷한 조건 우선) + α, 실거래보다 높게 — 대표님이 확인·수정
        ④ Claude 로 제안서(글자 수 선택) + 백브리핑(근거 · 네이버 기등록 가능성 · 소통·응대 방향)
-       ⑤ sd/sd_price_offers/{id} 에 저장 — 의뢰 승낙 시 소유주 연락처·상담 메모까지, 상담 자료로 인쇄
+       ⑤ sd/sd_price_offers/{id} 에 저장 — 진행 상태 6단계(제안 전→제안 보냄→거절·무응답/연락처 공개→호수 공개·중개 요청→매물 등록 완료) · 소유주 연락처(하이픈 자동)·호수·상담 메모까지, 상담 자료로 인쇄
      ═════════════════════════════════════════════════════════════════ -->
 <style>
 #po-root{max-width:1280px;margin:0 auto;padding:14px 14px 60px;font-size:13px;color:var(--text)}
@@ -35839,6 +35839,27 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
     '7. 거주 형태(집주인 거주 / 세입자 거주 / 공실)와 수리 상태(올수리 / 부분수리 / 기본형)는 [요청 매물]의 값을 그대로 따른다. 직방 문구 「현재 세입자가 살고 있지 않아요」는 공실이 아니라 집주인 거주를 뜻한다.'
   ].join('\n');
 
+  //  진행 상태 — 대표님 지정 6단계. 옛 「의뢰 승낙」은 「호수 공개 · 중개 요청」으로 읽는다
+  var STATUSES = ['제안 전','제안 보냄','거절 · 무응답','연락처 공개','호수 공개 · 중개 요청','매물 등록 완료'];
+  var ST_HANDOFF = '호수 공개 · 중개 요청';
+  function stNorm(v){ v = String(v||'').trim(); if(v === '의뢰 승낙') return ST_HANDOFF; return STATUSES.indexOf(v) >= 0 ? v : (v || '제안 전'); }
+  function stRank(v){ return STATUSES.indexOf(stNorm(v)); }
+  //  전화번호 하이픈 — 010-1234-5678 · 02-123-4567 · 032-851-6688 · 1588-1234 · 0505-123-4567
+  function fmtTel(v){
+    var d = String(v||'').replace(/\D/g,'').slice(0, 12);
+    if(!d) return '';
+    if(/^(15|16|18)\d/.test(d) && d.length <= 8) return d.length > 4 ? d.slice(0,4) + '-' + d.slice(4) : d;
+    if(/^02/.test(d)){
+      if(d.length <= 2) return d; if(d.length <= 5) return d.slice(0,2) + '-' + d.slice(2);
+      if(d.length <= 9) return d.slice(0,2) + '-' + d.slice(2,5) + '-' + d.slice(5);
+      return d.slice(0,2) + '-' + d.slice(2,6) + '-' + d.slice(6,10);
+    }
+    if(/^050\d/.test(d) && d.length > 11) return d.slice(0,4) + '-' + d.slice(4,8) + '-' + d.slice(8,12);
+    if(d.length <= 3) return d;
+    if(d.length <= 6) return d.slice(0,3) + '-' + d.slice(3);
+    if(d.length <= 10) return d.slice(0,3) + '-' + d.slice(3,6) + '-' + d.slice(6);
+    return d.slice(0,3) + '-' + d.slice(3,7) + '-' + d.slice(7,11);
+  }
   function NEW_RULE7(){ return DEFAULT_RULES.split('\n').filter(function(l){ return /^7\./.test(l); })[0] || ''; }
   // ── 상태 ────────────────────────────────────────────────────────
   var S = newState();
@@ -36340,8 +36361,8 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
       +   '<div><div class="po-row" style="justify-content:space-between"><b>🗂 백브리핑 보고서 <small style="font-weight:400;color:var(--text3)">대표님·실장용 (집주인에게 보내지 않음)</small></b></div>'
       +     '<textarea id="po-brief" rows="16" placeholder="가격 제안 근거 · 네이버 기등록 가능성 · 소통 방법과 응대 방향"></textarea></div></div></div>'
       + '<div class="po-card" id="po-sv" style="display:none"><div class="po-h">⑤ 저장 · 상담 자료</div>'
-      +   '<div class="po-grid"><div><label>진행 상태</label><select id="po-st">' + ['제안 전','제안 보냄','의뢰 승낙','거절 · 무응답','매물 등록 완료'].map(function(s){ return '<option>' + s + '</option>'; }).join('') + '</select></div>'
-      +     '<div><label>소유주 성함 (승낙 후)</label><input id="po-own"></div><div><label>소유주 연락처 (승낙 후)</label><input id="po-tel"></div>'
+      +   '<div class="po-grid"><div><label>진행 상태</label><select id="po-st" onchange="poSt(this.value)">' + STATUSES.map(function(s){ return '<option>' + s + '</option>'; }).join('') + '</select></div>'
+      +     '<div><label>소유주 성함 (승낙 후)</label><input id="po-own"></div><div><label>소유주 연락처 (승낙 후)</label><input id="po-tel" inputmode="tel" placeholder="010-0000-0000" oninput="poTel(this)"></div>'
       +     '<div><label>호수 (승낙 후 공개)</label><input id="po-ho" placeholder="예: 1203호" oninput="poHo(this.value)"><div id="po-hoi" class="po-cnt" style="margin-top:3px"></div></div></div>'
       +   '<div style="margin-top:8px"><label style="font-size:11px;color:var(--text3)">상담 메모</label><textarea id="po-memo" rows="3" placeholder="통화 내용 · 희망가 · 이사 일정 · 방문 가능 시간 등"></textarea></div>'
       +   '<div class="po-row" style="margin-top:8px"><button class="po-btn pri" onclick="poSave()">💾 저장</button><button class="po-btn" onclick="poPrint()">🖨 상담 자료 인쇄</button>'
@@ -36451,7 +36472,20 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
     var f = hoFloor(S.unitHo), t = f ? tierOf(f, MAXF) : '', qt = qTier();
     e.innerHTML = !S.unitHo ? '' : f ? '→ <b>' + f + '층</b>' + (t ? ' (' + t + '층' + (qt && t !== qt ? ' — <span style="color:#c62828">집주인 입력 「' + qt + '층」과 다름</span>' : '') + ')' : '') + ' · 기등록 가능성을 이 층으로 다시 봅니다' : '층은 호수로 알 수 없습니다';
   }
-  W.poHo = function(v){ S.unitHo = String(v||'').trim(); if(S.req && S.req.cx) analyze(false); hoInfo(); };
+  //  연락처·호수를 적으면 진행 상태를 한 단계씩 올려 준다 (이미 더 나아간 상태는 그대로)
+  function stUp(to){
+    if(stRank(S.status) >= stRank(to)) return;
+    S.status = to; var st = $('po-st'); if(st) st.value = to;
+  }
+  W.poSt = function(v){ S.status = stNorm(v); };
+  W.poTel = function(el){
+    var pos = el.selectionStart, before = el.value.slice(0, pos).replace(/\D/g,'').length;
+    el.value = fmtTel(el.value); S.ownerTel = el.value;
+    var i = 0, c = 0; while(i < el.value.length && c < before){ if(/\d/.test(el.value[i])) c++; i++; }
+    try{ el.setSelectionRange(i, i); }catch(e){}
+    if(el.value.replace(/\D/g,'').length >= 9) stUp('연락처 공개');
+  };
+  W.poHo = function(v){ S.unitHo = String(v||'').trim(); if(S.req && S.req.cx) analyze(false); hoInfo(); if(hoFloor(S.unitHo) || /\d/.test(S.unitHo)) stUp(ST_HANDOFF); };
   W.poLen = function(v){ S.len = num(v) || 700; W.poCount(); };
 
   function analyze(resetPrice){
@@ -36491,7 +36525,7 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
   function paintOut(){
     var p = $('po-prop'), b = $('po-brief'); if(p) p.value = S.proposal || ''; if(b) b.value = S.briefing || '';
     var l = $('po-len'); if(l) l.value = String(S.len || 700);
-    var st = $('po-st'); if(st) st.value = S.status || '제안 전';
+    var st = $('po-st'); if(st) st.value = stNorm(S.status);
     var o = $('po-own'); if(o) o.value = S.owner || ''; var t = $('po-tel'); if(t) t.value = S.ownerTel || ''; var hh = $('po-ho'); if(hh) hh.value = S.unitHo || ''; hoInfo(); var m = $('po-memo'); if(m) m.value = S.memo || '';
     var u = $('po-use'); if(u) u.textContent = usageTxt();
     propState();
@@ -36499,7 +36533,7 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
   }
   function grab(){
     var v = function(id){ var e = $(id); return e ? e.value : ''; };
-    S.proposal = v('po-prop'); S.briefing = v('po-brief'); S.status = v('po-st') || S.status; S.owner = v('po-own'); S.ownerTel = v('po-tel'); S.unitHo = v('po-ho').trim(); S.memo = v('po-memo');
+    S.proposal = v('po-prop'); S.briefing = v('po-brief'); S.status = stNorm(v('po-st') || S.status); S.owner = v('po-own'); S.ownerTel = fmtTel(v('po-tel')); S.unitHo = v('po-ho').trim(); S.memo = v('po-memo');
   }
   W.poCount = function(){
     var p = $('po-prop'), c = $('po-pcnt'), f = $('po-fit'); if(!p || !c) return;
@@ -36555,8 +36589,8 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
     if(id && id !== S.id) W.poOpen(id);
     grab();
     if(!S.req.cx){ alert('넘길 가격 제안이 없습니다.'); return; }
-    if(S.status !== '의뢰 승낙' && S.status !== '매물 등록 완료'
-       && !confirm('진행 상태가 「' + S.status + '」입니다. 보통은 집주인이 의뢰를 승낙한 뒤에 넘깁니다.\n그래도 매물 등록으로 넘길까요?')) return;
+    if(stNorm(S.status) !== ST_HANDOFF && stNorm(S.status) !== '매물 등록 완료'
+       && !confirm('진행 상태가 「' + stNorm(S.status) + '」입니다. 보통은 「' + ST_HANDOFF + '」 뒤에 넘깁니다.\n그래도 매물 등록으로 넘길까요?')) return;
     if(!S.owner || !S.ownerTel || !S.unitHo){
       if(!confirm((!S.unitHo && S.owner && S.ownerTel ? '호수가' : '소유주 성함·연락처' + (S.unitHo ? '가' : '·호수가')) + ' 비어 있습니다.\n매물 등록 화면에서 직접 적으시겠어요? (확인 = 그대로 넘기기)')) return;
     }
@@ -36582,16 +36616,16 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
     var rows = Object.keys(LIST).map(function(k){ return LIST[k]; }).filter(Boolean)
       .sort(function(a,b){ return String(b.at||'').localeCompare(String(a.at||'')); });
     var c = $('po-lcnt'); if(c) c.textContent = rows.length ? rows.length + '건' : '';
-    if(LQ) rows = rows.filter(function(r){ var q = r.req || {}; return (String(q.cx) + q.dong + (r.unitHo||'') + r.status + (r.owner||'')).replace(/\s/g,'').indexOf(LQ) >= 0; });
+    if(LQ) rows = rows.filter(function(r){ var q = r.req || {}; return (String(q.cx) + q.dong + (r.unitHo||'') + stNorm(r.status) + (r.owner||'') + (r.ownerTel||'')).replace(/\s/g,'').indexOf(LQ) >= 0; });
     if(!rows.length){ box.innerHTML = '<div class="po-cnt" style="padding:8px 0">' + (LOADED ? '저장된 가격 제안이 없습니다.' : '불러오는 중…') + '</div>'; return; }
     box.innerHTML = '<table class="po-t"><tr><th>요청·작성</th><th>단지</th><th>동 · 층 · 향</th><th>면적</th><th class="n">제안가</th><th>상태</th><th>소유주</th><th></th></tr>'
       + rows.map(function(r){
-          var q = r.req || {}, st = r.status || '';
-          var tg = st === '의뢰 승낙' || st === '매물 등록 완료' ? 'ok' : st === '거절 · 무응답' ? '' : 'mid';
+          var q = r.req || {}, st = stNorm(r.status);
+          var tg = st === ST_HANDOFF || st === '매물 등록 완료' || st === '연락처 공개' ? 'ok' : st === '거절 · 무응답' ? '' : 'mid';
           return '<tr class="po-list-i" onclick="poOpen(\'' + esc(r.id) + '\')"><td>' + esc(q.when || '') + '<div class="po-cnt">' + esc(String(r.at||'').slice(0,10)) + ' · ' + esc(r.by||'') + '</div></td>'
             + '<td><b>' + esc(q.cx||'') + '</b> <span class="po-tag">' + esc(q.deal||'') + '</span></td><td>' + esc([q.dong, q.floorTxt, q.dir].filter(Boolean).join(' · ')) + '</td>'
             + '<td>' + (q.ex ? '전용 ' + q.ex + '㎡' : '') + '</td><td class="n"><b>' + won(r.price) + '</b></td><td><span class="po-tag ' + tg + '">' + esc(st) + '</span></td>'
-            + '<td>' + esc(r.owner || '') + (r.unitHo ? '<div class="po-cnt">' + esc(hoTxt(r.unitHo)) + '</div>' : '') + '</td><td style="white-space:nowrap">' + (st === '의뢰 승낙' ? '<button class="po-btn grn" style="padding:3px 8px" title="매물 등록으로 넘기기" onclick="event.stopPropagation();poToProps(\'' + esc(r.id) + '\')">🏠</button> ' : '')
+            + '<td>' + esc(r.owner || '') + (r.unitHo ? '<div class="po-cnt">' + esc(hoTxt(r.unitHo)) + '</div>' : '') + '</td><td style="white-space:nowrap">' + (st === ST_HANDOFF || st === '연락처 공개' ? '<button class="po-btn grn" style="padding:3px 8px" title="매물 등록으로 넘기기" onclick="event.stopPropagation();poToProps(\'' + esc(r.id) + '\')">🏠</button> ' : '')
             + '<button class="po-btn" style="padding:3px 8px" onclick="event.stopPropagation();poDel(\'' + esc(r.id) + '\')">🗑</button></td></tr>';
         }).join('') + '</table>';
   }
@@ -36603,7 +36637,7 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
     S.priceManual = r.priceManual != null ? !!r.priceManual : true;        // 옛 기록은 저장된 금액을 지키고, 계산값과 다르면 경고만
     normReq(S.req);
     S.proposal = r.proposal || ''; S.briefing = r.briefing || ''; S.usage = r.usage || null;
-    S.status = r.status || '제안 전'; S.owner = r.owner || ''; S.ownerTel = r.ownerTel || ''; S.memo = r.memo || '';
+    S.status = stNorm(r.status); S.owner = r.owner || ''; S.ownerTel = fmtTel(r.ownerTel || ''); S.memo = r.memo || '';
     S.propId = r.propId || ''; S.propAt = r.propAt || ''; S.unitHo = r.unitHo || '';
     var raw = $('po-raw'); if(raw) raw.value = S.raw;
     paintReq(); analyze(false); paintOut();
@@ -36621,7 +36655,7 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
     w.document.write('<!doctype html><html><head><meta charset="utf-8"><title>가격 제안 상담 자료 — ' + esc(q.cx||'') + '</title>'
       + '<style>body{font-family:"Malgun Gothic",sans-serif;font-size:12.5px;color:#222;margin:24px}h1{font-size:18px;margin:0 0 4px}h2{font-size:14px;border-bottom:2px solid #1a2744;padding-bottom:3px;margin:18px 0 8px}table{border-collapse:collapse;width:100%}td,th{border:1px solid #ccc;padding:4px 6px;text-align:left;vertical-align:top}th{background:#f3f5f8;width:120px}.p{font-size:20px;font-weight:800;color:#1a7f3c}.s{color:#666;font-size:11px}@media print{button{display:none}}</style></head><body>'
       + '<button onclick="print()" style="float:right;padding:6px 14px">🖨 인쇄</button>'
-      + '<h1>직방 가격 제안 상담 자료</h1><div class="s">' + OFFICE + ' · 작성 ' + esc(String(r.at||'').slice(0,10)) + ' ' + esc(r.by||'') + ' · 상태 ' + esc(r.status||'') + '</div>'
+      + '<h1>직방 가격 제안 상담 자료</h1><div class="s">' + OFFICE + ' · 작성 ' + esc(String(r.at||'').slice(0,10)) + ' ' + esc(r.by||'') + ' · 상태 ' + esc(stNorm(r.status)) + '</div>'
       + '<h2>요청 매물</h2><table>'
       + '<tr><th>단지 · 거래</th><td>' + esc(q.cx||'') + ' · ' + esc(q.deal||'') + (q.addr ? ' · ' + esc(q.addr) : '') + '</td></tr>'
       + '<tr><th>동 · 층 · 호</th><td>' + esc([q.dong, q.floorTxt, q.ho].filter(Boolean).join(' · ')) + '</td></tr>'
