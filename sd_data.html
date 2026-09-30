@@ -19425,7 +19425,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.09.30-60';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.09.30-61';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_data.html';      // 이 파일 이름
   var SD_NAME = '실거래가';      // 사람이 부르는 이름
 
@@ -35846,7 +35846,7 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
   function newState(){
     return { id:'', at:'', raw:'', req:{}, trName:'', lsName:'', trade:null, list:null, cands:[],
              alpha:500, price:0, calc:0, priceManual:false, priceNote:'', len:700, proposal:'', briefing:'', usage:null,
-             status:'제안 전', owner:'', ownerTel:'', memo:'', by:'', propId:'', propAt:'' };
+             status:'제안 전', owner:'', ownerTel:'', unitHo:'', memo:'', by:'', propId:'', propAt:'' };
   }
 
   // ── 도움 함수 ───────────────────────────────────────────────────
@@ -35968,6 +35968,12 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
     if(q.repair && !/^(올수리|부분수리|기본형)$/.test(q.repair)){ q.repairTxt = q.repairTxt || q.repair; q.repair = repOf(q.repair); }
     return q;
   }
+  //  호수에서 층 — 「1203호」·「502동 1203호」 → 12층 (100 미만은 층을 알 수 없음)
+  function hoFloor(h){
+    var m = String(h||'').replace(/\d+\s*동/g,'').match(/(\d{3,4})\s*호?/);
+    if(!m) return 0; var n = parseInt(m[1], 10); return n >= 100 ? Math.floor(n / 100) : 0;
+  }
+  function hoTxt(h){ h = String(h||'').trim(); if(!h) return ''; h = h.replace(/\d+\s*동\s*/,''); return /호$/.test(h) ? h : h + '호'; }
   function normDir(d){ d = String(d||'').trim(); if(!d || d === '-') return ''; return /향$/.test(d) ? d : d + '향'; }
   var OCC = { '집주인':'집주인 거주 중 (공실 아님 · 이사 일정 협의)', '세입자':'세입자 거주 중 (임대차 만기·갱신요구권 확인 · 세 안고 매매 또는 만기 맞춰 입주)', '공실':'공실 (즉시 입주 가능)' };
   function tenantTxt(r){
@@ -36086,8 +36092,9 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
     var qd = digits(q.dong), ld = digits(o.dong);
     if(qd && ld){ if(qd === ld){ s += 50; why.push('같은 동 ' + q.dong); } else { s -= 40; why.push('다른 동'); } }
     else if(qd){ s += 5; why.push('동 표기 없음'); }
-    var qt = qTier();
-    if(qt && o.tier){ if(qt === o.tier){ s += 20; why.push(o.tier + '층 구분 일치'); } else { s -= 20; why.push('층 구분 다름(' + o.tier + ')'); } }
+    var qt = qTier(), hf = hoFloor(S.unitHo), lf = parseInt(o.fl);
+    if(hf && lf){ if(hf === lf){ s += 30; why.push('층 정확히 일치(' + hf + '층 · 호수 기준)'); } else { s -= 25; why.push('층 다름(' + lf + '층 · 우리 집 ' + hf + '층)'); } }
+    else if(qt && o.tier){ if(qt === o.tier){ s += 20; why.push(o.tier + '층 구분 일치'); } else { s -= 20; why.push('층 구분 다름(' + o.tier + ')'); } }
     else if(q.floorNo && parseInt(o.fl) === q.floorNo){ s += 30; why.push('층 일치'); }
     var qdir = normDir(q.dir);
     if(qdir && o.dir){ if(qdir === o.dir){ s += 15; why.push('향 일치'); } else if(o.dir.indexOf(qdir.replace('향','')) >= 0 || qdir.indexOf(o.dir.replace('향','')) >= 0){ s += 6; why.push('향 비슷(' + o.dir + ')'); } else { s -= 15; why.push('향 다름(' + o.dir + ')'); } }
@@ -36172,6 +36179,7 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
     out.push('[요청 매물 — 직방 가격 제안 요청' + (q.when ? ' · ' + q.when : '') + ']');
     out.push('단지: ' + (q.cx||'-') + ' · 거래: ' + (q.deal||'매매') + (q.addr ? ' · 주소: ' + q.addr : ''));
     out.push('동·층·호: ' + [q.dong||'동 미상', q.floorTxt||'층 미상', q.ho||'호 비공개'].join(' · ') + (qTier() ? ' — 집주인이 입력한 층 구분: 「' + qTier() + '층」(구체 층수 비공개)' : ''));
+    if(!forOwner && S.unitHo) out.push('호수(의뢰 승낙 후 공개): ' + hoTxt(S.unitHo) + (hoFloor(S.unitHo) ? ' → ' + hoFloor(S.unitHo) + '층' : ''));
     out.push('면적: ' + (q.pyType ? q.pyType + '형 · ' : '') + '전용 ' + (q.ex||'-') + '㎡' + (q.sup ? ' / 공급 ' + q.sup + '㎡(약 ' + Math.round(q.sup/3.3058) + '평)' : ''));
     out.push('향: ' + (q.dir||'-') + ' · 거주: ' + tenantTxt(q) + ' · 수리: ' + repairTxt(q));
     out.push('');
@@ -36278,7 +36286,7 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
                        .map(function(o){ return { level:o.level, score:o.score, price:o.price, dong:o.dong, fl:o.fl, tier:o.tier || '', dir:o.dir, agents:o.agents.join(', '), date:o.date, why:o.why.join(', ') }; }) : [],
       alpha:num(S.alpha), price:num(S.price), calcPrice:num(S.calc), priceManual:!!S.priceManual, priceNote:S.priceNote || '', calc: suggest().note, len:S.len,
       proposal:S.proposal || '', briefing:S.briefing || '', usage:S.usage || null,
-      status:S.status, owner:S.owner || '', ownerTel:S.ownerTel || '', memo:S.memo || '', propId:S.propId || '', propAt:S.propAt || '' };
+      status:S.status, owner:S.owner || '', ownerTel:S.ownerTel || '', unitHo:S.unitHo || '', memo:S.memo || '', propId:S.propId || '', propAt:S.propAt || '' };
   }
   function clean(o){ return JSON.parse(JSON.stringify(o, function(k, v){ return v === undefined ? null : v; })); }
   W.poSave = async function(){
@@ -36333,7 +36341,8 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
       +     '<textarea id="po-brief" rows="16" placeholder="가격 제안 근거 · 네이버 기등록 가능성 · 소통 방법과 응대 방향"></textarea></div></div></div>'
       + '<div class="po-card" id="po-sv" style="display:none"><div class="po-h">⑤ 저장 · 상담 자료</div>'
       +   '<div class="po-grid"><div><label>진행 상태</label><select id="po-st">' + ['제안 전','제안 보냄','의뢰 승낙','거절 · 무응답','매물 등록 완료'].map(function(s){ return '<option>' + s + '</option>'; }).join('') + '</select></div>'
-      +     '<div><label>소유주 성함 (승낙 후)</label><input id="po-own"></div><div><label>소유주 연락처 (승낙 후)</label><input id="po-tel"></div></div>'
+      +     '<div><label>소유주 성함 (승낙 후)</label><input id="po-own"></div><div><label>소유주 연락처 (승낙 후)</label><input id="po-tel"></div>'
+      +     '<div><label>호수 (승낙 후 공개)</label><input id="po-ho" placeholder="예: 1203호" oninput="poHo(this.value)"><div id="po-hoi" class="po-cnt" style="margin-top:3px"></div></div></div>'
       +   '<div style="margin-top:8px"><label style="font-size:11px;color:var(--text3)">상담 메모</label><textarea id="po-memo" rows="3" placeholder="통화 내용 · 희망가 · 이사 일정 · 방문 가능 시간 등"></textarea></div>'
       +   '<div class="po-row" style="margin-top:8px"><button class="po-btn pri" onclick="poSave()">💾 저장</button><button class="po-btn" onclick="poPrint()">🖨 상담 자료 인쇄</button>'
 +     '<button class="po-btn grn" id="po-toprops" onclick="poToProps()">🏠 매물 등록으로 넘기기</button><span id="po-propst" class="po-cnt"></span></div></div>'
@@ -36437,6 +36446,12 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
   }
   W.poPNote = function(v){ S.priceNote = v; };
   W.poUseCalc = function(){ S.calc = suggest().price; S.price = S.calc; S.priceManual = false; paintMarket(); };
+  function hoInfo(){
+    var e = $('po-hoi'); if(!e) return;
+    var f = hoFloor(S.unitHo), t = f ? tierOf(f, MAXF) : '', qt = qTier();
+    e.innerHTML = !S.unitHo ? '' : f ? '→ <b>' + f + '층</b>' + (t ? ' (' + t + '층' + (qt && t !== qt ? ' — <span style="color:#c62828">집주인 입력 「' + qt + '층」과 다름</span>' : '') + ')' : '') + ' · 기등록 가능성을 이 층으로 다시 봅니다' : '층은 호수로 알 수 없습니다';
+  }
+  W.poHo = function(v){ S.unitHo = String(v||'').trim(); if(S.req && S.req.cx) analyze(false); hoInfo(); };
   W.poLen = function(v){ S.len = num(v) || 700; W.poCount(); };
 
   function analyze(resetPrice){
@@ -36477,14 +36492,14 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
     var p = $('po-prop'), b = $('po-brief'); if(p) p.value = S.proposal || ''; if(b) b.value = S.briefing || '';
     var l = $('po-len'); if(l) l.value = String(S.len || 700);
     var st = $('po-st'); if(st) st.value = S.status || '제안 전';
-    var o = $('po-own'); if(o) o.value = S.owner || ''; var t = $('po-tel'); if(t) t.value = S.ownerTel || ''; var m = $('po-memo'); if(m) m.value = S.memo || '';
+    var o = $('po-own'); if(o) o.value = S.owner || ''; var t = $('po-tel'); if(t) t.value = S.ownerTel || ''; var hh = $('po-ho'); if(hh) hh.value = S.unitHo || ''; hoInfo(); var m = $('po-memo'); if(m) m.value = S.memo || '';
     var u = $('po-use'); if(u) u.textContent = usageTxt();
     propState();
     W.poCount();
   }
   function grab(){
     var v = function(id){ var e = $(id); return e ? e.value : ''; };
-    S.proposal = v('po-prop'); S.briefing = v('po-brief'); S.status = v('po-st') || S.status; S.owner = v('po-own'); S.ownerTel = v('po-tel'); S.memo = v('po-memo');
+    S.proposal = v('po-prop'); S.briefing = v('po-brief'); S.status = v('po-st') || S.status; S.owner = v('po-own'); S.ownerTel = v('po-tel'); S.unitHo = v('po-ho').trim(); S.memo = v('po-memo');
   }
   W.poCount = function(){
     var p = $('po-prop'), c = $('po-pcnt'), f = $('po-fit'); if(!p || !c) return;
@@ -36542,8 +36557,8 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
     if(!S.req.cx){ alert('넘길 가격 제안이 없습니다.'); return; }
     if(S.status !== '의뢰 승낙' && S.status !== '매물 등록 완료'
        && !confirm('진행 상태가 「' + S.status + '」입니다. 보통은 집주인이 의뢰를 승낙한 뒤에 넘깁니다.\n그래도 매물 등록으로 넘길까요?')) return;
-    if(!S.owner || !S.ownerTel){
-      if(!confirm('소유주 성함·연락처가 비어 있습니다.\n매물 등록 화면에서 직접 적으시겠어요? (확인 = 그대로 넘기기)')) return;
+    if(!S.owner || !S.ownerTel || !S.unitHo){
+      if(!confirm((!S.unitHo && S.owner && S.ownerTel ? '호수가' : '소유주 성함·연락처' + (S.unitHo ? '가' : '·호수가')) + ' 비어 있습니다.\n매물 등록 화면에서 직접 적으시겠어요? (확인 = 그대로 넘기기)')) return;
     }
     if(S.status === '매물 등록 완료' && S.propId && !confirm('이미 매물로 등록한 가격 제안입니다. 다시 넘길까요?\n(매물관리에서 그 매물을 수정으로 열지 묻습니다)')) return;
     await W.poSave();
@@ -36567,7 +36582,7 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
     var rows = Object.keys(LIST).map(function(k){ return LIST[k]; }).filter(Boolean)
       .sort(function(a,b){ return String(b.at||'').localeCompare(String(a.at||'')); });
     var c = $('po-lcnt'); if(c) c.textContent = rows.length ? rows.length + '건' : '';
-    if(LQ) rows = rows.filter(function(r){ var q = r.req || {}; return (String(q.cx) + q.dong + r.status + (r.owner||'')).replace(/\s/g,'').indexOf(LQ) >= 0; });
+    if(LQ) rows = rows.filter(function(r){ var q = r.req || {}; return (String(q.cx) + q.dong + (r.unitHo||'') + r.status + (r.owner||'')).replace(/\s/g,'').indexOf(LQ) >= 0; });
     if(!rows.length){ box.innerHTML = '<div class="po-cnt" style="padding:8px 0">' + (LOADED ? '저장된 가격 제안이 없습니다.' : '불러오는 중…') + '</div>'; return; }
     box.innerHTML = '<table class="po-t"><tr><th>요청·작성</th><th>단지</th><th>동 · 층 · 향</th><th>면적</th><th class="n">제안가</th><th>상태</th><th>소유주</th><th></th></tr>'
       + rows.map(function(r){
@@ -36576,7 +36591,7 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
           return '<tr class="po-list-i" onclick="poOpen(\'' + esc(r.id) + '\')"><td>' + esc(q.when || '') + '<div class="po-cnt">' + esc(String(r.at||'').slice(0,10)) + ' · ' + esc(r.by||'') + '</div></td>'
             + '<td><b>' + esc(q.cx||'') + '</b> <span class="po-tag">' + esc(q.deal||'') + '</span></td><td>' + esc([q.dong, q.floorTxt, q.dir].filter(Boolean).join(' · ')) + '</td>'
             + '<td>' + (q.ex ? '전용 ' + q.ex + '㎡' : '') + '</td><td class="n"><b>' + won(r.price) + '</b></td><td><span class="po-tag ' + tg + '">' + esc(st) + '</span></td>'
-            + '<td>' + esc(r.owner || '') + '</td><td style="white-space:nowrap">' + (st === '의뢰 승낙' ? '<button class="po-btn grn" style="padding:3px 8px" title="매물 등록으로 넘기기" onclick="event.stopPropagation();poToProps(\'' + esc(r.id) + '\')">🏠</button> ' : '')
+            + '<td>' + esc(r.owner || '') + (r.unitHo ? '<div class="po-cnt">' + esc(hoTxt(r.unitHo)) + '</div>' : '') + '</td><td style="white-space:nowrap">' + (st === '의뢰 승낙' ? '<button class="po-btn grn" style="padding:3px 8px" title="매물 등록으로 넘기기" onclick="event.stopPropagation();poToProps(\'' + esc(r.id) + '\')">🏠</button> ' : '')
             + '<button class="po-btn" style="padding:3px 8px" onclick="event.stopPropagation();poDel(\'' + esc(r.id) + '\')">🗑</button></td></tr>';
         }).join('') + '</table>';
   }
@@ -36589,7 +36604,7 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
     normReq(S.req);
     S.proposal = r.proposal || ''; S.briefing = r.briefing || ''; S.usage = r.usage || null;
     S.status = r.status || '제안 전'; S.owner = r.owner || ''; S.ownerTel = r.ownerTel || ''; S.memo = r.memo || '';
-    S.propId = r.propId || ''; S.propAt = r.propAt || '';
+    S.propId = r.propId || ''; S.propAt = r.propAt || ''; S.unitHo = r.unitHo || '';
     var raw = $('po-raw'); if(raw) raw.value = S.raw;
     paintReq(); analyze(false); paintOut();
     S._saved = r;
@@ -36613,7 +36628,7 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
       + '<tr><th>면적 · 향</th><td>' + (q.pyType ? esc(q.pyType) + '형 · ' : '') + '전용 ' + esc(q.ex||'') + '㎡' + (q.sup ? ' / 공급 ' + esc(q.sup) + '㎡' : '') + ' · ' + esc(q.dir||'') + '</td></tr>'
       + '<tr><th>거주 · 수리</th><td>' + esc(tenantTxt(q)) + ' · 수리 ' + esc(repairTxt(q)) + '</td></tr>'
       + '<tr><th>요청 일시</th><td>' + esc(q.when||'') + '</td></tr>'
-      + (r.owner || r.ownerTel ? '<tr><th>소유주</th><td>' + esc(r.owner||'') + ' ' + esc(r.ownerTel||'') + '</td></tr>' : '')
+      + (r.owner || r.ownerTel || r.unitHo ? '<tr><th>소유주 · 호수</th><td>' + esc(r.owner||'') + ' ' + esc(r.ownerTel||'') + (r.unitHo ? ' · ' + esc((q.dong ? q.dong + ' ' : '') + hoTxt(r.unitHo)) + (hoFloor(r.unitHo) ? ' (' + hoFloor(r.unitHo) + '층)' : '') : '') + '</td></tr>' : '')
       + '</table>'
       + '<h2>제안가</h2><div class="p">' + esc(wonFull(r.price)) + '</div><div class="s">' + esc(r.calc||'') + (r.priceNote ? ' · ' + esc(r.priceNote) : '') + '</div>'
       + '<h2>시장 자료</h2><table>' + (r.tierSum ? '<tr><th>층 구분별 시세</th><td style="white-space:pre-wrap">' + esc(r.tierSum) + '</td></tr>' : '') + '<tr><th>실거래</th><td>' + esc(r.tradeSum||'') + (r.trades && r.trades.length ? '<br>' + r.trades.map(esc).join('<br>') : '') + '</td></tr>'
