@@ -19425,7 +19425,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.09.30-53';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.09.30-54';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_data.html';      // 이 파일 이름
   var SD_NAME = '실거래가';      // 사람이 부르는 이름
 
@@ -33695,7 +33695,8 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
   if(window.__brOn) return; window.__brOn = true;
   var TAB = 24;
   //  매물관리 「매물 등록」에서 별도 창으로 열 때 — sd_data.html?popup=br&q=단지명
-  var POP = /[?&]popup=br(&|$)/.test(location.search);
+  //  주소(?popup=br) 또는 창 이름(sjrws_br)으로 알아본다 — 주소가 바뀌거나 캐시로 열려도 새 창임을 놓치지 않게
+  var POP = /[?&]popup=br(&|$)/.test(location.search) || window.name === 'sjrws_br';
   var W = window;
   W.__brPopup = POP;
   var BASE = 'https://apis.data.go.kr/1613000/BldRgstHubService/';
@@ -34379,22 +34380,23 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
     var rows = R.filter(expHit);
     var se = sumOf(rows,'exc'), sp = sumOf(rows,'pub');
     return '<div class="br-scroll" style="margin-top:8px"><table class="br-tb"><thead><tr>'
-      + '<th>층</th><th>호</th><th style="text-align:right">전유면적</th><th style="text-align:right">공용면적</th>'
-      + '<th style="text-align:right">계</th><th style="text-align:right">전용률</th><th>주용도</th>' + (POP ? '<th></th>' : '') + '</tr></thead><tbody>'
+      + (POP ? '<th></th>' : '') + '<th>층</th><th>호</th><th style="text-align:right">전유면적</th><th style="text-align:right">공용면적</th>'
+      + '<th style="text-align:right">계</th><th style="text-align:right">전용률</th><th>주용도</th></tr></thead><tbody>'
       + rows.map(function(o){
-          return '<tr><td>' + esc(o.flr) + '</td><td><b>' + esc(o.ho) + '</b></td>'
+          return '<tr>' + (POP ? '<td><button class="filter-btn on" style="padding:2px 9px;font-size:11.5px;white-space:nowrap" onclick="brPut(' + R.indexOf(o) + ')" title="동·호·전용면적·층을 매물등록 칸에 넣습니다">↩ 넣기</button></td>' : '')
+            + '<td>' + esc(o.flr) + '</td><td><b>' + esc(o.ho) + '</b></td>'
             + '<td style="text-align:right">' + esc(m2(o.exc)) + '</td>'
             + '<td style="text-align:right">' + esc(m2(o.pub)) + '</td>'
             + '<td style="text-align:right">' + esc(m2(o.tot)) + '</td>'
             + '<td style="text-align:right">' + (o.rate != null ? o.rate + '%' : '') + '</td>'
             + '<td>' + esc(o.purp) + (o.etc && o.etc !== o.purp ? ' <span style="color:var(--text3)">' + esc(o.etc) + '</span>' : '')
-            + '</td>' + (POP ? '<td><button class="filter-btn on" style="padding:2px 9px;font-size:11.5px;white-space:nowrap" onclick="brPut(' + R.indexOf(o) + ')" title="동·호·전용면적·층을 매물등록 칸에 넣습니다">↩ 매물등록에 넣기</button></td>' : '') + '</tr>';
+            + '</td></tr>';
         }).join('')
-      + (rows.length ? '<tr style="font-weight:700"><td colspan="2">계 ' + fmtN(rows.length) + '호실</td>'
+      + (rows.length ? '<tr style="font-weight:700">' + (POP ? '<td></td>' : '') + '<td colspan="2">계 ' + fmtN(rows.length) + '호실</td>'
           + '<td style="text-align:right">' + esc(m2(se)) + '</td>'
           + '<td style="text-align:right">' + esc(m2(sp)) + '</td>'
           + '<td style="text-align:right">' + esc(m2(se+sp)) + '</td>'
-          + '<td style="text-align:right">' + (se+sp > 0 ? (Math.round(se/(se+sp)*1000)/10) + '%' : '') + '</td><td></td>' + (POP ? '<td></td>' : '') + '</tr>'
+          + '<td style="text-align:right">' + (se+sp > 0 ? (Math.round(se/(se+sp)*1000)/10) + '%' : '') + '</td><td></td></tr>'
           : '<tr><td colspan="' + (POP ? 8 : 7) + '" style="color:var(--text3)">거르개에 맞는 호실이 없습니다.</td></tr>')
       + '</tbody></table></div>';
   }
@@ -34640,12 +34642,13 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
       + 'body.br-pop{overflow:hidden}';
     document.head.appendChild(st);
     var w = document.createElement('div'); w.id = 'br-popwrap';
-    w.innerHTML = '<div id="br-popbar"><b>🏗 건축물대장 조회</b><span>매물 등록용 — 호실 표의 「↩ 매물등록에 넣기」로 동·호·전용면적·층을 보냅니다</span>'
+    w.innerHTML = '<div id="br-popbar"><b>🏗 건축물대장 조회</b><span>매물 등록용 — 동을 고르고 「이 동의 호실 받기」 → 호실 줄 맨 앞 「↩ 넣기」로 동·호·전용면적·층을 보냅니다</span>'
       + '<span class="sp"></span><button type="button" onclick="brPopClose()" class="x">✕ 창 닫기</button></div><div id="br-popin"></div>';
     document.body.appendChild(w); document.body.classList.add('br-pop');
     $('br-popin').appendChild(root);
     paint();
     var q = qp('q').trim();
+    if(!q){ try{ q = (sessionStorage.getItem('sjrws_br_q') || '').trim(); }catch(e){} }   //  주소에 없으면 매물등록 창이 남긴 이름
     if(q){                                           //  단지명이 넘어왔으면 아파트 단지 목록에서 먼저 찾고, 없으면 이름으로 조회
       var cands = [];
       [q, q.replace(/^송도\s*/,''), q.replace(/\(.*?\)/g,'').trim(), q.split(/\s+/)[0], q.replace(/^송도\s*/,'').split(/\s+/)[0]]
