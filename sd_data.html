@@ -19425,7 +19425,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.09.30-56';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.09.30-57';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_data.html';      // 이 파일 이름
   var SD_NAME = '실거래가';      // 사람이 부르는 이름
 
@@ -29225,6 +29225,8 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     { n:'자료 · 리포트', d:'손님께 드릴 종이와 화면을 만든다', items:[
       { i:'📊', n:'단지모델 리포트', go:9, d:'단지 하나를 한 장으로 정리해 인쇄' },
       { i:'🎯', n:'매물 제안서', go:10, d:'고른 매물을 제안서로 묶어 드린다' },
+      { i:'🤝', n:'직방 가격 제안', go:26, tag:'새로',
+        d:'직방 가격 제안 요청서를 붙여넣으면 실거래·네이버 호가로 제안가를 잡고 제안서(글자 수 선택)와 백브리핑까지 — 저장해 상담 자료로' },
       { i:'🎬', n:'유튜브 리포트', go:11, d:'송도 시황 리포트 슬라이드' },
       { i:'🖼️', n:'단지 이미지', go:14, d:'단지 조감도·배치도·동호수·분양가·평면도 보관함 — 📁 폴더 일괄 등록' }
     ]},
@@ -29443,7 +29445,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     { k:'sise', n:'📡 시황·시세', t:[18, 0, 12, 1, 2] },
     { k:'real', n:'📈 실거래·동향', t:[3, 4, 5, 15, 13] },
     { k:'prop', n:'🏠 매물',        t:[16, 6, 7, 8, 23, 21, 22] },
-    { k:'tool', n:'📊 자료·도구',   t:[9, 10, 11, 14, 20] }
+    { k:'tool', n:'📊 자료·도구',   t:[9, 10, 11, 26, 14, 20] }
   ];
   var WHERE = {};                       // 탭번호 → 묶음 열쇠
   GROUPS.forEach(function(g){ g.t.forEach(function(n){ WHERE[n] = g.k; }); });
@@ -35764,5 +35766,720 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
   W.sdDip = { findNames:findNames, show:show, cur:function(){ return CUR; }, att:function(){ return ATT; }, have:function(){ return Object.keys(HAVE); } };
 })();
 </script>
+<!-- ═════════════════════════════════════════════════════════════════
+     🤝 직방 가격 제안 (탭 26 · 자료·도구)
+     직방이 보내 주는 「가격 제안 요청서」를 붙여넣으면
+       ① 요청 내용 해석 (단지·동·층·면적·향·거주·수리)
+       ② 같은 단지·같은 면적의 매매 실거래(3→6→12개월, 5건 이상) · 네이버 매물 호가 분석
+       ③ 제안가 = 호가 중위(비슷한 조건 우선) + α, 실거래보다 높게 — 대표님이 확인·수정
+       ④ Claude 로 제안서(글자 수 선택) + 백브리핑(근거 · 네이버 기등록 가능성 · 소통·응대 방향)
+       ⑤ sd/sd_price_offers/{id} 에 저장 — 의뢰 승낙 시 소유주 연락처·상담 메모까지, 상담 자료로 인쇄
+     ═════════════════════════════════════════════════════════════════ -->
+<style>
+#po-root{max-width:1280px;margin:0 auto;padding:14px 14px 60px;font-size:13px;color:var(--text)}
+#po-root h2{font-size:18px;margin:0 0 4px}
+#po-root .po-sub{font-size:12px;color:var(--text3);margin-bottom:12px;line-height:1.6}
+#po-root .po-card{background:var(--card,#fff);border:1px solid var(--border,#e2e5ea);border-radius:12px;padding:14px 16px;margin-bottom:12px}
+#po-root .po-h{font-size:14px;font-weight:800;margin:0 0 10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+#po-root .po-h small{font-weight:400;color:var(--text3);font-size:11.5px}
+#po-root textarea,#po-root input,#po-root select{font-family:inherit;font-size:13px;color:var(--text);background:var(--bg,#fff);border:1px solid var(--border,#d7dce4);border-radius:8px;padding:6px 9px;box-sizing:border-box}
+#po-root textarea{width:100%;line-height:1.6;resize:vertical}
+#po-root .po-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px 12px}
+#po-root .po-grid label{display:block;font-size:11px;color:var(--text3);margin-bottom:3px}
+#po-root .po-grid input,#po-root .po-grid select{width:100%}
+#po-root .po-btn{padding:7px 14px;border-radius:8px;border:1px solid var(--border,#cfd6e4);background:var(--card,#fff);color:var(--text);cursor:pointer;font-size:12.5px;font-family:inherit;white-space:nowrap}
+#po-root .po-btn:hover{border-color:var(--accent)}
+#po-root .po-btn.pri{background:var(--accent,#1a73e8);border-color:transparent;color:#fff;font-weight:700}
+#po-root .po-btn.grn{background:#1a7f3c;border-color:transparent;color:#fff;font-weight:700}
+#po-root .po-btn:disabled{opacity:.55;cursor:default}
+#po-root .po-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+#po-root .po-kpi{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:8px;margin:6px 0 10px}
+#po-root .po-k{background:var(--bg3,#f4f6f9);border-radius:10px;padding:9px 12px}
+#po-root .po-k b{display:block;font-size:16px;margin-top:2px}
+#po-root .po-k span{font-size:11px;color:var(--text3)}
+#po-root table.po-t{width:100%;border-collapse:collapse;font-size:12px}
+#po-root table.po-t th,#po-root table.po-t td{border-bottom:1px solid var(--border,#eceff3);padding:5px 6px;text-align:left;vertical-align:top}
+#po-root table.po-t th{font-size:11px;color:var(--text3);font-weight:600;background:var(--bg3,#f7f8fa)}
+#po-root table.po-t td.n{text-align:right;white-space:nowrap}
+#po-root .po-tag{display:inline-block;font-size:10.5px;border-radius:9px;padding:0 7px;margin:0 3px 2px 0;background:var(--bg3,#eef1f5);color:var(--text3);white-space:nowrap}
+#po-root .po-tag.hi{background:#fde7e9;color:#c62828;font-weight:700}
+#po-root .po-tag.mid{background:#fff4d6;color:#a06800;font-weight:700}
+#po-root .po-tag.ok{background:#e8f5e9;color:#1a7f3c}
+#po-root tr.po-cand td{background:rgba(198,40,40,.05)}
+#po-root .po-price{font-size:22px;font-weight:800;color:#1a7f3c}
+#po-root .po-cnt{font-size:12px;color:var(--text3)}
+#po-root .po-cnt.over{color:#c62828;font-weight:700}
+#po-root .po-msg{font-size:12px;min-height:16px}
+#po-root details summary{cursor:pointer;font-size:12.5px;color:var(--text3)}
+#po-root .po-list-i{cursor:pointer}
+#po-root .po-list-i:hover td{background:var(--bg3,#f4f6f9)}
+#po-root .po-2c{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media (max-width:900px){ #po-root .po-2c{grid-template-columns:1fr} }
+@media print{ #po-root{display:none} }
+</style>
+<script>
+(function(){
+  'use strict';
+  if(window.__poOn) return; window.__poOn = true;
+  var W = window, TAB = 26;
+  var PATH = 'sd/sd_price_offers', RULES_PATH = 'sd/sd_price_offer_rules';
+  var MODEL = 'claude-sonnet-4-6';
+  var WINDOWS = [3, 6, 12], MIN_TRADES = 5, KEY_TRADES = 5, AREA_TOL = 1.5;
+  var LENS = [500, 700, 900, 1100, 1300];
+  var OFFICE = '송도제일공인중개사사무소', TEL = '032-851-6688 · 010-6401-9345', YT = 'www.youtube.com/@songdojeil';
+
+  var DEFAULT_RULES = [
+    '1. 제안가는 최근 실거래가보다 높게, 네이버 매물 호가 중위가에 알파를 더해 근접하게 제시한다.',
+    '2. 같은 단지·같은 평형의 층수·방향·입주(이사) 가능 시기·인테리어 수리 정도를 감안한 호가 예시와 실거래를 근거로 든다.',
+    '3. 집주인이 이 제안을 읽고 직방에서 매물 의뢰를 최종 승낙해야 연락처가 열린다 — 믿음을 주고 의뢰 승낙을 이끄는 글로 쓴다.',
+    '4. 의뢰를 승낙하시면 적정 기간 안에 거래가 성사되도록 그동안의 영업 노하우와 다양한 루트(네이버·직방 노출, 유튜브 유입, 보유 매수 대기 고객 연결, 인근 공동중개망)로 노력하겠다는 멘트를 넣는다.',
+    '5. 중개 의뢰 후에도 매매가는 언제든 매도인의 의견에 따라 바꿀 수 있다는 점을 분명히 적는다.',
+    '6. 마지막에 송도제일공인중개사(032-851-6688, 010-6401-9345)와 유튜브 송도제일부동산TV(www.youtube.com/@songdojeil)를 소개한다.',
+    '7. 「현재 세입자가 살고 있지 않아요」는 공실이 아니라 집주인이 현재 거주 중이라는 뜻이다 — 입주 시기는 협의가 필요하다.'
+  ].join('\n');
+
+  // ── 상태 ────────────────────────────────────────────────────────
+  var S = newState();
+  var LIST = {}, RULES = DEFAULT_RULES, LOADED = false;
+  function newState(){
+    return { id:'', at:'', raw:'', req:{}, trName:'', lsName:'', trade:null, list:null, cands:[],
+             alpha:500, price:0, priceNote:'', len:700, proposal:'', briefing:'', usage:null,
+             status:'제안 전', owner:'', ownerTel:'', memo:'', by:'' };
+  }
+
+  // ── 도움 함수 ───────────────────────────────────────────────────
+  function $(id){ return document.getElementById(id); }
+  function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+  function num(v){ var n = parseFloat(String(v==null?'':v).replace(/,/g,'')); return isNaN(n) ? 0 : n; }
+  function won(m){
+    m = Math.round(num(m)); if(!m) return '-';
+    var e = Math.floor(m/10000), r = m%10000;
+    return (e ? e+'억' : '') + (r ? (e?' ':'') + r.toLocaleString()+'만' : (e?'':'0만'));
+  }
+  function wonFull(m){ var s = won(m); return s === '-' ? s : s + ' 원'; }
+  function median(a){ if(!a.length) return 0; var s = a.slice().sort(function(x,y){return x-y;}), h = s.length>>1; return s.length%2 ? s[h] : (s[h-1]+s[h])/2; }
+  function quant(a, q){ var s = a.slice().sort(function(x,y){return x-y;}); if(!s.length) return 0; var p = (s.length-1)*q, i = Math.floor(p); return s[i] + (s[Math.min(i+1, s.length-1)] - s[i])*(p - i); }
+  function band(a){
+    if(!a.length) return '-';
+    var lo = a.length >= 4 ? quant(a, 0.25) : Math.min.apply(null, a), hi = a.length >= 4 ? quant(a, 0.75) : Math.max.apply(null, a);
+    lo = Math.floor(lo/1000)*1000; hi = Math.ceil(hi/1000)*1000;
+    return lo === hi ? won(lo) + ' 선' : won(lo) + ' ~ ' + won(hi);
+  }
+  function buckets(a){
+    var m = {}; a.forEach(function(v){ var k = Math.floor(v/10000); m[k] = (m[k]||0) + 1; });
+    return Object.keys(m).sort(function(x,y){ return x-y; }).map(function(k){ return (k>0 ? k + '억대' : '1억 미만') + ' ' + m[k] + '건'; }).join(' · ');
+  }
+  function roundUp(v, u){ u = u || 500; return Math.ceil(v / u) * u; }
+  function msg(t, c){ var e = $('po-msg'); if(e){ e.textContent = t || ''; e.style.color = c || ''; } }
+  function toast(t){ try{ if(typeof W.showToast === 'function') return W.showToast(t, 3500); }catch(e){} msg(t); }
+  function me(){ try{ var s = JSON.parse(localStorage.getItem('sd_auth_session') || '{}'); return s.name || s.email || ''; }catch(e){ return ''; } }
+  function ymNow(){ var d = new Date(); return d.getFullYear()*100 + d.getMonth() + 1; }
+  function cutYM(months){ var d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - months + 1); return d.getFullYear()*100 + d.getMonth() + 1; }
+
+  // ── 단지 이름 맞추기 (직방 · 실거래 · 네이버가 서로 다르게 부른다) ─────
+  function nmBase(x){
+    return String(x||'').toUpperCase()
+      .replace(/VIEW/g,'뷰').replace(/블럭/g,'블록').replace(/BLOCK/g,'블록').replace(/BL(?=\d|$|\D)/g,'블록')
+      .replace(/[\s()\[\]{}·,.\-_\/&+]/g,'').replace(/주상복합|주상/g,'').replace(/아파트$/,'');
+  }
+  function nmCore(x){ return nmBase(x).replace(/^송도/,'').replace(/송도$/,''); }
+  function nmLoose(x){ return nmCore(x).replace(/블록/g,''); }
+  //  고를 이름 목록에서 제일 그럴듯한 것 — 같음 > 「송도」 뗀 것 같음 > 「블록」까지 뗀 것 같음 > 한쪽이 다른 쪽을 품음(숫자는 맞아야)
+  function bestName(names, q){
+    if(!q) return '';
+    if(names.indexOf(q) >= 0) return q;
+    var b = nmBase(q), c = nmCore(q), l = nmLoose(q), dq = (l.match(/\d+/g)||[]).join(',');
+    var f = function(fn){ return names.filter(fn); };
+    var r = f(function(n){ return nmBase(n) === b; }); if(r.length === 1) return r[0];
+    r = f(function(n){ return nmCore(n) === c; }); if(r.length === 1) return r[0];
+    r = f(function(n){ return nmLoose(n) === l; }); if(r.length === 1) return r[0];
+    r = f(function(n){ var x = nmLoose(n); return x && l && (x.indexOf(l) >= 0 || l.indexOf(x) >= 0) && (x.match(/\d+/g)||[]).join(',') === dq; });
+    if(r.length) return r.sort(function(a,z){ return Math.abs(nmLoose(a).length - l.length) - Math.abs(nmLoose(z).length - l.length); })[0];
+    return '';
+  }
+  function uniqNames(rows){ var o = {}, out = []; (rows||[]).forEach(function(r){ var n = r && (r['단지명'] || r.단지명); if(n && !o[n]){ o[n] = 1; out.push(n); } }); return out.sort(function(a,b){ return a.localeCompare(b,'ko'); }); }
+  function isSale(){ return (S.req.deal || '매매') === '매매'; }
+  function tradeRows(){ return isSale() ? (W.G && W.G.saleData) || [] : (W.G && W.G.rentData) || []; }
+  function listRows(){ return (W.G && W.G.naverData) || []; }
+
+  // ── ① 요청서 해석 ──────────────────────────────────────────────
+  function parse(raw){
+    var t = String(raw||'').replace(/\r/g,''), L = t.split('\n').map(function(s){ return s.trim(); }).filter(Boolean);
+    var R = { deal:'매매' };
+    var m;
+    if((m = /요청\s*일시\s*[:：]?\s*([0-9.\-\/\s:]+)/.exec(t))) R.when = m[1].trim();
+    L.forEach(function(s){
+      var mm;
+      if(!R.cx && (mm = /^(.+?)\s*[·ㆍ・]\s*(매매|전세|월세)\s*요청/.exec(s))){ R.cx = mm[1].trim(); R.deal = mm[2]; }
+      else if(/^상세\s*주소/.test(s)){
+        R.detail = s.replace(/^상세\s*주소\s*[:：]?\s*/,'');
+        R.detail.split(/[·ㆍ・,]/).forEach(function(p){
+          p = p.trim(); var x;
+          if((x = /^(\S+?)\s*동$/.exec(p))) R.dong = x[1] + '동';
+          else if(/층/.test(p)){ R.floorTxt = p; var y = /(\d+)\s*층/.exec(p); if(y) R.floorNo = +y[1]; R.tier = /저/.test(p) ? '저' : /고/.test(p) ? '고' : /중/.test(p) ? '중' : ''; }
+          else if(/호/.test(p)) R.ho = p;
+        });
+      }
+      else if(/^주소/.test(s)) R.addr = s.replace(/^주소\s*[:：]?\s*/,'');
+      else if(/^평형|전용\s*[\d.]+\s*㎡/.test(s)){
+        if((mm = /평형\s*([\d.]+)/.exec(s))) R.pyType = mm[1];
+        if((mm = /전용\s*([\d.]+)/.exec(s))) R.ex = num(mm[1]);
+        if((mm = /공급\s*([\d.]+)/.exec(s))) R.sup = num(mm[1]);
+      }
+      else if(/^향/.test(s)) R.dir = normDir(s.replace(/^향\s*[:：]?\s*/,''));
+      else if(/^세입자/.test(s)) R.tenant = s.replace(/^세입자\s*(거주)?\s*[:：]?\s*/,'');
+      else if(/^(리모델링|수리)/.test(s)) R.repair = s.replace(/^(리모델링\s*\/?\s*수리|리모델링|수리)\s*[:：]?\s*/,'');
+    });
+    if(!R.cx){ var z = L.filter(function(s){ return /(매매|전세|월세)\s*요청/.test(s); })[0]; if(z) R.cx = z.replace(/[·ㆍ・]?\s*(매매|전세|월세)\s*요청.*/,'').trim(); }
+    R.ownerLives = /살고\s*있지\s*않/.test(R.tenant||'');
+    return R;
+  }
+  function normDir(d){ d = String(d||'').trim(); if(!d || d === '-') return ''; return /향$/.test(d) ? d : d + '향'; }
+  function tenantTxt(r){
+    if(r.ownerLives) return '현재 세입자 없음 → 집주인 거주 중 (공실 아님 · 매도 시 이사 일정 협의)';
+    return r.tenant || '-';
+  }
+
+  // ── ② 실거래 ────────────────────────────────────────────────────
+  function tradeOf(){
+    var nm = S.trName, ex = num(S.req.ex), sale = isSale();
+    if(!nm) return { name:'', months:0, rows:[], sale:sale, maxFloor:0 };
+    var maxF = 0;
+    var pool = tradeRows().filter(function(r){
+      if((r['단지명']||'') !== nm) return false;
+      var f = parseInt(r['층']) || 0; if(f > maxF) maxF = f;
+      var cancel = String(r['해제사유발생일'] || '-').trim(); if(cancel && cancel !== '-' && cancel !== '0') return false;
+      if(!sale && String(r['전월세구분']||'') !== S.req.deal) return false;
+      var e = num(r['전용(㎡)']); return ex ? Math.abs(e - ex) <= AREA_TOL : true;
+    }).map(function(r){
+      return { ym: parseInt(r['계약년월']) || 0, d: parseInt(r['계약일']) || 0, fl: parseInt(r['층']) || 0, ex: num(r['전용(㎡)']),
+               amt: sale ? num(r['거래금액']) : num(r['보증금'] || r['보증금액']), mon: sale ? 0 : num(r['월세금'] || r['월세금액']),
+               kind: String(r['거래유형'] || r['계약구분'] || '') };
+    });
+    var rows = [], used = WINDOWS[WINDOWS.length-1];
+    for(var i=0;i<WINDOWS.length;i++){
+      var c = cutYM(WINDOWS[i]); rows = pool.filter(function(r){ return r.ym >= c; }); used = WINDOWS[i];
+      if(rows.length >= MIN_TRADES) break;
+    }
+    rows.sort(function(a,b){ return (b.ym - a.ym) || (b.d - a.d); });
+    return { name:nm, months:used, rows:rows, sale:sale, maxFloor:maxF, all:pool.length };
+  }
+  function keyTrades(t){
+    if(t.rows.length <= KEY_TRADES) return t.rows.slice();
+    return t.rows.slice().sort(function(a,b){ return (b.amt - a.amt) || (b.ym - a.ym) || (b.d - a.d); }).slice(0, KEY_TRADES);
+  }
+  function tradeSummary(t){
+    if(!t.name) return '실거래 자료에서 이 단지를 찾지 못함';
+    if(!t.rows.length) return '최근 12개월 같은 면적 거래 없음';
+    var a = t.rows.map(function(r){ return r.amt; });
+    return '최근 ' + t.months + '개월 ' + a.length + '건 · 중위가 ' + won(median(a)) + ' · 주요 가격대 ' + band(a) + (a.length >= 4 ? '(가운데 50%)' : '')
+      + ' · 분포 ' + buckets(a) + ' · (전체 범위 ' + won(Math.min.apply(null,a)) + ' ~ ' + won(Math.max.apply(null,a)) + ')';
+  }
+  function tradeLine(r){
+    var ym = String(r.ym);
+    return ym.slice(0,4) + '.' + ym.slice(4) + (r.d ? '.' + String(r.d).padStart(2,'0') : '') + ' · ' + won(r.amt)
+      + (r.mon ? ' / 월 ' + Math.round(r.mon) + '만' : '') + ' · ' + (r.fl ? r.fl + '층' : '층 미상') + ' · 전용 ' + r.ex + '㎡' + (/직거래/.test(r.kind) ? ' · 직거래' : '');
+  }
+
+  // ── ② 네이버 매물 호가 + 기등록 가능성 ──────────────────────────
+  function lid(r){ return [r.거래유형, String(r.동||'').replace(/\D/g,''), r.층, r.호가, r.월세].join('|'); }
+  function digits(s){ return String(s||'').replace(/\D/g,''); }
+  function tierOf(fl, maxF){
+    var s = String(fl||'').trim();
+    if(/^저/.test(s)) return '저'; if(/^중/.test(s)) return '중'; if(/^고/.test(s)) return '고';
+    var n = parseInt(s); if(!n) return '';
+    if(!maxF || maxF < 6){ return n <= 3 ? '저' : ''; }
+    return n <= Math.max(3, Math.round(maxF/3)) ? '저' : n <= Math.round(maxF*2/3) ? '중' : '고';
+  }
+  function listOf(maxF){
+    var nm = S.lsName, ex = num(S.req.ex), deal = S.req.deal || '매매';
+    if(!nm) return { name:'', rows:[], groups:[] };
+    var g = {}, order = [];
+    listRows().forEach(function(r){
+      if(r.단지명 !== nm) return;
+      var t = String(r.거래유형||''); if(deal === '월세' ? !(t === '월세' || t === '단기') : t !== deal) return;
+      var e = num(r.전용); if(ex && Math.abs(e - ex) > AREA_TOL) return;
+      var k = lid(r);
+      if(!g[k]){ g[k] = { r:r, agents:[], n:0 }; order.push(k); }
+      g[k].n++; if(r.중개사 && g[k].agents.indexOf(r.중개사) < 0) g[k].agents.push(r.중개사);
+      String(r.중복업소명||'').split(/[,·\/]/).forEach(function(a){ a = a.trim(); if(a && g[k].agents.indexOf(a) < 0) g[k].agents.push(a); });
+    });
+    var rows = order.map(function(k){
+      var x = g[k], r = x.r, fl = String(r.층||'-');
+      var o = { price:num(r.호가), mon:num(r.월세), dong:String(r.동||'-'), fl:fl, tier:tierOf(fl, maxF), dir:normDir(r.방향), ex:num(r.전용),
+                type:r.타입||'', date:r.입력일||'', agent:r.중개사||'', agents:x.agents, dup:Math.max(num(r.중복등록수), x.agents.length - 1),
+                note:String(r.특이사항||''), own:/송도제일/.test(String(r.중개사||'')) };
+      score(o); return o;
+    }).filter(function(o){ return o.price > 0; }).sort(function(a,b){ return a.price - b.price; });
+    return { name:nm, rows:rows };
+  }
+  //  이 매물이 직방으로 가격을 물어 온 바로 그 집일 가능성 — 동·층 구분·향·거주 형태를 맞춰 본다
+  function score(o){
+    var q = S.req, s = 0, why = [];
+    var qd = digits(q.dong), ld = digits(o.dong);
+    if(qd && ld){ if(qd === ld){ s += 50; why.push('같은 동 ' + q.dong); } else { s -= 40; why.push('다른 동'); } }
+    else if(qd){ s += 5; why.push('동 표기 없음'); }
+    if(q.tier && o.tier){ if(q.tier === o.tier){ s += 20; why.push(o.tier + '층 구분 일치'); } else { s -= 20; why.push('층 구분 다름(' + o.tier + ')'); } }
+    else if(q.floorNo && parseInt(o.fl) === q.floorNo){ s += 30; why.push('층 일치'); }
+    var qdir = normDir(q.dir);
+    if(qdir && o.dir){ if(qdir === o.dir){ s += 15; why.push('향 일치'); } else if(o.dir.indexOf(qdir.replace('향','')) >= 0 || qdir.indexOf(o.dir.replace('향','')) >= 0){ s += 6; why.push('향 비슷(' + o.dir + ')'); } else { s -= 15; why.push('향 다름(' + o.dir + ')'); } }
+    var n = o.note;
+    if(q.ownerLives){
+      if(/주인\s*거주|집주인|입주\s*협의|협의\s*입주|날짜\s*협의|이사\s*협의/.test(n)){ s += 10; why.push('특이사항: 주인 거주·입주 협의'); }
+      if(/세\s*안고|세안|전세\s*끼|월세\s*끼|임대\s*중|임차인/.test(n)){ s -= 15; why.push('특이사항: 세입자 있음'); }
+    }
+    if(/수리|올수리|리모델링|인테리어/.test(n) && /해당\s*없음|없음/.test(q.repair||'')){ s -= 5; why.push('특이사항: 수리함(요청은 수리 없음)'); }
+    if(o.dup > 0){ s += 5; why.push('여러 업소 등록 ' + (o.dup + 1) + '곳'); }
+    if(o.own) why.push('★ 자사 매물');
+    o.score = s; o.why = why;
+    o.level = s >= 70 ? '높음' : s >= 45 ? '보통' : '낮음';
+  }
+  function listSummary(ls){
+    var a = ls.rows.map(function(o){ return o.price; });
+    if(!a.length) return '같은 면적 ' + (S.req.deal||'매매') + ' 매물 없음';
+    return a.length + '건(같은 매물 중복 제외) · 호가 중위 ' + won(median(a)) + ' · 주요 호가대 ' + band(a) + ' · 최저 ' + won(Math.min.apply(null,a)) + ' ~ 최고 ' + won(Math.max.apply(null,a));
+  }
+  function similar(ls){
+    var q = S.req, qdir = normDir(q.dir);
+    var both = ls.rows.filter(function(o){ return (!q.tier || o.tier === q.tier) && (!qdir || o.dir === qdir); });
+    if(both.length >= 3) return { rows:both, label:(q.tier ? q.tier + '층' : '') + (qdir ? ' · ' + qdir : '') };
+    var t = ls.rows.filter(function(o){ return q.tier && o.tier === q.tier; });
+    if(t.length >= 3) return { rows:t, label:q.tier + '층' };
+    return { rows:ls.rows, label:'전체' };
+  }
+
+  // ── ③ 제안가 ───────────────────────────────────────────────────
+  function suggest(){
+    var t = S.trade, ls = S.list, sim = ls ? similar(ls) : { rows:[], label:'' };
+    var H = sim.rows.length ? median(sim.rows.map(function(o){ return o.price; })) : 0;
+    var ta = t && t.rows.length ? t.rows.map(function(r){ return r.amt; }) : [];
+    var T = ta.length ? median(ta) : 0, Tmax = ta.length ? Math.max.apply(null, ta) : 0;
+    var base = H || (T ? T * 1.05 : 0), note = [];
+    if(!base) return { price:0, note:'실거래·호가가 모두 없어 제안가를 계산하지 못했습니다 — 직접 적어 주세요', H:0, T:0, Tmax:0, simLabel:'' };
+    var p = roundUp(base + num(S.alpha), 500);
+    if(H) note.push('호가 중위(' + sim.label + ' ' + sim.rows.length + '건) ' + won(H) + ' + α ' + won(num(S.alpha) || 0));
+    else note.push('호가가 없어 실거래 중위 ' + won(T) + ' × 1.05 + α');
+    if(T && p <= T){ p = roundUp(T + Math.max(500, num(S.alpha)), 500); note.push('실거래 중위보다 높게 올림'); }
+    if(Tmax && p <= Tmax) note.push('⚠ 최근 최고 실거래 ' + won(Tmax) + ' 이하 — 확인 필요');
+    return { price:p, note:note.join(' → ') + ' = ' + won(p) + ' (500만 단위 올림)', H:H, T:T, Tmax:Tmax, simLabel:sim.label, simN:sim.rows.length };
+  }
+
+  // ── Claude ─────────────────────────────────────────────────────
+  function key(){ try{ return (typeof W.getClaudeKey === 'function' ? W.getClaudeKey() : localStorage.getItem('sdj_claude_api_key')) || ''; }catch(e){ return ''; } }
+  async function claude(prompt, maxTok){
+    var k = key();
+    if(!k){
+      if(confirm('Anthropic API 키가 설정되지 않았습니다.\n지금 설정하시겠습니까?') && typeof W.setClaudeKey === 'function') W.setClaudeKey();
+      k = key(); if(!k) throw new Error('API 키가 없습니다');
+    }
+    var resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json', 'x-api-key':k, 'anthropic-version':'2023-06-01', 'anthropic-dangerous-direct-browser-access':'true' },
+      body: JSON.stringify({ model:MODEL, max_tokens:maxTok, messages:[{ role:'user', content:prompt }] })
+    });
+    var d = await resp.json();
+    if(d.error) throw new Error(d.error.message || JSON.stringify(d.error));
+    var txt = (d.content||[]).filter(function(b){ return b.type === 'text'; }).map(function(b){ return b.text; }).join('\n').trim();
+    var u = d.usage || {};
+    S.usage = S.usage || { in:0, out:0 };
+    S.usage.in += u.input_tokens || 0; S.usage.out += u.output_tokens || 0;
+    return txt;
+  }
+  function usageTxt(){
+    var u = S.usage; if(!u) return '';
+    var usd = u.in * 3 / 1e6 + u.out * 15 / 1e6;
+    return 'AI ' + MODEL + ' · 입력 ' + u.in.toLocaleString() + ' / 출력 ' + u.out.toLocaleString() + ' 토큰 · 약 $' + usd.toFixed(3) + ' (≈' + Math.round(usd * 1400).toLocaleString() + '원)';
+  }
+  function factBlock(forOwner){
+    var q = S.req, t = S.trade || { rows:[] }, ls = S.list || { rows:[] }, sg = suggest(), sim = similar(ls);
+    var out = [];
+    out.push('[요청 매물 — 직방 가격 제안 요청' + (q.when ? ' · ' + q.when : '') + ']');
+    out.push('단지: ' + (q.cx||'-') + ' · 거래: ' + (q.deal||'매매') + (q.addr ? ' · 주소: ' + q.addr : ''));
+    out.push('동·층·호: ' + [q.dong||'동 미상', q.floorTxt||'층 미상', q.ho||'호 비공개'].join(' · '));
+    out.push('면적: ' + (q.pyType ? q.pyType + '형 · ' : '') + '전용 ' + (q.ex||'-') + '㎡' + (q.sup ? ' / 공급 ' + q.sup + '㎡(약 ' + Math.round(q.sup/3.3058) + '평)' : ''));
+    out.push('향: ' + (q.dir||'-') + ' · 거주: ' + tenantTxt(q) + ' · 수리: ' + (q.repair||'-'));
+    out.push('');
+    out.push('[' + (isSale() ? '매매' : q.deal) + ' 실거래 — ' + (t.name||'단지 미확인') + ' · 전용 ±' + AREA_TOL + '㎡ · 해제 거래 제외 · 3→6→12개월 5건 이상]');
+    out.push(tradeSummary(t));
+    var kt = keyTrades(t);
+    if(kt.length) out.push((t.rows.length > kt.length ? '거래사례(거래가 상위 ' + kt.length + '건):' : '거래사례:') + '\n' + kt.map(function(r){ return '- ' + tradeLine(r); }).join('\n'));
+    out.push('');
+    out.push('[네이버 매물 호가 — ' + (ls.name||'단지 미확인') + ' · 같은 면적 ' + (q.deal||'매매') + ']');
+    out.push(listSummary(ls));
+    if(sim.rows.length && sim.label !== '전체') out.push('비슷한 조건(' + sim.label + ') ' + sim.rows.length + '건 · 호가 중위 ' + won(median(sim.rows.map(function(o){ return o.price; }))));
+    if(!forOwner && ls.rows.length) out.push(ls.rows.slice(0, 20).map(function(o){
+      return '- ' + won(o.price) + (o.mon ? '/월 ' + o.mon + '만' : '') + ' · ' + o.dong + ' · ' + o.fl + '층(' + (o.tier||'?') + ') · ' + (o.dir||'향 미상') + ' · ' + (o.agents.join(', ') || '-') + (o.note ? ' · ' + o.note.slice(0, 50) : '');
+    }).join('\n'));
+    if(forOwner && ls.rows.length) out.push('호가 예시(업소명·동 표기 없이 써야 함):\n' + ls.rows.slice(0, 12).map(function(o){ return '- ' + won(o.price) + ' · ' + o.fl + '층(' + (o.tier||'?') + ') · ' + (o.dir||'향 미상') + (o.note ? ' · ' + o.note.slice(0, 30) : ''); }).join('\n'));
+    out.push('');
+    out.push('[제안가 — 대표님 확정] ' + wonFull(S.price) + (S.priceNote ? ' (' + S.priceNote + ')' : ''));
+    out.push('산식: ' + sg.note + (sg.T ? ' · 실거래 중위 ' + won(sg.T) + ' 대비 ' + (S.price >= sg.T ? '+' : '') + won(S.price - sg.T) : ''));
+    return out.join('\n');
+  }
+  function proposalPrompt(n){
+    return '당신은 인천 송도의 21년 경력 공인중개사 「' + OFFICE + '」 대표입니다. 부동산 사이트 직방을 통해 집주인이 자기 집의 적정 가격을 물어 왔고, 직방이 회원 중개사인 우리에게 가격 제안을 요청했습니다. '
+      + '집주인이 이 제안을 읽고 직방에서 매물 의뢰를 승낙해야 연락처가 열립니다.\n\n'
+      + factBlock(true) + '\n\n[답변 기준 — 반드시 지킬 것]\n' + RULES + '\n\n'
+      + '[작성 요령]\n'
+      + '- 직방 답변 칸에 그대로 붙여 넣을 글입니다. 마크다운(#, **, 표)·이모지 없이, 줄바꿈으로 단락을 나눕니다.\n'
+      + '- 분량: 공백 포함 ' + n + '자 이내 (목표 ' + Math.round(n*0.88) + '~' + n + '자). 넘기지 마세요.\n'
+      + '- 제안가는 위 [제안가]를 그대로 씁니다(「○억 ○,○○○만 원 선」). 실거래 요약과 같은 조건 호가 수준을 근거로 짧게 설명합니다.\n'
+      + '- 다른 중개업소 이름, 특정 동·호의 매물 정보, 내부 판단(이미 다른 곳에 내놓았을 가능성 등)은 쓰지 않습니다.\n'
+      + '- 집주인이 거주 중이면 이사 일정은 협의해 맞춘다는 점을 자연스럽게 담습니다.\n'
+      + '- 마지막 줄: ' + OFFICE + ' ☎ 032-851-6688 / 010-6401-9345 · 유튜브 송도제일부동산TV ' + YT + '\n'
+      + '출력은 제안서 본문만.';
+  }
+  function briefPrompt(){
+    var ls = S.list || { rows:[] };
+    var c = ls.rows.filter(function(o){ return o.level !== '낮음'; }).sort(function(a,b){ return b.score - a.score; }).slice(0, 8);
+    return '당신은 송도제일공인중개사사무소 대표를 보좌하는 실장입니다. 직방 가격 제안 건에 대한 대표님용 내부 「백브리핑 보고서」를 씁니다. 집주인에게 보내는 글이 아니므로 솔직하고 실무적으로 씁니다.\n\n'
+      + factBlock(false) + '\n\n'
+      + '[네이버 기등록 가능성 — 시스템 점수(동 일치 +50·다르면 −40, 층 구분 일치 +20·다르면 −20, 향 일치 +15·다르면 −15, 특이사항 주인거주·입주협의 +10, 여러 업소 등록 +5 / 70↑ 높음 · 45↑ 보통)]\n'
+      + (c.length ? c.map(function(o){ return '- ' + o.level + '(' + o.score + '점) ' + won(o.price) + ' · ' + o.dong + ' · ' + o.fl + '층 · ' + (o.dir||'향 미상') + ' · 등록 ' + (o.agents.join(', ')||'-') + ' · 입력 ' + (o.date||'-') + ' · 근거: ' + o.why.join(', ') + (o.note ? ' · 특이: ' + o.note.slice(0,60) : ''); }).join('\n') : '- 조건이 맞는 매물 없음 (보통 이상 0건)')
+      + '\n\n[제안서(집주인에게 보낸 글)]\n' + (S.proposal || '(아직 없음)') + '\n\n'
+      + '[답변 기준]\n' + RULES + '\n\n'
+      + '[보고서 구성 — 소제목은 「■ 」로 시작, 항목은 「- 」]\n'
+      + '■ 1. 한 줄 결론 (제안가·승낙 가능성·핵심 전략)\n'
+      + '■ 2. 가격 제안 근거 (실거래 중위·주요 가격대·상위 사례, 같은 조건 호가 중위, α 판단, 층·향·거주·수리 반영, 제안가의 위치: 실거래 대비·호가 대비)\n'
+      + '■ 3. 네이버 기등록 가능성 (위 점수와 근거로 판단 — 이미 다른 업소에 내놓은 집이 가격 비교차 물었을 가능성, 그 경우 집주인 심리와 우리가 차별화할 점. 단정하지 말고 가능성으로)\n'
+      + '■ 4. 소유주 소통 방법 (승낙 후 첫 연락 시점·채널, 첫 통화 핵심 멘트 3~4줄 예시, 방문·사진 촬영 약속 잡기, 집주인 거주에 따른 방문 시간·이사 일정 협의)\n'
+      + '■ 5. 응대 방향 (예상 질문과 답 3~5개 — 가격을 더 받을 수 있나, 다른 곳보다 나은 점, 중개보수, 언제 팔리나 등 / 가격 조정 시나리오: 문의 적을 때·많을 때)\n'
+      + '■ 6. 다음 할 일 체크리스트\n'
+      + '분량 1,500~2,500자. 마크다운 표·굵은 글씨 없이.';
+  }
+
+  // ── 저장소 ─────────────────────────────────────────────────────
+  function fbReady(){ return !!(W._fbGet && W._fbRef && W._fbDb && W._fbSet); }
+  async function waitFb(){ for(var i=0;i<80 && !fbReady();i++) await new Promise(function(r){ setTimeout(r, 250); }); if(!fbReady()) throw new Error('파이어베이스 연결 대기 중'); }
+  async function loadAll(){
+    try{
+      await waitFb();
+      var s = await W._fbGet(W._fbRef(W._fbDb, PATH)); LIST = (s && s.val && s.val()) || {};
+      var r = await W._fbGet(W._fbRef(W._fbDb, RULES_PATH)); var rv = r && r.val && r.val(); if(rv && typeof rv === 'string') RULES = rv;
+      LOADED = true;
+    }catch(e){ msg('저장된 가격 제안을 읽지 못했습니다: ' + e.message, '#c33'); }
+    paintRules(); paintList();
+  }
+  function record(){
+    return { id:S.id, at:S.at, upd:new Date().toISOString(), by:S.by || me(), raw:S.raw, req:S.req, trName:S.trName, lsName:S.lsName,
+      tradeSum: S.trade ? tradeSummary(S.trade) : '', trades: S.trade ? keyTrades(S.trade).map(tradeLine) : [],
+      listSum: S.list ? listSummary(S.list) : '',
+      cands: S.list ? S.list.rows.filter(function(o){ return o.level !== '낮음'; }).sort(function(a,b){ return b.score - a.score; }).slice(0, 8)
+                       .map(function(o){ return { level:o.level, score:o.score, price:o.price, dong:o.dong, fl:o.fl, dir:o.dir, agents:o.agents.join(', '), date:o.date, why:o.why.join(', ') }; }) : [],
+      alpha:num(S.alpha), price:num(S.price), priceNote:S.priceNote || '', calc: suggest().note, len:S.len,
+      proposal:S.proposal || '', briefing:S.briefing || '', usage:S.usage || null,
+      status:S.status, owner:S.owner || '', ownerTel:S.ownerTel || '', memo:S.memo || '' };
+  }
+  function clean(o){ return JSON.parse(JSON.stringify(o, function(k, v){ return v === undefined ? null : v; })); }
+  W.poSave = async function(){
+    grab();
+    if(!S.req.cx){ alert('요청서를 먼저 붙여넣고 해석해 주세요.'); return; }
+    if(!S.id){ S.id = 'po' + Date.now(); S.at = new Date().toISOString(); S.by = me(); }
+    var rec = clean(record());
+    try{
+      await waitFb();
+      await W._fbSet(W._fbRef(W._fbDb, PATH + '/' + S.id), rec);
+      LIST[S.id] = rec; paintList();
+      msg('💾 저장했습니다 — 아래 「저장된 가격 제안」에서 다시 열 수 있습니다.', '#1a7f3c');
+    }catch(e){ msg('저장하지 못했습니다: ' + e.message, '#c33'); }
+  };
+  W.poDel = async function(id){
+    var r = LIST[id]; if(!r) return;
+    if(!confirm('「' + ((r.req||{}).cx||'') + ' ' + ((r.req||{}).dong||'') + '」 가격 제안 기록을 지울까요?')) return;
+    try{ await W._fbSet(W._fbRef(W._fbDb, PATH + '/' + id), null); delete LIST[id]; if(S.id === id) S.id = ''; paintList(); }
+    catch(e){ alert('지우지 못했습니다: ' + e.message); }
+  };
+  W.poSaveRules = async function(){
+    var v = (($('po-rules')||{}).value || '').trim(); if(!v) return;
+    RULES = v;
+    try{ await waitFb(); await W._fbSet(W._fbRef(W._fbDb, RULES_PATH), v); msg('답변 기준을 저장했습니다 — 사무소 모두에게 같이 적용됩니다.', '#1a7f3c'); }
+    catch(e){ msg('답변 기준을 저장하지 못했습니다: ' + e.message, '#c33'); }
+  };
+  W.poRulesDefault = function(){ var e = $('po-rules'); if(e) e.value = DEFAULT_RULES; RULES = DEFAULT_RULES; };
+
+  // ── 화면 ───────────────────────────────────────────────────────
+  function shell(){
+    var root = $('po-root'); if(!root || root.getAttribute('data-on')) return;
+    root.setAttribute('data-on', '1');
+    root.innerHTML = '<h2>🤝 직방 가격 제안</h2>'
+      + '<div class="po-sub">직방이 보내 준 「가격 제안 요청서」를 붙여넣으면 같은 단지·같은 면적의 실거래와 네이버 매물 호가로 제안가를 잡고, 집주인께 보낼 <b>제안서</b>와 대표님용 <b>백브리핑</b>을 만듭니다. 저장해 두면 의뢰 승낙 뒤 상담 자료로 씁니다.'
+      + ' <span id="po-data" style="color:var(--text3)"></span></div>'
+      + '<div class="po-card"><div class="po-h">① 요청서 붙여넣기 <small>직방 요청 화면의 글을 통째로 복사해 넣으세요</small></div>'
+      +   '<textarea id="po-raw" rows="7" placeholder="요청 일시 : 2026.09.29 10:02&#10;송도더샵마스터뷰22블록·매매 요청&#10;주소인천광역시 연수구 송도동 111&#10;상세 주소2202동·중층·호 비공개&#10;평형114 · 전용 84.98㎡ / 공급 114.27㎡&#10;향남&#10;세입자 거주현재 세입자가 살고 있지 않아요.&#10;리모델링/수리해당 없음"></textarea>'
+      +   '<div class="po-row" style="margin-top:8px"><button class="po-btn pri" onclick="poParse()">🔎 해석하고 분석하기</button><button class="po-btn" onclick="poNew()">🆕 새 요청</button><span id="po-msg" class="po-msg"></span></div>'
+      +   '<div id="po-req" style="margin-top:12px"></div></div>'
+      + '<div class="po-card" id="po-mk" style="display:none"><div class="po-h">② 시장 자료 <small>같은 단지 · 전용 ±' + AREA_TOL + '㎡</small></div><div id="po-mkin"></div></div>'
+      + '<div class="po-card" id="po-pr" style="display:none"><div class="po-h">③ 제안가 <small>계산값을 확인하고 필요하면 고쳐 주세요 — 제안서에 이 금액이 그대로 들어갑니다</small></div><div id="po-prin"></div></div>'
+      + '<div class="po-card" id="po-ai" style="display:none"><div class="po-h">④ 제안서 · 백브리핑</div>'
+      +   '<div class="po-row" style="margin-bottom:8px">제안서 글자 수 <select id="po-len" onchange="poLen(this.value)">' + LENS.map(function(n){ return '<option value="' + n + '"' + (n===700?' selected':'') + '>' + n + '자</option>'; }).join('') + '</select>'
+      +     '<button class="po-btn grn" id="po-go" onclick="poGen()">✨ 제안서 + 백브리핑 만들기</button>'
+      +     '<button class="po-btn" id="po-go1" onclick="poGenProposal()">제안서만 다시</button>'
+      +     '<button class="po-btn" id="po-go2" onclick="poGenBrief()">백브리핑만 다시</button><span id="po-use" class="po-cnt"></span></div>'
+      +   '<details style="margin-bottom:10px"><summary>📏 답변 기준 (사무소 공통 · 고칠 수 있음)</summary><textarea id="po-rules" rows="8" style="margin-top:6px"></textarea>'
+      +     '<div class="po-row" style="margin-top:6px"><button class="po-btn" onclick="poSaveRules()">답변 기준 저장</button><button class="po-btn" onclick="poRulesDefault()">처음 기준으로</button></div></details>'
+      +   '<div class="po-2c"><div><div class="po-row" style="justify-content:space-between"><b>📨 제안서 <small style="font-weight:400;color:var(--text3)">직방 답변 칸에 붙여넣기</small></b><span><span id="po-pcnt" class="po-cnt"></span> <button class="po-btn" onclick="poCopy()">📋 복사</button> <button class="po-btn" id="po-fit" onclick="poFit()" style="display:none">✂️ 글자 수 맞추기</button></span></div>'
+      +     '<textarea id="po-prop" rows="16" oninput="poCount()" placeholder="「제안서 + 백브리핑 만들기」를 누르면 여기에 나옵니다. 고쳐 써도 됩니다."></textarea></div>'
+      +   '<div><div class="po-row" style="justify-content:space-between"><b>🗂 백브리핑 보고서 <small style="font-weight:400;color:var(--text3)">대표님·실장용 (집주인에게 보내지 않음)</small></b></div>'
+      +     '<textarea id="po-brief" rows="16" placeholder="가격 제안 근거 · 네이버 기등록 가능성 · 소통 방법과 응대 방향"></textarea></div></div></div>'
+      + '<div class="po-card" id="po-sv" style="display:none"><div class="po-h">⑤ 저장 · 상담 자료</div>'
+      +   '<div class="po-grid"><div><label>진행 상태</label><select id="po-st">' + ['제안 전','제안 보냄','의뢰 승낙','거절 · 무응답','매물 등록 완료'].map(function(s){ return '<option>' + s + '</option>'; }).join('') + '</select></div>'
+      +     '<div><label>소유주 성함 (승낙 후)</label><input id="po-own"></div><div><label>소유주 연락처 (승낙 후)</label><input id="po-tel"></div></div>'
+      +   '<div style="margin-top:8px"><label style="font-size:11px;color:var(--text3)">상담 메모</label><textarea id="po-memo" rows="3" placeholder="통화 내용 · 희망가 · 이사 일정 · 방문 가능 시간 등"></textarea></div>'
+      +   '<div class="po-row" style="margin-top:8px"><button class="po-btn pri" onclick="poSave()">💾 저장</button><button class="po-btn" onclick="poPrint()">🖨 상담 자료 인쇄</button></div></div>'
+      + '<div class="po-card"><div class="po-h">🗃 저장된 가격 제안 <small id="po-lcnt"></small><input id="po-q" placeholder="단지·동·상태 찾기" oninput="poListFind()" style="margin-left:auto;width:200px"></div><div id="po-list"></div></div>';
+    paintRules();
+  }
+  function paintRules(){ var e = $('po-rules'); if(e && !e.value) e.value = RULES; }
+  function dataLine(){
+    var e = $('po-data'); if(!e) return;
+    e.textContent = '· 자료: 매매 실거래 ' + ((W.G && W.G.saleData) || []).length.toLocaleString() + '건 · 전월세 ' + ((W.G && W.G.rentData) || []).length.toLocaleString() + '건 · 네이버 아파트 매물 ' + listRows().length.toLocaleString() + '건';
+  }
+  function field(id, label, v, opts){
+    if(opts) return '<div><label>' + label + '</label><select id="po-f-' + id + '" onchange="poField()">' + opts.map(function(o){ return '<option' + (o===v?' selected':'') + '>' + o + '</option>'; }).join('') + '</select></div>';
+    return '<div><label>' + label + '</label><input id="po-f-' + id + '" value="' + esc(v==null?'':v) + '" onchange="poField()"></div>';
+  }
+  function paintReq(){
+    var q = S.req, box = $('po-req'); if(!box) return;
+    if(!q.cx){ box.innerHTML = ''; return; }
+    var tn = uniqNames(tradeRows()), ln = uniqNames(listRows().filter(function(r){ return r; }));
+    var sel = function(id, names, cur){
+      return '<select id="' + id + '" onchange="poPickName()" style="width:100%"><option value="">— 찾지 못함 · 골라 주세요 —</option>' + names.map(function(n){ return '<option' + (n===cur?' selected':'') + '>' + esc(n) + '</option>'; }).join('') + '</select>';
+    };
+    box.innerHTML = '<div class="po-grid">'
+      + field('cx','단지명 (직방)', q.cx) + field('deal','거래', q.deal, ['매매','전세','월세'])
+      + field('dong','동', q.dong) + field('floorTxt','층', q.floorTxt) + field('tier','층 구분', q.tier||'', ['','저','중','고'])
+      + field('ex','전용㎡', q.ex) + field('sup','공급㎡', q.sup) + field('dir','향', q.dir)
+      + field('repair','수리', q.repair) + field('when','요청 일시', q.when)
+      + '<div><label>거주</label><select id="po-f-own" onchange="poField()"><option value="1"' + (q.ownerLives?' selected':'') + '>집주인 거주 중 (세입자 없음)</option><option value="0"' + (q.ownerLives?'':' selected') + '>' + esc(q.ownerLives ? '세입자 있음 · 공실' : (q.tenant||'세입자 있음 · 공실')) + '</option></select></div>'
+      + '</div><div class="po-grid" style="margin-top:8px;grid-template-columns:1fr 1fr">'
+      + '<div><label>📈 실거래 단지명</label>' + sel('po-trn', tn, S.trName) + '</div>'
+      + '<div><label>🏠 네이버 매물 단지명</label>' + sel('po-lsn', ln, S.lsName) + '</div></div>'
+      + (q.ownerLives ? '<div style="margin-top:8px;font-size:12px;color:#a06800">ℹ️ 「현재 세입자가 살고 있지 않아요」 → 공실이 아니라 <b>집주인이 거주 중</b>으로 봅니다 (이사 일정 협의).</div>' : '');
+  }
+  W.poField = function(){
+    var g = function(id){ var e = $('po-f-' + id); return e ? e.value.trim() : ''; };
+    var q = S.req;
+    q.cx = g('cx'); q.deal = g('deal') || '매매'; q.dong = g('dong'); q.floorTxt = g('floorTxt'); q.tier = g('tier');
+    q.ex = num(g('ex')); q.sup = num(g('sup')); q.dir = normDir(g('dir')); q.repair = g('repair'); q.when = g('when');
+    q.ownerLives = g('own') === '1';
+    analyze(false);
+  };
+  W.poPickName = function(){ S.trName = ($('po-trn')||{}).value || ''; S.lsName = ($('po-lsn')||{}).value || ''; analyze(false); };
+
+  function paintMarket(){
+    var box = $('po-mkin'); if(!box) return;
+    var t = S.trade, ls = S.list, sg = suggest(), sim = similar(ls);
+    var ta = t.rows.map(function(r){ return r.amt; }), la = ls.rows.map(function(o){ return o.price; });
+    var kt = keyTrades(t);
+    var h = '<div class="po-kpi">'
+      + '<div class="po-k"><span>실거래 중위 (' + (t.rows.length ? '최근 ' + t.months + '개월 ' + t.rows.length + '건' : '없음') + ')</span><b>' + won(median(ta)) + '</b></div>'
+      + '<div class="po-k"><span>실거래 주요 가격대</span><b style="font-size:14px">' + band(ta) + '</b></div>'
+      + '<div class="po-k"><span>호가 중위 (전체 ' + la.length + '건)</span><b>' + won(median(la)) + '</b></div>'
+      + '<div class="po-k"><span>호가 중위 (비슷한 조건: ' + esc(sim.label) + ' ' + sim.rows.length + '건)</span><b>' + won(median(sim.rows.map(function(o){ return o.price; }))) + '</b></div>'
+      + '</div>';
+    h += '<div class="po-2c"><div><b style="font-size:12.5px">📈 실거래</b> <span class="po-cnt">' + esc(tradeSummary(t)) + '</span>'
+      + (kt.length ? '<table class="po-t" style="margin-top:6px"><tr><th>계약</th><th class="n">금액</th><th>층</th><th>전용</th></tr>'
+        + kt.map(function(r){ var ym = String(r.ym); return '<tr><td>' + ym.slice(0,4) + '.' + ym.slice(4) + (r.d ? '.' + String(r.d).padStart(2,'0') : '') + (/직거래/.test(r.kind) ? ' <span class="po-tag">직거래</span>' : '') + '</td><td class="n">' + won(r.amt) + (r.mon ? '/' + r.mon : '') + '</td><td>' + (r.fl||'-') + '층</td><td>' + r.ex + '㎡</td></tr>'; }).join('')
+        + '</table>' + (t.rows.length > kt.length ? '<div class="po-cnt">거래가 상위 ' + kt.length + '건 · 전체 ' + t.rows.length + '건은 중위가·가격대에 반영</div>' : '') : '')
+      + '</div><div><b style="font-size:12.5px">🏠 네이버 매물 호가</b> <span class="po-cnt">' + esc(listSummary(ls)) + '</span>'
+      + (ls.rows.length ? '<div style="max-height:360px;overflow:auto;margin-top:6px"><table class="po-t"><tr><th class="n">호가</th><th>동</th><th>층</th><th>향</th><th>등록 업소</th><th>기등록 가능성</th></tr>'
+        + ls.rows.map(function(o){
+            var tg = o.level === '높음' ? 'hi' : o.level === '보통' ? 'mid' : '';
+            return '<tr class="' + (o.level !== '낮음' ? 'po-cand' : '') + '" title="' + esc(o.why.join(' · ') + (o.note ? ' · ' + o.note : '')) + '"><td class="n"><b>' + won(o.price) + '</b></td><td>' + esc(o.dong) + '</td><td>' + esc(o.fl) + (o.tier ? ' <span class="po-tag">' + o.tier + '</span>' : '') + '</td><td>' + esc(o.dir||'-') + '</td>'
+              + '<td>' + (o.own ? '<span class="po-tag ok">★자사</span>' : '') + esc(o.agents.slice(0,2).join(', ') || '-') + (o.agents.length > 2 ? ' 외 ' + (o.agents.length - 2) : '') + '</td>'
+              + '<td>' + (tg ? '<span class="po-tag ' + tg + '">' + o.level + ' ' + o.score + '</span>' : '<span class="po-tag">낮음</span>') + '</td></tr>';
+          }).join('') + '</table></div><div class="po-cnt">줄에 마우스를 올리면 판단 근거가 보입니다 · 붉은 줄 = 이 집이 이미 네이버에 나와 있을 가능성 보통 이상</div>' : '')
+      + '</div></div>';
+    box.innerHTML = h;
+    var pb = $('po-prin');
+    if(pb){
+      var alphas = [0, 500, 1000, 1500, 2000, 3000];
+      pb.innerHTML = '<div class="po-row"><span>α</span><select id="po-alpha" onchange="poAlpha(this.value)">' + alphas.map(function(a){ return '<option value="' + a + '"' + (num(S.alpha)===a?' selected':'') + '>' + (a ? '+' + won(a) : '없음 (호가 중위 그대로)') + '</option>'; }).join('') + '</select>'
+        + '<span class="po-cnt">계산값: ' + esc(sg.note) + '</span></div>'
+        + '<div class="po-row" style="margin-top:8px"><span>제안가</span><input id="po-price" style="width:120px" value="' + (S.price||'') + '" oninput="poPrice(this.value)"> <span>만원</span> <span class="po-price" id="po-pricew">' + wonFull(S.price) + '</span>'
+        + '<button class="po-btn" onclick="poUseCalc()">↺ 계산값으로</button></div>'
+        + '<div class="po-row" style="margin-top:6px"><span>메모(선택)</span><input id="po-pnote" style="flex:1" placeholder="예: 로열동·남향 가산, 기본 상태 감안" value="' + esc(S.priceNote||'') + '" oninput="poPNote(this.value)"></div>'
+        + (sg.T && S.price && S.price <= sg.T ? '<div style="color:#c62828;font-size:12px;margin-top:6px">⚠ 제안가가 실거래 중위 이하입니다 — 기준(실거래보다 높게)에 맞지 않습니다.</div>' : '');
+    }
+  }
+  W.poAlpha = function(v){ S.alpha = num(v); S.price = suggest().price; paintMarket(); };
+  W.poPrice = function(v){ S.price = num(v); var e = $('po-pricew'); if(e) e.textContent = wonFull(S.price); };
+  W.poPNote = function(v){ S.priceNote = v; };
+  W.poUseCalc = function(){ S.price = suggest().price; paintMarket(); };
+  W.poLen = function(v){ S.len = num(v) || 700; W.poCount(); };
+
+  function analyze(resetPrice){
+    var q = S.req;
+    S.trade = tradeOf();
+    S.list = listOf(S.trade.maxFloor || maxListFloor());
+    var sg = suggest();
+    if(resetPrice || !S.price) S.price = sg.price;
+    ['po-mk','po-pr','po-ai','po-sv'].forEach(function(id){ var e = $(id); if(e) e.style.display = q.cx ? '' : 'none'; });
+    dataLine(); paintMarket();
+  }
+  function maxListFloor(){ var m = 0; listRows().forEach(function(r){ if(r.단지명 === S.lsName){ var n = parseInt(r.층); if(n > m) m = n; } }); return m; }
+
+  W.poParse = function(){
+    var raw = (($('po-raw')||{}).value || '').trim();
+    if(!raw){ msg('요청서 글을 먼저 붙여넣어 주세요.', '#c33'); return; }
+    var keepId = S.id && S.raw === raw ? S.id : '';
+    if(!keepId){ var old = S; S = newState(); S.len = old.len; }
+    S.raw = raw; S.req = parse(raw);
+    if(!S.req.cx){ msg('단지명을 찾지 못했습니다 — 「○○단지·매매 요청」 줄이 들어 있는지 확인해 주세요.', '#c33'); return; }
+    S.trName = bestName(uniqNames(tradeRows()), S.req.cx);
+    S.lsName = bestName(uniqNames(listRows()), S.req.cx);
+    paintReq(); analyze(true); paintOut();
+    var miss = [];
+    if(!tradeRows().length) miss.push('실거래 자료가 아직 안 불러와졌습니다');
+    else if(!S.trName) miss.push('실거래 단지명을 골라 주세요');
+    if(!listRows().length) miss.push('네이버 매물이 아직 안 불러와졌습니다');
+    else if(!S.lsName) miss.push('네이버 매물 단지명을 골라 주세요');
+    msg(miss.length ? '⚠ ' + miss.join(' · ') : '✅ 해석·분석 완료 — 제안가를 확인하고 ④에서 제안서를 만드세요.', miss.length ? '#a06800' : '#1a7f3c');
+  };
+  W.poNew = function(){ var l = S.len; S = newState(); S.len = l; var r = $('po-raw'); if(r) r.value = ''; paintReq(); paintOut(); ['po-mk','po-pr','po-ai','po-sv'].forEach(function(id){ var e = $(id); if(e) e.style.display = 'none'; }); msg(''); };
+
+  function paintOut(){
+    var p = $('po-prop'), b = $('po-brief'); if(p) p.value = S.proposal || ''; if(b) b.value = S.briefing || '';
+    var l = $('po-len'); if(l) l.value = String(S.len || 700);
+    var st = $('po-st'); if(st) st.value = S.status || '제안 전';
+    var o = $('po-own'); if(o) o.value = S.owner || ''; var t = $('po-tel'); if(t) t.value = S.ownerTel || ''; var m = $('po-memo'); if(m) m.value = S.memo || '';
+    var u = $('po-use'); if(u) u.textContent = usageTxt();
+    W.poCount();
+  }
+  function grab(){
+    var v = function(id){ var e = $(id); return e ? e.value : ''; };
+    S.proposal = v('po-prop'); S.briefing = v('po-brief'); S.status = v('po-st') || S.status; S.owner = v('po-own'); S.ownerTel = v('po-tel'); S.memo = v('po-memo');
+  }
+  W.poCount = function(){
+    var p = $('po-prop'), c = $('po-pcnt'), f = $('po-fit'); if(!p || !c) return;
+    var n = p.value.length, lim = S.len || 700;
+    c.textContent = n ? n + '자 / ' + lim + '자' : '';
+    c.className = 'po-cnt' + (n > lim ? ' over' : '');
+    if(f) f.style.display = n > lim ? '' : 'none';
+  };
+  function busy(on, t){ ['po-go','po-go1','po-go2','po-fit'].forEach(function(id){ var e = $(id); if(e) e.disabled = !!on; }); if(t != null) msg(t, on ? '#1565c0' : ''); }
+  W.poGenProposal = async function(silent){
+    grab(); if(!S.price){ alert('제안가를 먼저 정해 주세요.'); return; }
+    busy(true, '✍️ 제안서를 쓰는 중… (' + S.len + '자)');
+    try{
+      var t = await claude(proposalPrompt(S.len), Math.max(1200, S.len * 3));
+      if(t.length > S.len) t = await claude('다음 글을 뜻과 금액·연락처는 그대로 두고 공백 포함 ' + S.len + '자 이내로 줄여 주세요. 마크다운 없이 본문만.\n\n' + t, Math.max(1200, S.len * 3));
+      S.proposal = t; paintOut(); if(!silent) msg('✅ 제안서 완성 — ' + t.length + '자', '#1a7f3c');
+    }catch(e){ msg('제안서를 만들지 못했습니다: ' + e.message, '#c33'); throw e; }
+    finally{ busy(false); }
+  };
+  W.poGenBrief = async function(){
+    grab(); busy(true, '🗂 백브리핑을 쓰는 중…');
+    try{ S.briefing = await claude(briefPrompt(), 4000); paintOut(); msg('✅ 백브리핑 완성', '#1a7f3c'); }
+    catch(e){ msg('백브리핑을 만들지 못했습니다: ' + e.message, '#c33'); }
+    finally{ busy(false); }
+  };
+  W.poGen = async function(){
+    try{ await W.poGenProposal(true); }catch(e){ return; }
+    await W.poGenBrief();
+    if(S.proposal && S.briefing){ if(!S.status || S.status === '제안 전') S.status = '제안 전'; await W.poSave(); msg('✅ 제안서(' + S.proposal.length + '자)와 백브리핑을 만들고 저장했습니다. 제안서를 복사해 직방에 붙여 넣으세요.', '#1a7f3c'); }
+  };
+  W.poFit = async function(){
+    grab(); busy(true, '✂️ ' + S.len + '자에 맞추는 중…');
+    try{ S.proposal = await claude('다음 글을 뜻과 금액·연락처는 그대로 두고 공백 포함 ' + S.len + '자 이내로 다듬어 주세요. 마크다운 없이 본문만.\n\n' + S.proposal, Math.max(1200, S.len * 3)); paintOut(); msg('✅ ' + S.proposal.length + '자로 맞췄습니다', '#1a7f3c'); }
+    catch(e){ msg('줄이지 못했습니다: ' + e.message, '#c33'); }
+    finally{ busy(false); }
+  };
+  W.poCopy = function(){
+    var p = $('po-prop'); if(!p || !p.value) return;
+    var done = function(){ msg('📋 제안서를 복사했습니다 — 직방 답변 칸에 붙여 넣으세요.', '#1a7f3c'); if(S.status === '제안 전'){ S.status = '제안 보냄'; var st = $('po-st'); if(st) st.value = S.status; } };
+    if(navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(p.value).then(done, function(){ p.select(); document.execCommand('copy'); done(); });
+    else { p.select(); document.execCommand('copy'); done(); }
+  };
+
+  // ── 저장 목록 ──────────────────────────────────────────────────
+  var LQ = '';
+  W.poListFind = function(){ LQ = (($('po-q')||{}).value || '').replace(/\s/g,''); paintList(); };
+  function paintList(){
+    var box = $('po-list'); if(!box) return;
+    var rows = Object.keys(LIST).map(function(k){ return LIST[k]; }).filter(Boolean)
+      .sort(function(a,b){ return String(b.at||'').localeCompare(String(a.at||'')); });
+    var c = $('po-lcnt'); if(c) c.textContent = rows.length ? rows.length + '건' : '';
+    if(LQ) rows = rows.filter(function(r){ var q = r.req || {}; return (String(q.cx) + q.dong + r.status + (r.owner||'')).replace(/\s/g,'').indexOf(LQ) >= 0; });
+    if(!rows.length){ box.innerHTML = '<div class="po-cnt" style="padding:8px 0">' + (LOADED ? '저장된 가격 제안이 없습니다.' : '불러오는 중…') + '</div>'; return; }
+    box.innerHTML = '<table class="po-t"><tr><th>요청·작성</th><th>단지</th><th>동 · 층 · 향</th><th>면적</th><th class="n">제안가</th><th>상태</th><th>소유주</th><th></th></tr>'
+      + rows.map(function(r){
+          var q = r.req || {}, st = r.status || '';
+          var tg = st === '의뢰 승낙' || st === '매물 등록 완료' ? 'ok' : st === '거절 · 무응답' ? '' : 'mid';
+          return '<tr class="po-list-i" onclick="poOpen(\'' + esc(r.id) + '\')"><td>' + esc(q.when || '') + '<div class="po-cnt">' + esc(String(r.at||'').slice(0,10)) + ' · ' + esc(r.by||'') + '</div></td>'
+            + '<td><b>' + esc(q.cx||'') + '</b> <span class="po-tag">' + esc(q.deal||'') + '</span></td><td>' + esc([q.dong, q.floorTxt, q.dir].filter(Boolean).join(' · ')) + '</td>'
+            + '<td>' + (q.ex ? '전용 ' + q.ex + '㎡' : '') + '</td><td class="n"><b>' + won(r.price) + '</b></td><td><span class="po-tag ' + tg + '">' + esc(st) + '</span></td>'
+            + '<td>' + esc(r.owner || '') + '</td><td><button class="po-btn" style="padding:3px 8px" onclick="event.stopPropagation();poDel(\'' + esc(r.id) + '\')">🗑</button></td></tr>';
+        }).join('') + '</table>';
+  }
+  W.poOpen = function(id){
+    var r = LIST[id]; if(!r) return;
+    S = newState();
+    S.id = r.id; S.at = r.at; S.by = r.by; S.raw = r.raw || ''; S.req = r.req || {}; S.trName = r.trName || ''; S.lsName = r.lsName || '';
+    S.alpha = num(r.alpha); S.price = num(r.price); S.priceNote = r.priceNote || ''; S.len = num(r.len) || 700;
+    S.proposal = r.proposal || ''; S.briefing = r.briefing || ''; S.usage = r.usage || null;
+    S.status = r.status || '제안 전'; S.owner = r.owner || ''; S.ownerTel = r.ownerTel || ''; S.memo = r.memo || '';
+    var raw = $('po-raw'); if(raw) raw.value = S.raw;
+    paintReq(); analyze(false); paintOut();
+    S._saved = r;
+    msg('📂 ' + (S.req.cx||'') + ' ' + (S.req.dong||'') + ' 가격 제안을 열었습니다' + (S.req.when ? ' (요청 ' + S.req.when + ')' : '') + ' — 시장 자료는 지금 기준으로 다시 계산했고, 제안가·제안서는 저장된 그대로입니다.', '#1565c0');
+    var top = $('po-root'); if(top) top.scrollIntoView({ behavior:'smooth' });
+  };
+
+  // ── 상담 자료 인쇄 ─────────────────────────────────────────────
+  W.poPrint = function(){
+    grab();
+    var r = record(), q = r.req || {};
+    var w = window.open('', '_blank', 'width=900,height=1000'); if(!w){ alert('팝업이 막혔습니다 — 이 사이트의 팝업을 허용해 주세요.'); return; }
+    var pre = function(t){ return '<div style="white-space:pre-wrap;line-height:1.7">' + esc(t || '') + '</div>'; };
+    w.document.write('<!doctype html><html><head><meta charset="utf-8"><title>가격 제안 상담 자료 — ' + esc(q.cx||'') + '</title>'
+      + '<style>body{font-family:"Malgun Gothic",sans-serif;font-size:12.5px;color:#222;margin:24px}h1{font-size:18px;margin:0 0 4px}h2{font-size:14px;border-bottom:2px solid #1a2744;padding-bottom:3px;margin:18px 0 8px}table{border-collapse:collapse;width:100%}td,th{border:1px solid #ccc;padding:4px 6px;text-align:left;vertical-align:top}th{background:#f3f5f8;width:120px}.p{font-size:20px;font-weight:800;color:#1a7f3c}.s{color:#666;font-size:11px}@media print{button{display:none}}</style></head><body>'
+      + '<button onclick="print()" style="float:right;padding:6px 14px">🖨 인쇄</button>'
+      + '<h1>직방 가격 제안 상담 자료</h1><div class="s">' + OFFICE + ' · 작성 ' + esc(String(r.at||'').slice(0,10)) + ' ' + esc(r.by||'') + ' · 상태 ' + esc(r.status||'') + '</div>'
+      + '<h2>요청 매물</h2><table>'
+      + '<tr><th>단지 · 거래</th><td>' + esc(q.cx||'') + ' · ' + esc(q.deal||'') + (q.addr ? ' · ' + esc(q.addr) : '') + '</td></tr>'
+      + '<tr><th>동 · 층 · 호</th><td>' + esc([q.dong, q.floorTxt, q.ho].filter(Boolean).join(' · ')) + '</td></tr>'
+      + '<tr><th>면적 · 향</th><td>' + (q.pyType ? esc(q.pyType) + '형 · ' : '') + '전용 ' + esc(q.ex||'') + '㎡' + (q.sup ? ' / 공급 ' + esc(q.sup) + '㎡' : '') + ' · ' + esc(q.dir||'') + '</td></tr>'
+      + '<tr><th>거주 · 수리</th><td>' + esc(tenantTxt(q)) + ' · 수리 ' + esc(q.repair||'-') + '</td></tr>'
+      + '<tr><th>요청 일시</th><td>' + esc(q.when||'') + '</td></tr>'
+      + (r.owner || r.ownerTel ? '<tr><th>소유주</th><td>' + esc(r.owner||'') + ' ' + esc(r.ownerTel||'') + '</td></tr>' : '')
+      + '</table>'
+      + '<h2>제안가</h2><div class="p">' + esc(wonFull(r.price)) + '</div><div class="s">' + esc(r.calc||'') + (r.priceNote ? ' · ' + esc(r.priceNote) : '') + '</div>'
+      + '<h2>시장 자료</h2><table><tr><th>실거래</th><td>' + esc(r.tradeSum||'') + (r.trades && r.trades.length ? '<br>' + r.trades.map(esc).join('<br>') : '') + '</td></tr>'
+      + '<tr><th>네이버 호가</th><td>' + esc(r.listSum||'') + '</td></tr>'
+      + '<tr><th>기등록 가능성</th><td>' + (r.cands && r.cands.length ? r.cands.map(function(c){ return esc(c.level + ' ' + c.score + '점 · ' + won(c.price) + ' · ' + c.dong + ' · ' + c.fl + '층 · ' + (c.dir||'') + ' · ' + (c.agents||'') + ' — ' + c.why); }).join('<br>') : '조건이 맞는 매물 없음') + '</td></tr></table>'
+      + '<h2>제안서 (직방 발송)</h2>' + pre(r.proposal)
+      + '<h2>백브리핑</h2>' + pre(r.briefing)
+      + (r.memo ? '<h2>상담 메모</h2>' + pre(r.memo) : '')
+      + '</body></html>');
+    w.document.close();
+  };
+
+  // ── 탭 만들기 ───────────────────────────────────────────────────
+  function build(){
+    if($('tc' + TAB)) return true;
+    var nav = document.querySelector('.tab-nav-inner') || document.querySelector('.tab-nav'), host = $('tc0');
+    if(!nav || !host || !host.parentNode) return false;
+    var b = document.createElement('button');
+    b.className = 'tab-btn'; b.setAttribute('onclick', 'sw(' + TAB + ')'); b.innerHTML = '🤝 직방 가격 제안';
+    nav.appendChild(b);
+    var p = document.createElement('div'); p.id = 'tc' + TAB; p.className = 'tc'; p.innerHTML = '<div id="po-root"></div>';
+    host.parentNode.appendChild(p);
+    return true;
+  }
+  function hookSw(){
+    if(typeof W.sw !== 'function') return false;
+    if(W.sw.__po) return true;
+    var orig = W.sw;
+    var w = function(n){ var out = orig.apply(this, arguments); if(n === TAB){ try{ shell(); dataLine(); if(!LOADED) loadAll(); }catch(e){ console.warn('[가격 제안]', e); } } return out; };
+    w.__po = true; W.sw = w; return true;
+  }
+  W.sdPo = { tab:TAB, parse:parse, bestName:bestName, state:function(){ return S; }, suggest:suggest, tierOf:tierOf,
+             proposalPrompt:proposalPrompt, briefPrompt:briefPrompt, list:function(){ return LIST; }, reload:loadAll };
+  var tries = 0;
+  (function start(){ var ok = build() && hookSw(); if(!ok && tries++ < 80) return void setTimeout(start, 200); })();
+})();
+</script>
+
 </body>
 </html>
