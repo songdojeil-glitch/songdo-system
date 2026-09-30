@@ -19425,7 +19425,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.09.29-52';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.09.30-53';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_data.html';      // 이 파일 이름
   var SD_NAME = '실거래가';      // 사람이 부르는 이름
 
@@ -33694,7 +33694,10 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
   'use strict';
   if(window.__brOn) return; window.__brOn = true;
   var TAB = 24;
+  //  매물관리 「매물 등록」에서 별도 창으로 열 때 — sd_data.html?popup=br&q=단지명
+  var POP = /[?&]popup=br(&|$)/.test(location.search);
   var W = window;
+  W.__brPopup = POP;
   var BASE = 'https://apis.data.go.kr/1613000/BldRgstHubService/';
   var OPS  = { recap:'getBrRecapTitleInfo', title:'getBrTitleInfo', flr:'getBrFlrOulnInfo',
                expos:'getBrExposPubuseAreaInfo' };
@@ -34377,7 +34380,7 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
     var se = sumOf(rows,'exc'), sp = sumOf(rows,'pub');
     return '<div class="br-scroll" style="margin-top:8px"><table class="br-tb"><thead><tr>'
       + '<th>층</th><th>호</th><th style="text-align:right">전유면적</th><th style="text-align:right">공용면적</th>'
-      + '<th style="text-align:right">계</th><th style="text-align:right">전용률</th><th>주용도</th></tr></thead><tbody>'
+      + '<th style="text-align:right">계</th><th style="text-align:right">전용률</th><th>주용도</th>' + (POP ? '<th></th>' : '') + '</tr></thead><tbody>'
       + rows.map(function(o){
           return '<tr><td>' + esc(o.flr) + '</td><td><b>' + esc(o.ho) + '</b></td>'
             + '<td style="text-align:right">' + esc(m2(o.exc)) + '</td>'
@@ -34385,14 +34388,14 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
             + '<td style="text-align:right">' + esc(m2(o.tot)) + '</td>'
             + '<td style="text-align:right">' + (o.rate != null ? o.rate + '%' : '') + '</td>'
             + '<td>' + esc(o.purp) + (o.etc && o.etc !== o.purp ? ' <span style="color:var(--text3)">' + esc(o.etc) + '</span>' : '')
-            + '</td></tr>';
+            + '</td>' + (POP ? '<td><button class="filter-btn on" style="padding:2px 9px;font-size:11.5px;white-space:nowrap" onclick="brPut(' + R.indexOf(o) + ')" title="동·호·전용면적·층을 매물등록 칸에 넣습니다">↩ 매물등록에 넣기</button></td>' : '') + '</tr>';
         }).join('')
       + (rows.length ? '<tr style="font-weight:700"><td colspan="2">계 ' + fmtN(rows.length) + '호실</td>'
           + '<td style="text-align:right">' + esc(m2(se)) + '</td>'
           + '<td style="text-align:right">' + esc(m2(sp)) + '</td>'
           + '<td style="text-align:right">' + esc(m2(se+sp)) + '</td>'
-          + '<td style="text-align:right">' + (se+sp > 0 ? (Math.round(se/(se+sp)*1000)/10) + '%' : '') + '</td><td></td></tr>'
-          : '<tr><td colspan="7" style="color:var(--text3)">거르개에 맞는 호실이 없습니다.</td></tr>')
+          + '<td style="text-align:right">' + (se+sp > 0 ? (Math.round(se/(se+sp)*1000)/10) + '%' : '') + '</td><td></td>' + (POP ? '<td></td>' : '') + '</tr>'
+          : '<tr><td colspan="' + (POP ? 8 : 7) + '" style="color:var(--text3)">거르개에 맞는 호실이 없습니다.</td></tr>')
       + '</tbody></table></div>';
   }
   //  거르개가 바뀌면 칩과 표만 — 찾기 칸은 그대로 둬야 글자·초점이 산다
@@ -34568,6 +34571,22 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
       msg('엑셀로 내려받았습니다.', '#0a7');
     }catch(e){ msg('엑셀을 만들지 못했습니다 — ' + (e.message||e), '#c33'); }
   };
+  //  별도 창 → 매물등록 창으로 호실 정보 보내기 (같은 주소끼리만)
+  W.brPut = function(i){
+    var d = DAT && DAT.titles[DONG];
+    var E = d && DAT._exp[dkey(txt(d.dongNm))];
+    var o = E && E.rows[i];
+    if(!o) return;
+    var op = W.opener;
+    if(!op || op.closed) return msg('매물등록 창을 찾지 못했습니다 — 매물관리 「매물 등록」에서 이 창을 다시 열어 주세요.', '#c33');
+    var rc = DAT.recap[0] || {};
+    try{
+      op.postMessage({ type:'sjrws-br', v:1, cx:title(), dong:txt(d.dongNm), ho:o.ho, flr:o.flr,
+        exc:o.exc || 0, pub:o.pub || 0, purp:o.purp || '', grnd:num(d.grndFlrCnt) || 0, ugrnd:num(d.ugrndFlrCnt) || 0,
+        useApr:txt(d.useAprDay) || txt(rc.useAprDay), addr:txt(d.platPlc) || txt(rc.platPlc) }, location.origin);
+      msg('✅ ' + (txt(d.dongNm) ? txt(d.dongNm) + ' ' : '') + o.ho + ' — 매물등록 칸에 넣었습니다. 확인 후 이 창을 닫으세요.', '#0a7');
+    }catch(e){ msg('넣지 못했습니다 — ' + (e.message || e), '#c33'); }
+  };
   W.sdBr = { tab:TAB, call:call, callAll:callAll, resolve:resolve, load:load, viol:violOf,
              byHo:byHo, bldSource:bldSource, bld:function(){ return BLIST; },
              exp:function(){ var d = DAT && DAT.titles[DONG]; return d ? (DAT._exp[dkey(txt(d.dongNm))] || null) : null; },
@@ -34604,10 +34623,62 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
     w.__br = true; W.sw = w;
     return true;
   }
+  //  ── 별도 창 모드: 건축물대장만 화면 가득, 위에 「창 닫기」 ─────────────────
+  function qp(k){ var m = new RegExp('[?&]' + k + '=([^&]*)').exec(location.search); return m ? decodeURIComponent(m[1].replace(/\+/g,' ')) : ''; }
+  function popBoot(){
+    if(!POP || $('br-popwrap')) return;
+    var root = $('br-root'); if(!root) return;
+    document.title = '건축물대장 조회 — SJRWS';
+    var st = document.createElement('style');
+    st.textContent = '#br-popwrap{position:fixed;inset:0;z-index:9000;background:var(--bg,#f7f8fa);overflow:auto}'
+      + '#br-popbar{position:sticky;top:0;z-index:2;display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 16px;'
+      + 'background:#1a2744;color:#fff;font-size:13px}'
+      + '#br-popbar b{font-size:14.5px}#br-popbar .sp{flex:1}'
+      + '#br-popbar button{border:1px solid rgba(255,255,255,.5);background:transparent;color:#fff;border-radius:7px;padding:5px 12px;cursor:pointer;font-size:12.5px}'
+      + '#br-popbar button.x{background:#fff;color:#1a2744;font-weight:700}'
+      + '#br-popin{max-width:1200px;margin:0 auto;padding:14px 16px 40px}'
+      + 'body.br-pop{overflow:hidden}';
+    document.head.appendChild(st);
+    var w = document.createElement('div'); w.id = 'br-popwrap';
+    w.innerHTML = '<div id="br-popbar"><b>🏗 건축물대장 조회</b><span>매물 등록용 — 호실 표의 「↩ 매물등록에 넣기」로 동·호·전용면적·층을 보냅니다</span>'
+      + '<span class="sp"></span><button type="button" onclick="brPopClose()" class="x">✕ 창 닫기</button></div><div id="br-popin"></div>';
+    document.body.appendChild(w); document.body.classList.add('br-pop');
+    $('br-popin').appendChild(root);
+    paint();
+    var q = qp('q').trim();
+    if(q){                                           //  단지명이 넘어왔으면 아파트 단지 목록에서 먼저 찾고, 없으면 이름으로 조회
+      var cands = [];
+      [q, q.replace(/^송도\s*/,''), q.replace(/\(.*?\)/g,'').trim(), q.split(/\s+/)[0], q.replace(/^송도\s*/,'').split(/\s+/)[0]]
+        .forEach(function(c){ c = String(c||'').trim(); if(c.length >= 2 && cands.indexOf(c) < 0) cands.push(c); });
+      var ci = 0, n = 0, w = 0;
+      MODE = 'apt'; AQ = cands[0]; paint();
+      msg('「' + q + '」 을(를) 찾는 중…', '#06c');
+      (function ready(){                              //  실거래 도구(sdKR)가 올라온 뒤에 찾는다
+        if(!S() && ++w < 80) return setTimeout(ready, 250);
+        chips(); setTimeout(pick, 300);
+      })();
+      function pick(){
+        var box = $('br-chips');
+        var bs = box ? box.querySelectorAll('.br-ch') : [];
+        if(bs.length === 1) return bs[0].click();
+        if(bs.length > 1){ var a = $('br-aq'); if(a) a.value = AQ; return msg('「' + AQ + '」 비슷한 단지 ' + bs.length + '곳 — 아래에서 골라 주세요.', '#06c'); }
+        if(++n < 10 && !(box && /찾는 단지가 없습니다/.test(box.textContent))) return setTimeout(pick, 300);
+        if(++ci < cands.length){ AQ = cands[ci]; n = 0; chips(); return setTimeout(pick, 300); }
+        MODE = 'addr'; AQ = ''; paint();              //  아파트 목록에 없으면(상가·오피스텔 등) 이름으로 조회
+        var ad = $('br-addr'); if(ad) ad.value = q;
+        W.brGoAddr();
+      }
+    }
+  }
+  W.brPopClose = function(){
+    window.close();
+    setTimeout(function(){ msg('이 창은 직접 닫아 주세요 (브라우저가 스스로 닫는 것을 막았습니다).', '#c33'); }, 300);
+  };
   var tries = 0;
   (function start(){
     var ok = build() && hookSw();
     if(!ok && tries++ < 80) return void setTimeout(start, 200);
+    if(ok && POP) popBoot();
   })();
 })();
 </script>

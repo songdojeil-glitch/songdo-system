@@ -8114,7 +8114,7 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.09.29-1';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.09.30-1';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_props.html';      // 이 파일 이름
   var SD_NAME = '매물관리';      // 사람이 부르는 이름
 
@@ -10087,6 +10087,80 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
     window.sdAuth = window.sdAuth || {};
     window.sdAuth.module = '실패: ' + (e && e.message || e);
   }
+</script>
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     매물 등록 ↔ 건축물대장 (별도 창)
+     · 「단지명 / 건물명」 칸 아래 「🏗 건축물대장 조회」 → 데이터관리의 건축물대장만 새 창으로 연다
+       (sd_data.html?popup=br&q=단지명 — 이름이 있으면 바로 찾아 준다)
+     · 그 창의 호실 표에서 「↩ 매물등록에 넣기」를 누르면 동/호수·전용면적·층/전체층이 여기로 들어온다
+     · 조회가 끝나면 그 창의 「✕ 창 닫기」로 닫는다
+     ═══════════════════════════════════════════════════════════════════════ -->
+<script>
+(function(){
+  'use strict';
+  if(window.__pbrOn) return; window.__pbrOn = true;
+  var WIN = null;
+
+  function $(id){ return document.getElementById(id); }
+  function toast(t){
+    var e = document.createElement('div');
+    e.style.cssText = 'position:fixed;top:18px;left:50%;transform:translateX(-50%);z-index:10050;background:#1a2744;color:#fff;'
+      + 'padding:10px 16px;border-radius:10px;font-size:13px;box-shadow:0 6px 20px rgba(0,0,0,.2);max-width:90vw;line-height:1.6';
+    e.textContent = t; document.body.appendChild(e);
+    setTimeout(function(){ e.remove(); }, 4200);
+  }
+  function flash(el){ if(!el) return; el.style.transition = 'background .3s'; el.style.background = '#fff6c2'; setTimeout(function(){ el.style.background = ''; }, 1600); }
+
+  window.pbrOpen = function(){
+    var q = (($('f-cx')||{}).value || '').trim();
+    var url = 'sd_data.html?popup=br' + (q ? '&q=' + encodeURIComponent(q) : '');
+    var w = Math.min(1240, screen.availWidth - 40), h = Math.min(960, screen.availHeight - 60);
+    if(WIN && !WIN.closed){ try{ WIN.location.href = url; WIN.focus(); return; }catch(e){} }
+    WIN = window.open(url, 'sjrws_br', 'width=' + w + ',height=' + h + ',left=40,top=30,resizable=yes,scrollbars=yes');
+    if(!WIN) toast('팝업이 막혔습니다 — 주소창 오른쪽 「팝업 차단」 표시를 눌러 이 사이트를 허용해 주세요.');
+  };
+
+  //  동·호 다듬기: 「101」 → 「101동」, 「2904」 → 「2904호」
+  function dongTxt(d){ d = String(d||'').trim(); if(!d || /^(0|-)$/.test(d)) return ''; return /[동棟]$/.test(d) || /[가-힣]$/.test(d) && !/\d$/.test(d) ? d : d + '동'; }
+  function hoTxt(h){ h = String(h||'').trim(); if(!h || /없음/.test(h)) return ''; return /호$/.test(h) ? h : h + '호'; }
+  function flrTxt(f, grnd){
+    f = String(f||''); var m = /(\d+)/.exec(f); if(!m) return '';
+    var n = m[1], under = /지하|B/i.test(f);
+    return (under ? 'B' + n : n) + '층' + (grnd ? ' / 전체 ' + grnd + '층' : '');
+  }
+
+  window.addEventListener('message', function(ev){
+    if(ev.origin !== location.origin) return;
+    var d = ev.data; if(!d || d.type !== 'sjrws-br') return;
+    var got = [];
+    var cx = $('f-cx');
+    if(cx && !cx.value.trim() && d.cx){ cx.value = d.cx; flash(cx); got.push('단지/건물명'); }
+    var un = $('f-un'), u = [dongTxt(d.dong), hoTxt(d.ho)].filter(Boolean).join(' ');
+    if(un && u){ un.value = u; flash(un); got.push('동/호수 ' + u); }
+    var ar = $('f-ar');
+    if(ar && d.exc > 0){ ar.value = (Math.round(d.exc * 100) / 100) + '㎡'; flash(ar); got.push('전용 ' + ar.value); }
+    var fl = $('f-fl'), f = flrTxt(d.flr, d.grnd);
+    if(fl && f){ fl.value = f; flash(fl); got.push(f); }
+    toast(got.length ? '🏗 건축물대장에서 넣었습니다 — ' + got.join(' · ') + (d.purp ? ' (용도: ' + d.purp + ')' : '')
+                     : '넣을 값이 없었습니다');
+    try{ window.focus(); }catch(e){}
+  });
+
+  function mount(){
+    var cx = $('f-cx'); if(!cx) return false;
+    if($('pbr-btn')) return true;
+    var b = document.createElement('button');
+    b.type = 'button'; b.id = 'pbr-btn';
+    b.textContent = '🏗 건축물대장 조회 (새 창)';
+    b.title = '데이터관리의 건축물대장을 새 창으로 엽니다. 호실 표의 「↩ 매물등록에 넣기」로 동/호수·전용면적·층이 들어옵니다.';
+    b.style.cssText = 'margin-top:6px;padding:5px 11px;font-size:11.5px;border:1px solid #9fb3d9;background:#eef3fb;color:#1a2744;border-radius:7px;cursor:pointer';
+    b.onclick = window.pbrOpen;
+    cx.parentNode.appendChild(b);
+    return true;
+  }
+  var n = 0; (function t(){ if(!mount() && n++ < 60) setTimeout(t, 250); })();
+})();
 </script>
 
 </body>
