@@ -2353,7 +2353,7 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
       if(tags.length) lk='<div style="margin-top:5px;display:flex;gap:4px;flex-wrap:wrap">'+tags.join('')+'</div>';
     }
 
-    return '<div class="nm-row">'
+    return '<div class="nm-row" data-nid="'+n.id+'">'
       + '<div class="nm-t">'+(n.pin?'📌 ':'')+esc(t)+'</div>'
       + '<div class="nm-x">'+esc(n.text)
       +   lk
@@ -2559,7 +2559,7 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.09.29-1';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.10.01-1';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_schedule.html';      // 이 파일 이름
   var SD_NAME = '일정관리';      // 사람이 부르는 이름
 
@@ -3585,5 +3585,53 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
   setTimeout(boot,4000);
 })();
 </script>
+<!-- ═════════════════════════════════════════════════════════════════
+     허브 → 메모&노트 바로 열기  2026-10-01
+     · sd_schedule.html?tab=memo            → 메모&노트 탭
+     · sd_schedule.html?tab=memo&note={id}  → 그 메모를 「수정」으로 열고, 목록에서 그 줄을 잠깐 표시
+     · sd_schedule.html?tab=memo&new=1      → 새 메모 칸에 커서
+     주소는 바로 지운다(뒤로가기·새로고침 때 다시 열리지 않게)
+     ═════════════════════════════════════════════════════════════════ -->
+<script>
+(function(){
+  'use strict';
+  var p = new URLSearchParams(location.search);
+  if(p.get('tab') !== 'memo') return;
+  var nid = p.get('note') || '', isNew = p.get('new') === '1';
+  try{ history.replaceState({}, '', location.pathname); }catch(e){}
+  window.__nmDeep = { note:nid, new:isNew, done:false };
+
+  function flash(){
+    var row = document.querySelector('#tc6 .nm-row[data-nid="' + nid + '"]');
+    if(!row) return;
+    row.scrollIntoView({ behavior:'smooth', block:'center' });
+    row.style.transition = 'background .4s'; row.style.background = '#fff3e0';
+    setTimeout(function(){ row.style.background = ''; }, 2200);
+  }
+  var n = 0;
+  (function go(){
+    //  일정 목록까지 다 실린 뒤에 탭을 옮긴다 — 시작할 때 다른 탭으로 바뀌는 것과 겹치지 않게
+    var ok = typeof window.sw === 'function' && document.getElementById('tn6') && typeof window.nmEdit === 'function' && window._nmTodosReady;
+    if(!ok){ if(n++ < 80) setTimeout(go, 250); return; }
+    setTimeout(function(){
+      window.sw(6);
+      if(!nid){ var ta = document.getElementById('nm-text'); if(ta) ta.focus(); window.__nmDeep.done = true; return; }
+      var k = 0;
+      (function edit(){
+        try{ window.nmEdit(nid); }catch(e){}
+        var b = document.getElementById('nm-save');
+        if(b && b.textContent === '수정 저장'){
+          window.__nmDeep.done = true;
+          setTimeout(function(){ flash(); var ta = document.getElementById('nm-text'); if(ta){ ta.scrollIntoView({ behavior:'smooth', block:'center' }); ta.focus(); } }, 150);
+          return;
+        }
+        if(k++ < 40) return void setTimeout(edit, 250);
+        alert('이 메모를 찾지 못했습니다 — 지워졌거나 다른 사람의 「나만 보기」 메모일 수 있습니다.');
+      })();
+    }, 300);
+  })();
+})();
+</script>
+
 </body>
 </html>

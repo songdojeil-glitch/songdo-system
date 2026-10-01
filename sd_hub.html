@@ -1900,7 +1900,7 @@ function hbMount(){
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.09.29-1';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.10.01-1';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_hub.html';      // 이 파일 이름
   var SD_NAME = '허브';      // 사람이 부르는 이름
 
@@ -2184,6 +2184,185 @@ function hbMount(){
   }
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', function(){ go(); });
   else go();
+})();
+</script>
+
+<!-- ═════════════════════════════════════════════════════════════════
+     허브 오른쪽 — 📝 메모&노트 (일정관리 TAB6 과 같은 자료)  2026-10-01
+     · 읽는 곳: sd/sd_notes_public (사무소 공유) + sd/sd_notes_personal_{uid} (나만 보기) — 일정관리와 같다
+     · 고정(📌) 먼저, 그다음 날짜·적은 시각 최신순 · 날짜별로 묶음 · 찾기
+     · 메모를 누르면 sd_schedule.html?tab=memo&note={id} — 일정관리 메모&노트가 그 메모를 「수정」으로 열어 둔다
+     · 「＋ 새 메모」 → sd_schedule.html?tab=memo&new=1
+     · 넓은 화면: 본문 오른쪽 기둥(따라 내려옴) · 좁은 화면(1280px 이하): 본문 아래
+     · 일정관리에서 돌아오면(창이 다시 보이면) 새로 읽는다, 2분마다도
+     ═════════════════════════════════════════════════════════════════ -->
+<style>
+.wrap.hbm-on{max-width:1990px;display:grid;grid-template-columns:minmax(0,1fr) 360px;column-gap:18px;align-items:start}
+.wrap.hbm-on > .hbm-span{grid-column:1 / -1}
+#hbm-main{min-width:0;grid-column:1}
+#hbm-side{grid-column:2;position:sticky;top:76px;max-height:calc(100vh - 88px);display:flex;flex-direction:column;
+  background:var(--bg2,#fff);border:1px solid var(--border,#e2e5ea);border-radius:14px;overflow:hidden;margin-top:1.5rem}
+#hbm-side .hbm-hd{padding:12px 14px 8px;border-bottom:1px solid var(--border,#eceff3)}
+#hbm-side .hbm-tt{display:flex;align-items:center;gap:6px;font-size:14px;font-weight:800}
+#hbm-side .hbm-tt small{font-size:11px;font-weight:400;color:var(--text3,#888)}
+#hbm-side .hbm-bt{margin-left:auto;display:flex;gap:5px}
+#hbm-side .hbm-bt button{padding:4px 9px;font-size:11.5px;border-radius:8px;border:1px solid var(--border,#d8dde8);background:var(--bg2,#fff);cursor:pointer;color:var(--text,#222);font-family:inherit}
+#hbm-side .hbm-bt button.p{background:#e65100;border-color:transparent;color:#fff;font-weight:700}
+#hbm-side .hbm-q{width:100%;margin-top:8px;padding:6px 9px;font-size:12px;border:1px solid var(--border,#d8dde8);border-radius:8px;box-sizing:border-box;font-family:inherit;background:var(--bg,#fff);color:var(--text,#222)}
+#hbm-side .hbm-sc{display:flex;gap:4px;margin-top:6px}
+#hbm-side .hbm-sc button{flex:1;padding:3px 0;font-size:11px;border-radius:7px;border:1px solid var(--border,#d8dde8);background:transparent;cursor:pointer;color:var(--text3,#666);font-family:inherit}
+#hbm-side .hbm-sc button.on{background:#fff3e0;border-color:#ffcc80;color:#e65100;font-weight:700}
+#hbm-side .hbm-ls{overflow:auto;padding:4px 10px 12px;flex:1}
+#hbm-side .hbm-day{font-size:11px;font-weight:700;color:var(--text3,#777);margin:10px 2px 5px;padding-bottom:3px;border-bottom:1px dashed var(--border,#e2e5ea)}
+#hbm-side .hbm-day.today{color:#e65100;border-bottom-color:#ffcc80}
+#hbm-side .hbm-it{padding:8px 10px;border-radius:9px;border:1px solid var(--border,#eceff3);margin-bottom:6px;cursor:pointer;background:var(--bg2,#fff);transition:border-color .15s,background .15s}
+#hbm-side .hbm-it:hover{border-color:#ffb74d;background:#fffaf3}
+#hbm-side .hbm-it.pin{border-color:#ffcc80;background:#fffbf2}
+#hbm-side .hbm-m{display:flex;gap:6px;font-size:10.5px;color:var(--text3,#888);margin-bottom:3px}
+#hbm-side .hbm-m .e{margin-left:auto;color:#e65100;opacity:0;transition:opacity .15s}
+#hbm-side .hbm-it:hover .hbm-m .e{opacity:1}
+#hbm-side .hbm-x{font-size:12.5px;line-height:1.55;white-space:pre-wrap;word-break:break-all;color:var(--text,#222);
+  display:-webkit-box;-webkit-line-clamp:5;-webkit-box-orient:vertical;overflow:hidden}
+#hbm-side .hbm-e{padding:24px 6px;text-align:center;font-size:12px;color:var(--text3,#999);line-height:1.7}
+@media(max-width:1280px){
+  .wrap.hbm-on{grid-template-columns:minmax(0,1fr);max-width:1600px}
+  #hbm-side{grid-column:1;position:static;max-height:520px;margin:0 0 1.5rem}
+}
+@media print{ #hbm-side{display:none} }
+</style>
+<script>
+(function(){
+  'use strict';
+  if(window.__hbmOn) return; window.__hbmOn = true;
+  var NOTES = [], LOADED = false, Q = '', SC = '', BUSY = false;
+  var DOW = ['일','월','화','수','목','금','토'];
+
+  function $(id){ return document.getElementById(id); }
+  function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  function sess(){ try{ return JSON.parse(localStorage.getItem('sd_auth_session') || '{}') || {}; }catch(e){ return {}; } }
+  function uid(){ var s = sess(); return (window._authProfile && window._authProfile.uid) || s.uid || 'anon'; }
+  function dstr(d){ return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); }
+  function dview(ds){
+    var p = String(ds||'').split('-'); if(p.length < 3) return ds || '';
+    var d = new Date(+p[0], +p[1]-1, +p[2]);
+    var t = dstr(new Date()), y = dstr(new Date(Date.now() - 864e5));
+    return (ds === t ? '오늘 · ' : ds === y ? '어제 · ' : '') + p[0] + '/' + p[1] + '/' + p[2] + ' (' + DOW[d.getDay()] + ')';
+  }
+  function tlabel(iso){
+    var d = new Date(iso); if(isNaN(d)) return '';
+    var h = d.getHours(), ap = h < 12 ? 'AM' : 'PM', hh = h % 12; if(hh === 0) hh = 12;
+    return ap + ' ' + String(hh).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
+  }
+
+  // ── 자리 만들기: 본문을 왼쪽 기둥으로 옮기고 오른쪽에 메모&노트 ─────
+  function mount(){
+    if($('hbm-side')) return true;
+    var wrap = document.querySelector('.wrap'); if(!wrap) return false;
+    var main = document.createElement('div'); main.id = 'hbm-main';
+    var side = document.createElement('aside'); side.id = 'hbm-side';
+    side.innerHTML = '<div class="hbm-hd"><div class="hbm-tt">📝 메모&amp;노트 <small id="hbm-cnt"></small>'
+      + '<span class="hbm-bt"><button type="button" onclick="hbmReload()" title="다시 읽기">↻</button>'
+      + '<button type="button" class="p" onclick="hbmOpen(\'new\')">＋ 새 메모</button></span></div>'
+      + '<input id="hbm-q" class="hbm-q" placeholder="메모 찾기" oninput="hbmFind(this.value)">'
+      + '<div class="hbm-sc"><button type="button" class="on" data-sc="" onclick="hbmScope(\'\')">전체</button>'
+      + '<button type="button" data-sc="pub" onclick="hbmScope(\'pub\')">사무소 공유</button>'
+      + '<button type="button" data-sc="me" onclick="hbmScope(\'me\')">나만 보기</button></div></div>'
+      + '<div class="hbm-ls" id="hbm-ls"><div class="hbm-e">불러오는 중…</div></div>';
+    //  맨 위 시스템 바로가기 줄(허브·매물·고객…)은 두 기둥을 가로질러 그대로 둔다
+    var kids = Array.prototype.slice.call(wrap.children), first = kids[0];
+    var spanFirst = first && first.querySelector && first.querySelector('a[href="sd_hub.html"]');
+    kids.forEach(function(el, i){ if(i === 0 && spanFirst){ el.classList.add('hbm-span'); return; } main.appendChild(el); });
+    wrap.appendChild(main); wrap.appendChild(side);
+    wrap.classList.add('hbm-on');
+    //  나중에 다른 모듈이 .wrap 에 바로 붙이는 것은 본문 기둥으로 옮긴다
+    try{
+      new MutationObserver(function(ms){
+        ms.forEach(function(m){ Array.prototype.forEach.call(m.addedNodes, function(n){
+          if(n.nodeType === 1 && n !== main && n !== side && n.parentNode === wrap && !n.classList.contains('hbm-span')) main.appendChild(n);
+        }); });
+      }).observe(wrap, { childList:true });
+    }catch(e){}
+    return true;
+  }
+
+  // ── 읽기 (일정관리와 같은 열쇠) ─────────────────────────────
+  async function load(){
+    if(BUSY || !window.storage || !window.storage.get) return;
+    BUSY = true;
+    var pub = [], per = [];
+    try{ var r = await window.storage.get('sd_notes_public'); if(r && r.value) pub = JSON.parse(r.value); }catch(e){}
+    try{ var r2 = await window.storage.get('sd_notes_personal_' + uid()); if(r2 && r2.value) per = JSON.parse(r2.value); }catch(e){}
+    NOTES = (Array.isArray(pub) ? pub : []).concat(Array.isArray(per) ? per : []);
+    LOADED = true; BUSY = false;
+    paint();
+  }
+  function paint(){
+    var box = $('hbm-ls'); if(!box) return;
+    var me = uid();
+    var f = NOTES.filter(function(n){
+      if(!n || !n.text) return false;
+      if(!n.isPublic && n.owner && n.owner !== me) return false;
+      if(SC === 'pub' && !n.isPublic) return false;
+      if(SC === 'me' && n.isPublic) return false;
+      if(Q && String(n.text).toLowerCase().indexOf(Q.toLowerCase()) < 0) return false;
+      return true;
+    });
+    var c = $('hbm-cnt'); if(c) c.textContent = LOADED ? f.length + '건' : '';
+    if(!LOADED){ box.innerHTML = '<div class="hbm-e">불러오는 중…</div>'; return; }
+    if(!f.length){
+      box.innerHTML = '<div class="hbm-e">' + (Q || SC ? '조건에 맞는 메모가 없습니다.' : '아직 메모가 없습니다.<br>「＋ 새 메모」로 일정관리 메모&amp;노트에 적어 보세요.') + '</div>';
+      return;
+    }
+    var key = function(n){ return (n.date || '') + '|' + (n.ts || ''); };
+    var pins = f.filter(function(n){ return n.pin; }).sort(function(a,b){ return key(b) < key(a) ? -1 : 1; });
+    var rest = f.filter(function(n){ return !n.pin; }).sort(function(a,b){ return key(b) < key(a) ? -1 : 1; }).slice(0, 60);
+    var today = dstr(new Date()), h = '';
+    var item = function(n){
+      var tail = [];
+      tail.push(tlabel(n.ts));
+      if(n.author) tail.push(n.author);
+      if(!n.isPublic) tail.push('🔒 나만');
+      if(n.linked && n.linked.length) tail.push('📅 ' + n.linked.length);
+      return '<div class="hbm-it' + (n.pin ? ' pin' : '') + '" data-nid="' + esc(n.id) + '" onclick="hbmOpen(\'' + esc(n.id) + '\')" title="눌러서 일정관리 메모&노트에서 수정">'
+        + '<div class="hbm-m">' + (n.pin ? '📌 ' : '') + esc(tail.filter(Boolean).join(' · ')) + '<span class="e">수정 ✎</span></div>'
+        + '<div class="hbm-x">' + esc(n.text) + '</div></div>';
+    };
+    if(pins.length) h += '<div class="hbm-day today">📌 고정</div>' + pins.map(item).join('');
+    var last = '';
+    rest.forEach(function(n){
+      if(n.date !== last){ last = n.date; h += '<div class="hbm-day' + (n.date === today ? ' today' : '') + '">' + esc(dview(n.date)) + '</div>'; }
+      h += item(n);
+    });
+    box.innerHTML = h;
+  }
+
+  // ── 일정관리로 ─────────────────────────────────────────────
+  window.hbmOpen = function(id){
+    location.href = 'sd_schedule.html?tab=memo' + (id === 'new' ? '&new=1' : '&note=' + encodeURIComponent(id));
+  };
+  window.hbmReload = function(){ LOADED = false; paint(); load(); };
+  window.hbmFind = function(v){ Q = String(v||'').trim(); paint(); };
+  window.hbmScope = function(v){
+    SC = v || '';
+    Array.prototype.forEach.call(document.querySelectorAll('#hbm-side .hbm-sc button'), function(b){ b.classList.toggle('on', b.getAttribute('data-sc') === SC); });
+    paint();
+  };
+
+  //  로그인이 끝나고(세션이 생기고) 저장소가 준비되면 읽는다
+  function ready(){
+    var ls = $('login-screen'), pin = $('pin-screen');
+    var hidden = function(e){ return !e || getComputedStyle(e).display === 'none'; };
+    return !!(window.storage && window.storage.get && sess().uid && hidden(ls) && hidden(pin));
+  }
+  var n = 0;
+  (function t(){
+    mount();
+    if(ready()) return void load();
+    if(n++ < 240) setTimeout(t, 500);
+  })();
+  document.addEventListener('visibilitychange', function(){ if(document.visibilityState === 'visible' && ready()) load(); });
+  setInterval(function(){ if(document.visibilityState === 'visible' && ready()) load(); }, 120000);
+  window.sdHubMemo = { reload:load, notes:function(){ return NOTES.slice(); } };
 })();
 </script>
 
