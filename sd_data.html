@@ -6799,8 +6799,10 @@ function hsOpenModal(nm){
       }).join('')+'</tbody></table></div>';
   }
   document.getElementById('hs-modal-content').innerHTML=html
+    +'<div id="cx-hs"></div>'                                     // 🏢 단지 정보 · 입지 (sdCx)
     +'<div id="hs-modal-images" style="margin-top:18px"></div>';
   document.getElementById('hs-modal').style.display='block';
+  if(window.sdCx) window.sdCx.mount('cx-hs', nm);
   // 등록 이미지 비동기 로드 (있을 때만 표시)
   if(typeof diGetImages==='function'){
     diGetImages(nm).then(function(g){
@@ -19425,7 +19427,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.09.30-62';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.10.01-63';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_data.html';      // 이 파일 이름
   var SD_NAME = '실거래가';      // 사람이 부르는 이름
 
@@ -25804,6 +25806,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 
     var h = head(nm, r0, A, HS, mine)
           + spec(A, HS)
+          + '<div id="cx-dj"></div>'          // 🏢 단지 정보 · 입지 (sdCx — 송도동 아파트만)
           + summary(ST, eok)
           + areaTable(ST, FM, HS, eok)
           + chartBox(ST)
@@ -25815,6 +25818,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
           + advBox()                 // 공시가격 · 일조 — 눌러야 펼쳐진다
           + similarBox(nm, A);
     body.innerHTML = h;
+    if(window.sdCx) window.sdCx.mount('cx-dj', nm, { dong:r0.umdNm, jibun:r0.jibun });
     drawChart(ST);
     miniRender(ST);        // 값 표시 고르개(djFlowVals)가 draw() 를 다시 부르므로 함께 따라온다
     //  펼쳐 둔 채 단지를 옮겼으면 그 단지 자료로 다시 그린다
@@ -29038,6 +29042,11 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
                      : eok(lo) + (hi !== lo ? ' ~ ' + eok(hi) : '')));
         });
     }
+    //  단지 정보 · 입지 (sdCx — 송도동 아파트만)
+    try{
+      var CX = window.sdCx && window.sdCx.textByName(CUR.nm, { dong:r0.umdNm, jibun:r0.jibun });
+      if(CX){ L.push(''); L.push('[단지 정보 · 입지]'); L.push(CX); }
+    }catch(e){}
     L.push('');
     L.push('※ 국토교통부 실거래가 공개시스템 신고 자료입니다. 해제 신고분은 셈에서 뺐습니다.');
     if(LS.rows.length)
@@ -31276,6 +31285,7 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
 
     if(NVS) h += result();
     root.innerHTML = h;
+    if(NVS && (NVS.kind || 'apt') === 'apt' && window.sdCx) window.sdCx.mount('cx-nv', NVS.danji);
     var t = document.getElementById('nv-txt');
     if(t && NVRAW) t.value = NVRAW;
   }
@@ -31347,6 +31357,7 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
     var S = NVS.st, rows = NVS.rows, kind = NVS.kind || 'apt', h = '';
     h += '<div class="nv-h">📋 ' + esc(NVS.danji || '') + ' <span>'
       + esc(NVB.KINDNM[kind]) + ' · 매물 ' + S.n + '건 · ' + esc(NVS.at) + ' 읽음</span></div>';
+    if(kind === 'apt') h += '<div id="cx-nv"></div>';      // 🏢 단지 정보 · 입지 (sdCx)
 
     var sale = rows.filter(function(r){ return r.거래구분 === '매매'; });
     var ps = sale.map(function(r){ return r._p; });
@@ -36698,6 +36709,315 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
              proposalPrompt:proposalPrompt, briefPrompt:briefPrompt, list:function(){ return LIST; }, reload:loadAll };
   var tries = 0;
   (function start(){ var ok = build() && hookSw(); if(!ok && tries++ < 80) return void setTimeout(start, 200); })();
+})();
+</script>
+
+<!-- ═════════════════════════════════════════════════════════════════
+     🏢 단지 정보 · 입지 (window.sdCx) — 2026-10-01
+     · sd_danji_info.json : 송도동 아파트 75단지. Claude 가 PlayMCP 로 모아 둔 것
+         - K-apt 공동주택 기본정보(시공·시행·주차·승강기·CCTV·복도·구조·부대시설·관리업체·도로명) · 면적별 세대수
+         - 입지 원장(한국 부동산 데이터): 최근접역·직선거리, 버스정류장, 1km 초·중·고, 최근접 초등, 학원, 의료기관, 슈퍼
+       → 분기마다 Claude 에게 「단지 정보 다시 모아 줘」로 새로 만든다
+     · 관리비는 이미 있는 sd_apt.json(K-apt 관리비, ㎡당)을 쓴다
+     · 주변시설(약국·편의점·카페·음식점·대형마트·학원·병원·학교·역·어린이집·은행·중개업소)은 카카오 장소검색으로
+       그때그때 반경 1km 를 센다 — 이 PC 에 14일 담아 둔다
+     · 붙는 곳: 송도주택공급현황 단지 상세 · S실거래가 단지 브리핑(+블로그용 복사) · N매물분석 단지 보고서
+     · 「📋 상세설명 글감 복사」 — 네이버 매물 상세설명·블로그를 쓸 때 근거로 쓰는 글
+     ═════════════════════════════════════════════════════════════════ -->
+<style>
+.cx-card{background:var(--card,#fff);border:1px solid var(--border,#e2e5ea);border-radius:12px;padding:14px 16px;margin:12px 0;font-size:12.5px;color:var(--text)}
+.cx-h{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+.cx-h b{font-size:14px}
+.cx-h small{font-size:11px;color:var(--text3);font-weight:400}
+.cx-btn{padding:5px 11px;border:1px solid var(--border,#cfd6e4);background:var(--card,#fff);color:var(--text);border-radius:8px;font-size:11.5px;cursor:pointer;font-family:inherit}
+.cx-btn:hover{border-color:var(--accent)}
+.cx-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px 10px;margin-bottom:12px}
+.cx-k{background:var(--bg3,#f4f6f9);border-radius:8px;padding:7px 10px;line-height:1.45}
+.cx-k span{display:block;font-size:10.5px;color:var(--text3)}
+.cx-k b{font-size:12.5px}
+.cx-sec{font-size:12.5px;font-weight:800;margin:12px 0 6px}
+.cx-loc{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:6px 10px}
+.cx-li{border:1px solid var(--border,#eceff3);border-radius:8px;padding:8px 10px;line-height:1.6}
+.cx-li .t{font-size:11px;color:var(--text3)}
+.cx-t{width:100%;border-collapse:collapse;font-size:12px}
+.cx-t th,.cx-t td{border-bottom:1px solid var(--border,#eceff3);padding:4px 6px;text-align:right;white-space:nowrap}
+.cx-t th{font-size:10.5px;color:var(--text3);font-weight:600;background:var(--bg3,#f7f8fa)}
+.cx-t td:first-child,.cx-t th:first-child{text-align:left}
+.cx-txt{font-size:11.5px;line-height:1.7;color:var(--text2,#444)}
+.cx-poi{display:flex;flex-wrap:wrap;gap:5px}
+.cx-chip{border:1px solid var(--border,#e2e5ea);border-radius:14px;padding:3px 9px;font-size:11.5px;background:var(--card,#fff)}
+.cx-chip b{color:var(--accent)}
+.cx-foot{font-size:10.5px;color:var(--text3);margin-top:10px;line-height:1.6}
+@media print{.cx-noprint{display:none}}
+</style>
+<script>
+(function(){
+  'use strict';
+  if(window.sdCx) return;
+  var W = window, DATA = null, Q = null, APT = null, APTQ = null, IDX = null;
+  var POI_TTL = 14 * 864e5, POI_PRE = 'sdcx_poi_';
+
+  function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+  function fmt(n){ n = Number(n); return isFinite(n) ? n.toLocaleString('ko-KR') : '-'; }
+  function py(m2){ return m2 ? Math.round(m2 / 3.3058) : 0; }
+  function walk(m){ return m ? Math.max(1, Math.round(m * 1.25 / 67)) : 0; }      // 직선 m → 도보 분(길 돌아가는 몫 25%)
+  function ymTxt(s){ s = String(s||''); return s.length >= 6 ? s.slice(0,4) + '.' + s.slice(4,6) : s; }
+  function shortSchool(n){ return String(n||'').replace(/^인천/,'').replace(/등학교$/,'').replace(/학교$/,''); }
+
+  // ── 자료 ────────────────────────────────────────────────────────
+  function load(){
+    if(DATA) return Promise.resolve(DATA);
+    if(Q) return Q;
+    Q = fetch('sd_danji_info.json', { cache:'no-cache' })
+      .then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(j){ DATA = j || { apt:{}, alias:{} }; IDX = null; return DATA; })
+      .catch(function(){ DATA = { apt:{}, alias:{} }; return DATA; });
+    return Q;
+  }
+  function loadApt(){
+    if(APT) return Promise.resolve(APT);
+    if(APTQ) return APTQ;
+    APTQ = fetch('sd_apt.json', { cache:'no-cache' }).then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(j){ APT = j || { apt:{} }; return APT; }).catch(function(){ APT = { apt:{} }; return APT; });
+    return APTQ;
+  }
+
+  // ── 단지 이름 맞추기 (주택공급현황 · 실거래 · 네이버가 서로 다르게 부른다) ──
+  function base(x){
+    return String(x||'').toUpperCase()
+      .replace(/VIEW/g,'뷰').replace(/블럭/g,'블록').replace(/BLOCK/g,'블록').replace(/BL(?=\d|$|\D)/g,'블록')
+      .replace(/[\s()\[\]{}·,.\-_\/&+]/g,'').replace(/주상복합|주상/g,'').replace(/아파트$/,'');
+  }
+  function core(x){ return base(x).replace(/^인천/,'').replace(/^송도/,'').replace(/송도$/,''); }
+  function loose(x){ return core(x).replace(/블록/g,'').replace(/단지$/,'').replace(/차$/,''); }
+  function digits(x){ return (String(x).match(/\d+/g) || []).join(','); }
+  function index(){
+    if(IDX) return IDX;
+    IDX = { b:{}, c:{}, l:{}, all:[] };
+    var add = function(map, k, code){ if(!k) return; (map[k] = map[k] || {})[code] = 1; };
+    var put = function(n, code){
+      add(IDX.b, base(n), code); add(IDX.c, core(n), code); add(IDX.l, loose(n), code);
+      IDX.all.push([loose(n), code]);
+    };
+    Object.keys(DATA.apt || {}).forEach(function(c){ put(DATA.apt[c].n, c); });
+    Object.keys(DATA.alias || {}).forEach(function(n){ put(n, DATA.alias[n]); });
+    return IDX;
+  }
+  function one(map){ var k = map ? Object.keys(map) : []; return k.length === 1 ? k[0] : ''; }
+  function findCode(nm, opt){
+    opt = opt || {};
+    if(!DATA) return '';
+    if(opt.code && DATA.apt[opt.code]) return opt.code;
+    //  지번이 가장 정확하다 — S실거래가 단지 사전(sd_apt.json)이 지번을 다 갖고 있다
+    try{
+      if(opt.jibun && W.sdKR && W.sdKR.aptFind){
+        var A = W.sdKR.aptFind(nm, opt.dong || '송도동', opt.jibun);
+        if(A && A.c && DATA.apt[A.c]) return A.c;
+      }
+    }catch(e){}
+    //  송도동 밖(다른 동·다른 구) 단지는 이 사전에 없다 — 비슷한 이름에 잘못 붙지 않게
+    if(opt.dong && !/송도/.test(opt.dong)) return '';
+    var raw = String(nm||'').trim(); if(!raw) return '';
+    if(DATA.alias && DATA.alias[raw]) return DATA.alias[raw];
+    var cands = [raw, raw.replace(/\s+\S*\d+동$/,''), raw.split(/\s+/)[0]];
+    var I = index();
+    for(var i = 0; i < cands.length; i++){
+      var n = cands[i]; if(!n) continue;
+      var r = one(I.b[base(n)]) || one(I.c[core(n)]) || one(I.l[loose(n)]);
+      if(r) return r;
+      //  한쪽이 다른 쪽을 품는 것 — 숫자(블록·차수·단지 번호)가 같아야
+      var L = loose(n), d = digits(L), hit = {};
+      if(L.length >= 3) I.all.forEach(function(p){
+        var x = p[0]; if(!x) return;
+        if((x.indexOf(L) >= 0 || L.indexOf(x) >= 0) && digits(x) === d) hit[p[1]] = 1;
+      });
+      r = one(hit); if(r) return r;
+    }
+    return '';
+  }
+
+  // ── 카카오 주변시설 (반경 1km) ──────────────────────────────────
+  var CATS = [
+    ['SW8','지하철역'],['SC4','학교'],['AC5','학원'],['PS3','어린이집·유치원'],['HP8','병원'],['PM9','약국'],
+    ['MT1','대형마트'],['CS2','편의점'],['CE7','카페'],['FD6','음식점'],['BK9','은행'],['AG2','중개업소'],['CT1','문화시설'],['PO3','공공기관']
+  ];
+  function poiGet(code){ try{ var o = JSON.parse(localStorage.getItem(POI_PRE + code) || 'null'); if(o && Date.now() - o.at < POI_TTL) return o; }catch(e){} return null; }
+  function poiPut(code, o){ try{ localStorage.setItem(POI_PRE + code, JSON.stringify(o)); }catch(e){} }
+  async function kakao(){
+    if(W.sdKR && W.sdKR.kakaoReady){ try{ await W.sdKR.kakaoReady(); }catch(e){} }
+    for(var i = 0; i < 40 && !(W.kakao && W.kakao.maps && W.kakao.maps.services && W.kakao.maps.services.Places); i++)
+      await new Promise(function(r){ setTimeout(r, 250); });
+    return !!(W.kakao && W.kakao.maps && W.kakao.maps.services && W.kakao.maps.services.Places);
+  }
+  async function coordOf(rec){
+    if(rec.loc && rec.loc.lat) return { lat:rec.loc.lat, lng:rec.loc.lng };
+    if(!(await kakao()) || !rec.road) return null;
+    return new Promise(function(res){
+      try{ new W.kakao.maps.services.Geocoder().addressSearch(rec.road, function(d, s){
+        res(s === 'OK' && d[0] ? { lat:+d[0].y, lng:+d[0].x } : null); }); }catch(e){ res(null); }
+    });
+  }
+  async function poi(code, force){
+    var c = !force && poiGet(code); if(c) return c;
+    var rec = DATA.apt[code]; if(!rec) return null;
+    if(!(await kakao())) return { err:'카카오 지도를 불러오지 못했습니다' };
+    var xy = await coordOf(rec); if(!xy) return { err:'단지 좌표를 찾지 못했습니다' };
+    var P = new W.kakao.maps.services.Places(), loc = new W.kakao.maps.LatLng(xy.lat, xy.lng);
+    var out = { at:Date.now(), r:1000, c:{} };
+    await Promise.all(CATS.map(function(cat){
+      return new Promise(function(res){
+        try{
+          P.categorySearch(cat[0], function(d, s, pg){
+            var near = (d || []).slice(0, cat[0] === 'SC4' ? 15 : 3).map(function(x){ return [x.place_name, +x.distance || 0, x.category_name || '']; });
+            out.c[cat[0]] = { n: s === 'OK' ? ((pg && pg.totalCount) || (d || []).length) : 0, near: near };
+            res();
+          }, { location:loc, radius:1000, sort:W.kakao.maps.services.SortBy.DISTANCE });
+        }catch(e){ out.c[cat[0]] = { n:0, near:[] }; res(); }
+      });
+    }));
+    poiPut(code, out);
+    return out;
+  }
+  //  카카오 「학교」에서 초·중·고만 (학원·대학 부설 빼고)
+  function schools(o){
+    var s = ((o && o.c && o.c.SC4 && o.c.SC4.near) || []).filter(function(x){ return /(초등학교|중학교|고등학교)$/.test(x[0]) && !/병설|분교/.test(x[0]); });
+    return s.slice(0, 6);
+  }
+
+  // ── 관리비 어림 (sd_apt.json: 관리비부과면적 1㎡당 월 원) ────────
+  function fee(code){
+    var a = APT && APT.apt && APT.apt[code]; if(!a || !a.fee) return null;
+    return { ym:a.fee.ym, pub:+a.fee.pub || 0, ind:+a.fee.ind || 0, ltr:+a.fee.ltr || 0, k:+a.k || 0 };
+  }
+
+  // ── 화면 ────────────────────────────────────────────────────────
+  function kv(t, v){ return v == null || v === '' ? '' : '<div class="cx-k"><span>' + esc(t) + '</span><b>' + v + '</b></div>'; }
+  function card(code, P){
+    var r = DATA.apt[code], L = r.loc, F = fee(code);
+    var park = (r.park_u || r.park_g) ? fmt((r.park_u||0) + (r.park_g||0)) + '대' + (r.park_ratio ? ' <small>(세대당 ' + r.park_ratio + ')</small>' : '') : '';
+    var h = '<div class="cx-h"><div><b>🏢 단지 정보 · 입지</b> <small>' + esc(r.n) + ' · K-apt·입지 원장 ' + esc(DATA.ver || '') + '</small></div>'
+      + '<div class="cx-noprint" style="display:flex;gap:6px;flex-wrap:wrap"><button class="cx-btn" onclick="sdCx.copy(\'' + code + '\')">📋 상세설명 글감 복사</button>'
+      + '<button class="cx-btn" onclick="sdCx.refresh(\'' + code + '\', this)">🔄 주변시설 다시 세기</button></div></div>';
+    h += '<div class="cx-grid">'
+      + kv('준공', esc(String(r.use||'').replace(/-/g,'.')) + (r.use ? ' <small>(' + (new Date().getFullYear() - parseInt(r.use)) + '년차)</small>' : ''))
+      + kv('세대 · 동', fmt(r.h) + '세대 · ' + (r.b||'-') + '개 동')
+      + kv('시공 · 시행', esc([r.builder, r.dev].filter(Boolean).join(' · ')))
+      + kv('난방 · 복도', esc([r.heat, r.corr].filter(Boolean).join(' · ')))
+      + kv('주차', park + (r.park_u ? '<br><small>지하 ' + fmt(r.park_u) + ' · 지상 ' + fmt(r.park_g||0) + '</small>' : ''))
+      + kv('승강기 · CCTV', (r.elev != null ? fmt(r.elev) + '대' : '-') + ' · ' + (r.cctv != null ? fmt(r.cctv) + '대' : '-'))
+      + kv('구조', esc(r.struct))
+      + kv('관리', esc([r.mgmt, r.mgr].filter(Boolean).join(' · ')))
+      + kv('홈네트워크', esc(r.homenet))
+      + kv('도로명', esc(String(r.road||'').replace(/^인천광역시 /,'')))
+      + '</div>';
+    //  면적 구성 + 관리비 어림
+    if((r.sizes||[]).length){
+      var tot = r.sizes.reduce(function(a, s){ return a + (s[1]||0); }, 0);
+      h += '<div class="cx-sec">📐 면적 구성 <small style="font-weight:400;color:var(--text3)">K-apt · 공급 = 관리비부과면적' + (F ? ' · 관리비 ' + ymTxt(F.ym) + ' 부과분 어림' : '') + '</small></div>'
+        + '<table class="cx-t"><tr><th>전용</th><th>공급(평형)</th><th>세대수</th><th>비중</th>' + (F ? '<th>월 관리비 어림</th>' : '') + '</tr>'
+        + r.sizes.map(function(s){
+            var f = F && s[2] ? Math.round((F.pub + F.ind) * s[2] / 1000) * 1000 : 0;
+            return '<tr><td>' + s[0] + '㎡ <small style="color:var(--text3)">(' + (Math.round(s[0]/3.3058*10)/10) + '평)</small></td><td>' + (s[2] ? s[2] + '㎡ <small style="color:var(--text3)">(' + py(s[2]) + '평형)</small>' : '-') + '</td>'
+              + '<td>' + fmt(s[1]) + '</td><td>' + (tot ? Math.round(s[1]/tot*1000)/10 + '%' : '-') + '</td>' + (F ? '<td>' + (f ? '약 ' + fmt(Math.round(f/10000)) + '만원' : '-') + '</td>' : '') + '</tr>';
+          }).join('') + '</table>'
+        + (F ? '<div class="cx-foot" style="margin-top:4px">관리비 = 공용 ' + fmt(Math.round(F.pub)) + '원 + 개별 ' + fmt(Math.round(F.ind)) + '원 (관리비부과면적 1㎡당, ' + ymTxt(F.ym) + ') × 공급㎡ — 계절·세대 사용량에 따라 다릅니다. 장기수선충당금 ㎡당 ' + fmt(Math.round(F.ltr)) + '원 별도.</div>' : '');
+    }
+    //  입지 (원장)
+    if(L){
+      h += '<div class="cx-sec">📍 입지 <small style="font-weight:400;color:var(--text3)">단지 좌표에서 직선거리 · 입지 원장</small></div><div class="cx-loc">'
+        + '<div class="cx-li"><div class="t">🚇 지하철</div><b>' + esc(L.st || '-') + '역</b> ' + esc(L.line || '') + '<br>직선 ' + fmt(L.st_m) + 'm · 도보 약 ' + walk(L.st_m) + '분' + (L.st1k ? ' · 1km 안 역 ' + L.st1k + '곳' : '') + '</div>'
+        + '<div class="cx-li"><div class="t">🚌 버스</div>500m 안 정류장 <b>' + fmt(L.bus500) + '</b>곳 · 1km ' + fmt(L.bus1k) + '곳<br>가장 가까운 정류장 ' + fmt(L.bus_m) + 'm</div>'
+        + '<div class="cx-li"><div class="t">🏫 학교 (1km)</div>초 <b>' + (L.e1k||0) + '</b> · 중 <b>' + (L.m1k||0) + '</b> · 고 <b>' + (L.hs1k||0) + '</b><br>가장 가까운 초등 ' + esc(shortSchool(L.elem)) + ' ' + fmt(L.elem_m) + 'm (도보 약 ' + walk(L.elem_m) + '분)</div>'
+        + '<div class="cx-li"><div class="t">📚 학원 (1km)</div><b>' + (L.acad1k != null ? fmt(L.acad1k) + '</b>곳' : '-</b>') + '</div>'
+        + '<div class="cx-li"><div class="t">🏥 의료 (1km)</div>의료기관 <b>' + fmt(L.hosp1k) + '</b>곳 (병원급 ' + (L.hospG1k||0) + ')<br>3km 안 종합병원 ' + (L.genH3k||0) + '곳</div>'
+        + '<div class="cx-li"><div class="t">🛒 슈퍼마켓</div>500m ' + fmt(L.mart500) + '곳 · 1km <b>' + fmt(L.mart1k) + '</b>곳</div>'
+        + '</div>';
+    }
+    //  K-apt 소개 글
+    var tx = [['교육시설', r.edu], ['주변 편의', r.conv], ['부대·복리시설', r.welfare]].filter(function(x){ return x[1]; });
+    if(tx.length) h += '<div class="cx-sec">🏷 K-apt 등록 정보</div><div class="cx-txt">' + tx.map(function(x){ return '<b>' + x[0] + '</b> ' + esc(x[1]); }).join('<br>')
+      + (r.sub_walk || r.bus_walk ? '<br><b>교통(관리사무소 신고)</b> ' + esc([r.sub_st ? r.sub_st + ' ' + (r.sub_walk||'') : '', r.bus_walk ? '버스 ' + r.bus_walk : ''].filter(Boolean).join(' · ')) : '') + '</div>';
+    //  카카오 주변시설
+    h += '<div class="cx-sec">🗺 주변시설 <small style="font-weight:400;color:var(--text3)">카카오 장소 · 반경 1km' + (P && P.at ? ' · ' + new Date(P.at).toLocaleDateString('ko-KR') + ' 셈' : '') + '</small></div>';
+    if(!P) h += '<div class="cx-txt" id="cx-poi-wait">카카오에서 세는 중…</div>';
+    else if(P.err) h += '<div class="cx-txt" style="color:#c62828">' + esc(P.err) + '</div>';
+    else {
+      h += '<div class="cx-poi">' + CATS.map(function(c){ var o = P.c[c[0]]; return o ? '<span class="cx-chip">' + c[1] + ' <b>' + fmt(o.n) + (o.n >= 45 ? '+' : '') + '</b></span>' : ''; }).join('') + '</div>';
+      var sc = schools(P), mt = (P.c.MT1 && P.c.MT1.near) || [], sw = (P.c.SW8 && P.c.SW8.near) || [];
+      h += '<div class="cx-txt" style="margin-top:6px">'
+        + (sw.length ? '<b>역</b> ' + sw.slice(0,2).map(function(x){ return esc(x[0]) + ' ' + fmt(x[1]) + 'm'; }).join(' · ') + '<br>' : '')
+        + (sc.length ? '<b>학교</b> ' + sc.map(function(x){ return esc(shortSchool(x[0])) + ' ' + fmt(x[1]) + 'm'; }).join(' · ') + '<br>' : '')
+        + (mt.length ? '<b>대형마트</b> ' + mt.slice(0,3).map(function(x){ return esc(x[0]) + ' ' + fmt(x[1]) + 'm'; }).join(' · ') : '')
+        + '</div>';
+    }
+    h += '<div class="cx-foot">출처: ' + esc(DATA.src || '') + (r.loc_note ? '<br>※ ' + esc(r.loc_note) : '') + '<br>거리는 직선거리, 도보 시간은 직선거리에 길 돌아가는 몫(25%)을 더한 어림입니다. 배정 학교는 교육청 학구도로 확인하세요.</div>';
+    return '<div class="cx-card" data-cx="' + code + '">' + h + '</div>';
+  }
+
+  // ── 글감 (네이버 매물 상세설명·블로그 근거) ──────────────────────
+  function text(code){
+    var r = DATA && DATA.apt[code]; if(!r) return '';
+    var L = r.loc, F = fee(code), P = poiGet(code), out = [];
+    out.push('[단지] ' + r.n + ' · ' + String(r.use||'').slice(0,7).replace('-','.') + ' 준공 · ' + fmt(r.h) + '세대 · ' + (r.b||'-') + '개 동'
+      + (r.builder ? ' · ' + r.builder + ' 시공' : '') + (r.heat ? ' · ' + r.heat : '') + (r.corr ? ' · ' + r.corr : ''));
+    out.push('[주차·시설] 주차 ' + fmt((r.park_u||0) + (r.park_g||0)) + '대' + (r.park_ratio ? '(세대당 ' + r.park_ratio + '대)' : '') + (r.elev ? ' · 승강기 ' + r.elev + '대' : '') + (r.cctv ? ' · CCTV ' + r.cctv + '대' : '') + (r.homenet === '유' ? ' · 홈네트워크' : ''));
+    if((r.sizes||[]).length) out.push('[면적] ' + r.sizes.map(function(s){ return '전용 ' + Math.round(s[0]) + '㎡' + (s[2] ? '(' + py(s[2]) + '평형)' : '') + ' ' + fmt(s[1]) + '세대'; }).join(' · '));
+    if(L){
+      out.push('[교통] ' + (L.st ? L.st + '역(' + (L.line||'') + ') 직선 ' + fmt(L.st_m) + 'm, 도보 약 ' + walk(L.st_m) + '분' : '') + ' · 500m 안 버스정류장 ' + fmt(L.bus500) + '곳');
+      var sc = schools(P);
+      out.push('[학교] 가장 가까운 초등학교 ' + shortSchool(L.elem) + ' ' + fmt(L.elem_m) + 'm(도보 약 ' + walk(L.elem_m) + '분) · 1km 안 초' + (L.e1k||0) + '·중' + (L.m1k||0) + '·고' + (L.hs1k||0)
+        + (sc.length ? ' · 주변: ' + sc.map(function(x){ return shortSchool(x[0]) + ' ' + fmt(x[1]) + 'm'; }).join(', ') : ''));
+      if(L.acad1k != null) out.push('[학원가] 1km 안 학원 ' + fmt(L.acad1k) + '곳');
+      out.push('[생활] 1km 안 의료기관 ' + fmt(L.hosp1k) + '곳(병원급 ' + (L.hospG1k||0) + ') · 슈퍼마켓 ' + fmt(L.mart1k) + '곳' + (L.genH3k ? ' · 3km 안 종합병원 ' + L.genH3k + '곳' : ''));
+    }
+    if(P && P.c){
+      var g = function(k){ return P.c[k] ? P.c[k].n : 0; };
+      out.push('[주변(카카오 1km)] 편의점 ' + g('CS2') + ' · 카페 ' + g('CE7') + ' · 음식점 ' + g('FD6') + (g('FD6') >= 45 ? '+' : '') + ' · 약국 ' + g('PM9') + ' · 은행 ' + g('BK9')
+        + ((P.c.MT1 && P.c.MT1.near.length) ? ' · 대형마트 ' + P.c.MT1.near.slice(0,2).map(function(x){ return x[0] + ' ' + fmt(x[1]) + 'm'; }).join(', ') : ''));
+    }
+    if(r.edu) out.push('[K-apt 교육시설] ' + r.edu);
+    if(r.conv) out.push('[K-apt 주변 편의] ' + r.conv);
+    if(r.welfare) out.push('[부대·복리시설] ' + r.welfare);
+    if(F) out.push('[관리비] ' + ymTxt(F.ym) + ' 부과분 공급㎡당 약 ' + fmt(Math.round(F.pub + F.ind)) + '원(공용+개별) — 예: ' + (r.sizes||[]).filter(function(s){ return s[2]; }).slice(-2).map(function(s){ return py(s[2]) + '평형 월 약 ' + fmt(Math.round((F.pub + F.ind) * s[2] / 10000)) + '만원'; }).join(', '));
+    out.push('※ 출처: K-apt 공동주택 기본정보 · 공공데이터 입지 원장(직선거리) · 카카오 장소. 배정 학교는 학구도로 확인.');
+    return out.join('\n');
+  }
+  function copyText(t, done){
+    if(navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(t).then(function(){ done(true); }, function(){ done(fb()); });
+    else done(fb());
+    function fb(){ try{ var a = document.createElement('textarea'); a.value = t; document.body.appendChild(a); a.select(); document.execCommand('copy'); a.remove(); return true; }catch(e){ return false; } }
+  }
+  function toast(t){ try{ if(typeof W.showToast === 'function') return W.showToast(t, 3000); }catch(e){} }
+
+  //  넣기 — 상자(id) 안에 카드를 그린다. 못 찾으면 상자를 비운다(조용히)
+  async function mount(boxId, nm, opt){
+    var box = document.getElementById(boxId); if(!box) return null;
+    await load(); await loadApt();
+    try{ if(W.sdKR && W.sdKR.aptLoad) await W.sdKR.aptLoad(); }catch(e){}
+    var code = findCode(nm, opt);
+    box = document.getElementById(boxId); if(!box) return null;
+    if(!code){ box.innerHTML = ''; box.setAttribute('data-cx-miss', nm || ''); return null; }
+    var P = poiGet(code);
+    box.innerHTML = card(code, P);
+    if(!P){
+      poi(code).then(function(p){ var b = document.getElementById(boxId); if(b && b.querySelector('[data-cx="' + code + '"]')) b.innerHTML = card(code, p); });
+    }
+    return code;
+  }
+
+  W.sdCx = {
+    load:load, find:function(nm, opt){ return findCode(nm, opt); }, mount:mount, poi:poi,
+    text:text,
+    textByName:function(nm, opt){ var c = findCode(nm, opt); return c ? text(c) : ''; },
+    data:function(){ return DATA; },
+    copy:function(code){ copyText(text(code), function(ok){ toast(ok ? '📋 단지 글감을 복사했습니다 — 매물 상세설명·블로그에 근거로 쓰세요.' : '복사하지 못했습니다'); }); },
+    refresh:async function(code, btn){
+      if(btn){ btn.disabled = true; btn.textContent = '세는 중…'; }
+      var p = await poi(code, true);
+      document.querySelectorAll('[data-cx="' + code + '"]').forEach(function(el){ el.outerHTML = card(code, p); });
+    }
+  };
+  load();
 })();
 </script>
 
