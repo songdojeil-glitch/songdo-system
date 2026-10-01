@@ -2028,7 +2028,7 @@ function hbMount(){
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.10.01-3';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.10.01-4';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_hub.html';      // 이 파일 이름
   var SD_NAME = '허브';      // 사람이 부르는 이름
 
@@ -2441,7 +2441,7 @@ function hbMount(){
        — 새 홈페이지도 같은 자료를 읽는다 (그때 Firebase 규칙에서 sd_news 만 공개 읽기)
      · 「✏️ 붙여넣기」: 지금 쓰시는 ❂ 형식 글을 붙여 넣으면 두 칸으로 나눠 그 날짜로 저장
        (송도·인천경제자유구역·IFEZ·연수구가 들어간 기사 → 송도 칸, 나머지 → 부동산&경제 칸, ▶ 칸 머리가 있으면 그대로)
-     · 「📋 카톡용 복사」: 두 칸을 ❂ 형식 글로 복사
+     · 「📋 카톡용 복사 ▾」: 🏙 송도국제도시만 / 📈 부동산&경제만 / 📰 둘 다 — 셋 중 골라 ❂ 형식 글로 복사 (2026-10-01 추가)
      · 기사를 누르면 원문이 새 창으로 열린다 (http/https 주소만)
      ═════════════════════════════════════════════════════════════════ -->
 <style>
@@ -2453,6 +2453,12 @@ function hbMount(){
 .hbn-bt .hb-btn{padding:5px 10px;font-size:12px}
 .hbn-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px}
 .hbn-row>.card{min-width:0}
+.hbn-cp{position:relative;display:inline-block}
+.hbn-cm{display:none;position:absolute;right:0;top:calc(100% + 4px);z-index:60;min-width:210px;padding:5px;background:var(--bg2);border:1px solid var(--border);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.18)}
+.hbn-cm.on{display:block}
+.hbn-cm button{display:flex;width:100%;align-items:center;gap:6px;padding:8px 10px;border:none;background:transparent;color:var(--text);font-size:12.5px;font-family:inherit;text-align:left;cursor:pointer;border-radius:7px}
+.hbn-cm button:hover{background:var(--bg3)}
+.hbn-cm button small{margin-left:auto;font-size:11px;color:var(--text3)}
 .hbn-h{display:flex;align-items:center;gap:6px;font-size:13.5px;font-weight:800;margin-bottom:6px;color:var(--text)}
 .hbn-h small{font-size:11px;font-weight:500;color:var(--text3)}
 .hbn-it{display:flex;gap:8px;align-items:baseline;padding:7px 6px;border-bottom:1px solid var(--border);text-decoration:none;color:var(--text);border-radius:7px}
@@ -2508,7 +2514,12 @@ function hbMount(){
       + '<button class="hb-btn" type="button" onclick="hbnMove(-1)" title="전날">‹</button>'
       + '<button class="hb-btn" type="button" onclick="hbnToday()">최근</button>'
       + '<button class="hb-btn" type="button" onclick="hbnMove(1)" title="다음날">›</button>'
-      + '<button class="hb-btn" type="button" onclick="hbnCopy()">📋 카톡용 복사</button>'
+      + '<span class="hbn-cp"><button class="hb-btn" type="button" id="hbn-cpb" onclick="hbnCopyMenu(event)" aria-haspopup="true" aria-expanded="false">📋 카톡용 복사 ▾</button>'
+      + '<span class="hbn-cm" id="hbn-cm" role="menu">'
+      + '<button type="button" role="menuitem" onclick="hbnCopy(\'songdo\')">🏙 송도국제도시 뉴스만<small id="hbn-cm-s"></small></button>'
+      + '<button type="button" role="menuitem" onclick="hbnCopy(\'econ\')">📈 부동산&amp;경제 뉴스만<small id="hbn-cm-e"></small></button>'
+      + '<button type="button" role="menuitem" onclick="hbnCopy(\'both\')">📰 둘 다<small id="hbn-cm-b"></small></button>'
+      + '</span></span>'
       + '<button class="hb-btn" type="button" onclick="hbnPaste()">✏️ 붙여넣기</button></span></div>'
       + '<div class="hbn-row">'
       + '<div class="card"><div class="hbn-h">🏙 송도국제도시 뉴스 <small id="hbn-sc"></small></div><div id="hbn-s"><div class="hbn-e">불러오는 중…</div></div></div>'
@@ -2627,14 +2638,39 @@ function hbMount(){
   };
 
   // ── 카톡용 복사 ──────────────────────────────────────
-  window.hbnText = function(doc){
+  //  which: 'songdo' 송도국제도시만 · 'econ' 부동산&경제만 · 'both'(기본) 둘 다
+  var WHICH = { songdo:'🏙 송도국제도시 뉴스', econ:'📈 부동산&경제 뉴스', both:'📰 송도국제도시 + 부동산&경제 뉴스' };
+  function has(arr){ return (arr || []).filter(function(x){ return x && x.t; }); }
+  window.hbnText = function(doc, which){
+    if(typeof doc === 'string'){ which = doc; doc = null; }
     doc = doc || CUR; if(!doc) return '';
-    var blk = function(arr){ return (arr || []).map(function(x){ return x.t + '  -' + (x.press || '') + '-' + (safeUrl(x.url) ? '\n' + x.url : ''); }).join('\n\n'); };
-    return kTitle(doc.date) + '\n\n▶ 송도국제도시 뉴스\n\n' + blk(doc.songdo) + '\n\n▶ 부동산&경제 뉴스\n\n' + blk(doc.econ) + '\n';
+    which = WHICH[which] ? which : 'both';
+    var blk = function(arr){ return has(arr).map(function(x){ return x.t + '  -' + (x.press || '') + '-' + (safeUrl(x.url) ? '\n' + x.url : ''); }).join('\n\n'); };
+    var S = has(doc.songdo), E = has(doc.econ);
+    if(which === 'songdo'){ if(!S.length) return '';
+      return kTitle(doc.date).replace('연수구&송도 및 국내 부동산 주요뉴스', '연수구&송도 주요뉴스') + '\n\n▶ 송도국제도시 뉴스\n\n' + blk(S) + '\n'; }
+    if(which === 'econ'){ if(!E.length) return '';
+      return kTitle(doc.date).replace('연수구&송도 및 국내 부동산 주요뉴스', '국내 부동산&경제 주요뉴스') + '\n\n▶ 부동산&경제 뉴스\n\n' + blk(E) + '\n'; }
+    if(!S.length && !E.length) return '';
+    return kTitle(doc.date) + (S.length ? '\n\n▶ 송도국제도시 뉴스\n\n' + blk(S) : '') + (E.length ? '\n\n▶ 부동산&경제 뉴스\n\n' + blk(E) : '') + '\n';
   };
-  window.hbnCopy = function(){
-    var t = window.hbnText(); if(!t){ alert('복사할 뉴스가 없습니다.'); return; }
-    var done = function(){ if(typeof showToast === 'function') showToast('📋 카톡용 뉴스 글을 복사했습니다'); };
+  function closeMenu(){ var m = $('hbn-cm'), b = $('hbn-cpb'); if(m) m.classList.remove('on'); if(b) b.setAttribute('aria-expanded', 'false'); }
+  window.hbnCopyMenu = function(ev){
+    if(ev) ev.stopPropagation();
+    var m = $('hbn-cm'), b = $('hbn-cpb'); if(!m) return;
+    if(m.classList.contains('on')) return closeMenu();
+    var S = has(CUR && CUR.songdo).length, E = has(CUR && CUR.econ).length;
+    $('hbn-cm-s').textContent = S + '건'; $('hbn-cm-e').textContent = E + '건'; $('hbn-cm-b').textContent = (S + E) + '건';
+    m.classList.add('on'); if(b) b.setAttribute('aria-expanded', 'true');
+  };
+  document.addEventListener('click', function(e){ var m = $('hbn-cm'); if(m && m.classList.contains('on') && !e.target.closest('.hbn-cp')) closeMenu(); });
+  document.addEventListener('keydown', function(e){ if(e.key === 'Escape') closeMenu(); });
+  window.hbnCopy = function(which){
+    closeMenu();
+    which = WHICH[which] ? which : 'both';
+    var t = window.hbnText(null, which);
+    if(!t){ alert(which === 'songdo' ? '복사할 송도국제도시 뉴스가 없습니다.' : which === 'econ' ? '복사할 부동산&경제 뉴스가 없습니다.' : '복사할 뉴스가 없습니다.'); return; }
+    var done = function(){ if(typeof showToast === 'function') showToast('📋 ' + WHICH[which] + ' — 카톡용 글을 복사했습니다'); };
     var fall = function(){ var ta = document.createElement('textarea'); ta.value = t; ta.style.cssText = 'position:fixed;left:-9999px';
       document.body.appendChild(ta); ta.select(); try{ document.execCommand('copy'); done(); }catch(e){ prompt('아래 글을 복사하세요', t); } document.body.removeChild(ta); };
     if(navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(t).then(done, fall); else fall();
@@ -2652,7 +2688,7 @@ function hbMount(){
     if(n++ < 240) setTimeout(t, 500);
   })();
   document.addEventListener('visibilitychange', function(){ if(document.visibilityState === 'visible' && ready() && (!SHOW || SHOW === today() || (LATEST && SHOW === LATEST.date))) loadLatest(); });
-  window.sdHubNews = { reload:loadLatest, day:loadDay, parse:parse, text:function(){ return window.hbnText(); }, cur:function(){ return CUR; } };
+  window.sdHubNews = { reload:loadLatest, day:loadDay, parse:parse, text:function(w){ return window.hbnText(null, w); }, cur:function(){ return CUR; } };
 })();
 </script>
 </body>
