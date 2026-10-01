@@ -2559,7 +2559,7 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.10.01-1';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.10.01-2';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_schedule.html';      // 이 파일 이름
   var SD_NAME = '일정관리';      // 사람이 부르는 이름
 
@@ -3633,5 +3633,42 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
 })();
 </script>
 
+<!-- ═════════════════════════════════════════════════════════════════
+     허브 달력 → 일정관리 바로 열기  2026-10-01
+     · sd_schedule.html?date=YYYY-MM-DD           → 📅 월간 캘린더를 그 달로 옮기고 그 날을 골라 둔다(showDay)
+     · sd_schedule.html?date=YYYY-MM-DD&todo={id} → 위와 같이 한 뒤 그 일정의 상세 창(openSchDetail)
+     ═════════════════════════════════════════════════════════════════ -->
+<script>
+(function(){
+  'use strict';
+  var p = new URLSearchParams(location.search);
+  var ds = p.get('date') || '', tid = p.get('todo') || '';
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(ds) && !tid) return;
+  if(p.get('tab') === 'memo') return;
+  try{ history.replaceState({}, '', location.pathname); }catch(e){}
+  var n = 0;
+  (function go(){
+    var ok = typeof window.sw === 'function' && typeof window.showDay === 'function' && typeof window.renderCal === 'function'
+      && Array.isArray(window.todos) && (window._nmTodosReady === true || window.todos.length > 0);
+    if(!ok){ if(n++ < 120) setTimeout(go, 250); return; }
+    setTimeout(function(){
+      var t = tid ? window.todos.find(function(x){ return x && String(x.id) === String(tid); }) : null;
+      if(!ds && t) ds = String(t.date || '').slice(0, 10);
+      try{
+        if(ds){
+          var a = ds.split('-');
+          calYear = +a[0]; calMonth = +a[1] - 1;
+          window.sw(1);
+          window.showDay(ds);
+          var cell = document.querySelector('.cal-cell.cal-selected');
+          if(cell) cell.scrollIntoView({ behavior:'smooth', block:'center' });
+        }
+        if(t && typeof window.openSchDetail === 'function') window.openSchDetail(t.id);
+      }catch(e){ console.warn('[허브 달력 → 일정]', e); }
+      window.__schDeep = { date:ds, todo:tid, found:!!t, done:true };
+    }, 400);
+  })();
+})();
+</script>
 </body>
 </html>
