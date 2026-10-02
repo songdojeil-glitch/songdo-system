@@ -19427,7 +19427,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.10.02-66';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.10.02-67';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_data.html';      // 이 파일 이름
   var SD_NAME = '실거래가';      // 사람이 부르는 이름
 
@@ -36236,7 +36236,7 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
     out.push('단지: ' + (q.cx||'-') + ' · 거래: ' + (q.deal||'매매') + (q.addr ? ' · 주소: ' + q.addr : ''));
     out.push('동·층·호: ' + [q.dong||'동 미상', q.floorTxt||'층 미상', q.ho||'호 비공개'].join(' · ') + (qTier() ? ' — 집주인이 입력한 층 구분: 「' + qTier() + '층」(구체 층수 비공개)' : ''));
     if(!forOwner && S.unitHo) out.push('호수(의뢰 승낙 후 공개): ' + hoTxt(S.unitHo) + (hoFloor(S.unitHo) ? ' → ' + hoFloor(S.unitHo) + '층' : ''));
-    out.push('면적: ' + (q.pyType ? q.pyType + '형 · ' : '') + '전용 ' + (q.ex||'-') + '㎡' + (q.sup ? ' / 공급 ' + q.sup + '㎡(약 ' + Math.round(q.sup/3.3058) + '평)' : ''));
+    out.push('면적: ' + (q.pyType ? q.pyType + '형 · ' : '') + '전용 ' + (q.ex||'-') + '㎡' + (q.sup ? ' / 공급 ' + q.sup + '㎡' : '') + (q.py ? ' · 분양 ' + q.py + '평' : (q.sup ? '(약 ' + Math.round(q.sup/3.3058) + '평)' : '')));
     out.push('향: ' + (q.dir||'-') + ' · 거주: ' + tenantTxt(q) + ' · 수리: ' + repairTxt(q));
     out.push('');
     out.push('[' + (isSale() ? '매매' : q.deal) + ' 실거래 — ' + (t.name||'단지 미확인') + ' · 전용 ±' + AREA_TOL + '㎡ · 해제 거래 제외 · 3→6→12개월 5건 이상]');
@@ -36425,7 +36425,10 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
     box.innerHTML = '<div class="po-grid">'
       + field('cx','단지명 (직방)', q.cx) + field('deal','거래', q.deal, ['매매','전세','월세'])
       + field('dong','동', q.dong) + field('floorTxt','층', q.floorTxt) + field('tier','층 구분', q.tier||'', ['','저','중','고'])
-      + field('ex','전용㎡', q.ex) + field('sup','공급㎡', q.sup) + field('dir','향', q.dir)
+      + field('ex','전용㎡', q.ex) + field('sup','공급㎡', q.sup)
+      + '<div><label>분양평수 <span id="po-py-src" style="font-weight:400;color:var(--text3);font-size:10.5px">' + esc(pySrcTxt(q)) + '</span></label>'
+      +   '<input id="po-f-py" value="' + esc(q.py == null ? '' : q.py) + '" onchange="poField()" placeholder="예: 33" title="비우면 자동(네이버 매물 분양평형 → 공급㎡ ÷ 3.3058)"></div>'
+      + field('dir','향', q.dir)
       + field('repair','수리', q.repair||'', ['','올수리','부분수리','기본형']) + field('when','요청 일시', q.when)
       + field('occ','거주', q.occ||'', ['','집주인','세입자','공실'])
       + '</div><div class="po-grid" style="margin-top:8px;grid-template-columns:1fr 1fr">'
@@ -36442,6 +36445,10 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
     if(!q.tier && /[저중고]/.test(q.floorTxt)) q.tier = /저/.test(q.floorTxt) ? '저' : /고/.test(q.floorTxt) ? '고' : '중';
     q.ex = num(g('ex')); q.sup = num(g('sup')); q.dir = normDir(g('dir')); q.repair = g('repair'); q.when = g('when');
     q.occ = g('occ'); q.ownerLives = q.occ === '집주인';
+    //  분양평수: 직접 적으면 그대로 지키고, 비우면 다시 자동
+    var py = g('py').replace(/평$/,'').trim();
+    if(!py){ q.pyManual = false; q.py = ''; }
+    else if(String(py) !== String(q.py)){ q.py = py; q.pyManual = true; q.pySrc = 'manual'; }
     analyze(false);
   };
   W.poPickName = function(){ S.trName = ($('po-trn')||{}).value || ''; S.lsName = ($('po-lsn')||{}).value || ''; analyze(false); };
@@ -36523,8 +36530,34 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
   W.poHo = function(v){ S.unitHo = String(v||'').trim(); if(S.req && S.req.cx) analyze(false); hoInfo(); if(hoFloor(S.unitHo) || /\d/.test(S.unitHo)) stUp(ST_HANDOFF); };
   W.poLen = function(v){ S.len = num(v) || 700; W.poCount(); };
 
+  // ── 분양평수 — ① 네이버 매물 분양평형(같은 단지·전용 ±0.6㎡, 가장 많은 값) ② 공급㎡ ÷ 3.3058 ──
+  function autoPy(q){
+    if(!q || q.pyManual) return;
+    var ex = num(q.ex), cnt = {}, best = '', bn = 0;
+    if(ex && S.lsName) listRows().forEach(function(r){
+      if(r.단지명 !== S.lsName) return;
+      var e = parseFloat(r.전용), p = parseFloat(r.분양평형);
+      if(!e || !p || Math.abs(e - ex) > 0.6) return;
+      var k = String(Math.round(p * 10) / 10); cnt[k] = (cnt[k] || 0) + 1;
+      if(cnt[k] > bn){ bn = cnt[k]; best = k; }
+    });
+    if(best){ q.py = best; q.pySrc = 'naver'; q.pyN = bn; return; }
+    var sup = num(q.sup);
+    if(sup){ q.py = String(Math.round(sup / 3.3058)); q.pySrc = 'calc'; q.pyN = 0; return; }
+    q.py = ''; q.pySrc = '';
+  }
+  function pySrcTxt(q){
+    if(!q || !q.py) return '';
+    if(q.pySrc === 'manual' || q.pyManual) return '(직접 입력)';
+    if(q.pySrc === 'naver') return '(네이버 매물 분양평형' + (q.pyN ? ' ' + q.pyN + '건' : '') + ')';
+    if(q.pySrc === 'calc') return '(공급 ' + q.sup + '㎡ ÷ 3.3058 = ' + (num(q.sup) / 3.3058).toFixed(1) + ')';
+    return '';
+  }
   function analyze(resetPrice){
     var q = S.req;
+    autoPy(q);
+    var pe = $('po-f-py'); if(pe) pe.value = q.py || '';
+    var ps = $('po-py-src'); if(ps) ps.textContent = pySrcTxt(q);
     S.trade = tradeOf();
     MAXF = Math.max(S.trade.maxFloor || 0, maxListFloor());
     (S.trade.pool12 || []).concat(S.trade.rows).forEach(function(r){ r.tier = tierOf(r.fl, MAXF); });
@@ -36651,15 +36684,15 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
     var rows = Object.keys(LIST).map(function(k){ return LIST[k]; }).filter(Boolean)
       .sort(function(a,b){ return String(b.at||'').localeCompare(String(a.at||'')); });
     var c = $('po-lcnt'); if(c) c.textContent = rows.length ? rows.length + '건' : '';
-    if(LQ) rows = rows.filter(function(r){ var q = r.req || {}; return (String(q.cx) + q.dong + (r.unitHo||'') + stNorm(r.status) + (r.owner||'') + (r.ownerTel||'')).replace(/\s/g,'').indexOf(LQ) >= 0; });
+    if(LQ) rows = rows.filter(function(r){ var q = r.req || {}; return (String(q.cx) + q.dong + (q.py ? q.py + '평' : '') + (r.unitHo||'') + stNorm(r.status) + (r.owner||'') + (r.ownerTel||'')).replace(/\s/g,'').indexOf(LQ) >= 0; });
     if(!rows.length){ box.innerHTML = '<div class="po-cnt" style="padding:8px 0">' + (LOADED ? '저장된 가격 제안이 없습니다.' : '불러오는 중…') + '</div>'; return; }
-    box.innerHTML = '<table class="po-t"><tr><th>요청·작성</th><th>단지</th><th>동 · 층 · 향</th><th>면적</th><th class="n">제안가</th><th>상태</th><th>소유주</th><th></th></tr>'
+    box.innerHTML = '<table class="po-t"><tr><th>요청·작성</th><th>단지</th><th>동 · 층 · 향</th><th>분양평수 · 전용</th><th class="n">제안가</th><th>상태</th><th>소유주</th><th></th></tr>'
       + rows.map(function(r){
           var q = r.req || {}, st = stNorm(r.status);
           var tg = st === ST_HANDOFF || st === '매물 등록 완료' || st === '연락처 공개' ? 'ok' : st === '거절 · 무응답' ? '' : 'mid';
           return '<tr class="po-list-i" onclick="poOpen(\'' + esc(r.id) + '\')"><td>' + esc(q.when || '') + '<div class="po-cnt">' + esc(String(r.at||'').slice(0,10)) + ' · ' + esc(r.by||'') + '</div></td>'
             + '<td><b>' + esc(q.cx||'') + '</b> <span class="po-tag">' + esc(q.deal||'') + '</span></td><td>' + esc([q.dong, q.floorTxt, q.dir].filter(Boolean).join(' · ')) + '</td>'
-            + '<td>' + (q.ex ? '전용 ' + q.ex + '㎡' : '') + '</td><td class="n"><b>' + won(r.price) + '</b></td><td><span class="po-tag ' + tg + '">' + esc(st) + '</span></td>'
+            + '<td>' + (q.py ? '<b>' + esc(q.py) + '평</b>' : '') + (q.ex ? '<div class="po-cnt">전용 ' + esc(q.ex) + '㎡</div>' : '') + '</td><td class="n"><b>' + won(r.price) + '</b></td><td><span class="po-tag ' + tg + '">' + esc(st) + '</span></td>'
             + '<td>' + esc(r.owner || '') + (r.unitHo ? '<div class="po-cnt">' + esc(hoTxt(r.unitHo)) + '</div>' : '') + '</td><td style="white-space:nowrap">' + (st === ST_HANDOFF || st === '연락처 공개' ? '<button class="po-btn grn" style="padding:3px 8px" title="매물 등록으로 넘기기" onclick="event.stopPropagation();poToProps(\'' + esc(r.id) + '\')">🏠</button> ' : '')
             + '<button class="po-btn" style="padding:3px 8px" onclick="event.stopPropagation();poDel(\'' + esc(r.id) + '\')">🗑</button></td></tr>';
         }).join('') + '</table>';
@@ -36694,7 +36727,7 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
       + '<h2>요청 매물</h2><table>'
       + '<tr><th>단지 · 거래</th><td>' + esc(q.cx||'') + ' · ' + esc(q.deal||'') + (q.addr ? ' · ' + esc(q.addr) : '') + '</td></tr>'
       + '<tr><th>동 · 층 · 호</th><td>' + esc([q.dong, q.floorTxt, q.ho].filter(Boolean).join(' · ')) + '</td></tr>'
-      + '<tr><th>면적 · 향</th><td>' + (q.pyType ? esc(q.pyType) + '형 · ' : '') + '전용 ' + esc(q.ex||'') + '㎡' + (q.sup ? ' / 공급 ' + esc(q.sup) + '㎡' : '') + ' · ' + esc(q.dir||'') + '</td></tr>'
+      + '<tr><th>면적 · 향</th><td>' + (q.py ? '<b>분양 ' + esc(q.py) + '평</b> · ' : '') + (q.pyType ? esc(q.pyType) + '형 · ' : '') + '전용 ' + esc(q.ex||'') + '㎡' + (q.sup ? ' / 공급 ' + esc(q.sup) + '㎡' : '') + ' · ' + esc(q.dir||'') + '</td></tr>'
       + '<tr><th>거주 · 수리</th><td>' + esc(tenantTxt(q)) + ' · 수리 ' + esc(repairTxt(q)) + '</td></tr>'
       + '<tr><th>요청 일시</th><td>' + esc(q.when||'') + '</td></tr>'
       + (r.owner || r.ownerTel || r.unitHo ? '<tr><th>소유주 · 호수</th><td>' + esc(r.owner||'') + ' ' + esc(r.ownerTel||'') + (r.unitHo ? ' · ' + esc((q.dong ? q.dong + ' ' : '') + hoTxt(r.unitHo)) + (hoFloor(r.unitHo) ? ' (' + hoFloor(r.unitHo) + '층)' : '') : '') + '</td></tr>' : '')
