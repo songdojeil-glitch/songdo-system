@@ -10,12 +10,14 @@
 <link rel="shortcut icon" href="favicon.ico">
 <link rel="apple-touch-icon" sizes="180x180" href="sjrws-180.png">
 <!-- ═════════════════════════════════════════════════════════════════
-     🧰 도구 (sd_tool.html)  v2026.10.02-1
+     🧰 도구 (sd_tool.html)  v2026.10.03-1
      · 데이터관리에 있던 다섯 가지를 따로 모은 화면
          🧰 전체 도구(20) · 🤝 직방 가격 제안(26) · 🔎 공시가격 조회(27) · 🏗️ 건축물대장(24) · 🔑 추출기 열쇠(25)
      · 이 도구들은 데이터관리의 실거래·매물 자료와 엔진(실거래 API·단지 사전·엑셀·로그인)을 함께 쓴다.
        그래서 코드를 두 벌 두지 않고, 아래 칸에 데이터관리를 「도구 모드」(sd_data.html?mode=tool&tab=N)로 띄운다.
        도구 모드에서는 데이터관리의 머리줄·메뉴가 숨고 도구 화면만 보인다.
+     · 🧮 부동산 계산기(tab=calc)는 데이터관리를 띄우지 않고 이 파일 안에서 바로 그린다 (아래 sdCalc 모듈)
+       sd_tool.html?tab=calc&c=acq|cgt|hold|fee|yield|loan|conv|etc
      · 주소: sd_tool.html?tab=26 처럼 바로 열 수 있다. 마지막에 본 도구는 이 컴퓨터가 기억한다.
      · 도구 안에서 데이터관리 화면(예: S실거래가)으로 가는 단추는 바깥 창을 데이터관리로 옮긴다.
      ═════════════════════════════════════════════════════════════════ -->
@@ -38,6 +40,9 @@ body{display:flex;flex-direction:column;min-height:100vh}
 .tl-tab:hover{color:#364fc7}
 .tl-tab.on{color:#364fc7;border-bottom-color:#4c6ef5}
 .tl-wrap{flex:1 1 auto;position:relative;min-height:0}
+#calc-wrap{flex:1 1 auto;min-height:0;overflow:auto;display:none}
+body.calc-on .tl-wrap{display:none}
+body.calc-on #calc-wrap{display:block}
 #tool-frame{position:absolute;inset:0;width:100%;height:100%;border:0;background:var(--bg)}
 #tl-load{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:10px;color:var(--text3);font-size:13px;background:var(--bg);z-index:2}
 #tl-load .sp{width:30px;height:30px;border:3px solid #dbe4ff;border-top-color:#4c6ef5;border-radius:50%;animation:tlsp .8s linear infinite}
@@ -69,18 +74,20 @@ body{display:flex;flex-direction:column;min-height:100vh}
   <div id="tl-load"><div class="sp"></div><div>도구를 여는 중… <small>(처음에는 실거래·매물 자료를 함께 불러옵니다)</small></div></div>
   <iframe id="tool-frame" title="도구" allow="clipboard-read; clipboard-write"></iframe>
 </div>
+<div id="calc-wrap"><div id="calc-root"></div></div>
 <script>
 (function(){
   'use strict';
-  var SD_VER = '2026.10.02-1';
+  var SD_VER = '2026.10.03-1';
   var TABS = [
     [20, '🧰 전체 도구'],
+    ['calc', '🧮 부동산 계산기'],
     [26, '🤝 직방 가격 제안'],
     [27, '🔎 공시가격 조회'],
     [24, '🏗️ 건축물대장'],
     [25, '🔑 추출기 열쇠']
   ];
-  var LKEY = 'sd_tool_tab', CUR = 0;
+  var LKEY = 'sd_tool_tab', CUR = 0, FRAME_N = 0;
   var fr = document.getElementById('tool-frame'), ld = document.getElementById('tl-load');
   var ver = document.getElementById('tl-ver'); if(ver) ver.textContent = 'v' + SD_VER;
   window.SD_VERSION = SD_VER;
@@ -90,36 +97,776 @@ body{display:flex;flex-direction:column;min-height:100vh}
     var RL = { master:'마스터', admin:'관리자', staff:'직원', user:'직원' };
     if(me && se.name) me.innerHTML = '<b>' + String(se.name).replace(/[<>&"]/g, '') + '</b>' + (se.role ? '<span class="rl">' + (RL[se.role] || String(se.role).replace(/[<>&"]/g, '')) + '</span>' : '') + '<a href="sd_hub.html" style="color:#3b5bdb;text-decoration:none">허브</a>';
   }catch(e){}
-  function ok(n){ return TABS.some(function(t){ return t[0] === n; }); }
+  //  탭 열쇠: 숫자(데이터관리 도구 모드 탭) 또는 'calc'(이 파일 안의 부동산 계산기)
+  function key(n){ if(n === 'calc') return n; var k = parseInt(n, 10); return isNaN(k) ? null : k; }
+  function ok(n){ n = key(n); return TABS.some(function(t){ return t[0] === n; }); }
   function paint(){
     document.getElementById('tl-tabs').innerHTML = TABS.map(function(t){
-      return '<button type="button" class="tl-tab' + (t[0] === CUR ? ' on' : '') + '" onclick="sdToolGo(' + t[0] + ')">' + t[1] + '</button>';
+      return '<button type="button" class="tl-tab' + (t[0] === CUR ? ' on' : '') + '" data-tab="' + t[0] + '" onclick="sdToolGo(\'' + t[0] + '\')">' + t[1] + '</button>';
     }).join('');
     var t = TABS.filter(function(x){ return x[0] === CUR; })[0];
     document.title = (t ? t[1].replace(/^\S+\s/, '') + ' · ' : '') + '도구 - SJRWS';
+    document.body.classList.toggle('calc-on', CUR === 'calc');
   }
   //  도구 화면 안에서 탭이 바뀌면(전체 도구 카드를 누른 경우 등) 여기도 따라 바꾼다
-  window.sdToolTab = function(n){
+  window.sdToolTab = function(n, extra){
     if(!ok(n)) return;
-    CUR = n; paint();
-    try{ localStorage.setItem(LKEY, String(n)); }catch(e){}
-    try{ history.replaceState(null, '', location.pathname + '?tab=' + n); }catch(e){}
+    CUR = key(n); paint();
+    try{ localStorage.setItem(LKEY, String(CUR)); }catch(e){}
+    try{ history.replaceState(null, '', location.pathname + '?tab=' + CUR + (extra || '')); }catch(e){}
   };
-  window.sdToolGo = function(n){
+  function loadFrame(n){ FRAME_N = n; ld.style.display = 'flex'; fr.src = 'sd_data.html?mode=tool&tab=' + n; }
+  window.sdToolGo = function(n, c){
     if(!ok(n)) return;
+    n = key(n);
+    if(n === 'calc'){
+      window.sdToolTab('calc');
+      if(window.sdCalc) window.sdCalc.go(c || (function(){ try{ return localStorage.getItem('sd_calc_last') || 'home'; }catch(e){ return 'home'; } })());
+      return;
+    }
     var w = null; try{ w = fr.contentWindow; }catch(e){}
-    if(w && typeof w.sw === 'function' && w.document && w.document.getElementById('tc' + n)){ w.sw(n); window.sdToolTab(n); try{ w.scrollTo(0, 0); }catch(e){} return; }
+    if(FRAME_N && w && typeof w.sw === 'function' && w.document && w.document.getElementById('tc' + n)){ window.sdToolTab(n); w.sw(n); try{ w.scrollTo(0, 0); }catch(e){} return; }
     window.sdToolTab(n);
-    ld.style.display = 'flex';
-    fr.src = 'sd_data.html?mode=tool&tab=' + n;
+    loadFrame(n);
   };
-  var q = 0; try{ q = parseInt(new URLSearchParams(location.search).get('tab'), 10); }catch(e){}
-  if(!ok(q)){ try{ q = parseInt(localStorage.getItem(LKEY), 10); }catch(e){} }
-  if(!ok(q)) q = 20;
-  CUR = q; paint(); window.sdToolTab(q);
   fr.addEventListener('load', function(){ setTimeout(function(){ ld.style.display = 'none'; }, 300); });
-  fr.src = 'sd_data.html?mode=tool&tab=' + q;
+  var sp = new URLSearchParams(location.search), q = key(sp.get('tab'));
+  if(!ok(q)){ try{ q = key(localStorage.getItem(LKEY)); }catch(e){} }
+  if(!ok(q)) q = 20;
+  CUR = q; paint();
+  //  계산기는 아래 모듈이 다 읽힌 뒤에 그린다. 데이터관리(무거움)는 숫자 탭을 처음 열 때만 띄운다
+  window.__sdToolStart = function(){
+    if(q === 'calc'){ var c = sp.get('c'); window.sdToolTab('calc', c ? '&c=' + encodeURIComponent(c) : ''); window.sdCalc && window.sdCalc.go(c || 'home', true); }
+    else { window.sdToolTab(q); loadFrame(q); }
+  };
 })();
 </script>
+<!-- ═════════════════════════════════════════════════════════════════
+     🧮 부동산 계산기 (sd_tool.html · window.sdCalc)  2026-10-02
+     · 홈 · 취득세 · 양도소득세 · 보유세 · 중개보수 · 임대수익률 · 대출한도 · 전월세 전환 · 기타 계산기
+       (Mr.K 실거래가 「부동산 통합 계산기」 구성을 따름)
+     · 세율·규정 기준: 2026-08 확인본 (PlayMCP 한국 부동산 데이터 realty_policy_rules — 지방세법·소득세법·종부세법 조문,
+       금융위 6·27·10·15 대책) · 기준금리 2.75%(2026-07-16 인상)
+     · 인천은 수도권 비규제지역 — 조정대상지역 칸은 기본 꺼짐(서울 전역·경기 15곳만 해당)
+     · 2026-08-03 세제개편안(종부세·양도세)은 국회 계류 — 계산에 넣지 않고 안내만
+     · 모든 결과는 어림셈 — 손님께 세액을 단정하지 말 것
+     · 주소로 열기: sd_tool.html?tab=calc&c=acq (acq·cgt·hold·fee·yield·loan·conv·etc)
+     ═════════════════════════════════════════════════════════════════ -->
+<style>
+#calc-root{max-width:1180px;margin:0 auto;padding:16px 16px 48px;color:var(--text);font-size:13px}
+#calc-root *{box-sizing:border-box}
+.cx-top{display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+.cx-top h2{margin:0;font-size:20px}
+.cx-top small{color:var(--text3);font-size:12px}
+.cx-std{margin-left:auto;font-size:11px;color:#2b8a3e;background:#ebfbee;border:1px solid #b2f2bb;border-radius:14px;padding:3px 10px}
+.cx-tabs{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 16px}
+.cx-tab{padding:7px 13px;border:1px solid var(--border);border-radius:9px;background:var(--card);font-size:12.5px;font-weight:600;color:#4a5568;cursor:pointer;font-family:inherit}
+.cx-tab b{display:inline-block;width:18px;height:18px;line-height:18px;border-radius:5px;font-size:10px;margin-right:5px;text-align:center;background:#edf2ff;color:#4c6ef5}
+.cx-tab.on{background:#4c6ef5;border-color:#4c6ef5;color:#fff}
+.cx-tab.on b{background:rgba(255,255,255,.25);color:#fff}
+.cx-h{font-size:17px;font-weight:800;margin:4px 0 2px}
+.cx-hs{font-size:12px;color:var(--text3);margin-bottom:12px}
+.cx-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px;align-items:start}
+.cx-card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px}
+.cx-f{margin-bottom:13px}
+.cx-f>label{display:flex;justify-content:space-between;align-items:baseline;font-size:12px;font-weight:600;color:#4a5568;margin-bottom:6px}
+.cx-f>label span{font-weight:400;color:var(--text3);font-size:11px}
+.cx-f>label em{font-style:normal;color:#4c6ef5;font-size:11.5px;font-weight:700}
+.cx-in{width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:9px;font-size:15px;font-weight:700;font-family:inherit;color:var(--text);background:#fff;text-align:right}
+.cx-in.sm{font-size:13px;padding:8px 10px}
+.cx-q{display:flex;gap:5px;margin-top:6px;flex-wrap:wrap}
+.cx-q button{padding:3px 9px;font-size:11px;border:1px solid var(--border);border-radius:7px;background:#fff;cursor:pointer;color:#4a5568;font-family:inherit}
+.cx-seg{display:flex;background:#f1f3f5;border-radius:10px;padding:3px;gap:3px;flex-wrap:wrap}
+.cx-seg button{flex:1;min-width:64px;padding:7px 6px;border:none;border-radius:8px;background:transparent;font-size:12px;font-weight:600;color:#495057;cursor:pointer;font-family:inherit}
+.cx-seg button.on{background:#4c6ef5;color:#fff;box-shadow:0 1px 3px rgba(76,110,245,.35)}
+.cx-tg{display:flex;align-items:center;gap:10px;background:#f8f9fa;border-radius:10px;padding:9px 12px;margin-bottom:8px;cursor:pointer}
+.cx-tg div{flex:1;font-size:12.5px;font-weight:600}
+.cx-tg small{display:block;font-weight:400;color:var(--text3);font-size:11px;margin-top:1px}
+.cx-tg i{width:38px;height:22px;border-radius:11px;background:#ced4da;position:relative;flex-shrink:0;transition:background .15s}
+.cx-tg i:after{content:'';position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:#fff;transition:left .15s}
+.cx-tg.on i{background:#4c6ef5}
+.cx-tg.on i:after{left:19px}
+.cx-rg{width:100%;accent-color:#4c6ef5}
+.cx-2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.cx-big{font-size:30px;font-weight:800;letter-spacing:-.5px;margin:2px 0}
+.cx-bigl{font-size:12px;color:var(--text3)}
+.cx-subl{font-size:12px;color:var(--text3);margin-bottom:10px}
+.cx-kp{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:10px 0}
+.cx-kp div{background:#f8f9fa;border-radius:10px;padding:9px 11px}
+.cx-kp span{display:block;font-size:11px;color:var(--text3)}
+.cx-kp b{font-size:15px}
+.cx-rows{margin-top:6px}
+.cx-r{display:flex;justify-content:space-between;gap:10px;padding:7px 0;border-bottom:1px solid #f1f3f5;font-size:12.5px}
+.cx-r:last-child{border-bottom:none}
+.cx-r span{color:#495057}
+.cx-r b{font-variant-numeric:tabular-nums;text-align:right}
+.cx-r.minus b{color:#2b8a3e}
+.cx-r.tot{border-top:2px solid #e9ecef;border-bottom:none;margin-top:4px;padding-top:10px}
+.cx-r.tot span,.cx-r.tot b{font-weight:800;font-size:14px;color:var(--text)}
+.cx-r.sub span{padding-left:12px;color:var(--text3)}
+.cx-chips{display:flex;flex-wrap:wrap;gap:5px;margin:10px 0 4px}
+.cx-chips span{font-size:10.5px;background:#f1f3f5;border-radius:6px;padding:2px 8px;color:#495057}
+.cx-chips span.w{background:#fff4e6;color:#d9480f}
+.cx-note{font-size:11px;color:var(--text3);line-height:1.7;margin-top:8px}
+.cx-note b{color:#495057}
+.cx-warn{font-size:11.5px;color:#c92a2a;background:#fff5f5;border:1px solid #ffc9c9;border-radius:8px;padding:7px 10px;margin:8px 0;line-height:1.6}
+.cx-bar{height:8px;border-radius:4px;background:#e9ecef;display:flex;overflow:hidden;margin:8px 0}
+.cx-bar i{display:block;height:100%}
+.cx-act{display:flex;gap:8px;justify-content:center;margin:14px 0 4px}
+.cx-act button{padding:9px 22px;border-radius:9px;border:1px solid #4c6ef5;background:#4c6ef5;color:#fff;font-weight:700;font-size:12.5px;cursor:pointer;font-family:inherit}
+.cx-act button.s{background:#fff;color:#4c6ef5}
+.cx-foot{font-size:11px;color:var(--text3);text-align:center;line-height:1.7;margin-top:6px}
+.cx-home{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.cx-hc{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;cursor:pointer;text-align:left;font-family:inherit;color:var(--text)}
+.cx-hc:hover{border-color:#4c6ef5;box-shadow:0 2px 10px rgba(76,110,245,.12)}
+.cx-hc b{display:inline-flex;width:30px;height:30px;border-radius:9px;align-items:center;justify-content:center;background:#edf2ff;color:#4c6ef5;font-size:14px;margin-bottom:8px}
+.cx-hc h4{margin:0 0 3px;font-size:14px}
+.cx-hc p{margin:0;font-size:11.5px;color:var(--text3);line-height:1.5}
+.cx-hc u{display:inline-block;margin-top:8px;font-size:11.5px;color:#4c6ef5;text-decoration:none;font-weight:600}
+.cx-ex{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px 16px;margin-bottom:14px}
+.cx-etc{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:12px 16px;margin-bottom:14px}
+.cx-etc h5{margin:8px 0 5px;font-size:11px;color:var(--text3);font-weight:600}
+.cx-etc .cx-q button{font-size:12px;padding:5px 11px;border-radius:8px}
+.cx-etc .cx-q button.on{background:#4c6ef5;border-color:#4c6ef5;color:#fff}
+.cx-tbl{width:100%;border-collapse:collapse;font-size:11.5px;margin-top:6px}
+.cx-tbl th,.cx-tbl td{border-bottom:1px solid #f1f3f5;padding:5px 6px;text-align:left}
+.cx-tbl th{color:var(--text3);font-weight:600}
+.cx-tbl td.n,.cx-tbl th.n{text-align:right;font-variant-numeric:tabular-nums}
+.cx-tbl tr.me td{background:#edf2ff;font-weight:700}
+details.cx-dt{margin-top:10px;font-size:12px}
+details.cx-dt summary{cursor:pointer;color:#495057;font-weight:600}
+@media(max-width:860px){.cx-grid{grid-template-columns:1fr}.cx-home{grid-template-columns:1fr 1fr}}
+@media(max-width:520px){.cx-home{grid-template-columns:1fr}.cx-big{font-size:25px}}
+@media print{
+  body *{visibility:hidden}
+  #calc-root,#calc-root *{visibility:visible}
+  html,body{height:auto!important;display:block!important}
+  #calc-wrap{overflow:visible!important}
+  #calc-root{position:absolute;left:0;top:0;width:100%}
+  .cx-tabs,.cx-act,.cx-q,.cx-etc{display:none!important}
+}
+</style>
+<script>
+(function(){
+  'use strict';
+  if(window.sdCalc) return;
+  var BOK = 2.75;            // 한국은행 기준금리(2026-07-16 인상) — 전월세 전환율 기본값에 쓴다
+  var STD = '2026.08 세법·대출규제 기준';
+
+  // ── 숫자 ──────────────────────────────────────────────
+  function N(v){ var n = parseFloat(String(v == null ? '' : v).replace(/[^0-9.\-]/g, '')); return isNaN(n) ? 0 : n; }
+  function won(n){ n = Math.round(n || 0); return (n < 0 ? '-' : '') + Math.abs(n).toLocaleString() + '원'; }
+  function kor(n){                 // 523000000 → 「5억 2,300만원」
+    n = Math.round(n || 0); var s = n < 0 ? '-' : ''; n = Math.abs(n);
+    var e = Math.floor(n / 1e8), m = Math.floor((n % 1e8) / 1e4), r = n % 1e4;
+    var t = (e ? e + '억' : '') + (m ? (e ? ' ' : '') + m.toLocaleString() + '만' : '');
+    if(!t) t = r.toLocaleString(); return s + t + '원';
+  }
+  function pct(x, d){ return (Math.round(x * Math.pow(10, d == null ? 2 : d)) / Math.pow(10, d == null ? 2 : d)).toLocaleString(undefined, { maximumFractionDigits: d == null ? 2 : d }) + '%'; }
+  function cut10(x){ return Math.floor(x / 10) * 10; }        // 지방세 10원 미만 절사
+  function esc(s){ return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  function $(id){ return document.getElementById(id); }
+
+  // ── 입력 칸 만들기 ────────────────────────────────────
+  var CUR = null, ETC = 'area';
+  function money(id, label, def, hint){
+    return '<div class="cx-f"><label>' + label + (hint ? ' <span>' + hint + '</span>' : '') + '<em id="' + id + '-k"></em></label>'
+      + '<input class="cx-in" id="' + id + '" data-money="1" value="' + Math.round(def).toLocaleString() + '" inputmode="numeric" oninput="sdCalc.fmt(this)">'
+      + '<div class="cx-q"><button type="button" onclick="sdCalc.add(\'' + id + '\',1e8)">+1억</button><button type="button" onclick="sdCalc.add(\'' + id + '\',1e7)">+1,000만</button>'
+      + '<button type="button" onclick="sdCalc.add(\'' + id + '\',1e6)">+100만</button><button type="button" onclick="sdCalc.add(\'' + id + '\',0)">초기화</button></div></div>';
+  }
+  function moneySm(id, label, def, hint){
+    return '<div class="cx-f"><label>' + label + (hint ? ' <span>' + hint + '</span>' : '') + '<em id="' + id + '-k"></em></label>'
+      + '<input class="cx-in sm" id="' + id + '" data-money="1" value="' + Math.round(def).toLocaleString() + '" inputmode="numeric" oninput="sdCalc.fmt(this)"></div>';
+  }
+  function num(id, label, def, unit, hint, step){
+    return '<div class="cx-f"><label>' + label + (hint ? ' <span>' + hint + '</span>' : '') + '<em>' + (unit || '') + '</em></label>'
+      + '<input class="cx-in sm" id="' + id + '" type="number" step="' + (step || 'any') + '" value="' + def + '" oninput="sdCalc.run()"></div>';
+  }
+  function seg(id, label, opts, def, hint){
+    return '<div class="cx-f">' + (label ? '<label>' + label + (hint ? ' <span>' + hint + '</span>' : '') + '</label>' : '') + '<div class="cx-seg" id="' + id + '" data-v="' + def + '">'
+      + opts.map(function(o){ return '<button type="button" data-v="' + o[0] + '" class="' + (String(o[0]) === String(def) ? 'on' : '') + '" onclick="sdCalc.seg(this)">' + o[1] + '</button>'; }).join('') + '</div></div>';
+  }
+  function tg(id, label, desc, on){
+    return '<div class="cx-tg' + (on ? ' on' : '') + '" id="' + id + '" onclick="this.classList.toggle(\'on\');sdCalc.run()"><div>' + label + (desc ? '<small>' + desc + '</small>' : '') + '</div><i></i></div>';
+  }
+  function rg(id, label, min, max, step, def, unit, hint){
+    return '<div class="cx-f"><label>' + label + (hint ? ' <span>' + hint + '</span>' : '') + '<em id="' + id + '-v">' + def + unit + '</em></label>'
+      + '<input class="cx-rg" type="range" id="' + id + '" min="' + min + '" max="' + max + '" step="' + step + '" value="' + def + '" data-unit="' + unit + '" oninput="sdCalc.run()"></div>';
+  }
+  function V(id){
+    var e = $(id); if(!e) return null;
+    if(e.classList.contains('cx-seg')) return e.getAttribute('data-v');
+    if(e.classList.contains('cx-tg')) return e.classList.contains('on');
+    if(e.type === 'range'){ var u = $(id + '-v'); if(u) u.textContent = e.value + (e.getAttribute('data-unit') || ''); return N(e.value); }
+    return N(e.value);
+  }
+
+  // ── 결과 그리기 ───────────────────────────────────────
+  function rows(list){
+    return '<div class="cx-rows">' + list.filter(Boolean).map(function(r){
+      return '<div class="cx-r' + (r[2] ? ' ' + r[2] : '') + '"><span>' + r[0] + '</span><b>' + r[1] + '</b></div>';
+    }).join('') + '</div>';
+  }
+  function chips(list){ return '<div class="cx-chips">' + list.filter(Boolean).map(function(c){ return /^!/.test(c) ? '<span class="w">' + c.slice(1) + '</span>' : '<span>' + c + '</span>'; }).join('') + '</div>'; }
+  function out(o){
+    var h = '<div class="cx-bigl">' + o.label + '</div><div class="cx-big"' + (o.color ? ' style="color:' + o.color + '"' : '') + '>' + o.big + '</div><div class="cx-subl">' + (o.sub || '') + '</div>';
+    if(o.bar) h += '<div class="cx-bar">' + o.bar.map(function(b){ return '<i style="width:' + Math.max(0, b[0]) + '%;background:' + b[1] + '"></i>'; }).join('') + '</div>';
+    if(o.kp) h += '<div class="cx-kp">' + o.kp.map(function(k){ return '<div><span>' + k[0] + '</span><b>' + k[1] + '</b></div>'; }).join('') + '</div>';
+    if(o.warn) h += o.warn.filter(Boolean).map(function(w){ return '<div class="cx-warn">' + w + '</div>'; }).join('');
+    if(o.rows) h += rows(o.rows);
+    if(o.chips) h += chips(o.chips);
+    if(o.extra) h += o.extra;
+    if(o.note) h += '<div class="cx-note">' + o.note + '</div>';
+    return h;
+  }
+  var LAST = null;     // 복사용 — { title, big, rows }
+
+  // ═════════════════════════════════════════════════════
+  // ① 취득세
+  // ═════════════════════════════════════════════════════
+  function acqRate(P){ if(P <= 6e8) return 1; if(P <= 9e8) return Math.round((P * 2 / 3e8 - 3) * 100) / 100; return 3; }
+  function inji(P){ if(P <= 1e8) return 0; if(P <= 1e9) return 150000; return 350000; }   // 주택 매매 계약서 인지세(1억 이하 비과세)
+  function acqCalc(o){
+    // o: P, cause(buy|gift|inherit), kind(house|non), n, adj, corp, big85, temp2, low, relief
+    var r, edu, rural, heavy = 0, why = [];
+    if(o.kind === 'non'){ r = 4; edu = 0.4; rural = 0.2; why.push('주택 외 유상취득 4%'); }
+    else if(o.cause === 'inherit'){ r = 2.8; edu = 0.16; rural = o.big85 ? 0.2 : 0; why.push('상속 2.8%'); }
+    else if(o.cause === 'gift'){
+      if(o.adj && o.P >= 3e8 && !o.low){ r = 12; edu = 0.4; rural = o.big85 ? 1.0 : 0; heavy = 12; why.push('조정대상지역 3억 이상 증여 중과 12%'); }
+      else { r = 3.5; edu = 0.3; rural = o.big85 ? 0.2 : 0; why.push('증여 3.5%'); }
+    } else if(o.corp){ r = 12; edu = 0.4; rural = o.big85 ? 1.0 : 0; heavy = 12; why.push('법인 주택 취득 12%'); }
+    else {
+      if(!o.low){
+        if(o.n === 2 && o.adj && !o.temp2) heavy = 8;
+        else if(o.n === 3) heavy = o.adj ? 12 : 8;
+        else if(o.n >= 4) heavy = 12;
+      }
+      if(heavy){ r = heavy; edu = 0.4; rural = o.big85 ? (heavy === 8 ? 0.6 : 1.0) : 0; why.push(o.n + '주택' + (o.adj ? '(조정)' : '(비조정)') + ' 중과 ' + heavy + '%'); }
+      else { r = acqRate(o.P); edu = Math.round(r * 0.1 * 10000) / 10000; rural = o.big85 ? 0.2 : 0; why.push('가격 기준 일반세율 ' + r + '%' + (o.n === 2 && o.adj && o.temp2 ? ' (일시적 2주택)' : '')); }
+    }
+    var tax = cut10(o.P * r / 100), et = cut10(o.P * edu / 100), rt = cut10(o.P * rural / 100), rel = 0;
+    if(o.relief && o.relief !== 'none' && o.kind === 'house' && o.cause === 'buy' && !o.corp && !heavy && o.n === 1 && o.P <= 12e8){
+      var cap = o.relief === 'first' ? 2e6 : o.relief === 'small' ? 3e6 : 5e6;
+      rel = Math.min(tax, cap);
+    }
+    return { r:r, edu:edu, rural:rural, heavy:heavy, tax:tax, et:et, rt:rt, rel:rel, sum:tax - rel + et + rt, why:why };
+  }
+  var ACQ = {
+    id:'acq', ic:'취', name:'취득세', desc:'매매·증여·상속 취득세, 자금계획까지',
+    form:function(){
+      return seg('a-cause', '취득 원인', [['buy','매매'],['gift','증여'],['inherit','상속']], 'buy')
+        + seg('a-kind', '부동산 종류', [['house','주택'],['non','오피스텔·상가·토지']], 'house')
+        + money('a-p', '취득가액', 5e8, '(실거래가 · 증여는 시가인정액)')
+        + seg('a-n', '취득 후 보유 주택 수', [['1','1주택'],['2','2주택'],['3','3주택'],['4','4주택+']], '1', '(세대 기준, 분양권·입주권 포함)')
+        + tg('a-adj', '조정대상지역', '서울 전역·경기 15곳(과천·광명·분당 등) — 인천은 비조정', false)
+        + tg('a-temp', '일시적 2주택', '신규 취득 후 3년 안에 종전 주택 처분 — 중과 배제', false)
+        + tg('a-low', '시가표준액 1억 이하 주택', '중과 대상에서 제외(지방 2억)', false)
+        + tg('a-corp', '법인 취득', '주택 수·지역 무관 12%', false)
+        + seg('a-85', '전용면적', [['0','85㎡ 이하'],['1','85㎡ 초과']], '0', '(85㎡ 초과 시 농어촌특별세)')
+        + seg('a-rel', '감면 대상', [['none','해당 없음'],['first','생애최초'],['small','생애최초(소형·인구감소)'],['birth','출산가구']], 'none', '(12억 이하 · 1주택)');
+    },
+    side:function(){
+      return '<div class="cx-card" style="margin-top:12px" id="a-plan"></div>';
+    },
+    run:function(){
+      var o = { P:V('a-p'), cause:V('a-cause'), kind:V('a-kind'), n:+V('a-n'), adj:V('a-adj'), corp:V('a-corp'), big85:V('a-85') === '1', temp2:V('a-temp'), low:V('a-low'), relief:V('a-rel') };
+      var c = acqCalc(o), P = o.P;
+      var warn = [];
+      if(o.relief !== 'none' && !c.rel) warn.push('감면 조건에 맞지 않아 빼고 셈했습니다 (주택 매매 · 개인 · 1주택 · 12억 이하 · 중과 아님).');
+      if(o.relief === 'birth') warn.push('출산가구 감면(500만원 한도)은 <b>일몰·요건(자녀 출생 전후 기간)</b>을 위택스에서 꼭 확인하세요.');
+      var res = out({
+        label:'총 납부세액', big:won(c.sum), sub:kor(c.sum) + ' · 실효세율 <b>' + pct(P ? c.sum / P * 100 : 0) + '</b>',
+        bar:[[c.sum ? (c.tax - c.rel) / c.sum * 100 : 0, '#4c6ef5'], [c.sum ? c.et / c.sum * 100 : 0, '#51cf66'], [c.sum ? c.rt / c.sum * 100 : 0, '#fcc419']],
+        warn:warn,
+        rows:[['취득세 <small>' + c.r + '%</small>', won(c.tax)], c.rel ? ['감면 (' + ({ first:'생애최초', small:'생애최초 소형·인구감소', birth:'출산가구' })[o.relief] + ')', '-' + won(c.rel), 'minus'] : null,
+              ['지방교육세 <small>' + c.edu + '%</small>', won(c.et)], ['농어촌특별세 <small>' + c.rural + '%</small>', won(c.rt)], ['합계', won(c.sum), 'tot']],
+        chips:c.why.concat([o.big85 ? '85㎡ 초과' : '85㎡ 이하 농특세 비과세']),
+        note:'취득시기는 <b>잔금일</b>(그 전 등기 시 등기일). 신고·납부는 취득일부터 <b>60일 이내</b>(상속은 6개월). 발코니 확장·유상옵션이 과세표준에 들어가면 6억·9억 구간이 바뀔 수 있습니다. 생애최초 등 감면 시 지방교육세·농특세 처리는 신고 때 확인하세요.'
+      });
+      // 자금 계획
+      var fee = feeCalc({ obj:'house', deal:'buy', amt:P, rent:0, vat:true }).total;
+      var regDef = inji(P) + 500000;
+      var pe = $('a-reg'); var reg = pe ? N(pe.value) : regDef;
+      if(pe && pe.getAttribute('data-auto') === '1'){ reg = regDef; pe.value = regDef.toLocaleString(); }
+      var ltv = V('a-ltv') == null ? 0 : V('a-ltv');
+      var loan = Math.round(P * ltv / 100 / 1e6) * 1e6, need = P + c.sum + fee + reg;
+      var plan = '<div class="cx-h" style="font-size:14px">자금 계획 · 총 필요자금</div>'
+        + rows([['매매가', won(P)], ['취득세 합계', won(c.sum)], ['중개보수 (VAT 포함, 상한)', won(fee)],
+               ['법무·등기 <small>(인지세 ' + kor(inji(P)) + ' + 어림 50만 — 고치세요)</small>', '<input class="cx-in sm" id="a-reg" data-money="1" data-auto="' + (pe ? pe.getAttribute('data-auto') : '1') + '" style="width:120px;display:inline-block" value="' + Math.round(reg).toLocaleString() + '" oninput="this.setAttribute(\'data-auto\',\'0\');sdCalc.fmt(this)">'],
+               ['총 필요자금', won(need) + '<div style="font-size:11px;color:var(--text3);font-weight:400">' + kor(need) + '</div>', 'tot']])
+        + '<div style="background:#f8f9fa;border-radius:10px;padding:10px 12px;margin-top:8px">'
+        + '<div class="cx-f" style="margin:0"><label>대출 비율 (LTV) <em id="a-ltv-v">' + ltv + '%</em></label><input class="cx-rg" type="range" id="a-ltv" min="0" max="80" step="5" value="' + ltv + '" data-unit="%" oninput="sdCalc.run()"></div>'
+        + (ltv ? rows([['대출금', won(loan)], ['필요 자기자금', won(need - loan), 'tot']]) : '') + '</div>'
+        + '<details class="cx-dt"><summary>주택 취득세율표 보기</summary><table class="cx-tbl"><tr><th>구분</th><th class="n">취득세</th><th class="n">지방교육세</th><th class="n">농특세(85㎡↑)</th></tr>'
+        + '<tr><td>6억 이하</td><td class="n">1%</td><td class="n">0.1%</td><td class="n">0.2%</td></tr><tr><td>6억~9억</td><td class="n">1.01~2.99%</td><td class="n">0.1~0.3%</td><td class="n">0.2%</td></tr>'
+        + '<tr><td>9억 초과</td><td class="n">3%</td><td class="n">0.3%</td><td class="n">0.2%</td></tr><tr><td>2주택 조정 · 3주택 비조정</td><td class="n">8%</td><td class="n">0.4%</td><td class="n">0.6%</td></tr>'
+        + '<tr><td>3주택 조정 · 4주택+ · 법인</td><td class="n">12%</td><td class="n">0.4%</td><td class="n">1.0%</td></tr><tr><td>증여 (조정 3억↑ 12%)</td><td class="n">3.5%</td><td class="n">0.3%</td><td class="n">0.2%</td></tr>'
+        + '<tr><td>상속</td><td class="n">2.8%</td><td class="n">0.16%</td><td class="n">0.2%</td></tr><tr><td>주택 외(상가·오피스텔·토지)</td><td class="n">4%</td><td class="n">0.4%</td><td class="n">0.2%</td></tr></table>'
+        + '<div class="cx-note">지방세법 제11조·제13조의2·제151조, 농특세법 — 2026-08 확인. 2022년 발표된 중과 완화는 입법되지 않아 현행 그대로입니다.</div></details>';
+      LAST = { title:'취득세 — ' + kor(P) + ' ' + ({ buy:'매매', gift:'증여', inherit:'상속' })[o.cause] + ' · ' + (o.kind === 'house' ? o.n + '주택' : '주택 외'),
+               lines:['총 납부세액 ' + won(c.sum) + ' (실효 ' + pct(P ? c.sum / P * 100 : 0) + ')', '· 취득세 ' + won(c.tax - c.rel) + (c.rel ? ' (감면 ' + won(c.rel) + ' 반영)' : ''), '· 지방교육세 ' + won(c.et), '· 농어촌특별세 ' + won(c.rt), '총 필요자금(중개보수·등기 포함) ' + kor(need)] };
+      return { res:res, plan:plan };
+    }
+  };
+
+  // ═════════════════════════════════════════════════════
+  // ② 양도소득세
+  // ═════════════════════════════════════════════════════
+  var BR = [[1400,6,0],[5000,15,126],[8800,24,576],[15000,35,1544],[30000,38,1994],[50000,40,2594],[100000,42,3594],[Infinity,45,6594]];   // 만원
+  function prog(base, add){        // base 원 → 세액 원, 세율
+    var b = base / 1e4; if(b <= 0) return { t:0, r:0 };
+    for(var i = 0; i < BR.length; i++) if(b <= BR[i][0]) return { t:Math.max(0, (b * (BR[i][1] + (add || 0)) / 100 - BR[i][2]) * 1e4), r:BR[i][1] + (add || 0) };
+  }
+  var CGT = {
+    id:'cgt', ic:'양', name:'양도소득세', desc:'양도차익·장기보유특별공제·누진세율',
+    form:function(){
+      return seg('g-type', '주택 구분', [['one','1세대 1주택'],['multi','다주택·일반']], 'one')
+        + seg('g-asset', '자산', [['house','주택·입주권'],['bun','분양권'],['etc','주택 외 부동산']], 'house')
+        + money('g-sell', '양도가액', 15e8) + money('g-buy', '취득가액', 9e8)
+        + moneySm('g-exp', '필요경비', 0, '(중개·법무·취득세·샤시·발코니 확장 등 — 도배·장판은 안 됨)')
+        + rg('g-hold', '보유기간', 0, 30, 1, 10, '년') + rg('g-live', '거주기간', 0, 30, 1, 10, '년', '(1주택 2년↑ 시 최대 80% 공제)')
+        + '<div id="g-multi">' + seg('g-cnt', '다주택 중과 판단 — 주택 수', [['2','2주택'],['3','3주택+']], '2')
+        + tg('g-adj', '양도 주택이 조정대상지역', '2026-05-10 양도분부터 중과 시행 (+20%p·+30%p, 장특 배제) — 인천은 비조정', false) + '</div>'
+        + tg('g-nt', '1세대1주택 비과세 요건 충족', '보유 2년 이상(취득 당시 조정지역이면 거주 2년) — 12억까지 비과세', true);
+    },
+    run:function(){
+      var type = V('g-type'), asset = V('g-asset'), S = V('g-sell'), B = V('g-buy'), E = V('g-exp'), H = V('g-hold'), L = Math.min(V('g-live'), H);
+      var mt = $('g-multi'); if(mt) mt.style.display = type === 'multi' ? '' : 'none';
+      var ntw = $('g-nt'); if(ntw) ntw.style.display = (type === 'one' && asset === 'house') ? '' : 'none';
+      var gain = S - B - E, warn = [], chipsL = [];
+      if(gain <= 0){
+        LAST = { title:'양도소득세', lines:['양도차익이 없습니다 (' + won(gain) + ') — 세액 0원. 다만 예정신고 의무는 있습니다.'] };
+        return { res:out({ label:'총 납부세액', big:'0원', sub:'양도차익 ' + won(gain), rows:[['양도차익', won(gain)]], note:'양도차손이어도 <b>예정신고 의무</b>는 있습니다(양도일이 속한 달 말일부터 2개월). 같은 해 같은 그룹 자산의 차익과 통산됩니다.' }) };
+      }
+      var one = type === 'one' && asset === 'house', nontax = one && V('g-nt') && H >= 2;
+      var taxGain = gain;
+      if(nontax){
+        if(S <= 12e8){ LAST = { title:'양도소득세 — 1세대1주택 비과세', lines:['양도가액 ' + kor(S) + ' ≤ 12억 → 비과세(세액 0원)'] };
+          return { res:out({ label:'총 납부세액', big:'0원', sub:'1세대1주택 비과세 (양도가액 12억 이하)', color:'#2b8a3e', rows:[['양도차익', won(gain)], ['과세대상 양도차익', '0원']], chips:['비과세','12억 이하'],
+            note:'비과세 해당 여부(세대·보유·거주·일시적 2주택)는 사실판단입니다 — 요건 미달이 밝혀지면 무신고가산세 20% + 납부지연가산세가 붙습니다. 홈택스 모의계산·세무사 확인을 권합니다.' }) }; }
+        taxGain = Math.floor(gain * (S - 12e8) / S); chipsL.push('12억 초과분 과세');
+      }
+      var short = 0, add = 0, ltRate = 0, ltNote = '';
+      if(asset === 'bun') short = H < 1 ? 70 : 60;
+      else if(H < 1) short = asset === 'house' ? 70 : 50;
+      else if(H < 2) short = asset === 'house' ? 60 : 40;
+      var heavyOn = type === 'multi' && asset === 'house' && V('g-adj') && H >= 2;
+      if(heavyOn) add = V('g-cnt') === '3' ? 30 : 20;
+      if(!short && !heavyOn && asset !== 'bun' && H >= 3){
+        if(one && L >= 2){ var lr = L >= 3 ? Math.min(L, 10) * 4 : 8; ltRate = Math.min(H, 10) * 4 + lr; ltNote = '표2 보유 ' + Math.min(H, 10) * 4 + '% + 거주 ' + lr + '%'; }
+        else { ltRate = Math.min(H * 2, 30); ltNote = '표1 보유 연 2%'; }
+      }
+      var lt = Math.floor(taxGain * ltRate / 100), inc = taxGain - lt, ded = 2500000, base = Math.max(0, inc - ded);
+      var t, rateTxt;
+      if(short){
+        var flat = base * short / 100, pg = add ? prog(base, add).t : 0;
+        t = Math.max(flat, pg); rateTxt = (t === flat ? short + '% 단일' : '누진 +' + add + '%p');
+        chipsL.push('단기 ' + short + '%');
+      } else { var p = prog(base, add); t = p.t; rateTxt = p.r + '%' + (add ? ' (중과 +' + add + '%p)' : ''); }
+      t = Math.floor(t); var loc = Math.floor(t * 0.1 / 10) * 10, tot = t + loc;
+      if(heavyOn) chipsL.push('!다주택 중과 +' + add + '%p · 장특 배제');
+      if(type === 'multi' && V('g-adj') && H < 2) chipsL.push('단기·중과 중 큰 세액');
+      if(asset === 'bun') warn.push('분양권은 보유기간과 무관하게 60%(1년 미만 70%)입니다.');
+      var res = out({
+        label:'총 납부세액', big:won(tot), sub:kor(tot) + ' · 양도차익 대비 ' + pct(gain ? tot / gain * 100 : 0),
+        warn:warn,
+        rows:[['양도차익', won(gain)], nontax ? ['과세대상 양도차익 <small>(12억 초과분 안분)</small>', won(taxGain)] : null,
+              ['장기보유특별공제 (' + ltRate + '%)' + (ltNote ? ' <small>' + ltNote + '</small>' : ''), '-' + won(lt), 'minus'], ['양도소득금액', won(inc)],
+              ['기본공제', '-' + won(Math.min(ded, inc)), 'minus'], ['과세표준', won(base)], ['산출세액 (' + rateTxt + ')', won(t)], ['지방소득세 (10%)', won(loc)], ['총 납부세액', won(tot), 'tot']],
+        chips:chipsL.concat([one ? '1세대1주택' : '다주택·일반', '보유 ' + H + '년 · 거주 ' + L + '년']),
+        note:'예정신고·납부는 <b>양도일(잔금일)이 속한 달 말일부터 2개월</b> 안에, 지방소득세는 그로부터 2개월 더. 1천만원 초과분은 분납 가능. '
+          + '2026-08-03 세제개편안(장특 거주 중심 개편·중과 한시 완화·1주택 기본공제 확대)은 <b>국회 계류</b>라 넣지 않았습니다 — 2027년 이후 양도는 바뀔 수 있습니다.'
+      });
+      LAST = { title:'양도소득세 — 양도 ' + kor(S) + ' / 취득 ' + kor(B), lines:['총 납부세액 ' + won(tot) + ' (지방소득세 포함)', '· 양도차익 ' + won(gain) + (nontax ? ' → 과세대상 ' + won(taxGain) : ''), '· 장기보유특별공제 ' + ltRate + '% ' + won(lt), '· 과세표준 ' + won(base) + ' · 산출세액 ' + won(t) + ' (' + rateTxt + ')'] };
+      return { res:res };
+    }
+  };
+
+  // ═════════════════════════════════════════════════════
+  // ③ 보유세 (재산세 + 종합부동산세)
+  // ═════════════════════════════════════════════════════
+  function propTax(g, one, city){        // 공시가 원 → 재산세
+    var ratio = one ? (g <= 3e8 ? 43 : g <= 6e8 ? 44 : 45) : 60;
+    var b = g * ratio / 100 / 1e4, t, sp = one && g <= 9e8;      // 만원
+    if(sp){ t = b <= 6000 ? b * 0.0005 : b <= 15000 ? 3 + (b - 6000) * 0.001 : b <= 30000 ? 12 + (b - 15000) * 0.002 : 42 + (b - 30000) * 0.0035; }
+    else { t = b <= 6000 ? b * 0.001 : b <= 15000 ? 6 + (b - 6000) * 0.0015 : b <= 30000 ? 19.5 + (b - 15000) * 0.0025 : 57 + (b - 30000) * 0.004; }
+    var tax = cut10(t * 1e4), cty = city ? cut10(b * 1e4 * 0.0014) : 0, edu = cut10(tax * 0.2);
+    return { ratio:ratio, base:b * 1e4, sp:sp, tax:tax, city:cty, edu:edu, sum:tax + cty + edu };
+  }
+  var JB_A = [[3e8,0.5,0],[6e8,0.7,60e4],[12e8,1.0,240e4],[25e8,1.3,600e4],[50e8,1.5,1100e4],[94e8,2.0,3600e4],[Infinity,2.7,10180e4]];
+  var JB_B = [[3e8,0.5,0],[6e8,0.7,60e4],[12e8,1.0,240e4],[25e8,2.0,1440e4],[50e8,3.0,3940e4],[94e8,4.0,8940e4],[Infinity,5.0,18340e4]];
+  function jongTax(base, multi3){ var T = multi3 ? JB_B : JB_A; if(base <= 0) return { t:0, r:0 };
+    for(var i = 0; i < T.length; i++) if(base <= T[i][0]) return { t:base * T[i][1] / 100 - T[i][2], r:T[i][1] }; }
+  var HOLD = {
+    id:'hold', ic:'보', name:'보유세', desc:'재산세 + 종합부동산세',
+    form:function(){
+      return money('h-p1', '공시가격 (주택 1)', 8e8, '(시가 아님 · 공시가격 조회 탭에서 확인)')
+        + '<div id="h-more"></div><div class="cx-q" style="margin:-6px 0 12px"><button type="button" onclick="sdCalc.addHome()">＋ 주택 더 넣기 (다주택)</button></div>'
+        + seg('h-type', '보유 구분', [['one','1세대1주택'],['two','2주택'],['three','3주택+']], 'one', '(세대 기준)')
+        + '<div id="h-one">' + seg('h-age', '고령자 세액공제 (종부세)', [['0','60세 미만'],['20','60~65세'],['30','65~70세'],['40','70세 이상']], '0')
+        + seg('h-yrs', '장기보유 세액공제 (종부세)', [['0','5년 미만'],['20','5~10년'],['40','10~15년'],['50','15년 이상']], '0', '(고령+장기 합계 최대 80%)') + '</div>'
+        + tg('h-city', '도시지역분 포함', '도시계획구역 안 주택 — 과세표준의 0.14%', true);
+    },
+    run:function(){
+      var gs = [V('h-p1')]; Array.prototype.forEach.call(document.querySelectorAll('#h-more input[data-money]'), function(e){ if(N(e.value)) gs.push(N(e.value)); });
+      var type = V('h-type'); if(gs.length > 1 && type === 'one') type = 'two';
+      var one = type === 'one', city = V('h-city'), oc = $('h-one'); if(oc) oc.style.display = one ? '' : 'none';
+      var P = gs.map(function(g){ return propTax(g, one, city); });
+      var sumG = gs.reduce(function(a, b){ return a + b; }, 0);
+      var pTax = P.reduce(function(a, p){ return a + p.tax; }, 0), pSum = P.reduce(function(a, p){ return a + p.sum; }, 0);
+      var pCity = P.reduce(function(a, p){ return a + p.city; }, 0), pEdu = P.reduce(function(a, p){ return a + p.edu; }, 0);
+      var ded = one ? 12e8 : 9e8, jbase = Math.max(0, (sumG - ded) * 0.6);
+      var j = jongTax(jbase, type === 'three'), jt = j.t;
+      //  이중과세 조정 — 재산세 중 종부세 과표에 해당하는 부분을 뺀다 (어림: 재산세 본세 × 종부 과표/공시합)
+      var dup = sumG ? pTax * jbase / sumG : 0;
+      var afterDup = Math.max(0, jt - dup), credit = 0;
+      if(one){ credit = Math.min(80, (+V('h-age')) + (+V('h-yrs'))); }
+      var jFinal = cut10(afterDup * (1 - credit / 100)), rural = cut10(jFinal * 0.2), jSum = jFinal + rural, tot = pSum + jSum;
+      var res = out({
+        label:'연간 보유세 합계', big:won(tot), sub:kor(tot) + ' · 연간',
+        kp:[['재산세 합계', won(pSum)], ['종합부동산세 (농특세 포함)', won(jSum)]],
+        rows:[['재산세 본세' + (gs.length > 1 ? ' <small>(' + gs.length + '채)</small>' : '') + (P[0].sp && one ? ' <small>특례세율</small>' : ''), won(pTax)], ['도시지역분', won(pCity)], ['지방교육세 (재산세의 20%)', won(pEdu)],
+              jbase > 0 ? ['종부세 과세표준 <small>(공시 합 ' + kor(sumG) + ' − 공제 ' + kor(ded) + ') × 60%</small>', won(jbase)] : ['종부세', '공제 ' + kor(ded) + ' 이하 — 없음'],
+              jbase > 0 ? ['종부세 산출 (' + j.r + '%' + (type === 'three' ? ', 3주택+' : '') + ')', won(jt)] : null,
+              jbase > 0 ? ['재산세 중복분 공제 <small>(어림)</small>', '-' + won(Math.min(jt, dup)), 'minus'] : null,
+              jbase > 0 && credit ? ['1세대1주택 세액공제 (' + credit + '%)', '-' + won(afterDup * credit / 100), 'minus'] : null,
+              jbase > 0 ? ['종부세 결정세액', won(jFinal)] : null, jbase > 0 ? ['농어촌특별세 (종부세의 20%)', won(rural)] : null,
+              ['연간 보유세 합계', won(tot), 'tot']],
+        chips:[one ? '1세대1주택 · 공정시장가액비율 ' + P[0].ratio + '%' : '재산세 비율 60%', '종부세 공제 ' + kor(ded), one && P[0].sp ? '재산세 특례세율(공시 9억↓, 2026년까지)' : null],
+        note:'납부: 재산세(주택분) <b>7월·9월 절반씩</b>(연 20만원 이하면 7월 일괄), 종부세 <b>12월</b>. 과세기준일 <b>6월 1일</b> 소유자에게 1년치. '
+          + '세부담상한·감면·합산배제는 넣지 않은 어림셈입니다. 재산세 1주택 특례세율은 2026년까지 한시. '
+          + '종부세 2026-08-03 개편안(1주택 거주 14억/비거주 9억 공제, 공정시장가액비율 70~80%, 세율 가액 기준)은 <b>국회 계류</b> — 2027년부터 달라질 수 있습니다.'
+      });
+      LAST = { title:'보유세 — 공시가격 ' + gs.map(kor).join(' + ') + ' · ' + ({ one:'1세대1주택', two:'2주택', three:'3주택+' })[type],
+               lines:['연간 보유세 ' + won(tot), '· 재산세(도시지역분·지방교육세 포함) ' + won(pSum) + ' — 7월·9월', '· 종합부동산세(농특세 포함) ' + won(jSum) + ' — 12월'] };
+      return { res:res };
+    }
+  };
+
+  // ═════════════════════════════════════════════════════
+  // ④ 중개보수 (인천광역시 조례 = 국토부 2021-10-19 개정 요율)
+  // ═════════════════════════════════════════════════════
+  var FEE_BUY = [[5e7,0.6,25e4],[2e8,0.5,80e4],[9e8,0.4,0],[12e8,0.5,0],[15e8,0.6,0],[Infinity,0.7,0]];
+  var FEE_RENT = [[5e7,0.5,20e4],[1e8,0.4,30e4],[6e8,0.3,0],[12e8,0.4,0],[15e8,0.5,0],[Infinity,0.6,0]];
+  function feeCalc(o){       // obj house|op|non, deal buy|jeonse|wol, amt(매매가·보증금), rent(월세), vat, rate(주택 외 협의)
+    var base = o.amt, how = '';
+    if(o.deal === 'wol'){ base = o.amt + o.rent * 100; how = '보증금 + 월세×100'; if(base < 5e7){ base = o.amt + o.rent * 70; how = '보증금 + 월세×70 (5천만 미만)'; } }
+    var rate, cap = 0;
+    if(o.obj === 'house'){
+      var T = o.deal === 'buy' ? FEE_BUY : FEE_RENT;
+      for(var i = 0; i < T.length; i++) if(base < T[i][0] || T[i][0] === Infinity){ rate = T[i][1]; cap = T[i][2]; break; }
+    } else if(o.obj === 'op'){ rate = o.deal === 'buy' ? 0.5 : 0.4; }
+    else rate = Math.min(0.9, o.rate || 0.9);
+    var fee = Math.floor(base * rate / 100); if(cap && fee > cap) fee = cap;
+    var vat = o.vat ? Math.floor(fee * 0.1) : 0;
+    return { base:base, how:how, rate:rate, cap:cap, fee:fee, vat:vat, total:fee + vat };
+  }
+  var FEE = {
+    id:'fee', ic:'중', name:'중개보수', desc:'매매·전세·월세 법정 상한',
+    form:function(){
+      return seg('f-obj', '대상', [['house','주택'],['op','오피스텔(주거용)'],['non','상가·토지 등']], 'house', '(오피스텔은 전용 85㎡↓·부엌·화장실 등 요건)')
+        + seg('f-deal', '거래 유형', [['buy','매매·교환'],['jeonse','전세'],['wol','월세']], 'buy')
+        + money('f-amt', '매매가 / 보증금', 5e8) + '<div id="f-rentw">' + moneySm('f-rent', '월세', 1e6) + '</div>'
+        + '<div id="f-ratew">' + num('f-rate', '협의 요율', 0.9, '%', '(주택 외: 0.9% 이내 협의)', 0.1) + '</div>'
+        + tg('f-vat', '부가세(VAT) 포함', '일반과세자 10% — 간이과세자는 다름', true);
+    },
+    run:function(){
+      var o = { obj:V('f-obj'), deal:V('f-deal'), amt:V('f-amt'), rent:V('f-rent'), vat:V('f-vat'), rate:V('f-rate') };
+      $('f-rentw').style.display = o.deal === 'wol' ? '' : 'none'; $('f-ratew').style.display = o.obj === 'non' ? '' : 'none';
+      var c = feeCalc(o), dn = ({ buy:'매매', jeonse:'전세', wol:'월세' })[o.deal];
+      var tbl = '';
+      if(o.obj === 'house'){
+        var T = o.deal === 'buy' ? FEE_BUY : FEE_RENT, lo = 0;
+        tbl = '<details class="cx-dt"><summary>주택 ' + (o.deal === 'buy' ? '매매' : '임대차') + ' 요율표 (인천광역시 조례)</summary><table class="cx-tbl"><tr><th>거래금액</th><th class="n">상한요율</th><th class="n">한도</th></tr>'
+          + T.map(function(r){ var me = c.base >= lo && (c.base < r[0] || r[0] === Infinity); var row = '<tr class="' + (me ? 'me' : '') + '"><td>' + (lo ? kor(lo).replace('원','') : '') + ' ~ ' + (r[0] === Infinity ? '' : kor(r[0]).replace('원','') + ' 미만') + '</td><td class="n">' + r[1] + '%</td><td class="n">' + (r[2] ? kor(r[2]) : '-') + '</td></tr>'; lo = r[0]; return row; }).join('')
+          + '</table></details>';
+      }
+      var res = out({
+        label:'중개보수 (상한)', big:won(c.total), sub:(o.vat ? 'VAT 포함' : 'VAT 별도') + ' · 한쪽(매도인 또는 매수인) 기준',
+        rows:[['거래금액' + (c.how ? ' <small>(' + c.how + ')</small>' : ''), won(c.base)], ['적용 상한요율', c.rate + '%' + (c.cap ? ' (한도 ' + kor(c.cap) + ')' : '')],
+              ['중개보수', won(c.fee)], o.vat ? ['부가세 (10%)', won(c.vat)] : null, ['합계', won(c.total), 'tot']],
+        chips:[({ house:'주택', op:'오피스텔', non:'주택 외' })[o.obj], dn, '상한요율 기준'],
+        extra:tbl,
+        note:'법정 <b>상한</b>입니다 — 실제 보수는 상한 안에서 의뢰인과 협의합니다. 쌍방 중개면 매도인·매수인 각각 받습니다. 월세 거래금액은 보증금 + 월세×100(5천만원 미만이면 ×70).'
+      });
+      LAST = { title:'중개보수 — ' + ({ house:'주택', op:'오피스텔', non:'주택 외' })[o.obj] + ' ' + dn + ' ' + kor(o.amt) + (o.deal === 'wol' ? ' / 월 ' + kor(o.rent) : ''),
+               lines:['상한 중개보수 ' + won(c.total) + (o.vat ? ' (VAT 포함)' : ''), '· 거래금액 ' + won(c.base) + ' × ' + c.rate + '%' + (c.cap ? ' (한도 ' + kor(c.cap) + ')' : '')] };
+      return { res:res };
+    }
+  };
+
+  // ═════════════════════════════════════════════════════
+  // ⑤ 임대수익률
+  // ═════════════════════════════════════════════════════
+  var YLD = {
+    id:'yield', ic:'수', name:'임대수익률', desc:'표면·실질 수익률과 월 현금흐름',
+    form:function(){
+      return money('y-p', '매입가', 3e8)
+        + '<div class="cx-2">' + moneySm('y-dep', '보증금', 3e7) + moneySm('y-rent', '월세', 12e5) + '</div>'
+        + '<div class="cx-2">' + moneySm('y-cost', '취득 부대비용', 1e7, '(취득세·중개·등기)') + moneySm('y-op', '연 운영비', 6e5, '(관리·수선·재산세)') + '</div>'
+        + moneySm('y-loan', '대출금액', 15e7) + rg('y-ir', '대출 금리', 0, 10, 0.1, 4.5, '%') + rg('y-vac', '공실률', 0, 30, 1, 0, '%', '(연간 비는 기간 비율)');
+    },
+    run:function(){
+      var P = V('y-p'), D = V('y-dep'), R = V('y-rent'), C = V('y-cost'), O = V('y-op'), L = V('y-loan'), I = V('y-ir'), vac = V('y-vac');
+      var yr = R * 12 * (1 - vac / 100), interest = L * I / 100, eq = P + C - D - L, net = yr - O - interest;
+      var surf = (P - D) > 0 ? R * 12 / (P - D) * 100 : 0, real = eq > 0 ? net / eq * 100 : 0, noLoan = (P + C - D) > 0 ? (yr - O) / (P + C - D) * 100 : 0;
+      var warn = [];
+      if(eq <= 0) warn.push('자기자본이 0 이하입니다 — 보증금·대출이 매입가를 넘습니다(무피·플러스피). 수익률 대신 현금흐름을 보세요.');
+      if(interest > yr - O) warn.push('대출이자가 순임대수입보다 커서 매달 돈이 나갑니다(역레버리지).');
+      var res = out({
+        label:'표면 수익률', big:pct(surf), sub:'연 임대수입 ' + won(R * 12) + ' ÷ (매입가 − 보증금)',
+        kp:[['실질(자기자본) 수익률', '<span style="color:' + (real >= 0 ? '#2b8a3e' : '#c92a2a') + '">' + pct(real) + '</span>'], ['월 현금흐름', won(net / 12)]],
+        warn:warn,
+        rows:[['연 임대수입' + (vac ? ' <small>(공실 ' + vac + '% 반영)</small>' : ''), won(yr)], ['연 운영비', '-' + won(O), 'minus'], ['연 대출이자', '-' + won(interest), 'minus'],
+              ['투자 자기자본 <small>(매입가 + 부대비용 − 보증금 − 대출)</small>', won(eq)], ['대출 없을 때 수익률', pct(noLoan)], ['연 순수익', won(net), 'tot']],
+        chips:['표면 = 연임대료 / (매입가−보증금)', '실질 = 순수익 / 자기자본'],
+        note:'임대소득세·양도차익·시세 변동은 넣지 않았습니다. 보증금은 돌려줘야 할 부채라는 점을 함께 설명하세요.'
+      });
+      LAST = { title:'임대수익률 — 매입 ' + kor(P) + ' · 보증금 ' + kor(D) + ' / 월 ' + kor(R), lines:['표면 수익률 ' + pct(surf) + ' · 실질(자기자본) ' + pct(real), '· 자기자본 ' + kor(eq) + ' · 월 현금흐름 ' + won(net / 12)] };
+      return { res:res };
+    }
+  };
+
+  // ═════════════════════════════════════════════════════
+  // ⑥ 대출한도 (LTV · 가액구간 한도 · 스트레스 DSR) — 6·27 / 10·15 대책
+  // ═════════════════════════════════════════════════════
+  var LTV = { none:[40,70,70], first:[70,70,80], low:[60,70,70], swap:[50,70,70], one:[0,0,60], multi:[0,0,60] };
+  function annuity(L, ratePct, years){ var i = ratePct / 100 / 12, n = years * 12; if(!i) return L / n * 12; return L * i * Math.pow(1 + i, n) / (Math.pow(1 + i, n) - 1) * 12; }
+  function stressRatio(kind, fixYrs, years, stage2){
+    if(kind === 'fixed') return 0;
+    if(kind === 'var' || fixYrs < 5) return 100;
+    var s = fixYrs / years * 100, k = kind === 'mix' ? 'm' : 'c';
+    var T = stage2 ? { m:[60,40,20,0], c:[30,20,10,0] } : { m:[80,60,40,0], c:[40,30,20,0] };
+    return s < 30 ? T[k][0] : s < 50 ? T[k][1] : s < 70 ? T[k][2] : 0;
+  }
+  var LOAN = {
+    id:'loan', ic:'대', name:'대출한도', desc:'LTV·DSR 기준 한도 (2025 대책 반영)',
+    form:function(){
+      return money('l-p', '주택가격', 6e8, '(KB시세·감정가)')
+        + seg('l-reg', '지역', [['reg','규제지역'],['metro','수도권 비규제'],['local','비수도권']], 'metro', '(인천 = 수도권 비규제)')
+        + seg('l-who', '차주', [['none','무주택'],['first','생애최초'],['low','서민·실수요'],['swap','1주택 처분조건'],['one','1주택 추가'],['multi','다주택']], 'none')
+        + money('l-inc', '연소득', 6e7) + moneySm('l-oth', '다른 대출 연 원리금', 0, '(신용대출은 5년 분할로 환산)')
+        + seg('l-dsr', 'DSR 한도', [['40','40% (은행)'],['50','50% (2금융권)']], '40')
+        + seg('l-yrs', '대출 만기', [['10','10년'],['20','20년'],['30','30년'],['40','40년']], '30')
+        + rg('l-ir', '대출 금리', 2, 9, 0.05, 4.5, '%')
+        + seg('l-kind', '금리 유형', [['var','변동'],['mix','혼합형'],['cyc','주기형'],['fixed','순수 고정']], 'cyc', '(스트레스 금리 적용 비율이 다름)')
+        + '<div id="l-fixw">' + rg('l-fix', '고정기간 / 변동주기', 1, 30, 1, 5, '년') + '</div>';
+    },
+    run:function(){
+      var P = V('l-p'), reg = V('l-reg'), who = V('l-who'), inc = V('l-inc'), oth = V('l-oth'), dsrL = +V('l-dsr'), Y = +V('l-yrs'), ir = V('l-ir'), kind = V('l-kind'), fix = V('l-fix');
+      $('l-fixw').style.display = (kind === 'mix' || kind === 'cyc') ? '' : 'none';
+      var warn = [], col = reg === 'reg' ? 0 : reg === 'metro' ? 1 : 2, ltvP = LTV[who][col];
+      var capMetro = reg !== 'local';
+      var yrs = Y; if(capMetro && Y > 30){ yrs = 30; warn.push('수도권·규제지역 주담대 만기는 <b>30년 이내</b>(6·27 대책) — 30년으로 셈했습니다.'); }
+      if(Y > 40) yrs = 40;
+      var ltvAmt = Math.floor(P * ltvP / 100), cap = Infinity, capTxt = '';
+      if(capMetro){ cap = P <= 15e8 ? 6e8 : P <= 25e8 ? 4e8 : 2e8; capTxt = '시가 ' + (P <= 15e8 ? '15억 이하 6억' : P <= 25e8 ? '15~25억 4억' : '25억 초과 2억'); }
+      var stBase = capMetro ? 3.0 : 1.5, stage2 = !capMetro, ratio = stressRatio(kind, fix, yrs, stage2), st = stBase * ratio / 100 * (stage2 ? 0.5 : 1);
+      if(stage2 && kind === 'var') st = 0.75;
+      var room = Math.max(0, inc * dsrL / 100 - oth), per = annuity(1, ir + st, yrs), dsrAmt = per ? Math.floor(room / per) : 0;
+      var dsrApplies = true;
+      var lim = Math.min(ltvAmt, cap, dsrAmt), basis = lim === ltvAmt ? 'LTV 한도' : lim === cap ? '가액구간 한도' : 'DSR 한도';
+      if(ltvP === 0){ lim = 0; basis = '대출 금지'; warn.push(reg === 'local' ? '' : '수도권·규제지역은 ' + (who === 'multi' ? '다주택자' : '1주택자(처분 조건 없음)') + ' 주택구입 주담대가 <b>금지</b>입니다(LTV 0%).'); }
+      if(lim > 0 && lim <= 1e8 && oth === 0){ dsrApplies = false; lim = Math.min(ltvAmt, cap); basis = lim === ltvAmt ? 'LTV 한도' : '가액구간 한도'; warn.push('대출 총액 1억원 이하는 차주 단위 DSR이 적용되지 않습니다 — LTV 기준으로 셈했습니다.'); }
+      lim = Math.floor(lim / 1e5) * 1e5;
+      var mon = annuity(lim, ir, yrs) / 12;
+      var res = out({
+        label:'최종 대출 가능액 (어림)', big:won(lim), sub:kor(lim) + ' · ' + basis + ' 적용 · 만기 ' + yrs + '년',
+        kp:[['LTV ' + ltvP + '%', won(ltvAmt)], ['DSR ' + dsrL + '% 한도', won(dsrAmt)]],
+        warn:warn,
+        rows:[capMetro ? ['가액구간 한도 <small>(' + capTxt + ')</small>', won(cap)] : null,
+              ['스트레스 금리 가산 <small>(' + (capMetro ? '수도권·규제 3.0%' : '지방 1.5%×50%') + ' × 적용 ' + ratio + '%)</small>', '+' + st.toFixed(2) + '%p'],
+              ['DSR 계산 금리', (ir + st).toFixed(2) + '%'], ['연 상환 여력 <small>(연소득×' + dsrL + '% − 다른 대출)</small>', won(room)],
+              ['월 예상 상환액 <small>(약정금리 ' + ir + '%, 원리금균등)</small>', won(mon)], ['필요 자기자금', won(P - lim)], ['최종 대출 가능액', won(lim), 'tot']],
+        chips:[({ reg:'규제지역', metro:'수도권 비규제', local:'비수도권' })[reg], ({ none:'무주택', first:'생애최초', low:'서민·실수요', swap:'1주택 처분조건', one:'1주택 추가', multi:'다주택' })[who], 'LTV ' + ltvP + '%', 'DSR ' + dsrL + '%'],
+        note:'은행권 주택구입 주담대 기준(6·27·10·15 대책, 2026-08 확인). 수도권·규제지역은 <b>6개월 내 전입 의무</b>. 생애최초는 수도권 70%(비수도권 80%). '
+          + '디딤돌·보금자리론 등 정책모기지는 DSR 대신 DTI 60%·상품별 한도가 걸립니다. 지방 스트레스 DSR 완화는 2026-12-31까지. 실제 한도는 은행 심사로 확정됩니다.'
+      });
+      LAST = { title:'대출한도 — 주택 ' + kor(P) + ' · 연소득 ' + kor(inc), lines:['대출 가능액(어림) ' + kor(lim) + ' — ' + basis, '· LTV ' + ltvP + '% ' + kor(ltvAmt) + ' / DSR ' + dsrL + '% ' + kor(dsrAmt) + (capMetro ? ' / 가액구간 ' + kor(cap) : ''), '· 월 상환 ' + won(mon) + ' (' + ir + '%, ' + yrs + '년)'] };
+      return { res:res };
+    }
+  };
+
+  // ═════════════════════════════════════════════════════
+  // ⑦ 전월세 전환
+  // ═════════════════════════════════════════════════════
+  var CONV = {
+    id:'conv', ic:'전', name:'전월세 전환', desc:'전환율 기준 전세 ↔ 월세',
+    form:function(){
+      var cap = Math.min(10, BOK + 2);
+      return seg('c-dir', '전환 방향', [['j2w','전세 → 월세'],['w2j','월세 → 전세'],['adj','보증금 조정']], 'j2w')
+        + '<div id="c-j">' + money('c-js', '전세보증금', 4e8) + '</div>'
+        + '<div id="c-w">' + money('c-dep', '보증금', 5e7, '(전환 후 / 현재)') + '<div id="c-rw">' + moneySm('c-rent', '월세', 15e5) + '</div></div>'
+        + '<div id="c-a">' + moneySm('c-dep2', '바꿀 보증금', 1e8) + '</div>'
+        + rg('c-rate', '전월세 전환율', 2, 12, 0.05, cap, '%', '(법정 상한 = 기준금리 ' + BOK + '% + 2%p = ' + cap + '%)');
+    },
+    run:function(){
+      var dir = V('c-dir'), rate = V('c-rate'), cap = Math.min(10, BOK + 2);
+      $('c-j').style.display = dir === 'j2w' ? '' : 'none'; $('c-rw').style.display = dir === 'j2w' ? 'none' : ''; $('c-a').style.display = dir === 'adj' ? '' : 'none';
+      var res, warn = rate > cap + 1e-9 ? ['입력한 전환율이 법정 상한(' + cap + '%)보다 높습니다 — <b>계약 존속 중 전환</b>이면 상한을 넘을 수 없습니다.'] : [];
+      if(dir === 'j2w'){
+        var J = V('c-js'), D = V('c-dep'), m = Math.max(0, J - D) * rate / 100 / 12;
+        res = out({ label:'환산 월세', big:won(m), sub:'월 환산 월세', kp:[['연 환산 월세', won(m * 12)], ['전환된 금액', won(J - D)]], warn:warn,
+          rows:[['전세보증금', won(J)], ['전환 후 보증금', won(D)], ['적용 전환율', rate + '%']], chips:['전세 → 월세', '법정 상한 = 기준금리 + 2%p'] });
+        LAST = { title:'전세 → 월세 (전환율 ' + rate + '%)', lines:['전세 ' + kor(J) + ' → 보증금 ' + kor(D) + ' / 월세 ' + won(m)] };
+      } else if(dir === 'w2j'){
+        var D2 = V('c-dep'), R = V('c-rent'), j = D2 + R * 12 / (rate / 100);
+        res = out({ label:'환산 전세보증금', big:won(j), sub:kor(j), warn:warn, rows:[['보증금', won(D2)], ['월세', won(R)], ['월세 → 보증금 환산 (월세×12÷' + rate + '%)', won(R * 12 / (rate / 100))], ['적용 전환율', rate + '%']], chips:['월세 → 전세'] });
+        LAST = { title:'월세 → 전세 (전환율 ' + rate + '%)', lines:['보증금 ' + kor(D2) + ' / 월세 ' + won(R) + ' → 전세 ' + kor(j)] };
+      } else {
+        var D0 = V('c-dep'), R0 = V('c-rent'), D1 = V('c-dep2'), R1 = Math.max(0, R0 - (D1 - D0) * rate / 100 / 12);
+        res = out({ label:'바뀐 월세', big:won(R1), sub:'보증금 ' + kor(D0) + ' → ' + kor(D1), warn:warn, rows:[['현재 보증금 / 월세', kor(D0) + ' / ' + won(R0)], ['보증금 증감', won(D1 - D0)], ['월세 증감', won(R1 - R0)], ['바뀐 보증금 / 월세', kor(D1) + ' / ' + won(R1), 'tot']], chips:['보증금 조정'] });
+        LAST = { title:'보증금 조정 (전환율 ' + rate + '%)', lines:['보증금 ' + kor(D0) + '/월 ' + won(R0) + ' → 보증금 ' + kor(D1) + '/월 ' + won(R1)] };
+      }
+      return { res:res + '<div class="cx-note">주택임대차보호법 제7조의2: 계약 기간 중 보증금을 월세로 바꿀 때 전환율은 <b>연 10%와 「기준금리 + 2%p」 중 낮은 쪽</b>을 넘지 못합니다(기준금리 ' + BOK + '%, 2026-07-16 인상 — 금통위 결정 때마다 확인). 새로 맺는 계약은 시장 전환율을 씁니다.</div>' };
+    }
+  };
+
+  // ═════════════════════════════════════════════════════
+  // ⑧ 기타 계산기
+  // ═════════════════════════════════════════════════════
+  var GIFT = [[1e8,10,0],[5e8,20,1e7],[10e8,30,6e7],[30e8,40,1.6e8],[Infinity,50,4.6e8]];
+  function giftRate(b){ for(var i = 0; i < GIFT.length; i++) if(b <= GIFT[i][0]) return { t:Math.max(0, b * GIFT[i][1] / 100 - GIFT[i][2]), r:GIFT[i][1] }; }
+  var ETCS = [
+    ['단위·면적', [
+      ['area', '면적 환산', function(){ return seg('e-ad', '변환 방향', [['m2p','㎡ → 평'],['p2m','평 → ㎡']], 'm2p') + num('e-av', '값', 84, '', '', 0.01); },
+        function(){ var d = V('e-ad'), v = V('e-av'), r = d === 'm2p' ? v / 3.305785 : v * 3.305785;
+          return { big:(Math.round(r * 100) / 100) + (d === 'm2p' ? ' 평' : ' ㎡'), rows:[['제곱미터', (d === 'm2p' ? v : Math.round(r * 100) / 100) + ' ㎡'], ['평', (d === 'm2p' ? Math.round(r * 100) / 100 : v) + ' 평']], note:'1평 = 3.305785㎡ (400/121)' }; }],
+      ['pp', '평당가', function(){ return money('e-pp', '가격', 10e8) + num('e-pa', '면적', 112, '㎡', '(공급 또는 전용)', 0.01); },
+        function(){ var P = V('e-pp'), a = V('e-pa'), py = a / 3.305785; return { big:kor(py ? P / py : 0) + ' / 평', rows:[['면적', a + '㎡ = ' + py.toFixed(2) + '평'], ['평당가', won(py ? P / py : 0)], ['㎡당가', won(a ? P / a : 0)]], note:'공급면적 기준인지 전용면적 기준인지 함께 적어 주세요.' }; }]
+    ]],
+    ['대출·금융', [
+      ['int', '대출이자 · 월 상환액', function(){ return money('e-il', '대출금', 3e8) + rg('e-ir', '금리', 1, 12, 0.05, 4.5, '%') + rg('e-iy', '기간', 1, 50, 1, 30, '년') + seg('e-it', '상환 방식', [['ann','원리금균등'],['prin','원금균등'],['bullet','만기일시']], 'ann'); },
+        function(){ var L = V('e-il'), r = V('e-ir') / 100 / 12, n = V('e-iy') * 12, t = V('e-it'), m1, tot;
+          if(t === 'ann'){ m1 = r ? L * r * Math.pow(1 + r, n) / (Math.pow(1 + r, n) - 1) : L / n; tot = m1 * n - L; }
+          else if(t === 'prin'){ m1 = L / n + L * r; tot = L * r * (n + 1) / 2; }
+          else { m1 = L * r; tot = L * r * n; }
+          return { big:won(m1) + ' / 월', rows:[['첫 달 상환액', won(m1)], t === 'prin' ? ['마지막 달 상환액', won(L / n + (L / n) * r)] : null, ['총 이자', won(tot)], ['총 상환액', won(L + tot), 'tot']], note:'금리 변동·중도상환은 넣지 않았습니다.' }; }],
+      ['dsr', 'DSR', function(){ return money('e-di', '연소득', 6e7) + moneySm('e-dm', '주담대 연 원리금', 18e6) + moneySm('e-dc', '신용대출 잔액', 0, '(5년 분할로 환산)') + rg('e-dcr', '신용대출 금리', 3, 12, 0.1, 5.5, '%') + moneySm('e-do', '기타 대출 연 원리금', 0); },
+        function(){ var I = V('e-di'), c = V('e-dc'), crA = c / 5 + c * V('e-dcr') / 100, sum = V('e-dm') + crA + V('e-do'), d = I ? sum / I * 100 : 0;
+          return { big:pct(d), color:d > 40 ? '#c92a2a' : '#2b8a3e', rows:[['주담대 연 원리금', won(V('e-dm'))], ['신용대출 (원금÷5년 + 이자)', won(crA)], ['기타', won(V('e-do'))], ['연 원리금 합계', won(sum), 'tot']], note:'은행 40% · 2금융권 50%. 신용대출 산정식은 규제식(원금÷5 + 이자)으로 셈했습니다 — 원리금균등 5년 환산이면 조금 낮게 나옵니다. 은행 한도조회로 확정하세요.' }; }],
+      ['ltv', 'LTV', function(){ return money('e-lv', '주택가격', 6e8) + money('e-ll', '대출금 (선순위 포함)', 3e8); },
+        function(){ var v = V('e-lv'), l = V('e-ll'); return { big:pct(v ? l / v * 100 : 0), rows:[['주택가격', won(v)], ['대출금', won(l)]], note:'주택구입 LTV 상한은 대출한도 계산기에서 지역·차주별로 확인하세요.' }; }],
+      ['early', '중도상환수수료', function(){ return money('e-el', '중도상환 금액', 1e8) + rg('e-er', '수수료율', 0, 2, 0.05, 1.2, '%') + num('e-em', '남은 면제기간', 24, '개월', '(통상 3년 중 남은 기간)', 1) + num('e-et', '면제기간 전체', 36, '개월', '', 1); },
+        function(){ var f = V('e-el') * V('e-er') / 100 * Math.max(0, V('e-em')) / Math.max(1, V('e-et')); return { big:won(f), rows:[['상환금액 × 요율 × 남은기간/전체기간', won(f)]], note:'은행·상품마다 요율과 면제 기간이 다릅니다(2025-01부터 실비 수준으로 인하).' }; }]
+    ]],
+    ['세금·임대', [
+      ['vat', '부가세', function(){ return seg('e-vd', '입력', [['net','공급가액 → 합계'],['gross','합계 → 공급가액']], 'net') + money('e-vv', '금액', 1e6); },
+        function(){ var d = V('e-vd'), v = V('e-vv'), net = d === 'net' ? v : v / 1.1, vat = net * 0.1; return { big:won(d === 'net' ? net + vat : net), rows:[['공급가액', won(net)], ['부가세 10%', won(vat)], ['합계', won(net + vat), 'tot']] }; }],
+      ['conv2', '환산보증금 (상가)', function(){ return money('e-cd', '보증금', 5e7) + moneySm('e-cr', '월세', 3e6); },
+        function(){ var t = V('e-cd') + V('e-cr') * 100; return { big:kor(t), rows:[['보증금 + 월세×100', won(t)]], note:'상가건물임대차보호법 적용 기준 — 인천(과밀억제권역)은 <b>6억 9천만원</b> 이하(서울 9억, 그 밖의 광역시 5억 4천만원). 넘어도 대항력·계약갱신(10년)·권리금 보호는 적용됩니다.' }; }],
+      ['deemed', '간주임대료', function(){ return money('e-gd', '보증금 합계', 5e8) + rg('e-gr', '정기예금이자율', 1, 5, 0.1, 3.1, '%', '(국세청 고시 — 매년 확인)') + num('e-gn', '임대 일수', 365, '일', '', 1); },
+        function(){ var g = V('e-gd') * V('e-gn') / 365 * V('e-gr') / 100; return { big:won(g), rows:[['보증금 × 일수/365 × 이자율', won(g)]], note:'주택은 3주택 이상·보증금 합계 3억 초과분부터(60% 적용·소형주택 제외 등 요건) — 상가 부가세 과세표준과 주택 임대소득 계산식이 다르니 세무사 확인.' }; }],
+      ['gift', '증여세', function(){ return money('e-zv', '증여재산가액', 3e8) + seg('e-zr', '받는 사람과의 관계', [['sp','배우자'],['ad','직계비속(성년)'],['mi','직계비속(미성년)'],['up','직계존속'],['re','기타친족'],['ot','타인']], 'ad') + moneySm('e-zp', '10년 안 같은 사람에게 받은 금액', 0); },
+        function(){ var D = { sp:6e8, ad:5e7, mi:2e7, up:5e7, re:1e7, ot:0 }[V('e-zr')], tot = V('e-zv') + V('e-zp'), b = Math.max(0, tot - D), g = giftRate(b), cr = g.t * 0.03, t = Math.max(0, g.t - cr);
+          return { big:won(t), rows:[['증여재산 (10년 합산)', won(tot)], ['증여재산공제', '-' + won(D), 'minus'], ['과세표준', won(b)], ['산출세액 (' + g.r + '%)', won(g.t)], ['신고세액공제 3%', '-' + won(cr), 'minus'], ['납부세액', won(t), 'tot']],
+            note:'혼인·출산 증여공제(1억, 직계존속)는 넣지 않았습니다. 이미 낸 증여세 공제·세대생략 할증(30~40%)도 별도. 부동산 증여는 취득세(3.5%, 조정 3억↑ 12%)가 따로 붙습니다.' }; }]
+    ]],
+    ['등기·부대비용', [
+      ['stamp', '인지세', function(){ return money('e-sv', '계약금액', 5e8) + seg('e-sk', '문서', [['house','주택 매매'],['etc','그 밖의 부동산']], 'house'); },
+        function(){ var v = V('e-sv'), h = V('e-sk') === 'house', t = (h && v <= 1e8) ? 0 : v <= 1e7 ? 0 : v <= 3e7 ? 2e4 : v <= 5e7 ? 4e4 : v <= 1e8 ? 7e4 : v <= 1e9 ? 15e4 : 35e4;
+          return { big:won(t), rows:[['계약금액', won(v)], ['인지세', won(t)]], note:'계약서 1통 기준 — 매도인·매수인이 나눠 부담하는 것이 관례. 주택 매매 1억 이하는 비과세.' }; }],
+      ['reg', '등기비용 어림', function(){ return money('e-rv', '매매가', 5e8) + moneySm('e-rb', '국민주택채권 할인 비용', 3e5, '(은행에서 즉시매도 시 — 단지·시점마다 다름)') + moneySm('e-rl', '법무사 보수', 4e5); },
+        function(){ var v = V('e-rv'), st = v <= 1e8 ? 0 : v <= 1e9 ? 15e4 : 35e4, fee = 15000, t = st / 2 + fee + V('e-rb') + V('e-rl');
+          return { big:won(t), rows:[['인지세 (매수인 절반)', won(st / 2)], ['등기신청수수료', won(fee)], ['국민주택채권 할인', won(V('e-rb'))], ['법무사 보수', won(V('e-rl'))], ['합계 (취득세 제외)', won(t), 'tot']], note:'취득세는 취득세 계산기에서. 채권 매입액은 시가표준액·지역별 요율로 정해지고 할인율은 매일 바뀝니다.' }; }]
+    ]],
+    ['임대·계약', [
+      ['cap5', '갱신 5% 상한', function(){ return money('e-5d', '현재 보증금', 3e8) + moneySm('e-5r', '현재 월세', 0) + rg('e-5c', '전환율 (월세 환산)', 2, 10, 0.05, Math.min(10, BOK + 2), '%'); },
+        function(){ var d = V('e-5d'), r = V('e-5r'), c = V('e-5c'), env = d + r * 12 / (c / 100), mx = env * 1.05;
+          return { big:'+' + won(env * 0.05), rows:[['현재 (환산 보증금)', won(env)], ['최대 (5% 증액)', won(mx)], ['보증금만 올리면', won(d * 1.05)], r ? ['월세만 올리면', won(r * 1.05)] : null], note:'계약갱신요구권 행사·존속 중 증액은 5% 이내, 증액 후 1년 안에는 다시 못 올립니다(주임법 제7조). 갱신요구권을 다 쓴 뒤 새 계약은 제한이 없습니다.' }; }],
+      ['jeonseRisk', '전세가율 · 깡통전세 점검', function(){ return money('e-jp', '매매 시세', 5e8) + money('e-jd', '전세보증금', 4e8) + moneySm('e-jl', '선순위 채권 (근저당 채권최고액 등)', 0); },
+        function(){ var p = V('e-jp'), d = V('e-jd'), l = V('e-jl'), r = p ? (d + l) / p * 100 : 0;
+          return { big:pct(r), color:r >= 80 ? '#c92a2a' : r >= 70 ? '#e67700' : '#2b8a3e', rows:[['전세가율 (보증금÷시세)', pct(p ? d / p * 100 : 0)], ['선순위 포함 부채비율', pct(r)], ['안전 여유 (시세 − 부채)', won(p - d - l)]],
+            note:(r >= 80 ? '<b style="color:#c92a2a">위험</b> — ' : r >= 70 ? '<b style="color:#e67700">주의</b> — ' : '') + '통상 70% 이상 주의, 80% 이상 위험으로 봅니다. 경매 낙찰가율(70~90%)을 감안하면 보증금 회수가 어려울 수 있습니다. 등기부 선순위·임대인 세금 체납·전세보증보험 가입 가능 여부를 함께 확인하세요.' }; }],
+      ['hug', '전세보증보험 (HUG) 가입 한도', function(){ return money('e-hg', '공시가격', 3e8) + moneySm('e-hl', '선순위 채권', 0) + money('e-hd', '전세보증금', 3.5e8); },
+        function(){ var lim = V('e-hg') * 1.4 * 0.9 - V('e-hl'), ok = V('e-hd') <= lim;
+          return { big:ok ? '가입 가능 범위' : '한도 초과', color:ok ? '#2b8a3e' : '#c92a2a', rows:[['주택가격 (공시가 × 140%)', won(V('e-hg') * 1.4)], ['담보인정 90% − 선순위', won(lim)], ['전세보증금', won(V('e-hd'))]], note:'2023-05 이후 HUG 기준(공시가 126% − 선순위). 아파트는 KB·한국부동산원 시세를 먼저 쓰는 등 상품·시점마다 다릅니다 — HUG 확인.' }; }],
+      ['late', '연체 임대료 이자', function(){ return money('e-lp', '연체 금액', 3e6) + num('e-ld', '연체 일수', 60, '일', '', 1) + rg('e-lr', '연 이율', 1, 20, 0.5, 12, '%', '(약정 없으면 민사 5%, 소송 시 12%)'); },
+        function(){ var t = V('e-lp') * V('e-lr') / 100 * V('e-ld') / 365; return { big:won(t), rows:[['원금 × 이율 × 일수/365', won(t)], ['원금 + 이자', won(V('e-lp') + t), 'tot']] }; }]
+    ]]
+  ];
+  function etcFind(k){ for(var i = 0; i < ETCS.length; i++) for(var j = 0; j < ETCS[i][1].length; j++) if(ETCS[i][1][j][0] === k) return ETCS[i][1][j]; return ETCS[0][1][0]; }
+  var ETC_C = {
+    id:'etc', ic:'기', name:'기타 계산기', desc:'면적·금융·세금·등기·임대 자주 쓰는 계산',
+    form:function(){ var e = etcFind(ETC); return '<div class="cx-h" style="font-size:14px;margin-bottom:10px">' + e[1] + '</div>' + e[2](); },
+    run:function(){ var e = etcFind(ETC), r = e[3]();
+      LAST = { title:e[1], lines:[(r.big || '').replace(/<[^>]+>/g, '')].concat((r.rows || []).filter(Boolean).map(function(x){ return '· ' + String(x[0]).replace(/<[^>]+>/g, '') + ' ' + String(x[1]).replace(/<[^>]+>/g, ''); })) };
+      return { res:out({ label:e[1], big:r.big, color:r.color, rows:r.rows, note:r.note }) }; }
+  };
+
+  var CALCS = [ACQ, CGT, HOLD, FEE, YLD, LOAN, CONV, ETC_C];
+  function byId(id){ return CALCS.filter(function(c){ return c.id === id; })[0]; }
+
+  // ── 화면 ─────────────────────────────────────────────
+  function tabs(){
+    return '<div class="cx-tabs">' + [['home','홈','홈']].concat(CALCS.map(function(c){ return [c.id, c.ic, c.name]; })).map(function(t){
+      return '<button type="button" class="cx-tab' + ((CUR ? CUR.id : 'home') === t[0] ? ' on' : '') + '" onclick="sdCalc.go(\'' + t[0] + '\')"><b>' + t[1] + '</b>' + t[2] + '</button>';
+    }).join('') + '</div>';
+  }
+  function home(){
+    var c = acqCalc({ P:10e8, cause:'buy', kind:'house', n:1, adj:false, corp:false, big85:false, temp2:false, low:false, relief:'none' });
+    var c2 = acqCalc({ P:10e8, cause:'buy', kind:'house', n:2, adj:true, corp:false, big85:false, temp2:false, low:false, relief:'none' });
+    return '<div class="cx-ex"><b>▶ 이렇게 계산됩니다</b> <small style="color:var(--text3)">10억원 아파트(85㎡ 이하) 취득세 · 감면 미적용 가정</small>'
+      + '<div class="cx-kp" style="grid-template-columns:repeat(3,1fr)"><div><span>🏠 1주택 (인천 등)</span><b>' + kor(c.sum) + '</b><span>실효 ' + pct(c.sum / 1e7) + '</span></div>'
+      + '<div><span>🏠🏠 2주택 비규제 (인천)</span><b>' + kor(c.sum) + '</b><span>중과 없음 · 실효 ' + pct(c.sum / 1e7) + '</span></div>'
+      + '<div><span>🚨 2주택 조정지역 (서울 등)</span><b style="color:#c92a2a">' + kor(c2.sum) + '</b><span>8% 중과 · 실효 ' + pct(c2.sum / 1e7) + '</span></div></div></div>'
+      + '<div class="cx-h">필요한 계산, 한 번에 끝내세요</div><div class="cx-hs">거래 단계별로 흩어진 세금·자금 계산을 하나로 모았습니다. 아래에서 계산기를 고르세요.</div>'
+      + '<div class="cx-home">' + CALCS.map(function(k){ return '<button type="button" class="cx-hc" onclick="sdCalc.go(\'' + k.id + '\')"><b>' + k.ic + '</b><h4>' + k.name + '</h4><p>' + k.desc + '</p><u>계산하기 →</u></button>'; }).join('') + '</div>'
+      + '<div class="cx-foot" style="margin-top:14px">세율·규정: 지방세법·소득세법·종부세법 현행 조문, 금융위 6·27·10·15 대책 (2026-08 확인) · 2026-08-03 세제개편안은 국회 계류라 계산에 넣지 않았습니다.</div>';
+  }
+  function etcBar(){
+    return '<div class="cx-etc">' + ETCS.map(function(g){ return '<h5>' + g[0] + '</h5><div class="cx-q">' + g[1].map(function(e){ return '<button type="button" class="' + (e[0] === ETC ? 'on' : '') + '" onclick="sdCalc.etc(\'' + e[0] + '\')">' + e[1] + '</button>'; }).join('') + '</div>'; }).join('') + '</div>';
+  }
+  function paint(){
+    var root = $('calc-root'); if(!root) return;
+    var h = '<div class="cx-top"><h2>🧮 부동산 계산기</h2><small>취득·양도·보유세부터 수익률·대출까지 한 곳에서</small><span class="cx-std">● ' + STD + '</span></div>' + tabs();
+    if(!CUR){ root.innerHTML = h + home(); return; }
+    h += '<div class="cx-h">' + CUR.name + ' 계산기</div><div class="cx-hs">' + CUR.desc + '</div>';
+    if(CUR.id === 'etc') h += etcBar();
+    h += '<div class="cx-grid"><div class="cx-card" id="cx-form">' + CUR.form() + '</div><div><div class="cx-card" id="cx-res"></div>' + (CUR.side ? CUR.side() : '') + '</div></div>'
+      + '<div class="cx-act"><button type="button" onclick="sdCalc.copy()">📋 결과 복사</button><button type="button" class="s" onclick="window.print()">🖨 인쇄 · PDF</button></div>'
+      + '<div class="cx-foot">본 계산기는 참고용 추정치입니다. 실제 세액·보수·한도는 개별 요건, 지자체 조례, 금융기관 정책, 세부담 상한 등에 따라 달라질 수 있으니 위택스·홈택스 또는 세무·금융 전문가의 확인을 권합니다.</div>';
+    root.innerHTML = h;
+    Array.prototype.forEach.call(root.querySelectorAll('input[data-money]'), function(e){ korHint(e); });
+    run();
+  }
+  function korHint(e){ var k = $(e.id + '-k'); if(k) k.textContent = N(e.value) ? kor(N(e.value)) : ''; }
+  function run(){
+    if(!CUR) return;
+    var r; try{ r = CUR.run(); }catch(e){ console.warn('[계산기]', e); return; }
+    var box = $('cx-res'); if(box) box.innerHTML = r.res;
+    if(r.plan != null){ var pl = $('a-plan'); if(pl){ var f = document.activeElement && document.activeElement.id === 'a-reg'; if(!f) pl.innerHTML = r.plan; } }
+  }
+  function go(id, keepUrl){
+    CUR = id === 'home' ? null : (byId(id) || null);
+    paint();
+    if(!keepUrl){ try{ var u = new URL(location.href); u.searchParams.set('tab', 'calc'); if(CUR) u.searchParams.set('c', CUR.id); else u.searchParams.delete('c'); history.replaceState(null, '', u.pathname + u.search); }catch(e){} }
+    try{ localStorage.setItem('sd_calc_last', id); }catch(e){}
+    var r = $('calc-root'); if(r && r.scrollIntoView) window.scrollTo(0, 0);
+  }
+  window.sdCalc = {
+    go:go, run:run, kor:kor, won:won,
+    fmt:function(e){ var p = e.selectionStart, L = e.value.length; var n = N(e.value); e.value = n ? Math.round(n).toLocaleString() : (e.value === '' ? '' : '0'); try{ var d = e.value.length - L; e.setSelectionRange(Math.max(0, p + d), Math.max(0, p + d)); }catch(x){} korHint(e); run(); },
+    add:function(id, v){ var e = $(id); if(!e) return; e.value = (v ? Math.round(N(e.value) + v) : 0).toLocaleString(); korHint(e); run(); },
+    seg:function(b){ var p = b.parentNode; p.setAttribute('data-v', b.getAttribute('data-v')); Array.prototype.forEach.call(p.children, function(x){ x.classList.toggle('on', x === b); }); run(); },
+    etc:function(k){ ETC = k; paint(); },
+    addHome:function(){ var m = $('h-more'); if(!m) return; var n = m.querySelectorAll('input').length + 2; if(n > 8) return;
+      var d = document.createElement('div'); d.innerHTML = moneySm('h-p' + n, '공시가격 (주택 ' + n + ')', 3e8); m.appendChild(d.firstChild); korHint($('h-p' + n));
+      var s = $('h-type'); if(s && s.getAttribute('data-v') === 'one'){ var b = s.querySelector('[data-v="two"]'); if(b) window.sdCalc.seg(b); } else run(); },
+    copy:function(){
+      if(!LAST) return;
+      var t = '[부동산 계산기] ' + LAST.title + '\n' + LAST.lines.join('\n') + '\n※ 참고용 어림셈 — 실제 세액·한도는 요건에 따라 달라집니다.\n송도제일공인중개사사무소 ☎ 032-851-6688';
+      var done = function(){ var s = document.createElement('div'); s.textContent = '📋 계산 결과를 복사했습니다'; s.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#212529;color:#fff;padding:9px 18px;border-radius:20px;font-size:13px;z-index:9999'; document.body.appendChild(s); setTimeout(function(){ s.remove(); }, 1800); };
+      var fall = function(){ var a = document.createElement('textarea'); a.value = t; a.style.cssText = 'position:fixed;left:-9999px'; document.body.appendChild(a); a.select(); try{ document.execCommand('copy'); done(); }catch(e){ prompt('아래 글을 복사하세요', t); } a.remove(); };
+      if(navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(t).then(done, fall); else fall();
+    },
+    last:function(){ return LAST; },
+    // 시험용
+    _acq:acqCalc, _fee:feeCalc, _prop:propTax, _jong:jongTax, _prog:prog, _annuity:annuity, _stress:stressRatio
+  };
+})();
+</script>
+<script>window.__sdToolStart && window.__sdToolStart();</script>
 </body>
 </html>
