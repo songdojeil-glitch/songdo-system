@@ -147,7 +147,7 @@ a.sjb-btn.on::after,span.sjb-btn.on::after{background:linear-gradient(100deg,rgb
 <script>
 (function(){
   'use strict';
-  var SD_VER = '2026.10.03-3';
+  var SD_VER = '2026.10.03-4';
   var TABS = [
     [20, '🧰 전체 도구'],
     ['calc', '🧮 부동산 계산기'],
@@ -303,6 +303,13 @@ a.sjb-btn.on::after,span.sjb-btn.on::after{background:linear-gradient(100deg,rgb
 .cx-tbl th{color:var(--text3);font-weight:600}
 .cx-tbl td.n,.cx-tbl th.n{text-align:right;font-variant-numeric:tabular-nums}
 .cx-tbl tr.me td{background:#edf2ff;font-weight:700}
+.cx-cmp td small{color:var(--text3);font-weight:400}
+.cx-cmp th.n{color:#364fc7}
+.cx-cmp th.n:last-child,.cx-cmp td.n:last-child{background:#f3f6ff}
+.cx-cmp tr.tot td{font-weight:800;font-size:12.5px;border-top:2px solid #dee2e6;background:#f8f9fa}
+.cx-cmp tr.tot td.n:last-child{background:#e7edff}
+.cx-mini{margin-left:6px;padding:3px 9px;border-radius:7px;border:1px solid #4c6ef5;background:#fff;color:#4c6ef5;font-size:11.5px;font-weight:700;cursor:pointer;font-family:inherit}
+input.cx-in[type=date]{max-width:190px}
 details.cx-dt{margin-top:10px;font-size:12px}
 details.cx-dt summary{cursor:pointer;color:#495057;font-weight:600}
 @media(max-width:860px){.cx-grid{grid-template-columns:1fr}.cx-home{grid-template-columns:1fr 1fr}}
@@ -481,81 +488,194 @@ details.cx-dt summary{cursor:pointer;color:#495057;font-weight:600}
   };
 
   // ═════════════════════════════════════════════════════
-  // ② 양도소득세
+  // ② 양도소득세 — 양도일 기준 · 현행법 / 2026.8 세제개편안 / 둘 다 비교
   // ═════════════════════════════════════════════════════
+  //  양도일(잔금일)을 넣으면 그날 적용될 세법으로 계산한다.
+  //   · 현행법: 조정대상지역 다주택 중과는 2026-05-10 양도분부터 (+20%p·+30%p, 장특 배제) — 그 전 양도는 중과 유예
+  //   · 개편안(2026-08-03 기획재정부 발표, 국회 계류 — 2027-01-01 이후 양도분):
+  //     - 1세대1주택 장기보유특별공제 거주 중심 개편 — 2027 현행 유지 / 2028 보유 연2%(최대20%)+거주 연6%(최대60%) / 2029~ 거주 연8%(최대80%)만
+  //     - 조정대상지역 다주택 중과 한시 완화 — 2주택 +20%p → 2027 +5 · 2028 +10 · 2029~ +20(복귀) / 3주택+ +30%p → +10 · +15 · +30
+  //       (중과 대상의 장기보유특별공제 배제는 그대로 둔다고 가정)
+  //     - 1세대1주택 기본공제 250만 → 2,500만원 (10년 이상 거주 + 양도가액 30억 이하)
+  //     - 장특공제 한도 신설(양도차익 20억→10억)은 적용 연도·방식이 확정되지 않아 계산에 넣지 않는다
+  //     - 12억 비과세 기준·기본세율(6~45%)은 바뀌지 않는다
   var BR = [[1400,6,0],[5000,15,126],[8800,24,576],[15000,35,1544],[30000,38,1994],[50000,40,2594],[100000,42,3594],[Infinity,45,6594]];   // 만원
   function prog(base, add){        // base 원 → 세액 원, 세율
     var b = base / 1e4; if(b <= 0) return { t:0, r:0 };
     for(var i = 0; i < BR.length; i++) if(b <= BR[i][0]) return { t:Math.max(0, (b * (BR[i][1] + (add || 0)) / 100 - BR[i][2]) * 1e4), r:BR[i][1] + (add || 0) };
   }
+  var REFORM_FROM = '2027-01-01', HEAVY_FROM = '2026-05-10';
+  function today(){ var d = new Date(); return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); }
+  //  mode: 'cur' 현행법 유지 / 'new' 개편안 통과 — date: 양도일 'YYYY-MM-DD'
+  function cgtRule(mode, date){
+    date = /^\d{4}-\d{2}-\d{2}$/.test(date || '') ? date : today();
+    var grace = date < HEAVY_FROM;
+    var cur = { key:'cur', nm:'현행법', date:date, lt:'cur', heavy:!grace, add2:20, add3:30, bigDed:false, grace:grace };
+    if(mode === 'cur') return cur;
+    if(date < REFORM_FROM){ cur.nm = '개편안 (2027년 전 양도 — 현행과 같음)'; cur.same = true; return cur; }
+    var y = +date.slice(0, 4);
+    return { key:'new', nm:'개편안 ' + (y >= 2029 ? '2029년~' : y + '년') + ' 양도', year:y, date:date, heavy:true,
+      lt:y >= 2029 ? 'live8' : (y === 2028 ? 'mix26' : 'cur'),
+      add2:y >= 2029 ? 20 : (y === 2028 ? 10 : 5), add3:y >= 2029 ? 30 : (y === 2028 ? 15 : 10), bigDed:true };
+  }
+  //  순수 계산 — 입력(o)과 규칙(R)만으로 세액을 낸다 (현행법·개편안에 같은 함수를 쓴다)
+  function cgtCalc(o, R){
+    var H = o.H, L = Math.min(o.L, o.H), S = o.S;
+    var gain = o.S - o.B - o.E, r = { R:R, gain:gain, chips:[], L:L };
+    if(gain <= 0){ r.zero = 'loss'; r.tot = 0; return r; }
+    var one = o.type === 'one' && o.asset === 'house', nontax = one && o.nt && H >= 2;
+    r.one = one; r.nontax = nontax; r.taxGain = gain;
+    if(nontax){
+      if(S <= 12e8){ r.zero = 'exempt'; r.tot = 0; return r; }
+      r.taxGain = Math.floor(gain * (S - 12e8) / S); r.chips.push('12억 초과분 과세');
+    }
+    var short = 0, add = 0, ltRate = 0, ltNote = '';
+    if(o.asset === 'bun') short = H < 1 ? 70 : 60;
+    else if(H < 1) short = o.asset === 'house' ? 70 : 50;
+    else if(H < 2) short = o.asset === 'house' ? 60 : 40;
+    var heavyOn = R.heavy && o.type === 'multi' && o.asset === 'house' && o.adj && H >= 2;
+    if(heavyOn) add = o.cnt === '3' ? R.add3 : R.add2;
+    if(!short && !heavyOn && o.asset !== 'bun' && H >= 3){
+      if(one && L >= 2){
+        var hp, lp;
+        if(R.lt === 'mix26'){ hp = Math.min(Math.min(H, 10) * 2, 20); lp = Math.min(Math.min(L, 10) * 6, 60); ltNote = '개편 표 보유 ' + hp + '% + 거주 ' + lp + '%'; }
+        else if(R.lt === 'live8'){ hp = 0; lp = Math.min(Math.min(L, 10) * 8, 80); ltNote = '개편 표 거주 ' + lp + '% (보유분 폐지)'; }
+        else { hp = Math.min(H, 10) * 4; lp = L >= 3 ? Math.min(L, 10) * 4 : 8; ltNote = '표2 보유 ' + hp + '% + 거주 ' + lp + '%'; }
+        ltRate = hp + lp;
+      } else { ltRate = Math.min(H * 2, 30); ltNote = '표1 보유 연 2%'; }
+    }
+    var lt = Math.floor(r.taxGain * ltRate / 100), inc = r.taxGain - lt;
+    var ded = (R.bigDed && one && L >= 10 && S <= 30e8) ? 25000000 : 2500000;
+    var base = Math.max(0, inc - ded), t, rateTxt;
+    if(short){
+      var flat = base * short / 100, pg = add ? prog(base, add).t : 0;
+      t = Math.max(flat, pg); rateTxt = (t === flat ? short + '% 단일' : '누진 +' + add + '%p');
+      r.chips.push('단기 ' + short + '%');
+    } else { var p = prog(base, add); t = p.t; rateTxt = p.r + '%' + (add ? ' (중과 +' + add + '%p)' : ''); }
+    t = Math.floor(t);
+    var loc = Math.floor(t * 0.1 / 10) * 10;
+    if(heavyOn) r.chips.push('!다주택 중과 +' + add + '%p · 장특 배제');
+    if(R.grace && o.type === 'multi' && o.adj && o.asset === 'house') r.chips.push('2026-05-09 이전 양도 — 중과 유예');
+    if(ded > 2500000) r.chips.push('기본공제 2,500만 (10년 거주·30억 이하)');
+    Object.assign(r, { short:short, add:add, heavyOn:heavyOn, ltRate:ltRate, ltNote:ltNote, lt:lt, inc:inc, ded:ded, base:base, t:t, rateTxt:rateTxt, loc:loc, tot:t + loc });
+    return r;
+  }
+  function cgtRows(r){
+    return [['양도차익', won(r.gain)], r.nontax ? ['과세대상 양도차익 <small>(12억 초과분 안분)</small>', won(r.taxGain)] : null,
+      ['장기보유특별공제 (' + r.ltRate + '%)' + (r.ltNote ? ' <small>' + r.ltNote + '</small>' : ''), '-' + won(r.lt), 'minus'], ['양도소득금액', won(r.inc)],
+      ['기본공제', '-' + won(Math.min(r.ded, r.inc)), 'minus'], ['과세표준', won(r.base)], ['산출세액 (' + r.rateTxt + ')', won(r.t)], ['지방소득세 (10%)', won(r.loc)], ['총 납부세액', won(r.tot), 'tot']];
+  }
+  //  현행 | 개편안 나란히 — 같은 항목을 한 줄에 두고 맨 아래 차이
+  function cmpTable(cols, lines){
+    return '<table class="cx-tbl cx-cmp"><tr><th>항목</th>' + cols.map(function(c){ return '<th class="n">' + c + '</th>'; }).join('') + '</tr>'
+      + lines.filter(Boolean).map(function(l){ return '<tr' + (l[2] ? ' class="' + l[2] + '"' : '') + '><td>' + l[0] + '</td>' + l[1].map(function(v){ return '<td class="n">' + v + '</td>'; }).join('') + '</tr>'; }).join('') + '</table>';
+  }
+  function diffTxt(a, b){ var d = b - a; if(Math.abs(d) < 1) return '<span style="color:var(--text3)">변동 없음</span>';
+    return '<b style="color:' + (d > 0 ? '#c92a2a' : '#2b8a3e') + '">' + (d > 0 ? '▲ ' : '▼ ') + won(Math.abs(d)) + (d > 0 ? ' 늘어남' : ' 줄어듦') + '</b>'; }
+  function modeSeg(id){
+    return seg(id, '세법 기준', [['cur','현행법'],['new','2026.8 개편안'],['cmp','현행 vs 개편안 비교']], 'cur', '(개편안은 국회 계류 중)');
+  }
+  function dateIn(id, label, def, hint, quick){
+    return '<div class="cx-f"><label>' + label + (hint ? ' <span>' + hint + '</span>' : '') + '<em id="' + id + '-k"></em></label>'
+      + '<input class="cx-in sm" type="date" id="' + id + '" value="' + def + '" min="2020-01-01" max="2035-12-31" oninput="sdCalc.run()" onchange="sdCalc.run()">'
+      + '<div class="cx-q">' + quick.map(function(q){ return '<button type="button" onclick="sdCalc.setDate(\'' + id + '\',\'' + q[0] + '\')">' + q[1] + '</button>'; }).join('') + '</div></div>';
+  }
+  var REFORM_NOTE = '<b>개편안은 국회 계류 중</b>입니다 — 2026-08-03 정부 세제개편안(+당정 협의 수정)을 세무 해설 자료로 옮긴 <b>미리보기 어림셈</b>이며, 국회 심의에서 수치·시행 시기가 바뀔 수 있습니다.';
   var CGT = {
-    id:'cgt', ic:'양', name:'양도소득세', desc:'양도차익·장기보유특별공제·누진세율',
+    id:'cgt', ic:'양', name:'양도소득세', desc:'양도일 기준 · 현행법 vs 2026.8 개편안 비교',
     form:function(){
-      return seg('g-type', '주택 구분', [['one','1세대 1주택'],['multi','다주택·일반']], 'one')
+      var y = +today().slice(0, 4), q = [['', '오늘']];
+      [Math.max(2027, y + 1), Math.max(2028, y + 2), Math.max(2029, y + 3)].forEach(function(k){ q.push([k + '-06-30', k + '년 6월']); });
+      return modeSeg('g-mode')
+        + dateIn('g-date', '양도일 (잔금일)', today(), '(개편안은 2027-01-01 이후 양도분부터)', q)
+        + '<div id="g-same"></div>'
+        + seg('g-type', '주택 구분', [['one','1세대 1주택'],['multi','다주택·일반']], 'one')
         + seg('g-asset', '자산', [['house','주택·입주권'],['bun','분양권'],['etc','주택 외 부동산']], 'house')
         + money('g-sell', '양도가액', 15e8) + money('g-buy', '취득가액', 9e8)
         + moneySm('g-exp', '필요경비', 0, '(중개·법무·취득세·샤시·발코니 확장 등 — 도배·장판은 안 됨)')
-        + rg('g-hold', '보유기간', 0, 30, 1, 10, '년') + rg('g-live', '거주기간', 0, 30, 1, 10, '년', '(1주택 2년↑ 시 최대 80% 공제)')
+        + rg('g-hold', '보유기간', 0, 30, 1, 10, '년', '(양도일 기준)') + rg('g-live', '거주기간', 0, 30, 1, 10, '년', '(1주택 2년↑ 시 장특 거주분 · 개편안은 거주 중심)')
         + '<div id="g-multi">' + seg('g-cnt', '다주택 중과 판단 — 주택 수', [['2','2주택'],['3','3주택+']], '2')
-        + tg('g-adj', '양도 주택이 조정대상지역', '2026-05-10 양도분부터 중과 시행 (+20%p·+30%p, 장특 배제) — 인천은 비조정', false) + '</div>'
+        + tg('g-adj', '양도 주택이 조정대상지역', '현행: 2026-05-10 양도분부터 중과(+20%p·+30%p, 장특 배제) · 개편안: 2027~2028 한시 완화 — 인천은 비조정', false) + '</div>'
         + tg('g-nt', '1세대1주택 비과세 요건 충족', '보유 2년 이상(취득 당시 조정지역이면 거주 2년) — 12억까지 비과세', true);
     },
     run:function(){
-      var type = V('g-type'), asset = V('g-asset'), S = V('g-sell'), B = V('g-buy'), E = V('g-exp'), H = V('g-hold'), L = Math.min(V('g-live'), H);
-      var mt = $('g-multi'); if(mt) mt.style.display = type === 'multi' ? '' : 'none';
-      var ntw = $('g-nt'); if(ntw) ntw.style.display = (type === 'one' && asset === 'house') ? '' : 'none';
-      var gain = S - B - E, warn = [], chipsL = [];
-      if(gain <= 0){
-        LAST = { title:'양도소득세', lines:['양도차익이 없습니다 (' + won(gain) + ') — 세액 0원. 다만 예정신고 의무는 있습니다.'] };
-        return { res:out({ label:'총 납부세액', big:'0원', sub:'양도차익 ' + won(gain), rows:[['양도차익', won(gain)]], note:'양도차손이어도 <b>예정신고 의무</b>는 있습니다(양도일이 속한 달 말일부터 2개월). 같은 해 같은 그룹 자산의 차익과 통산됩니다.' }) };
+      var mode = V('g-mode'), de = $('g-date'), date = de && /^\d{4}-\d{2}-\d{2}$/.test(de.value) ? de.value : today();
+      var o = { type:V('g-type'), asset:V('g-asset'), S:V('g-sell'), B:V('g-buy'), E:V('g-exp'), H:V('g-hold'), L:V('g-live'), cnt:V('g-cnt'), adj:V('g-adj'), nt:V('g-nt') };
+      var mt = $('g-multi'); if(mt) mt.style.display = o.type === 'multi' ? '' : 'none';
+      var ntw = $('g-nt'); if(ntw) ntw.style.display = (o.type === 'one' && o.asset === 'house') ? '' : 'none';
+      var Rc = cgtRule('cur', date), Rn = cgtRule('new', date);
+      var dk = $('g-date-k'); if(dk) dk.textContent = Rn.same ? '현행법 구간' : Rn.nm.replace(' 양도', '') + ' 구간';
+      //  개편안·비교를 골랐는데 양도일이 2027년 전이면 → 결과가 같다고 알려 주고 2027년으로 바로 옮기는 단추
+      var sm = $('g-same');
+      if(sm) sm.innerHTML = (mode !== 'cur' && Rn.same) ? '<div class="cx-warn" style="margin:-4px 0 12px">개편안은 <b>2027-01-01 이후 양도분</b>부터 적용 — 이 양도일(' + date + ')은 현행법과 같습니다. '
+        + '<button type="button" class="cx-mini" onclick="sdCalc.setDate(\'g-date\',\'2027-06-30\')">2027년 6월 양도로 보기</button></div>' : '';
+      var cur = cgtCalc(o, Rc), nw = cgtCalc(o, Rn);
+      var baseNote = '예정신고·납부는 <b>양도일(잔금일)이 속한 달 말일부터 2개월</b> 안에, 지방소득세는 그로부터 2개월 더. 1천만원 초과분은 분납 가능.';
+      var reformNote = REFORM_NOTE + ' 개편안 반영: 1세대1주택 장특 거주 중심(2028 보유2%·거주6% / 2029~ 거주8%만), 조정지역 다주택 중과 한시 완화(2주택 +5→+10→+20%p, 3주택 +10→+15→+30%p, 장특 배제 유지 가정), '
+        + '10년 거주·30억 이하 1주택 기본공제 2,500만원. <b>장특공제 한도(양도차익 20억→10억)는 적용 방식 미확정이라 넣지 않았습니다.</b> 비거주 사유 확대(육아·간병 등) 논의도 반영 전입니다.';
+      var tag = function(r){ return r.zero === 'exempt' ? '비과세' : (r.zero === 'loss' ? '차손' : r.rateTxt); };
+      var z = function(r, v){ return r.zero ? '-' : v; };
+      if(mode === 'cmp'){
+        var lines = [['양도차익', [won(cur.gain), won(nw.gain)]],
+          cur.nontax ? ['과세대상 양도차익 <small>(12억 초과분)</small>', [cur.zero ? '0원' : won(cur.taxGain), nw.zero ? '0원' : won(nw.taxGain)]] : null,
+          ['장기보유특별공제', [z(cur, cur.ltRate + '%<br><small>' + (cur.ltNote || '해당 없음') + '</small>'), z(nw, nw.ltRate + '%<br><small>' + (nw.ltNote || '해당 없음') + '</small>')]],
+          ['장특 공제액', [z(cur, won(cur.lt)), z(nw, won(nw.lt))]],
+          ['기본공제', [z(cur, won(cur.ded)), z(nw, won(nw.ded))]],
+          ['과세표준', [z(cur, won(cur.base)), z(nw, won(nw.base))]],
+          ['적용 세율', [tag(cur), tag(nw)]],
+          ['산출세액', [z(cur, won(cur.t)), z(nw, won(nw.t))]],
+          ['지방소득세', [z(cur, won(cur.loc)), z(nw, won(nw.loc))]],
+          ['총 납부세액', [won(cur.tot), won(nw.tot)], 'tot'],
+          ['차이 (개편안 − 현행)', ['', diffTxt(cur.tot, nw.tot)]]];
+        var res = out({ label:'총 납부세액 — ' + Rn.nm + ' (양도일 ' + date + ')', big:won(nw.tot), sub:'현행법이면 ' + won(cur.tot) + ' → ' + diffTxt(cur.tot, nw.tot),
+          kp:[['현행법 유지 시', won(cur.tot)], ['개편안 통과 시', won(nw.tot)]],
+          extra:cmpTable(['현행법', Rn.same ? '개편안 (적용 전)' : Rn.nm], lines),
+          chips:nw.chips.concat([o.type === 'one' ? '1세대1주택' : '다주택·일반', '보유 ' + o.H + '년 · 거주 ' + Math.min(o.L, o.H) + '년']),
+          note:reformNote + '<br>' + baseNote });
+        LAST = { title:'양도소득세 비교 — 양도일 ' + date + ' · 양도 ' + kor(o.S) + ' / 취득 ' + kor(o.B),
+          lines:['현행법 ' + won(cur.tot) + ' → ' + Rn.nm + ' ' + won(nw.tot) + ' (' + (nw.tot - cur.tot >= 0 ? '+' : '') + won(nw.tot - cur.tot) + ')', '· 장특공제 현행 ' + (cur.ltRate || 0) + '% / 개편 ' + (nw.ltRate || 0) + '%', '※ 개편안은 국회 계류 중인 정부안 기준 어림'] };
+        return { res:res };
       }
-      var one = type === 'one' && asset === 'house', nontax = one && V('g-nt') && H >= 2;
-      var taxGain = gain;
-      if(nontax){
-        if(S <= 12e8){ LAST = { title:'양도소득세 — 1세대1주택 비과세', lines:['양도가액 ' + kor(S) + ' ≤ 12억 → 비과세(세액 0원)'] };
-          return { res:out({ label:'총 납부세액', big:'0원', sub:'1세대1주택 비과세 (양도가액 12억 이하)', color:'#2b8a3e', rows:[['양도차익', won(gain)], ['과세대상 양도차익', '0원']], chips:['비과세','12억 이하'],
-            note:'비과세 해당 여부(세대·보유·거주·일시적 2주택)는 사실판단입니다 — 요건 미달이 밝혀지면 무신고가산세 20% + 납부지연가산세가 붙습니다. 홈택스 모의계산·세무사 확인을 권합니다.' }) }; }
-        taxGain = Math.floor(gain * (S - 12e8) / S); chipsL.push('12억 초과분 과세');
+      var r = mode === 'new' ? nw : cur, R = r.R;
+      var lab = mode === 'new' ? ' — ' + R.nm : '';
+      if(r.zero === 'loss'){
+        LAST = { title:'양도소득세', lines:['양도차익이 없습니다 (' + won(r.gain) + ') — 세액 0원. 다만 예정신고 의무는 있습니다.'] };
+        return { res:out({ label:'총 납부세액' + lab, big:'0원', sub:'양도차익 ' + won(r.gain), rows:[['양도차익', won(r.gain)]], note:'양도차손이어도 <b>예정신고 의무</b>는 있습니다(양도일이 속한 달 말일부터 2개월). 같은 해 같은 그룹 자산의 차익과 통산됩니다.' }) };
       }
-      var short = 0, add = 0, ltRate = 0, ltNote = '';
-      if(asset === 'bun') short = H < 1 ? 70 : 60;
-      else if(H < 1) short = asset === 'house' ? 70 : 50;
-      else if(H < 2) short = asset === 'house' ? 60 : 40;
-      var heavyOn = type === 'multi' && asset === 'house' && V('g-adj') && H >= 2;
-      if(heavyOn) add = V('g-cnt') === '3' ? 30 : 20;
-      if(!short && !heavyOn && asset !== 'bun' && H >= 3){
-        if(one && L >= 2){ var lr = L >= 3 ? Math.min(L, 10) * 4 : 8; ltRate = Math.min(H, 10) * 4 + lr; ltNote = '표2 보유 ' + Math.min(H, 10) * 4 + '% + 거주 ' + lr + '%'; }
-        else { ltRate = Math.min(H * 2, 30); ltNote = '표1 보유 연 2%'; }
+      if(r.zero === 'exempt'){
+        LAST = { title:'양도소득세 — 1세대1주택 비과세', lines:['양도가액 ' + kor(o.S) + ' ≤ 12억 → 비과세(세액 0원)'] };
+        return { res:out({ label:'총 납부세액' + lab, big:'0원', sub:'1세대1주택 비과세 (양도가액 12억 이하)', color:'#2b8a3e', rows:[['양도차익', won(r.gain)], ['과세대상 양도차익', '0원']], chips:['비과세','12억 이하'],
+          note:'비과세 해당 여부(세대·보유·거주·일시적 2주택)는 사실판단입니다 — 요건 미달이 밝혀지면 무신고가산세 20% + 납부지연가산세가 붙습니다. 홈택스 모의계산·세무사 확인을 권합니다.' + (mode === 'new' ? '<br>개편안도 12억 비과세 기준은 그대로입니다.' : '') }) };
       }
-      var lt = Math.floor(taxGain * ltRate / 100), inc = taxGain - lt, ded = 2500000, base = Math.max(0, inc - ded);
-      var t, rateTxt;
-      if(short){
-        var flat = base * short / 100, pg = add ? prog(base, add).t : 0;
-        t = Math.max(flat, pg); rateTxt = (t === flat ? short + '% 단일' : '누진 +' + add + '%p');
-        chipsL.push('단기 ' + short + '%');
-      } else { var p = prog(base, add); t = p.t; rateTxt = p.r + '%' + (add ? ' (중과 +' + add + '%p)' : ''); }
-      t = Math.floor(t); var loc = Math.floor(t * 0.1 / 10) * 10, tot = t + loc;
-      if(heavyOn) chipsL.push('!다주택 중과 +' + add + '%p · 장특 배제');
-      if(type === 'multi' && V('g-adj') && H < 2) chipsL.push('단기·중과 중 큰 세액');
-      if(asset === 'bun') warn.push('분양권은 보유기간과 무관하게 60%(1년 미만 70%)입니다.');
+      var warn = o.asset === 'bun' ? ['분양권은 보유기간과 무관하게 60%(1년 미만 70%)입니다.'] : [];
+      if(mode === 'new' && !R.same) warn.unshift('🧪 <b>' + R.nm + '</b> 기준 미리보기 — 국회 계류 중인 정부안입니다.');
       var res = out({
-        label:'총 납부세액', big:won(tot), sub:kor(tot) + ' · 양도차익 대비 ' + pct(gain ? tot / gain * 100 : 0),
-        warn:warn,
-        rows:[['양도차익', won(gain)], nontax ? ['과세대상 양도차익 <small>(12억 초과분 안분)</small>', won(taxGain)] : null,
-              ['장기보유특별공제 (' + ltRate + '%)' + (ltNote ? ' <small>' + ltNote + '</small>' : ''), '-' + won(lt), 'minus'], ['양도소득금액', won(inc)],
-              ['기본공제', '-' + won(Math.min(ded, inc)), 'minus'], ['과세표준', won(base)], ['산출세액 (' + rateTxt + ')', won(t)], ['지방소득세 (10%)', won(loc)], ['총 납부세액', won(tot), 'tot']],
-        chips:chipsL.concat([one ? '1세대1주택' : '다주택·일반', '보유 ' + H + '년 · 거주 ' + L + '년']),
-        note:'예정신고·납부는 <b>양도일(잔금일)이 속한 달 말일부터 2개월</b> 안에, 지방소득세는 그로부터 2개월 더. 1천만원 초과분은 분납 가능. '
-          + '2026-08-03 세제개편안(장특 거주 중심 개편·중과 한시 완화·1주택 기본공제 확대)은 <b>국회 계류</b>라 넣지 않았습니다 — 2027년 이후 양도는 바뀔 수 있습니다.'
+        label:'총 납부세액' + lab, big:won(r.tot), sub:kor(r.tot) + ' · 양도차익 대비 ' + pct(r.gain ? r.tot / r.gain * 100 : 0) + ' · 양도일 ' + date,
+        warn:warn, rows:cgtRows(r),
+        chips:r.chips.concat([o.type === 'one' ? '1세대1주택' : '다주택·일반', '보유 ' + o.H + '년 · 거주 ' + r.L + '년'],
+          (o.type === 'multi' && o.adj && o.H < 2) ? ['단기·중과 중 큰 세액'] : []),
+        note:(mode === 'new' ? reformNote + '<br>' : '') + baseNote
+          + (mode === 'cur' ? ' 2026-08-03 세제개편안(2027년 이후 양도분)은 위 「세법 기준」에서 <b>개편안·비교</b>를 고르면 미리 계산해 볼 수 있습니다(국회 계류).' : '')
       });
-      LAST = { title:'양도소득세 — 양도 ' + kor(S) + ' / 취득 ' + kor(B), lines:['총 납부세액 ' + won(tot) + ' (지방소득세 포함)', '· 양도차익 ' + won(gain) + (nontax ? ' → 과세대상 ' + won(taxGain) : ''), '· 장기보유특별공제 ' + ltRate + '% ' + won(lt), '· 과세표준 ' + won(base) + ' · 산출세액 ' + won(t) + ' (' + rateTxt + ')'] };
+      LAST = { title:'양도소득세' + (mode === 'new' ? ' [' + R.nm + ']' : '') + ' — 양도일 ' + date + ' · 양도 ' + kor(o.S) + ' / 취득 ' + kor(o.B),
+        lines:['총 납부세액 ' + won(r.tot) + ' (지방소득세 포함)', '· 양도차익 ' + won(r.gain) + (r.nontax ? ' → 과세대상 ' + won(r.taxGain) : ''), '· 장기보유특별공제 ' + r.ltRate + '% ' + won(r.lt), '· 과세표준 ' + won(r.base) + ' · 산출세액 ' + won(r.t) + ' (' + r.rateTxt + ')'] };
       return { res:res };
     }
   };
 
   // ═════════════════════════════════════════════════════
-  // ③ 보유세 (재산세 + 종합부동산세)
+  // ③ 보유세 (재산세 + 종합부동산세) — 과세연도 기준 · 현행법 / 2026.8 개편안 / 둘 다 비교
   // ═════════════════════════════════════════════════════
+  //  과세연도(그해 6월 1일 보유분)를 고르면 그 해에 적용될 세법으로 계산한다. 개편안은 2027년분부터.
+  //  종부세 개편안(정부안 2026-08-03 + 당정 협의 수정, 국회 계류):
+  //   · 기본공제 — 1세대1주택 실거주 14억 / 비거주 12억, 다주택 4억 + 5억 × (거주주택 공시가 ÷ 공시가 합계)
+  //     ★ 당정 협의 수정안 반영: 8월 정부안은 비거주 1세대1주택 공제를 9억으로 낮췄으나,
+  //       당정 협의를 거친 수정안에 따라 현행과 같은 공시가격 12억원으로 계산한다 (대표님 지시 2026-10-02)
+  //   · 공정시장가액비율 — 2027 70% 일괄 / 2028~ 70%, 3주택 이상(중과 대상) 80%
+  //   · 세율 — 2027 6~12억 구간 1.0→1.3%, 2주택 이하 최고 3.5% / 2028~ 주택 수 구분 없이 가액 기준 단일표(0.5·0.7·1.3·2·3·4·5%)
+  //   · 1세대1주택 세액공제(고령+장기) 80% 한도에 금액 한도 — 2027 800만원(보유·거주기간 중 유리한 쪽) / 2028~ 600만원(거주기간 기준)
+  //   · 세부담상한 150% 유지 — 전년도 세액이 필요해 이 계산기는 넣지 않는다
+  //   · 재산세는 개편 대상이 아니라 현행대로 계산한다
   function propTax(g, one, city){        // 공시가 원 → 재산세
     var ratio = one ? (g <= 3e8 ? 43 : g <= 6e8 ? 44 : 45) : 60;
     var b = g * ratio / 100 / 1e4, t, sp = one && g <= 9e8;      // 만원
@@ -564,53 +684,138 @@ details.cx-dt summary{cursor:pointer;color:#495057;font-weight:600}
     var tax = cut10(t * 1e4), cty = city ? cut10(b * 1e4 * 0.0014) : 0, edu = cut10(tax * 0.2);
     return { ratio:ratio, base:b * 1e4, sp:sp, tax:tax, city:cty, edu:edu, sum:tax + cty + edu };
   }
-  var JB_A = [[3e8,0.5,0],[6e8,0.7,60e4],[12e8,1.0,240e4],[25e8,1.3,600e4],[50e8,1.5,1100e4],[94e8,2.0,3600e4],[Infinity,2.7,10180e4]];
-  var JB_B = [[3e8,0.5,0],[6e8,0.7,60e4],[12e8,1.0,240e4],[25e8,2.0,1440e4],[50e8,3.0,3940e4],[94e8,4.0,8940e4],[Infinity,5.0,18340e4]];
-  function jongTax(base, multi3){ var T = multi3 ? JB_B : JB_A; if(base <= 0) return { t:0, r:0 };
-    for(var i = 0; i < T.length; i++) if(base <= T[i][0]) return { t:base * T[i][1] / 100 - T[i][2], r:T[i][1] }; }
+  //  종부세 세율표 — 구간 상한(원) × 구간별 세율(%) 누진
+  var JB_EDGE = [3e8, 6e8, 12e8, 25e8, 50e8, 94e8, Infinity];
+  var JB_T = {
+    cur2:  [0.5, 0.7, 1.0, 1.3, 1.5, 2.0, 2.7],     // 현행 2주택 이하
+    cur3:  [0.5, 0.7, 1.0, 2.0, 3.0, 4.0, 5.0],     // 현행 3주택 이상
+    y27_2: [0.5, 0.7, 1.3, 1.5, 2.0, 2.7, 3.5],     // 개편안 2027 2주택 이하
+    y27_3: [0.5, 0.7, 1.3, 2.0, 3.0, 4.0, 5.0],     // 개편안 2027 3주택 이상
+    y28:   [0.5, 0.7, 1.3, 2.0, 3.0, 4.0, 5.0]      // 개편안 2028~ 가액 기준 단일표
+  };
+  function jongProg(base, rates){
+    if(base <= 0) return { t:0, r:0 };
+    var t = 0, lo = 0, r = rates[0];
+    for(var i = 0; i < JB_EDGE.length; i++){ var hi = JB_EDGE[i], part = Math.min(base, hi) - lo; if(part <= 0) break; t += part * rates[i] / 100; r = rates[i]; lo = hi; }
+    return { t:t, r:r };
+  }
+  function jongTax(base, multi3){ return jongProg(base, multi3 ? JB_T.cur3 : JB_T.cur2); }   // (예전 이름 호환)
+  function holdRule(mode, year){
+    var y = +year || +today().slice(0, 4);
+    if(mode === 'cur') return { key:'cur', y:y, nm:'현행법' };
+    if(y < 2027) return { key:'cur', y:y, nm:'개편안 (' + y + '년분 — 현행과 같음)', same:true };
+    return { key:'new', y:y, ry:y >= 2028 ? 2028 : 2027, nm:'개편안 ' + y + '년분' + (y > 2028 ? ' (2028~ 기준)' : '') };
+  }
+  function holdCalc(o, R){
+    var gs = o.gs, type = o.type, one = type === 'one', cur = R.key === 'cur';
+    var P = gs.map(function(g){ return propTax(g, one, o.city); });
+    var sumG = gs.reduce(function(a, b){ return a + b; }, 0);
+    var pTax = P.reduce(function(a, p){ return a + p.tax; }, 0), pSum = P.reduce(function(a, p){ return a + p.sum; }, 0);
+    var pCity = P.reduce(function(a, p){ return a + p.city; }, 0), pEdu = P.reduce(function(a, p){ return a + p.edu; }, 0);
+    var ded, dedTxt, ratio, rates, rateNm, cap = 0;
+    if(cur){
+      ded = one ? 12e8 : 9e8; dedTxt = one ? '1세대1주택 12억' : '인별 9억'; ratio = 60;
+      rates = type === 'three' ? JB_T.cur3 : JB_T.cur2; rateNm = type === 'three' ? '3주택+ 세율표' : '2주택 이하 세율표';
+    } else {
+      if(one){
+        //  ★ 실거주 14억 / 비거주 12억 — 8월 정부안(비거주 9억)이 아니라 당정 협의 수정안(현행과 같은 12억)으로 계산
+        ded = o.live ? 14e8 : 12e8; dedTxt = o.live ? '실거주 1주택 14억' : '비거주 1주택 12억 (당정 수정안)';
+      } else {
+        var resv = o.res ? gs[0] : 0, plus = sumG ? 5e8 * resv / sumG : 0;
+        ded = 4e8 + plus;
+        dedTxt = '다주택 4억' + (o.res ? ' + 거주주택분 ' + kor(plus) : ' (거주주택 없음)');
+      }
+      if(R.ry === 2027){ ratio = 70; rates = type === 'three' ? JB_T.y27_3 : JB_T.y27_2; rateNm = '2027 ' + (type === 'three' ? '3주택+' : '2주택 이하') + ' 세율표'; cap = 800e4; }
+      else { ratio = type === 'three' ? 80 : 70; rates = JB_T.y28; rateNm = '2028~ 가액 기준 단일표'; cap = 600e4; }
+    }
+    var jbase = Math.max(0, (sumG - ded) * ratio / 100);
+    var j = jongProg(jbase, rates), jt = j.t;
+    //  이중과세 조정 — 재산세 중 종부세 과표에 해당하는 부분을 뺀다 (어림: 재산세 본세 × 종부 과표/공시합)
+    var dup = Math.min(jt, sumG ? pTax * jbase / sumG : 0);
+    var afterDup = Math.max(0, jt - dup), credit = 0, creditAmt = 0;
+    if(one){ credit = Math.min(80, o.age + o.yrs); creditAmt = afterDup * credit / 100; if(cap && creditAmt > cap) creditAmt = cap; }
+    var jFinal = cut10(afterDup - creditAmt), rural = cut10(jFinal * 0.2), jSum = jFinal + rural;
+    return { R:R, P:P, sumG:sumG, pTax:pTax, pSum:pSum, pCity:pCity, pEdu:pEdu, ded:ded, dedTxt:dedTxt, ratio:ratio, rateNm:rateNm, jbase:jbase, j:j, jt:jt, dup:dup,
+      afterDup:afterDup, credit:credit, creditAmt:creditAmt, cap:cap, jFinal:jFinal, rural:rural, jSum:jSum, tot:pSum + jSum, one:one, type:type };
+  }
   var HOLD = {
-    id:'hold', ic:'보', name:'보유세', desc:'재산세 + 종합부동산세',
+    id:'hold', ic:'보', name:'보유세', desc:'과세연도 기준 · 현행법 vs 2026.8 개편안 비교',
     form:function(){
-      return money('h-p1', '공시가격 (주택 1)', 8e8, '(시가 아님 · 공시가격 조회 탭에서 확인)')
+      var y = Math.min(2030, Math.max(2026, +today().slice(0, 4)));
+      return modeSeg('h-mode')
+        + seg('h-year', '과세연도', [['2026','2026년'],['2027','2027년'],['2028','2028년'],['2029','2029년'],['2030','2030년']], String(y), '(그해 6월 1일 보유분 · 개편안은 2027년분부터)')
+        + '<div id="h-same"></div>'
+        + money('h-p1', '공시가격 (주택 1)', 8e8, '(시가 아님 · 그해 공시가격 — 공시가격 조회 탭에서 확인)')
         + '<div id="h-more"></div><div class="cx-q" style="margin:-6px 0 12px"><button type="button" onclick="sdCalc.addHome()">＋ 주택 더 넣기 (다주택)</button></div>'
         + seg('h-type', '보유 구분', [['one','1세대1주택'],['two','2주택'],['three','3주택+']], 'one', '(세대 기준)')
+        + '<div id="h-ref">'
+        + '<div id="h-live-w">' + tg('h-live', '실거주 1주택 (개편안 공제 14억)', '끄면 비거주 — 공제 12억 (8월 정부안 9억 → 당정 협의 수정안으로 현행 12억 유지)', true) + '</div>'
+        + '<div id="h-res-w">' + tg('h-res', '주택 1에 실거주 (개편안 다주택 공제)', '다주택 공제 = 4억 + 5억 × (거주주택 공시가 ÷ 공시가 합계)', true) + '</div></div>'
         + '<div id="h-one">' + seg('h-age', '고령자 세액공제 (종부세)', [['0','60세 미만'],['20','60~65세'],['30','65~70세'],['40','70세 이상']], '0')
-        + seg('h-yrs', '장기보유 세액공제 (종부세)', [['0','5년 미만'],['20','5~10년'],['40','10~15년'],['50','15년 이상']], '0', '(고령+장기 합계 최대 80%)') + '</div>'
+        + seg('h-yrs', '장기 세액공제 (종부세)', [['0','5년 미만'],['20','5~10년'],['40','10~15년'],['50','15년 이상']], '0', '(현행: 보유기간 · 개편안 2027: 보유·거주 중 유리한 쪽 · 2028~: 거주기간)') + '</div>'
         + tg('h-city', '도시지역분 포함', '도시계획구역 안 주택 — 과세표준의 0.14%', true);
     },
     run:function(){
+      var mode = V('h-mode'), year = V('h-year');
       var gs = [V('h-p1')]; Array.prototype.forEach.call(document.querySelectorAll('#h-more input[data-money]'), function(e){ if(N(e.value)) gs.push(N(e.value)); });
       var type = V('h-type'); if(gs.length > 1 && type === 'one') type = 'two';
-      var one = type === 'one', city = V('h-city'), oc = $('h-one'); if(oc) oc.style.display = one ? '' : 'none';
-      var P = gs.map(function(g){ return propTax(g, one, city); });
-      var sumG = gs.reduce(function(a, b){ return a + b; }, 0);
-      var pTax = P.reduce(function(a, p){ return a + p.tax; }, 0), pSum = P.reduce(function(a, p){ return a + p.sum; }, 0);
-      var pCity = P.reduce(function(a, p){ return a + p.city; }, 0), pEdu = P.reduce(function(a, p){ return a + p.edu; }, 0);
-      var ded = one ? 12e8 : 9e8, jbase = Math.max(0, (sumG - ded) * 0.6);
-      var j = jongTax(jbase, type === 'three'), jt = j.t;
-      //  이중과세 조정 — 재산세 중 종부세 과표에 해당하는 부분을 뺀다 (어림: 재산세 본세 × 종부 과표/공시합)
-      var dup = sumG ? pTax * jbase / sumG : 0;
-      var afterDup = Math.max(0, jt - dup), credit = 0;
-      if(one){ credit = Math.min(80, (+V('h-age')) + (+V('h-yrs'))); }
-      var jFinal = cut10(afterDup * (1 - credit / 100)), rural = cut10(jFinal * 0.2), jSum = jFinal + rural, tot = pSum + jSum;
-      var res = out({
-        label:'연간 보유세 합계', big:won(tot), sub:kor(tot) + ' · 연간',
-        kp:[['재산세 합계', won(pSum)], ['종합부동산세 (농특세 포함)', won(jSum)]],
-        rows:[['재산세 본세' + (gs.length > 1 ? ' <small>(' + gs.length + '채)</small>' : '') + (P[0].sp && one ? ' <small>특례세율</small>' : ''), won(pTax)], ['도시지역분', won(pCity)], ['지방교육세 (재산세의 20%)', won(pEdu)],
-              jbase > 0 ? ['종부세 과세표준 <small>(공시 합 ' + kor(sumG) + ' − 공제 ' + kor(ded) + ') × 60%</small>', won(jbase)] : ['종부세', '공제 ' + kor(ded) + ' 이하 — 없음'],
-              jbase > 0 ? ['종부세 산출 (' + j.r + '%' + (type === 'three' ? ', 3주택+' : '') + ')', won(jt)] : null,
-              jbase > 0 ? ['재산세 중복분 공제 <small>(어림)</small>', '-' + won(Math.min(jt, dup)), 'minus'] : null,
-              jbase > 0 && credit ? ['1세대1주택 세액공제 (' + credit + '%)', '-' + won(afterDup * credit / 100), 'minus'] : null,
-              jbase > 0 ? ['종부세 결정세액', won(jFinal)] : null, jbase > 0 ? ['농어촌특별세 (종부세의 20%)', won(rural)] : null,
-              ['연간 보유세 합계', won(tot), 'tot']],
-        chips:[one ? '1세대1주택 · 공정시장가액비율 ' + P[0].ratio + '%' : '재산세 비율 60%', '종부세 공제 ' + kor(ded), one && P[0].sp ? '재산세 특례세율(공시 9억↓, 2026년까지)' : null],
-        note:'납부: 재산세(주택분) <b>7월·9월 절반씩</b>(연 20만원 이하면 7월 일괄), 종부세 <b>12월</b>. 과세기준일 <b>6월 1일</b> 소유자에게 1년치. '
-          + '세부담상한·감면·합산배제는 넣지 않은 어림셈입니다. 재산세 1주택 특례세율은 2026년까지 한시. '
-          + '종부세 2026-08-03 개편안(1주택 거주 14억/비거주 9억 공제, 공정시장가액비율 70~80%, 세율 가액 기준)은 <b>국회 계류</b> — 2027년부터 달라질 수 있습니다.'
+      var o = { gs:gs, type:type, city:V('h-city'), age:+V('h-age'), yrs:+V('h-yrs'), live:V('h-live'), res:V('h-res') };
+      var one = type === 'one', oc = $('h-one'); if(oc) oc.style.display = one ? '' : 'none';
+      var rf = $('h-ref'); if(rf) rf.style.display = mode === 'cur' ? 'none' : '';
+      var lw = $('h-live-w'), rw = $('h-res-w'); if(lw) lw.style.display = one ? '' : 'none'; if(rw) rw.style.display = one ? 'none' : '';
+      var Rc = holdRule('cur', year), Rn = holdRule('new', year);
+      var sm = $('h-same');
+      if(sm) sm.innerHTML = (mode !== 'cur' && Rn.same) ? '<div class="cx-warn" style="margin:-4px 0 12px">종부세 개편안은 <b>2027년분</b>부터 적용 — ' + year + '년분은 현행법과 같습니다. '
+        + '<button type="button" class="cx-mini" onclick="sdCalc.seg(document.querySelector(\'#h-year [data-v=&quot;2027&quot;]\'))">2027년분으로 보기</button></div>' : '';
+      var cur = holdCalc(o, Rc), nw = holdCalc(o, Rn);
+      var payNote = '납부: 재산세(주택분) <b>7월·9월 절반씩</b>(연 20만원 이하면 7월 일괄), 종부세 <b>12월</b>. 과세기준일 <b>6월 1일</b> 소유자에게 1년치. 세부담상한(전년 대비 150%)·감면·합산배제는 넣지 않은 어림셈입니다. '
+        + '재산세 1주택 특례세율(공시 9억 이하)은 2026년까지 한시' + (+year > 2026 ? ' — ' + year + '년분은 연장된다고 보고 셈했습니다' : '') + '.';
+      var reformNote = REFORM_NOTE + ' 종부세 개편안 반영: 기본공제 실거주 1주택 14억 · <b>비거주 1주택 12억</b> · 다주택 4억+거주주택분(최대 5억), 공정시장가액비율 2027 70% / 2028~ 70%(3주택+ 80%), '
+        + '세율 2027 6~12억 1.3%·최고 3.5%(2주택 이하) / 2028~ 가액 기준 단일표(0.5~5%), 1주택 세액공제 금액한도 2027 800만·2028~ 600만원. '
+        + '<br><b>※ 비거주 1세대1주택 공제: 8월 정부안은 공시가격 9억원이었으나, 당정 협의를 거친 수정안에 따라 현행과 같은 12억원으로 계산했습니다.</b> '
+        + '재산세는 개편 대상이 아니라 현행 그대로입니다. 부부 공동명의 특례 변경은 넣지 않았습니다.';
+      var jRows = function(r){ return [
+        ['재산세 본세' + (r.P.length > 1 ? ' <small>(' + r.P.length + '채)</small>' : '') + (r.P[0].sp && r.one ? ' <small>특례세율</small>' : ''), won(r.pTax)], ['도시지역분', won(r.pCity)], ['지방교육세 (재산세의 20%)', won(r.pEdu)],
+        r.jbase > 0 ? ['종부세 과세표준 <small>(공시 합 ' + kor(r.sumG) + ' − 공제 ' + kor(r.ded) + ') × ' + r.ratio + '%</small>', won(r.jbase)] : ['종부세', '공제 ' + kor(r.ded) + ' 이하 — 없음'],
+        r.jbase > 0 ? ['종부세 산출 (' + r.j.r + '% · ' + r.rateNm + ')', won(r.jt)] : null,
+        r.jbase > 0 ? ['재산세 중복분 공제 <small>(어림)</small>', '-' + won(r.dup), 'minus'] : null,
+        r.jbase > 0 && r.credit ? ['1세대1주택 세액공제 (' + r.credit + '%' + (r.cap ? ', 한도 ' + kor(r.cap) : '') + ')', '-' + won(r.creditAmt), 'minus'] : null,
+        r.jbase > 0 ? ['종부세 결정세액', won(r.jFinal)] : null, r.jbase > 0 ? ['농어촌특별세 (종부세의 20%)', won(r.rural)] : null,
+        ['연간 보유세 합계', won(r.tot), 'tot']]; };
+      var typeNm = ({ one:'1세대1주택', two:'2주택', three:'3주택+' })[type];
+      if(mode === 'cmp'){
+        var J = function(r, f){ return r.jbase > 0 ? f(r) : '-'; };
+        var lines = [['재산세 합계 <small>(도시지역분·교육세 포함)</small>', [won(cur.pSum), won(nw.pSum)]],
+          ['종부세 기본공제', [kor(cur.ded) + '<br><small>' + cur.dedTxt + '</small>', kor(nw.ded) + '<br><small>' + nw.dedTxt + '</small>']],
+          ['공정시장가액비율', [cur.ratio + '%', nw.ratio + '%']],
+          ['종부세 과세표준', [won(cur.jbase), won(nw.jbase)]],
+          ['종부세 세율', [J(cur, function(r){ return r.j.r + '%<br><small>' + r.rateNm + '</small>'; }), J(nw, function(r){ return r.j.r + '%<br><small>' + r.rateNm + '</small>'; })]],
+          one ? ['1주택 세액공제', [J(cur, function(r){ return r.credit + '% · ' + won(r.creditAmt); }), J(nw, function(r){ return r.credit + '% · ' + won(r.creditAmt) + (r.cap ? '<br><small>한도 ' + kor(r.cap) + '</small>' : ''); })]] : null,
+          ['종부세 (농특세 포함)', [won(cur.jSum), won(nw.jSum)]],
+          ['연간 보유세 합계', [won(cur.tot), won(nw.tot)], 'tot'],
+          ['차이 (개편안 − 현행)', ['', diffTxt(cur.tot, nw.tot)]]];
+        var res = out({ label:'연간 보유세 — ' + year + '년분 · ' + (Rn.same ? '개편안 적용 전' : '개편안'), big:won(nw.tot), sub:'현행법이면 ' + won(cur.tot) + ' → ' + diffTxt(cur.tot, nw.tot),
+          kp:[['현행법 유지 시', won(cur.tot)], ['개편안 통과 시', won(nw.tot)]],
+          extra:cmpTable(['현행법', Rn.nm], lines),
+          chips:[typeNm, one ? (o.live ? '실거주' : '비거주') : null, '공시가 합 ' + kor(cur.sumG)],
+          note:reformNote + '<br>' + payNote });
+        LAST = { title:'보유세 비교 — ' + year + '년분 · 공시가격 ' + gs.map(kor).join(' + ') + ' · ' + typeNm + (one ? (o.live ? ' (실거주)' : ' (비거주)') : ''),
+          lines:['현행법 ' + won(cur.tot) + ' → ' + Rn.nm + ' ' + won(nw.tot) + ' (' + (nw.tot - cur.tot >= 0 ? '+' : '') + won(nw.tot - cur.tot) + ')', '· 종부세 현행 ' + won(cur.jSum) + ' / 개편 ' + won(nw.jSum), '※ 개편안은 국회 계류 중 · 비거주 1주택 12억(당정 수정안) 기준 어림'] };
+        return { res:res };
+      }
+      var r = mode === 'new' ? nw : cur;
+      var res2 = out({
+        label:'연간 보유세 합계 — ' + year + '년분' + (mode === 'new' ? ' · ' + r.R.nm : ''), big:won(r.tot), sub:kor(r.tot) + ' · 연간',
+        warn:(mode === 'new' && !r.R.same) ? ['🧪 <b>' + r.R.nm + '</b> 기준 미리보기 — 국회 계류 중인 정부안(+당정 수정안)입니다.'] : null,
+        kp:[['재산세 합계', won(r.pSum)], ['종합부동산세 (농특세 포함)', won(r.jSum)]],
+        rows:jRows(r),
+        chips:[r.one ? '1세대1주택 · 재산세 공정시장가액비율 ' + r.P[0].ratio + '%' : '재산세 비율 60%', '종부세 공제 ' + kor(r.ded) + (r.R.key === 'new' ? ' (' + r.dedTxt + ')' : ''), r.one && r.P[0].sp ? '재산세 특례세율(공시 9억↓)' : null],
+        note:(mode === 'new' ? reformNote + '<br>' : '') + payNote
+          + (mode === 'cur' ? ' 2026-08-03 종부세 개편안(2027년분부터)은 위 「세법 기준」에서 <b>개편안·비교</b>를 고르면 미리 계산해 볼 수 있습니다(국회 계류).' : '')
       });
-      LAST = { title:'보유세 — 공시가격 ' + gs.map(kor).join(' + ') + ' · ' + ({ one:'1세대1주택', two:'2주택', three:'3주택+' })[type],
-               lines:['연간 보유세 ' + won(tot), '· 재산세(도시지역분·지방교육세 포함) ' + won(pSum) + ' — 7월·9월', '· 종합부동산세(농특세 포함) ' + won(jSum) + ' — 12월'] };
-      return { res:res };
+      LAST = { title:'보유세 ' + year + '년분' + (mode === 'new' ? ' [' + r.R.nm + ']' : '') + ' — 공시가격 ' + gs.map(kor).join(' + ') + ' · ' + typeNm,
+               lines:['연간 보유세 ' + won(r.tot), '· 재산세(도시지역분·지방교육세 포함) ' + won(r.pSum) + ' — 7월·9월', '· 종합부동산세(농특세 포함) ' + won(r.jSum) + ' — 12월'] };
+      return { res:res2 };
     }
   };
 
@@ -919,6 +1124,7 @@ details.cx-dt summary{cursor:pointer;color:#495057;font-weight:600}
     go:go, run:run, kor:kor, won:won,
     fmt:function(e){ var p = e.selectionStart, L = e.value.length; var n = N(e.value); e.value = n ? Math.round(n).toLocaleString() : (e.value === '' ? '' : '0'); try{ var d = e.value.length - L; e.setSelectionRange(Math.max(0, p + d), Math.max(0, p + d)); }catch(x){} korHint(e); run(); },
     add:function(id, v){ var e = $(id); if(!e) return; e.value = (v ? Math.round(N(e.value) + v) : 0).toLocaleString(); korHint(e); run(); },
+    setDate:function(id, v){ var e = $(id); if(!e) return; e.value = v || today(); run(); },
     seg:function(b){ var p = b.parentNode; p.setAttribute('data-v', b.getAttribute('data-v')); Array.prototype.forEach.call(p.children, function(x){ x.classList.toggle('on', x === b); }); run(); },
     etc:function(k){ ETC = k; paint(); },
     addHome:function(){ var m = $('h-more'); if(!m) return; var n = m.querySelectorAll('input').length + 2; if(n > 8) return;
@@ -933,7 +1139,7 @@ details.cx-dt summary{cursor:pointer;color:#495057;font-weight:600}
     },
     last:function(){ return LAST; },
     // 시험용
-    _acq:acqCalc, _fee:feeCalc, _prop:propTax, _jong:jongTax, _prog:prog, _annuity:annuity, _stress:stressRatio
+    _acq:acqCalc, _fee:feeCalc, _prop:propTax, _jong:jongTax, _prog:prog, _cgtCalc:cgtCalc, _cgtRule:cgtRule, _holdCalc:holdCalc, _holdRule:holdRule, _annuity:annuity, _stress:stressRatio
   };
 })();
 </script>
