@@ -19427,7 +19427,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.10.01-64';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.10.02-65';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_data.html';      // 이 파일 이름
   var SD_NAME = '실거래가';      // 사람이 부르는 이름
 
@@ -35966,15 +35966,28 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
     if(!R.floorNo && (x = /(\d+)\s*층/.exec(d))) R.floorNo = +x[1];
     if(!R.ho && (x = /(\d+\s*호|호\s*비공개)/.exec(d))) R.ho = x[1];
   }
+  //  직방 화면을 복사하면 「단지명 · 매매 요청」이 「단지명 / · / 매매 요청」처럼 여러 줄로 쪼개져 온다 — 한 줄로 다시 붙인다
+  var DOT = '[·ㆍ・•∙‧⋅]';
+  function joinTitle(t){
+    t = t.replace(/[\u00a0\u200b\ufeff]/g, ' ');
+    //  「매매」 / 「요청」 이 갈라진 경우
+    t = t.replace(/(매매|전세|월세)[ \t]*\n\s*요청/g, '$1 요청');
+    //  단지명 ↵ · ↵ 매매 요청  ·  단지명 ↵ ·매매 요청  ·  단지명· ↵ 매매 요청  ·  단지명 ↵ 매매 요청(점 없이)
+    t = t.replace(new RegExp('([^\\n' + DOT.slice(1, -1) + '])[ \\t]*(?:\\n\\s*)*(' + DOT + ')[ \\t]*(?:\\n\\s*)*(매매|전세|월세)[ \\t]*요청', 'g'), '$1 · $3 요청');
+    t = t.replace(/^([^\n]*[가-힣A-Za-z0-9)][ \t]*)\n\s*(?:\n\s*)*(매매|전세|월세)[ \t]*요청/m, function(m0, a, d){
+      return /(매매|전세|월세)\s*요청|[:：]|요청\s*일시/.test(a) ? m0 : a.replace(/\s+$/, '') + ' · ' + d + ' 요청';
+    });
+    return t;
+  }
   function parse(raw){
-    var t = String(raw||'').replace(/\r/g,''), L0 = t.split('\n').map(function(s){ return s.trim(); }).filter(Boolean), L = [];
+    var t = joinTitle(String(raw||'').replace(/\r/g,'')), L0 = t.split('\n').map(function(s){ return s.trim(); }).filter(Boolean), L = [];
     for(var i=0;i<L0.length;i++){ if(LABEL_ONLY.test(L0[i]) && L0[i+1] && !LABEL_ONLY.test(L0[i+1])){ L.push(L0[i] + ' ' + L0[i+1]); i++; } else L.push(L0[i]); }
     var R = { deal:'매매' };
     var m;
     if((m = /요청\s*일시\s*[:：]?\s*([0-9.\-\/\s:]+)/.exec(L.join('\n')))) R.when = m[1].trim().split('\n')[0].trim();
     L.forEach(function(s){
       var mm;
-      if(!R.cx && (mm = /^(.+?)\s*[·ㆍ・]\s*(매매|전세|월세)\s*요청/.exec(s))){ R.cx = mm[1].trim(); R.deal = mm[2]; }
+      if(!R.cx && (mm = /^(.+?)\s*[·ㆍ・•∙‧⋅]\s*(매매|전세|월세)\s*요청/.exec(s))){ R.cx = mm[1].trim(); R.deal = mm[2]; }
       else if(/^상세\s*주소/.test(s)){ R.detail = s.replace(/^상세\s*주소\s*[:：]?\s*/,''); parseDetail(R, R.detail); }
       else if(/^주소/.test(s)) R.addr = s.replace(/^주소\s*[:：]?\s*/,'');
       else if(/^평형|전용\s*[\d.]+\s*㎡/.test(s)){
@@ -35988,7 +36001,16 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
     });
     //  상세 주소 줄을 못 찾았으면 글 전체에서 동·층을 찾는다
     if(!R.dong || !R.tier) parseDetail(R, L.filter(function(s){ return !/^주소|송도동|연수구/.test(s); }).join(' '));
-    if(!R.cx){ var z = L.filter(function(s){ return /(매매|전세|월세)\s*요청/.test(s); })[0]; if(z) R.cx = z.replace(/[·ㆍ・]?\s*(매매|전세|월세)\s*요청.*/,'').trim(); }
+    if(!R.cx){
+      //  마지막 안전장치: 「매매 요청」 줄 앞부분, 비었으면 바로 윗줄(점·빈 줄 건너뜀)을 단지명으로
+      var zi = -1; L.some(function(s, i){ if(/(매매|전세|월세)\s*요청/.test(s)){ zi = i; return true; } });
+      if(zi >= 0){
+        var z = L[zi], dm = /(매매|전세|월세)\s*요청/.exec(z); R.deal = dm[1];
+        var head = z.replace(/[·ㆍ・•∙‧⋅]?\s*(매매|전세|월세)\s*요청.*/,'').replace(/[·ㆍ・•∙‧⋅\s]+$/,'').trim();
+        for(var k = zi - 1; !head && k >= 0; k--){ var c = L[k].replace(/^[·ㆍ・•∙‧⋅\s]+|[·ㆍ・•∙‧⋅\s]+$/g,''); if(c && !/[:：]|요청\s*일시/.test(c)) head = c; }
+        if(head) R.cx = head;
+      }
+    }
     R.occ = occOf(R.tenant);
     R.ownerLives = R.occ === '집주인';
     R.repair = repOf(R.repairTxt);
