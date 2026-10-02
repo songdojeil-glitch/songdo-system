@@ -19427,7 +19427,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.10.02-65';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.10.02-66';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_data.html';      // 이 파일 이름
   var SD_NAME = '실거래가';      // 사람이 부르는 이름
 
@@ -37045,5 +37045,327 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
 })();
 </script>
 
+<!-- ═════════════════════════════════════════════════════════════════
+     매물 상세 창 더하기  2026-10-02
+     · 창 크기 키움 (660 → 980px) · 넓으면 기본 정보 두 줄로
+     · 「🏗️ 배치도 보기」 — 지도처럼 창 안에 펼침: 단지배치도 + 동호수배치도 (단지이미지 탭 자료)
+     · 「📐 평면도 보기」 — 이 매물 전용면적(±1.5㎡)에 맞는 평면도, 없으면 단지 전체 평면도
+       (이미지는 누르면 크게 · 크게 본 그림을 누르면 원래 크기로 확대)
+     · 중개사 · 중복등록업소명을 누르면 고객관리 「중개업소」에 등록된 연락처를 바로 아래에 보여 준다
+       (고객관리 자료 storage/sd_brokers 를 읽기만 한다 · 이름은 「공인중개사사무소·부동산」 등을 떼고 맞춤)
+     · 매물(APT) openNaverDetail · 매물(OP·생숙/상가·사무실) openNaverDetail2 둘 다
+     ═════════════════════════════════════════════════════════════════ -->
+<style>
+#naver-detail-box{width:min(980px,96vw)!important;max-height:92vh!important}
+@media(min-width:760px){
+  #nd-info.nd-grid{grid-template-columns:86px minmax(0,1fr) 86px minmax(0,1fr)}
+}
+.ndx-bt{font-size:11.5px;font-weight:600;padding:4px 11px;border:1px solid #a5d6a7;background:rgba(46,125,50,.12);color:#66bb6a;
+  border-radius:7px;cursor:pointer;white-space:nowrap;flex-shrink:0;margin-right:8px;font-family:inherit}
+.ndx-bt.plan{border-color:#ce93d8;background:rgba(123,31,162,.12);color:#ba68c8}
+.ndx-bt.on{outline:2px solid currentColor;outline-offset:1px}
+#ndx-panel{margin:4px 0 16px;border:1px solid var(--border);border-radius:10px;padding:12px;background:var(--bg3)}
+#ndx-panel .hd{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12.5px;font-weight:700;color:var(--text);margin-bottom:10px}
+#ndx-panel .hd small{font-weight:500;color:var(--text3);font-size:11px}
+#ndx-panel .tabs{display:flex;gap:5px;flex-wrap:wrap;margin-left:auto}
+#ndx-panel .tabs button{font-size:11px;padding:3px 9px;border-radius:6px;border:1px solid var(--border);background:var(--card);color:var(--text2,var(--text));cursor:pointer;font-family:inherit}
+#ndx-panel .tabs button.on{border-color:var(--accent);color:var(--accent);font-weight:700}
+#ndx-panel .imgs{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px}
+#ndx-panel .imgs.one{grid-template-columns:1fr}
+#ndx-panel figure{margin:0;background:var(--card);border:1px solid var(--border);border-radius:8px;overflow:hidden}
+#ndx-panel figure img{display:block;width:100%;max-height:62vh;object-fit:contain;background:#fff;cursor:zoom-in}
+#ndx-panel figcaption{font-size:11px;color:var(--text3);padding:5px 8px;display:flex;gap:6px}
+#ndx-panel figcaption b{color:var(--text);font-weight:600}
+#ndx-panel .msg{font-size:12px;color:var(--text3);line-height:1.7;padding:10px 4px}
+#ndx-view{position:fixed;inset:0;z-index:4000;background:rgba(0,0,0,.88);display:flex;align-items:center;justify-content:center;overflow:auto}
+#ndx-view img{max-width:96vw;max-height:94vh;cursor:zoom-in;background:#fff}
+#ndx-view.big{align-items:flex-start;justify-content:flex-start}
+#ndx-view.big img{max-width:none;max-height:none;cursor:zoom-out}
+#ndx-view .x{position:fixed;top:12px;right:16px;font-size:26px;color:#fff;background:none;border:none;cursor:pointer;z-index:1}
+.ndx-chip{display:inline-block;background:var(--bg2);border:1px solid transparent;border-radius:6px;padding:2px 9px;margin:2px;font-size:11px;
+  cursor:pointer;color:var(--text);font-family:inherit}
+.ndx-chip:hover{border-color:var(--accent);color:var(--accent)}
+.ndx-chip.has:after{content:' 📇';font-size:10px}
+.ndx-chip.on{border-color:var(--accent);background:rgba(79,142,247,.14);color:var(--accent);font-weight:700}
+.ndx-agent{cursor:pointer;border-bottom:1px dashed var(--text3)}
+.ndx-agent:hover{color:var(--accent);border-bottom-color:var(--accent)}
+#ndx-brk{margin-top:8px}
+#ndx-brk .card{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:9px 11px;margin-bottom:6px;font-size:12px;line-height:1.75}
+#ndx-brk .card .nm{font-size:13px;font-weight:700;color:var(--text)}
+#ndx-brk .card .tg{display:inline-block;font-size:10px;padding:0 6px;border-radius:4px;margin-left:5px;vertical-align:1px;background:var(--bg3);color:var(--text3)}
+#ndx-brk .card a{color:var(--accent);text-decoration:none;font-weight:600}
+#ndx-brk .card .row{color:var(--text2,var(--text))}
+#ndx-brk .card .row span{color:var(--text3);display:inline-block;min-width:44px}
+#ndx-brk .none{font-size:12px;color:var(--text3);padding:6px 2px;line-height:1.7}
+@media print{.ndx-bt,#ndx-brk{display:none!important}}
+</style>
+<script>
+(function(){
+  'use strict';
+  if(window.__ndxOn) return; window.__ndxOn = true;
+  var W = window, CUR = null, MODE = '', IMG = {}, NAMES = null, BRK = null, BRK_AT = 0;
+
+  function $(id){ return document.getElementById(id); }
+  function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  function nowRec(){
+    try{
+      if(typeof _ndIdx !== 'undefined' && _ndIdx === -99 && typeof _ndCurrentData !== 'undefined' && _ndCurrentData) return _ndCurrentData.r;
+      if(typeof _ndIdx !== 'undefined' && _ndIdx >= 0 && W.G && G.naverData) return G.naverData[_ndIdx];
+    }catch(e){}
+    return CUR;
+  }
+
+  // ── 단추 ─────────────────────────────────────────────
+  function buttons(){
+    var box = $('naver-detail-box'); if(!box) return;
+    var pr = box.querySelector('.modal-print-btn'); if(!pr) return;
+    var b1 = $('ndx-lay'), b2 = $('ndx-plan');
+    if(!b1){ b1 = document.createElement('button'); b1.id = 'ndx-lay'; b1.type = 'button'; b1.className = 'ndx-bt no-print';
+      b1.onclick = function(e){ e.stopPropagation(); W.ndxShow('layout'); }; }
+    if(!b2){ b2 = document.createElement('button'); b2.id = 'ndx-plan'; b2.type = 'button'; b2.className = 'ndx-bt plan no-print';
+      b2.onclick = function(e){ e.stopPropagation(); W.ndxShow('plan'); }; }
+    //  순서: 지도 보기 · 배치도 보기 · 평면도 보기 · 인쇄
+    pr.parentNode.insertBefore(b1, pr); pr.parentNode.insertBefore(b2, pr);
+    b1.textContent = '🏗️ 배치도 보기'; b2.textContent = '📐 평면도 보기';
+    b1.classList.remove('on'); b2.classList.remove('on');
+  }
+  function panel(){
+    var p = $('ndx-panel');
+    if(p && p.isConnected) return p;
+    var info = $('nd-info'); if(!info) return null;
+    p = document.createElement('div'); p.id = 'ndx-panel'; p.style.display = 'none';
+    //  지도 자리(#sdmap-nd)가 있으면 그 뒤, 없으면 기본 정보 뒤
+    var mp = $('sdmap-nd'), at = (mp && mp.parentNode === info.parentNode) ? mp : info;
+    at.parentNode.insertBefore(p, at.nextSibling);
+    return p;
+  }
+  function closePanel(){
+    var p = $('ndx-panel'); if(p){ p.style.display = 'none'; p.innerHTML = ''; }
+    MODE = '';
+    var b1 = $('ndx-lay'), b2 = $('ndx-plan');
+    if(b1){ b1.textContent = '🏗️ 배치도 보기'; b1.classList.remove('on'); }
+    if(b2){ b2.textContent = '📐 평면도 보기'; b2.classList.remove('on'); }
+  }
+
+  // ── 단지 이름 → 단지이미지 폴더 이름 ─────────────────
+  async function folderNames(){
+    if(NAMES) return NAMES;
+    var set = {};
+    try{ ((W.G_HS && G_HS.danji) || []).forEach(function(d){ if(d && d.단지명) set[d.단지명] = 1; }); }catch(e){}
+    var ex = (W.G_DI && G_DI.extra) || null;
+    if(!ex || !ex.length){
+      try{ ex = ((await W._fbListAll(W._fbSRef(W._fbStorage, 'sd_danji_images'))).prefixes || []).map(function(p){ return p.name; });
+           if(W.G_DI) G_DI.extra = ex.slice(); }catch(e){ ex = []; }
+    }
+    (ex || []).forEach(function(n){ set[n] = 1; });
+    NAMES = Object.keys(set);
+    return NAMES;
+  }
+  async function folderOf(nm){
+    var names = await folderNames();
+    if(!nm) return '';
+    if(names.indexOf(nm) >= 0) return nm;
+    var hit = '';
+    try{ if(W.sdPo && W.sdPo.bestName) hit = W.sdPo.bestName(names, nm); }catch(e){}
+    if(!hit && W.NVB && NVB.normDanji){
+      var k = NVB.normDanji(nm), r = names.filter(function(n){ return NVB.normDanji(n) === k; });
+      if(r.length === 1) hit = r[0];
+    }
+    return hit || nm;
+  }
+  async function imagesOf(nm){
+    var f = await folderOf(nm);
+    if(IMG[f]) return IMG[f];
+    var g = (typeof W.diGetImages === 'function') ? await W.diGetImages(f) : null;
+    IMG[f] = { folder:f, g:g || {} };
+    return IMG[f];
+  }
+
+  // ── 펼치기 ───────────────────────────────────────────
+  function fig(url, cap, one){
+    return '<figure><img src="' + esc(url) + '" alt="' + esc(cap) + '" loading="lazy" onclick="ndxBig(this.src)">'
+      + '<figcaption><b>' + esc(cap) + '</b></figcaption></figure>';
+  }
+  var SUB = 'all';
+  W.ndxShow = async function(mode){
+    if(MODE === mode){ closePanel(); return; }
+    var r = nowRec(); if(!r){ return; }
+    var p = panel(); if(!p) return;
+    MODE = mode; SUB = 'all';
+    var b1 = $('ndx-lay'), b2 = $('ndx-plan');
+    if(b1){ b1.classList.toggle('on', mode === 'layout'); b1.textContent = mode === 'layout' ? '🏗️ 배치도 닫기' : '🏗️ 배치도 보기'; }
+    if(b2){ b2.classList.toggle('on', mode === 'plan'); b2.textContent = mode === 'plan' ? '📐 평면도 닫기' : '📐 평면도 보기'; }
+    p.style.display = '';
+    p.innerHTML = '<div class="msg">불러오는 중…</div>';
+    var nm = String(r.단지명 || '').trim();
+    var d = await imagesOf(nm);
+    if(MODE !== mode) return;
+    paint(r, d);
+  };
+  W.ndxSub = function(v){ SUB = v; var r = nowRec(); var nm = r ? String(r.단지명||'').trim() : ''; imagesOf(nm).then(function(d){ paint(r, d); }); };
+
+  function paint(r, d){
+    var p = $('ndx-panel'); if(!p) return;
+    var g = d.g || {}, f = d.folder, h = '';
+    var dong = String(r.동 || '').trim();
+    if(MODE === 'layout'){
+      var lays = [].concat(g.layout ? [g.layout] : [], g.layouts || []);
+      var dhs = [].concat(g.dongho ? [g.dongho] : [], g.donghos || []);
+      var list = [];
+      if(SUB !== 'dongho') lays.forEach(function(u, i){ list.push([u, '단지배치도' + (lays.length > 1 ? ' ' + (i + 1) : '')]); });
+      if(SUB !== 'layout') dhs.forEach(function(u, i){ list.push([u, '동호수배치도' + (dhs.length > 1 ? ' ' + (i + 1) : '')]); });
+      h = '<div class="hd">🏗️ ' + esc(f) + ' 배치도' + (dong ? ' <small>이 매물: ' + esc(dong) + (r.층 ? ' ' + esc(r.층) + '층' : '') + ' — 그림에서 동을 찾아 보세요</small>' : '')
+        + ((lays.length && dhs.length) ? '<span class="tabs"><button type="button" class="' + (SUB === 'all' ? 'on' : '') + '" onclick="ndxSub(\'all\')">모두</button>'
+          + '<button type="button" class="' + (SUB === 'layout' ? 'on' : '') + '" onclick="ndxSub(\'layout\')">단지배치도 ' + lays.length + '</button>'
+          + '<button type="button" class="' + (SUB === 'dongho' ? 'on' : '') + '" onclick="ndxSub(\'dongho\')">동호수배치도 ' + dhs.length + '</button></span>' : '')
+        + '</div>';
+      h += list.length ? '<div class="imgs' + (list.length === 1 ? ' one' : '') + '">' + list.map(function(x){ return fig(x[0], x[1]); }).join('') + '</div>'
+        : '<div class="msg">「' + esc(f) + '」에 등록된 단지배치도·동호수배치도가 없습니다.<br>데이터관리 「🖼️ 단지이미지」 탭에서 올릴 수 있습니다.</div>';
+    } else {
+      var ex = parseFloat(r.전용) || 0, plans = (g.plans || []).slice();
+      plans.sort(function(a, b){ return (parseFloat(a.전용) || 0) - (parseFloat(b.전용) || 0) || String(a.타입).localeCompare(String(b.타입)); });
+      var near = ex ? plans.filter(function(x){ var e = parseFloat(x.전용); return e && Math.abs(e - ex) <= 1.5; }) : [];
+      var show = (SUB === 'all' || !near.length) ? (near.length ? near : plans) : plans;
+      if(SUB === 'every') show = plans;
+      var cap = function(x){ return '평면도 ' + (x.타입 || '') + (x.전용 ? ' · 전용 ' + x.전용 + '㎡' : ''); };
+      h = '<div class="hd">📐 ' + esc(f) + ' 평면도'
+        + (ex ? ' <small>이 매물 전용 ' + ex.toFixed(1) + '㎡' + (r.타입 ? ' · 타입 ' + esc(r.타입) : '') + (near.length ? ' — 맞는 평면도 ' + near.length + '장' : (plans.length ? ' — 같은 면적 평면도가 없어 전체를 보여 드립니다' : '')) + '</small>' : '')
+        + ((near.length && plans.length > near.length) ? '<span class="tabs"><button type="button" class="' + (SUB !== 'every' ? 'on' : '') + '" onclick="ndxSub(\'all\')">이 면적 ' + near.length + '</button>'
+          + '<button type="button" class="' + (SUB === 'every' ? 'on' : '') + '" onclick="ndxSub(\'every\')">전체 ' + plans.length + '</button></span>' : '')
+        + '</div>';
+      h += show.length ? '<div class="imgs' + (show.length === 1 ? ' one' : '') + '">' + show.map(function(x){ return fig(x.url, cap(x)); }).join('') + '</div>'
+        : '<div class="msg">「' + esc(f) + '」에 등록된 평면도가 없습니다.<br>데이터관리 「🖼️ 단지이미지」 탭에서 올릴 수 있습니다.</div>';
+    }
+    if(f !== String(r.단지명 || '').trim()) h += '<div class="msg" style="padding:6px 2px 0">※ 매물 단지명 「' + esc(r.단지명) + '」 → 단지이미지 「' + esc(f) + '」로 찾았습니다.</div>';
+    p.innerHTML = h;
+  }
+
+  // ── 크게 보기 ────────────────────────────────────────
+  W.ndxBig = function(src){
+    var v = $('ndx-view'); if(v) v.remove();
+    v = document.createElement('div'); v.id = 'ndx-view';
+    v.innerHTML = '<button class="x" type="button" title="닫기 (Esc)">✕</button><img alt="">';
+    v.querySelector('img').src = src;
+    v.querySelector('img').onclick = function(e){ e.stopPropagation(); v.classList.toggle('big'); };
+    v.onclick = function(){ v.remove(); };
+    document.body.appendChild(v);
+  };
+  document.addEventListener('keydown', function(e){ if(e.key === 'Escape'){ var v = $('ndx-view'); if(v){ v.remove(); e.stopPropagation(); } } }, true);
+
+  // ── 중개업소 연락처 (고객관리 storage/sd_brokers) ────
+  function brkNorm(s){
+    return String(s || '').replace(/\(주\)|㈜|주식회사|\(유\)|유한회사/g, '')
+      .replace(/공인\s*중개사\s*사무소|공인\s*중개사|중개\s*법인|부동산\s*중개|중개\s*사무소|부동산|사무소|공인|중개/g, '')
+      .replace(/[\s·.,\-_()\[\]]/g, '').toUpperCase();
+  }
+  async function brokers(force){
+    if(BRK && !force && Date.now() - BRK_AT < 300000) return BRK;
+    var v = null;
+    for(var i = 0, P = ['storage/sd_brokers', 'sd/sd_brokers']; i < P.length && !v; i++){
+      try{
+        var snap = await W._fbGet(W._fbRef(W._fbDb, P[i]));
+        v = snap && snap.val ? snap.val() : null;
+        if(typeof v === 'string'){ try{ v = JSON.parse(v); }catch(e){ v = null; } }
+        if(v && !Array.isArray(v)) v = Object.keys(v).map(function(k){ return v[k]; });
+        if(v && !v.length) v = null;
+      }catch(e){ v = null; }
+    }
+    BRK = Array.isArray(v) ? v.filter(function(b){ return b && b.name; }) : [];
+    BRK_AT = Date.now();
+    return BRK;
+  }
+  function findBrk(list, nm){
+    var k = brkNorm(nm); if(!k) return [];
+    var eq = list.filter(function(b){ return brkNorm(b.name) === k; });
+    if(eq.length) return eq;
+    if(k.length < 2) return [];
+    return list.filter(function(b){ var n = brkNorm(b.name); return n.length >= 2 && (n.indexOf(k) >= 0 || k.indexOf(n) >= 0); }).slice(0, 5);
+  }
+  function tel(t){ t = String(t || '').trim(); if(!t) return ''; var d = t.replace(/[^\d+]/g, ''); return '<a href="tel:' + esc(d) + '">' + esc(t) + '</a>'; }
+  function card(b){
+    var rows = [];
+    if(b.rep) rows.push(['대표', esc(b.rep)]);
+    if(b.mobile) rows.push(['휴대폰', tel(b.mobile)]);
+    if(b.tel) rows.push(['전화', tel(b.tel)]);
+    if(b.fax) rows.push(['팩스', esc(b.fax)]);
+    var ad = [b.gu, b.addr, b.bldg].filter(Boolean).join(' ');
+    if(ad) rows.push(['주소', esc(ad)]);
+    var fl = [b.field1, b.field2].filter(Boolean).join(' · ');
+    if(fl) rows.push(['분야', esc(fl)]);
+    if(b.memo) rows.push(['메모', esc(String(b.memo).slice(0, 120))]);
+    return '<div class="card"><div class="nm">' + esc(b.name)
+      + (b.grade ? '<span class="tg">' + esc(b.grade) + '</span>' : '') + (b.assoc ? '<span class="tg">' + esc(b.assoc) + '</span>' : '')
+      + (b.closed ? '<span class="tg" style="color:#e8736a">폐업</span>' : '') + '</div>'
+      + rows.map(function(x){ return '<div class="row"><span>' + x[0] + '</span> ' + x[1] + '</div>'; }).join('') + '</div>';
+  }
+  var BRK_SEL = '';
+  W.ndxBrk = async function(nm, el){
+    var box = $('ndx-brk');
+    if(!box){ var dn = $('nd-dupnm'); if(!dn) return; box = document.createElement('div'); box.id = 'ndx-brk'; dn.parentNode.insertBefore(box, dn.nextSibling); }
+    document.querySelectorAll('.ndx-chip.on').forEach(function(c){ c.classList.remove('on'); });
+    if(BRK_SEL === nm && box.innerHTML){ box.innerHTML = ''; BRK_SEL = ''; return; }
+    BRK_SEL = nm;
+    if(el && el.classList) el.classList.add('on');
+    box.innerHTML = '<div class="none">고객관리 중개업소 목록을 찾는 중…</div>';
+    var list = await brokers();
+    if(BRK_SEL !== nm) return;
+    var hit = findBrk(list, nm);
+    box.innerHTML = hit.length
+      ? '<div style="font-size:11px;color:var(--text3);margin:2px 2px 5px">📇 고객관리에 등록된 「' + esc(nm) + '」' + (hit.length > 1 ? ' 비슷한 이름 ' + hit.length + '곳' : '') + '</div>' + hit.map(card).join('')
+      : '<div class="none">「' + esc(nm) + '」은(는) 고객관리 중개업소에 등록되어 있지 않습니다'
+        + (list.length ? ' (등록 ' + list.length + '곳 중 없음)' : ' — 중개업소 목록을 읽지 못했습니다') + '.'
+        + ' <a href="sd_custs.html" target="_blank" rel="noopener" style="color:var(--accent)">고객관리 열기 ↗</a>'
+        + ' <button type="button" class="ndx-chip" onclick="ndxBrkReload(\'' + esc(String(nm).replace(/'/g, '')) + '\')">↻ 다시 읽기</button></div>';
+  };
+  W.ndxBrkReload = async function(nm){ BRK = null; BRK_SEL = ''; await brokers(true); W.ndxBrk(nm); };
+
+  //  중복등록업소명 · 중개사를 누를 수 있게
+  async function chips(r){
+    var dn = $('nd-dupnm'); if(!dn) return;
+    var old = $('ndx-brk'); if(old) old.innerHTML = ''; BRK_SEL = '';
+    var dup = String((r && r.중복업소명) || '').split(',').map(function(s){ return s.trim(); }).filter(Boolean);
+    var agent = String((r && r.중개사) || '').trim();
+    if(agent && !/송도제일/.test(agent) && dup.indexOf(agent) < 0) dup.unshift(agent);
+    if(!dup.length) return;
+    dn.innerHTML = dup.map(function(nm){
+      return '<button type="button" class="ndx-chip" data-nm="' + esc(nm) + '" title="눌러서 고객관리 연락처 보기" onclick="ndxBrk(this.getAttribute(\'data-nm\'), this)">' + esc(nm) + '</button>';
+    }).join('') + '<div style="font-size:10.5px;color:var(--text3);margin-top:3px">업소 이름을 누르면 고객관리에 등록된 연락처가 아래에 나옵니다 (📇 = 등록됨)</div>';
+    //  등록된 업소 표시
+    var list = await brokers();
+    Array.prototype.forEach.call(dn.querySelectorAll('.ndx-chip[data-nm]'), function(c){ if(findBrk(list, c.getAttribute('data-nm')).length) c.classList.add('has'); });
+  }
+  function agentLink(r){
+    var agent = String((r && r.중개사) || '').trim();
+    if(!agent || /송도제일/.test(agent)) return;
+    Array.prototype.forEach.call(document.querySelectorAll('#nd-info .nd-label'), function(l){
+      if(l.textContent.trim() !== '중개사') return;
+      var v = l.nextElementSibling; if(!v || v.querySelector('.ndx-agent')) return;
+      v.innerHTML = '<span class="ndx-agent" title="눌러서 고객관리 연락처 보기">' + esc(agent) + '</span>';
+      v.firstChild.onclick = function(){ var c = document.querySelector('#nd-dupnm .ndx-chip[data-nm="' + agent.replace(/"/g, '') + '"]'); W.ndxBrk(agent, c); };
+    });
+  }
+
+  // ── 상세 창이 열릴 때마다 ────────────────────────────
+  function after(r){
+    CUR = r || null;
+    closePanel();
+    buttons();
+    if(r){ chips(r); agentLink(r); }
+  }
+  function wrap(fn, pick){
+    var o = W[fn]; if(typeof o !== 'function' || o.__ndx) return !!(o && o.__ndx);
+    var w = function(){ var out = o.apply(this, arguments); try{ after(pick.apply(null, arguments)); }catch(e){ console.warn('[매물 상세 더하기]', e); } return out; };
+    w.__ndx = 1; for(var k in o) if(o.hasOwnProperty(k)) w[k] = o[k];
+    W[fn] = w; return true;
+  }
+  function boot(){
+    wrap('openNaverDetail', function(idx){ return (W.G && G.naverData) ? G.naverData[idx] : null; });
+    wrap('openNaverDetail2', function(r){ return r || null; });
+  }
+  //  지도 단추 모듈(900ms)이 먼저 감싼 뒤에 감싼다 — 지도 단추 → 배치도 → 평면도 순서
+  setTimeout(boot, 1300); setTimeout(boot, 2600); setTimeout(boot, 5000);
+  W.sdNdx = { show:W.ndxShow, brokers:brokers, findBrk:function(n){ return findBrk(BRK || [], n); }, folderOf:folderOf, norm:brkNorm };
+})();
+</script>
 </body>
 </html>
