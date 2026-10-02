@@ -731,13 +731,6 @@ a.sjb-btn.on::after,span.sjb-btn.on::after{background:linear-gradient(100deg,rgb
   .sjb-reserve.sjb-under{padding-right:0!important;padding-top:30px!important}
 }
 </style>
-<style id="dh-pair-style">
-/* 국내주택동향 아래 표·그래프 2열 (매매 | 전세) — 2026-10-03 */
-#tc15 .dh-pair{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;align-items:start;margin-bottom:12px}
-#tc15 .dh-pair>.card{margin-bottom:0!important;min-width:0}
-@media (max-width:1700px){ #tc15 .dh-pair{grid-template-columns:minmax(0,1fr)} }
-@media print{ #tc15 .dh-pair{grid-template-columns:minmax(0,1fr)} }
-</style>
 </head>
 <body>
 <div id="_sda_cover" style="position:fixed;inset:0;background:#f7f8fa;z-index:9999;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px"><div style="width:32px;height:32px;border:3px solid #d4dae3;border-top-color:#1971c2;border-radius:50%;animation:_sda_spin .7s linear infinite"></div><div style="font-size:12px;color:#4a5568">인증 확인 중...</div></div><style>@keyframes _sda_spin{to{transform:rotate(360deg)}}</style>
@@ -8026,37 +8019,16 @@ function dhZoomPanel(el){
   box.appendChild(c);
   dhZoomOpen(box.innerHTML);
 }
-// 차트: 누르면 화면 가득 팝업 (2026-10-03 — 같은 설정으로 큰 그래프를 새로 그린다, Esc·바깥 누르면 닫힘)
-var _dhPopChart=null;
-function dhChartPopClose(){
-  var ov=document.getElementById('dh-chart-ov'); if(ov) ov.style.display='none';
-  if(_dhPopChart){ try{ _dhPopChart.destroy(); }catch(e){} _dhPopChart=null; }
-}
+// 차트: 세로 확대 (컨테이너 높이만 조절 → Chart.js가 자동 리사이즈)
 function dhChartZoom(el){
   if(!el) return;
-  var cv=el.querySelector('canvas'), src=(cv&&window.Chart&&Chart.getChart)?Chart.getChart(cv):null;
-  if(!src) return;
-  var ov=document.getElementById('dh-chart-ov');
-  if(!ov){
-    ov=document.createElement('div'); ov.id='dh-chart-ov';
-    ov.style.cssText='position:fixed;inset:0;background:rgba(15,20,30,.72);z-index:9999;display:none;padding:2.5% 3%;box-sizing:border-box';
-    ov.innerHTML='<div style="height:100%;background:var(--card);border-radius:12px;padding:14px 18px 18px;box-sizing:border-box;display:flex;flex-direction:column">'
-      +'<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px"><b id="dh-chart-ttl" style="font-size:15px;flex:1"></b>'
-      +'<button type="button" onclick="dhChartPopClose()" style="border:1px solid var(--border);background:var(--bg2);color:var(--text);border-radius:8px;padding:5px 12px;font-size:12px;cursor:pointer">✕ 닫기 (Esc)</button></div>'
-      +'<div style="flex:1;min-height:0;position:relative"><canvas id="dh-chart-cv"></canvas></div></div>';
-    document.body.appendChild(ov);
-    ov.addEventListener('click',function(e){ if(e.target===ov) dhChartPopClose(); });
-    document.addEventListener('keydown',function(e){ if(e.key==='Escape') dhChartPopClose(); });
-  }
-  var card=el.closest('.card');
-  document.getElementById('dh-chart-ttl').textContent = el.getAttribute('data-title')
-    || (card&&card.firstElementChild ? card.firstElementChild.textContent : '그래프');
-  ov.style.display='block';
-  if(_dhPopChart){ try{ _dhPopChart.destroy(); }catch(e){} }
-  var c=src.config, d=c.data||{};
-  var data={ labels:(d.labels||[]).slice(), datasets:(d.datasets||[]).map(function(x){ return Object.assign({}, x, { data:(x.data||[]).slice() }); }) };
-  var opt=Object.assign({}, c.options||{}, { responsive:true, maintainAspectRatio:false, animation:false });
-  _dhPopChart=new Chart(document.getElementById('dh-chart-cv'), { type:c.type, data:data, options:opt, plugins:(c.plugins||[]).slice() });
+  var h0=el.getAttribute('data-h0');
+  if(!h0){ h0=(el.style.height||'440px'); el.setAttribute('data-h0',h0); }
+  var on=(el.getAttribute('data-zoom')==='1');
+  el.style.height = on? h0 : (Math.round(parseInt(h0,10)*2.2)+'px');
+  el.setAttribute('data-zoom', on?'0':'1');
+  el.setAttribute('title', on?'클릭하면 세로로 확대':'클릭하면 원래 크기로');
+  setTimeout(function(){ Object.keys(_dhCharts).forEach(function(k){ try{ _dhCharts[k].resize(); }catch(e){} }); },40);
 }
 var DH_ZOOM_ATTR=' class="dh-zoomable" onclick="dhZoomPanel(this)" title="클릭하면 크게 보기"';
 
@@ -8452,12 +8424,12 @@ function dhIncheonSection(ds,cyc){
       +'<span style="font-size:11px;color:var(--text3);font-weight:400">(지수값 + '+chgL+' 변동률)</span></div>'
     +'<div style="font-size:11px;color:var(--text3);margin-bottom:10px">※ 주택가격동향조사(KHPI) 공표 시군구 기준 · 아파트'
       +'<span style="margin-left:6px">· 기준 시점에 값이 없는 구(행정구역 개편 등)는 제외</span></div>'
-    +'<div class="table-scroll dh-zoomable" onclick="dhZoomPanel(this)" title="클릭하면 크게 보기" style="overflow-x:auto;margin-bottom:12px;cursor:zoom-in"><table class="data-table" style="font-size:11px"><thead><tr>'
+    +'<div class="table-scroll" style="overflow-x:auto;margin-bottom:12px"><table class="data-table" style="font-size:11px"><thead><tr>'
       +'<th>지역</th><th></th>'+dhead+'</tr></thead><tbody>'+rows+'</tbody></table></div>'
     +'<div style="font-size:11px;color:var(--text3);margin-bottom:4px">구별 지수 추이</div>'
-    +'<div class="chart-wrap" onclick="dhChartZoom(this)" data-title="인천시 구별 아파트 매매 가격지수 추이" title="클릭하면 크게 보기" style="height:400px;cursor:zoom-in"><canvas id="dh-ch-icg"></canvas></div>'
+    +'<div class="chart-wrap" onclick="dhChartZoom(this)" title="클릭하면 세로로 확대" style="height:440px;cursor:zoom-in"><canvas id="dh-ch-icg"></canvas></div>'
     +'<div style="font-size:11px;color:var(--text3);margin:12px 0 4px">최근 '+chgL+' 변동률(%) — 구별 비교</div>'
-    +'<div class="chart-wrap" onclick="dhChartZoom(this)" data-title="인천시 구별 최근 '+chgL+' 변동률(%)" title="클릭하면 크게 보기" style="height:300px;cursor:zoom-in"><canvas id="dh-ch-icg-chg"></canvas></div>'
+    +'<div class="chart-wrap" onclick="dhChartZoom(this)" title="클릭하면 세로로 확대" style="height:300px;cursor:zoom-in"><canvas id="dh-ch-icg-chg"></canvas></div>'
     +'</div>';
 }
 function dhDrawIncheon(ds,cyc){
@@ -8568,18 +8540,22 @@ function dhRenderCore(){
 
   // 섹션1: 매매·전세 지수 (지수 차트 + 변동률 차트)
   var IDX=isRt?'실거래가격지수':'가격지수';   // 실거래 탭은 용어를 '실거래가격지수'로 통일
-  //  2026-10-03: 아래 표·그래프는 가로 2열 — 왼쪽 매매 / 오른쪽 전세 (화면이 좁으면 1열)
-  var pair=function(a,b){ if(!a&&!b) return ''; return '<div class="dh-pair">'+(a||'')+(b||'')+'</div>'; };
-  html+=pair(dhSection('🏢 아파트 매매 '+IDX, ds,dates,cyc,'sale',chgLabel,isRt,rgLabel,false,secRegions),
-             dhSection('🏠 아파트 전세 '+IDX, ds,dates,cyc,'jeonse',chgLabel,isRt,rgLabel,false,secRegions));
+  html+=dhSection('🏢 아파트 매매 '+IDX, ds,dates,cyc,'sale',chgLabel,isRt,rgLabel,false,secRegions);
+  html+=dhSection('🏠 아파트 전세 '+IDX, ds,dates,cyc,'jeonse',chgLabel,isRt,rgLabel,false,secRegions);
 
   // 섹션2: 중위가격 (월간만) — 평당가, 변동률 차트 없음
   if(cyc==='M'){
-    html+=pair(dhSection('💰 아파트 중위 매매가격 (평당)', ds,dates,cyc,'midSale',chgLabel,isRt,rgLabel,true,secRegions),
-               dhSection('💰 아파트 중위 전세가격 (평당)', ds,dates,cyc,'midJeonse',chgLabel,isRt,rgLabel,true,secRegions));
+    html+=dhSection('💰 아파트 중위 매매가격 (평당)', ds,dates,cyc,'midSale',chgLabel,isRt,rgLabel,true,secRegions);
+    html+=dhSection('💰 아파트 중위 전세가격 (평당)', ds,dates,cyc,'midJeonse',chgLabel,isRt,rgLabel,true,secRegions);
   }
-  // 섹션3·4: 거래량(KHPI 월간만) | 인천시 구별 매매 가격지수(주택가격동향조사 전용)
-  html+=pair((!isRt && cyc==='M') ? dhVolSection(ds) : '', !isRt ? dhIncheonSection(ds,cyc) : '');
+  // 섹션3: 거래량 (KHPI 월간만)
+  if(!isRt && cyc==='M'){
+    html+=dhVolSection(ds);
+  }
+  // 섹션4(맨 아래): 인천시 구별 매매 가격지수 — 주택가격동향조사 전용
+  if(!isRt){
+    html+=dhIncheonSection(ds,cyc);
+  }
   body.innerHTML=html;
   dhDrawCharts(ds,dates,cyc,secRegions);
   if(!isRt) dhDrawIncheon(ds,cyc);
@@ -8605,14 +8581,14 @@ function dhSection(title,ds,dates,cyc,key,chgLabel,isRt,rgLabel,isMoney,regions)
   var unitNote = isMoney ? '(평당 금액 + '+chgLabel+' 변동률)' : '(지수값 + '+chgLabel+' 변동률)';
   var out='<div class="card" style="padding:14px;margin-bottom:12px">'
     +'<div style="font-size:13px;font-weight:700;margin-bottom:10px">'+title+' <span style="font-size:11px;color:var(--text3);font-weight:400">'+unitNote+'</span></div>'
-    +'<div class="table-scroll dh-zoomable" onclick="dhZoomPanel(this)" title="클릭하면 크게 보기" style="overflow-x:auto;margin-bottom:12px;cursor:zoom-in"><table class="data-table" style="font-size:11px"><thead><tr>'
+    +'<div class="table-scroll" style="overflow-x:auto;margin-bottom:12px"><table class="data-table" style="font-size:11px"><thead><tr>'
     +'<th>지역</th><th></th>'+dhead+'</tr></thead><tbody>'+rows+'</tbody></table></div>'
     +'<div style="font-size:11px;color:var(--text3);margin-bottom:4px">'+(isMoney?'평당 금액 추이':'지수 추이')+'</div>'
-    +'<div class="chart-wrap" onclick="dhChartZoom(this)" data-title="'+title+' — '+(isMoney?'평당 금액 추이':'지수 추이')+'" title="클릭하면 크게 보기" style="height:400px;cursor:zoom-in"><canvas id="'+chartId+'"></canvas></div>';
+    +'<div class="chart-wrap" onclick="dhChartZoom(this)" title="클릭하면 세로로 확대" style="height:440px;cursor:zoom-in"><canvas id="'+chartId+'"></canvas></div>';
   // 지수 섹션은 변동률 그래프 별도 추가 (중위가격은 제외)
   if(!isMoney){
     out+='<div style="font-size:11px;color:var(--text3);margin:12px 0 4px">'+chgLabel+' 변동률(%) 추이</div>'
-      +'<div class="chart-wrap" onclick="dhChartZoom(this)" data-title="'+title+' — '+chgLabel+' 변동률(%)" title="클릭하면 크게 보기" style="height:400px;cursor:zoom-in"><canvas id="'+chartId+'-chg"></canvas></div>';
+      +'<div class="chart-wrap" onclick="dhChartZoom(this)" title="클릭하면 세로로 확대" style="height:440px;cursor:zoom-in"><canvas id="'+chartId+'-chg"></canvas></div>';
   }
   out+='</div>';
   return out;
@@ -8650,9 +8626,9 @@ function dhVolSection(ds){
   var dhead=vdates.map(function(d){ return '<th style="font-size:10px;text-align:right">'+dhFmtDate(d,'M')+'</th>'; }).join('');
   return '<div class="card" style="padding:14px;margin-bottom:12px">'
     +'<div style="font-size:13px;font-weight:700;margin-bottom:4px">📊 아파트 매매 거래량 (건)</div>'
-    +'<div style="font-size:11px;color:var(--yellow);margin-bottom:10px">※ 서울강남(4구)은 거래량 미공표라 서초·강남·송파·강동 합으로 산출 · '+(series.some(function(x){ return /연수구/.test(x.name); })?'연수구는 부동산원 자동 연결 자료':'연수구 거래량은 미제공(시도 단위까지)')+' · 최신월은 신고 지연으로 잠정치</div>'
-    +'<div class="table-scroll dh-zoomable" onclick="dhZoomPanel(this)" title="클릭하면 크게 보기" style="overflow-x:auto;margin-bottom:12px;cursor:zoom-in"><table class="data-table" style="font-size:11px"><thead><tr><th>지역</th><th></th>'+dhead+'</tr></thead><tbody>'+rows+'</tbody></table></div>'
-    +'<div class="chart-wrap" onclick="dhChartZoom(this)" data-title="아파트 매매 거래량 (건)" title="클릭하면 크게 보기" style="height:300px;cursor:zoom-in"><canvas id="dh-ch-vol"></canvas></div></div>';
+    +'<div style="font-size:11px;color:var(--yellow);margin-bottom:10px">※ 서울강남(4구)은 거래량 미공표라 서초·강남·송파·강동 합으로 산출 · 연수구 거래량은 미제공(시도 단위까지) · 최신월은 신고 지연으로 잠정치</div>'
+    +'<div class="table-scroll" style="overflow-x:auto;margin-bottom:12px"><table class="data-table" style="font-size:11px"><thead><tr><th>지역</th><th></th>'+dhead+'</tr></thead><tbody>'+rows+'</tbody></table></div>'
+    +'<div class="chart-wrap" style="height:220px"><canvas id="dh-ch-vol"></canvas></div></div>';
 }
 
 var _dhCharts={};
@@ -19587,7 +19563,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.10.03-7';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.10.03-6';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_data.html';      // 이 파일 이름
   var SD_NAME = '실거래가';      // 사람이 부르는 이름
 
