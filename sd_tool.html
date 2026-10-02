@@ -147,7 +147,7 @@ a.sjb-btn.on::after,span.sjb-btn.on::after{background:linear-gradient(100deg,rgb
 <script>
 (function(){
   'use strict';
-  var SD_VER = '2026.10.03-6';
+  var SD_VER = '2026.10.03-7';
   var TABS = [
     [20, '🧰 전체 도구'],
     ['calc', '🧮 부동산 계산기'],
@@ -1211,6 +1211,84 @@ details.cx-dt summary{cursor:pointer;color:#495057;font-weight:600}
   window.addEventListener('resize', fit);
   try{ new MutationObserver(function(){ fit(); }).observe(document.body, { childList:true }); }catch(e){}
   window.sdBrand = { fit:fit, scale:scale };
+})();
+</script>
+<!-- ═══════════════════════════════════════════════════════
+     버전 표시 모듈 (도구용)  v1.0  (2026-10-02)
+     - 다른 화면처럼 왼쪽 아래에 이 파일의 버전을 작게 띄운다 (머리줄 제목 옆에도 표시)
+     - 도구는 Firebase 를 싣지 않으므로, 눌렀을 때 전체 프로그램 버전은 서버의 version.json 에서 읽는다
+     - version.json 의 sd_tool.html 이 지금 열린 버전보다 높으면 ⚠ 빨간색 + 「새로고침」 단추
+     ═══════════════════════════════════════════════════════ -->
+<script>
+(function(){
+  'use strict';
+  if(document.getElementById('sd-ver-badge')) return;
+  var FILE = 'sd_tool.html', NAME = '도구';
+  var NAMES = { 'sd_hub.html':'허브', 'sd_props.html':'매물관리', 'sd_custs.html':'고객관리', 'sd_contracts.html':'계약관리', 'sd_schedule.html':'일정관리',
+    'sd_field.html':'현장업무실', 'sd_marketing.html':'마케팅', 'sd_blog.html':'블로그 스튜디오', 'sd_sangga.html':'상가관리', 'sd_data.html':'실거래가', 'sd_tool.html':'도구' };
+  var SRV = null;
+  function mine(){ return window.SD_VERSION || ''; }
+  function esc(s){ return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+  function verKey(v){ var m = String(v || '').match(/(\d{4})\.(\d{2})\.(\d{2})-(\d+)/); return m ? (m[1] + m[2] + m[3] + String(m[4]).padStart(3, '0')) : '0'; }
+  var st = document.createElement('style'); st.id = 'sd-ver-css';
+  st.textContent = '#sd-ver-badge{position:fixed;left:10px;bottom:8px;z-index:9000;background:rgba(26,39,68,.62);color:#fff;border:none;border-radius:8px;padding:3px 8px;'
+    + 'font-size:10px;letter-spacing:.2px;cursor:pointer;opacity:.45;transition:opacity .15s;font-family:inherit;line-height:1.3;white-space:nowrap}'
+    + '#sd-ver-badge:hover,#sd-ver-badge.old{opacity:1}#sd-ver-badge.old{background:rgba(198,40,40,.85)}'
+    + '#sd-ver-ov{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:10090;display:flex;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto}'
+    + '#sd-ver-ov .vbox{background:#fff;border-radius:14px;max-width:460px;width:100%;margin:auto;overflow:hidden;box-shadow:0 8px 40px rgba(0,0,0,.25)}'
+    + '#sd-ver-ov table{width:100%;border-collapse:collapse;font-size:12.5px}#sd-ver-ov td{padding:7px 6px;border-bottom:.5px solid #f0f0f0}'
+    + '#tl-ver{color:#868e96!important;font-weight:600!important;margin-left:2px}'
+    + '@media(max-width:560px){#sd-ver-badge{left:6px;bottom:6px}}@media print{#sd-ver-badge{display:none}}';
+  document.head.appendChild(st);
+  var b = document.createElement('button'); b.id = 'sd-ver-badge'; b.type = 'button';
+  b.textContent = 'v' + mine(); b.title = NAME + ' · ' + FILE + '\n전체 프로그램 버전 보기';
+  b.onclick = function(e){ e.stopPropagation(); open(); };
+  document.body.appendChild(b);
+  function paint(){
+    var s = SRV && SRV[FILE];
+    if(s && verKey(s) > verKey(mine())){
+      b.textContent = 'v' + mine() + ' ⚠'; b.classList.add('old');
+      b.title = NAME + ' · 서버에 새 버전 v' + s + ' 이 있습니다 — 눌러서 새로고침';
+    }
+  }
+  function load(cb){
+    fetch('version.json?t=' + Date.now(), { cache:'no-store' }).then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(j){ SRV = j || {}; paint(); if(cb) cb(); }, function(){ SRV = SRV || {}; if(cb) cb(); });
+  }
+  function open(){
+    var old = document.getElementById('sd-ver-ov'); if(old) old.remove();
+    var ov = document.createElement('div'); ov.id = 'sd-ver-ov';
+    ov.onclick = function(e){ if(e.target === ov) ov.remove(); };
+    var draw = function(){
+      var keys = Object.keys(NAMES), newer = SRV && SRV[FILE] && verKey(SRV[FILE]) > verKey(mine());
+      var rows = keys.map(function(f){
+        var v = SRV && SRV[f], me = f === FILE;
+        return '<tr><td>' + esc(NAMES[f]) + (me ? ' <span style="font-size:10px;color:#1565c0">◀ 지금 화면</span>' : '') + '<div style="font-size:10px;color:#bbb">' + esc(f) + '</div></td>'
+          + '<td style="text-align:right;white-space:nowrap;color:' + (v ? '#2e7d32' : '#bbb') + '">' + (v ? 'v' + esc(v) : '확인 안 됨')
+          + (me ? '<div style="font-size:10px;color:' + (newer ? '#c62828' : '#868e96') + '">열린 버전 v' + esc(mine()) + (newer ? ' — 옛 버전' : '') + '</div>' : '') + '</td></tr>';
+      }).join('');
+      ov.innerHTML = '<div class="vbox"><div style="background:#1a2744;color:#fff;padding:13px 18px;display:flex;justify-content:space-between;align-items:center">'
+        + '<span style="font-size:14px;font-weight:700">🏷️ 프로그램 버전</span><button type="button" id="sd-ver-x" style="background:transparent;color:#fff;border:1px solid rgba(255,255,255,.4);border-radius:6px;padding:4px 10px;font-size:12px;cursor:pointer">✕ 닫기</button></div>'
+        + '<div style="padding:10px 16px 4px;font-size:11.5px;color:#868e96">서버(GitHub)에 올라가 있는 버전 — version.json 기준</div>'
+        + '<div style="padding:0 12px 6px">' + (SRV && Object.keys(SRV).length ? '<table>' + rows + '</table>' : '<div style="padding:16px;color:#868e96;font-size:12.5px">version.json 을 읽지 못했습니다 (오프라인이거나 아직 올리지 않음). 이 화면 버전: v' + esc(mine()) + '</div>') + '</div>'
+        + '<div style="padding:10px 16px 14px;display:flex;gap:8px;justify-content:flex-end">'
+        + (newer ? '<span style="flex:1;font-size:11.5px;color:#c62828;align-self:center">새 버전 v' + esc(SRV[FILE]) + ' 이 있습니다.</span>' : '')
+        + '<button type="button" id="sd-ver-re" style="background:#1565c0;color:#fff;border:0;border-radius:8px;padding:7px 14px;font-size:12.5px;font-weight:700;cursor:pointer">🔄 새로고침 (최신으로)</button></div></div>';
+      document.getElementById('sd-ver-x').onclick = function(){ ov.remove(); };
+      document.getElementById('sd-ver-re').onclick = function(){
+        var p = new URLSearchParams(location.search); p.set('_v', (SRV && SRV[FILE]) || Date.now());
+        var url = location.pathname.replace(/^.*\//, '') + '?' + p.toString() + location.hash, gone = false, nav = function(){ if(!gone){ gone = true; location.replace(url); } };
+        fetch(location.pathname, { cache:'reload' }).then(nav, nav); setTimeout(nav, 2500);
+      };
+    };
+    document.body.appendChild(ov);
+    ov.innerHTML = '<div class="vbox" style="padding:24px;text-align:center;color:#868e96;font-size:13px">버전 확인 중…</div>';
+    load(draw);
+  }
+  //  ?_v= 로 다시 열렸으면 주소를 깨끗이
+  try{ var q = new URLSearchParams(location.search); if(q.has('_v')){ q.delete('_v'); history.replaceState(history.state, '', location.pathname.replace(/^.*\//, '') + (q.toString() ? '?' + q.toString() : '') + location.hash); } }catch(e){}
+  load();
+  window.sdVerPanel = open;
 })();
 </script>
 </body>
