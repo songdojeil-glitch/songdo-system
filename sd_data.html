@@ -19427,7 +19427,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.10.02-67';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.10.02-68';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_data.html';      // 이 파일 이름
   var SD_NAME = '실거래가';      // 사람이 부르는 이름
 
@@ -29246,8 +29246,8 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
       { i:'✍️', n:'블로그 스튜디오', href:'sd_blog.html', d:'부동산 블로그 글쓰기와 네이버 발행' }
     ]},
     { n:'계산기 · 도구', d:'하나씩 만들어 갑니다 — 급한 것부터 말씀해 주십시오', items:[
-      { i:'🔎', n:'공시가격 주소조회', soon:1, next:1,
-        d:'단지·동·호를 넣으면 그 세대의 공시가격과 재산세 어림을 바로 (인천 자료는 이미 담겨 있습니다)' },
+      { i:'🔎', n:'공시가격 주소조회', go:27, tag:'새로',
+        d:'단지·동·호를 넣으면 그 세대의 공시가격과 재산세 어림을 바로 — 같은 동 층·라인 표, 손님 안내 글 복사 (인천 자료)' },
       { i:'💰', n:'중개보수 계산기', soon:1,
         d:'거래금액·유형별 상한요율과 실제 받을 보수 — 부가세·한도까지' },
       { i:'📉', n:'수익률 계산기', soon:1,
@@ -29456,7 +29456,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
     { k:'sise', n:'📡 시황·시세', t:[18, 0, 12, 1, 2] },
     { k:'real', n:'📈 실거래·동향', t:[3, 4, 5, 15, 13] },
     { k:'prop', n:'🏠 매물',        t:[16, 6, 7, 8, 23, 21, 22] },
-    { k:'tool', n:'📊 자료·도구',   t:[9, 10, 11, 26, 14, 20] }
+    { k:'tool', n:'📊 자료·도구',   t:[9, 10, 11, 26, 27, 14, 20] }
   ];
   var WHERE = {};                       // 탭번호 → 묶음 열쇠
   GROUPS.forEach(function(g){ g.t.forEach(function(n){ WHERE[n] = g.k; }); });
@@ -37398,6 +37398,352 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
   //  지도 단추 모듈(900ms)이 먼저 감싼 뒤에 감싼다 — 지도 단추 → 배치도 → 평면도 순서
   setTimeout(boot, 1300); setTimeout(boot, 2600); setTimeout(boot, 5000);
   W.sdNdx = { show:W.ndxShow, brokers:brokers, findBrk:function(n){ return findBrk(BRK || [], n); }, folderOf:folderOf, norm:brkNorm };
+})();
+</script>
+<!-- ═════════════════════════════════════════════════════════════════
+     🔎 공시가격 주소조회 (탭 27 · window.sdGs)  2026-10-02
+     · 단지·동·호를 넣으면 그 세대의 공동주택 공시가격과 재산세 어림
+     · 자료: S실거래가 단지 브리핑 「📥 공시가격 불러오기」로 이미 담아 둔 것 (인천 전체)
+         색인  storage sd_kb_idx        = [{ key, nm, sgg, n }]
+         단지  storage sd_kb_{key}      = { v:2, danji, sgg, year, rows:[[동,호,층,라인,전용㎡,공시가격(만원)], …] }
+       읽기만 한다 — 새로 올리기·지우기는 단지 브리핑에서
+     · 한 칸에 「마스터뷰22 2202동 1503호」처럼 적어도 되고, 단지 → 동 → 호를 차례로 골라도 된다
+     · 재산세는 어림셈 — 공정시장가액비율·세율·도시지역분·지방교육세를 화면에서 고칠 수 있다
+       1세대1주택: 공정시장가액비율 3억 이하 43% · 6억 이하 44% · 초과 45%(2025년 기준, 직접 고칠 수 있음),
+                   특례세율은 공시가격 9억 이하만
+     ═════════════════════════════════════════════════════════════════ -->
+<style>
+#gs-root{max-width:1180px;margin:0 auto;padding:18px 14px 40px;color:var(--text);font-size:13px}
+#gs-root .gs-hd{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:6px}
+#gs-root .gs-hd h2{margin:0;font-size:19px}
+#gs-root .gs-sub{font-size:12px;color:var(--text3);line-height:1.7;margin-bottom:14px}
+#gs-root .gs-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:14px}
+#gs-root .gs-h{font-size:13.5px;font-weight:700;margin-bottom:10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+#gs-root .gs-h small{font-weight:400;color:var(--text3);font-size:11.5px}
+#gs-root .gs-row{display:grid;grid-template-columns:minmax(0,2.2fr) minmax(0,1fr) minmax(0,1fr) auto;gap:8px;align-items:end}
+#gs-root label{display:block;font-size:11px;color:var(--text3);margin-bottom:4px}
+#gs-root input,#gs-root select{width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg3);color:var(--text);font-size:13px;font-family:inherit}
+#gs-root .gs-btn{padding:8px 16px;border:1px solid var(--accent);background:var(--accent);color:#fff;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap}
+#gs-root .gs-btn.sub{background:var(--card);color:var(--text);border-color:var(--border);font-weight:500}
+#gs-root .gs-chips{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px}
+#gs-root .gs-chip{padding:4px 10px;border:1px solid var(--border);border-radius:14px;background:var(--card);font-size:12px;cursor:pointer;color:var(--text);font-family:inherit}
+#gs-root .gs-chip:hover,#gs-root .gs-chip.on{border-color:var(--accent);color:var(--accent)}
+#gs-root .gs-chip small{color:var(--text3);margin-left:3px}
+#gs-root .gs-msg{font-size:12px;color:var(--text3);line-height:1.7;margin-top:8px}
+#gs-root .gs-msg.warn{color:#c62828}
+#gs-root .gs-res{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:14px}
+#gs-root .gs-big{font-size:28px;font-weight:800;color:var(--accent);margin:4px 0 2px;letter-spacing:-.5px}
+#gs-root .gs-kv{display:grid;grid-template-columns:96px 1fr;gap:6px 10px;font-size:13px;margin-top:10px}
+#gs-root .gs-kv span{color:var(--text3);font-size:12px}
+#gs-root .gs-tax{background:var(--bg3);border-radius:10px;padding:12px 14px}
+#gs-root .gs-tax .t{font-size:24px;font-weight:800;color:#e65100}
+#gs-root .gs-tax .opt{display:flex;flex-wrap:wrap;gap:8px 12px;font-size:11.5px;margin:10px 0 6px;align-items:center}
+#gs-root .gs-tax .opt input[type=number]{width:62px;padding:3px 6px;font-size:11.5px;display:inline-block}
+#gs-root .gs-tax .opt input[type=checkbox]{width:auto}
+#gs-root table.gs-t{width:100%;border-collapse:collapse;font-size:12px}
+#gs-root .gs-t th,#gs-root .gs-t td{border-bottom:1px solid var(--border);padding:5px 6px;text-align:left}
+#gs-root .gs-t th{color:var(--text3);font-weight:600;font-size:11px}
+#gs-root .gs-t td.n,#gs-root .gs-t th.n{text-align:right;font-variant-numeric:tabular-nums}
+#gs-root .gs-t tr.me td{background:rgba(230,81,0,.10);font-weight:700}
+#gs-root .gs-t tr.ck{cursor:pointer}
+#gs-root .gs-t tr.ck:hover td{background:var(--bg3)}
+#gs-root .gs-note{font-size:11px;color:var(--text3);line-height:1.75;margin-top:10px}
+@media(max-width:820px){ #gs-root .gs-row{grid-template-columns:1fr 1fr} #gs-root .gs-row>div:first-child{grid-column:1 / -1} #gs-root .gs-res{grid-template-columns:1fr} }
+@media print{ #gs-root .gs-btn,#gs-root .gs-chips,#gs-root .gs-card.inp{display:none} }
+</style>
+<script>
+(function(){
+  'use strict';
+  if(window.__gsOn) return; window.__gsOn = true;
+  var W = window, TAB = 27;
+  var IDX = null, BLOB = {}, CUR = null, SEL = null, LAST = null;
+  var TAX = { ratio:60, city:0.14, edu:20, one:false, ratioManual:false };
+
+  function $(id){ return document.getElementById(id); }
+  function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+  function fmtN(n){ return Math.round(+n || 0).toLocaleString(); }
+  function eok(m){                       // 만원 → 「5억 8,200만원」
+    m = Math.round(+m || 0); if(!m) return '-';
+    var e = Math.floor(m / 10000), r = m % 10000;
+    return (e ? e + '억' : '') + (r ? (e ? ' ' : '') + r.toLocaleString() + '만' : '') + '원';
+  }
+  function digits(v){ return String(v == null ? '' : v).replace(/[^0-9A-Za-z]/g, '').replace(/^0+(?=\d)/, '').toUpperCase(); }
+  function dongKey(v){ return digits(String(v == null ? '' : v).replace(/동$/,'').replace(/\s*동\s*$/,'')); }
+  function hoKey(v){ return digits(String(v == null ? '' : v).replace(/호$/,'')); }
+  function sggName(c){ try{ return (W.sdKR && W.sdKR.sggName) ? (W.sdKR.sggName(c) || '') : ''; }catch(e){ return ''; } }
+  function nrm(x){ return String(x || '').replace(/\s+/g,'').replace(/[()（）\[\]·.,\-]/g,'').replace(/(아파트|주상복합)$/,'').toUpperCase().replace(/VIEW/g,'뷰').replace(/BL|블럭/g,'블록'); }
+  function core(x){ return nrm(x).replace(/^(송도국제도시|송도|인천|연수구|연수)/,''); }
+  function same(a, b){
+    try{ if(W.sdDanjiTab && W.sdDanjiTab.same) return W.sdDanjiTab.same(a, b); }catch(e){}
+    var x = core(a), y = core(b); return !!x && !!y && (x === y || x.indexOf(y) === 0 || y.indexOf(x) === 0);
+  }
+
+  // ── 자료 읽기 ────────────────────────────────────────
+  async function sget(k){
+    try{ if(W.storage && W.storage.get){ var r = await W.storage.get(k); if(r && r.value) return r.value; } }catch(e){}
+    try{ return localStorage.getItem(k); }catch(e){ return null; }
+  }
+  async function loadIdx(force){
+    if(IDX && !force) return IDX;
+    var v = null;
+    try{ v = await sget('sd_kb_idx'); v = v ? JSON.parse(v) : null; }catch(e){ v = null; }
+    if(!Array.isArray(v) || !v.length){ try{ var t = W.sdDanjiTab && W.sdDanjiTab.kbIdx && W.sdDanjiTab.kbIdx(); if(Array.isArray(t) && t.length) v = t; }catch(e){} }
+    IDX = Array.isArray(v) ? v.filter(function(o){ return o && o.key && o.nm; }) : [];
+    return IDX;
+  }
+  async function loadBlob(o){
+    if(BLOB[o.key]) return BLOB[o.key];
+    var v = null;
+    try{ v = await sget('sd_kb_' + o.key); v = v ? JSON.parse(v) : null; }catch(e){ v = null; }
+    if(!v || !Array.isArray(v.rows)) return null;
+    var K = ['d','h','f','l','a','p'];
+    var rows = v.rows.map(function(r){ if(!Array.isArray(r)) return r; var x = {}; K.forEach(function(k, i){ x[k] = r[i]; }); return x; })
+      .filter(function(r){ return r && r.p; });
+    rows.forEach(function(r){ r._d = dongKey(r.d); r._h = hoKey(r.h); });
+    BLOB[o.key] = { o:o, year:v.year || '', at:v.at || '', rows:rows };
+    return BLOB[o.key];
+  }
+
+  //  「마스터뷰22 2202동 1503호」 → 단지·동·호
+  function split(t){
+    t = String(t || '').trim(); var d = '', h = '', m;
+    if((m = /(\d+[A-Za-z]?)\s*동\s*(\d+)\s*호?\s*$/.exec(t)) || (m = /(\d+[A-Za-z]?)\s*-\s*(\d{3,4})\s*$/.exec(t))){ d = m[1]; h = m[2]; t = t.slice(0, m.index).trim(); }
+    else if((m = /(\d+[A-Za-z]?)\s*동\s*$/.exec(t))){ d = m[1]; t = t.slice(0, m.index).trim(); }
+    return { nm:t, d:d, h:h };
+  }
+  function candidates(nm){
+    if(!nm) return [];
+    var c = core(nm), here = '28185';
+    var L = IDX.filter(function(o){ return same(o.nm, nm) || (c.length >= 2 && core(o.nm).indexOf(c) >= 0); });
+    return L.sort(function(a, b){
+      var ea = nrm(a.nm) === nrm(nm) ? 0 : 1, eb = nrm(b.nm) === nrm(nm) ? 0 : 1;
+      return ea - eb || (a.sgg === here ? 0 : 1) - (b.sgg === here ? 0 : 1) || (b.n || 0) - (a.n || 0);
+    }).slice(0, 24);
+  }
+
+  // ── 화면 ─────────────────────────────────────────────
+  function shell(){
+    var root = $('gs-root'); if(!root || root.getAttribute('data-on')) return;
+    root.setAttribute('data-on', '1');
+    root.innerHTML = '<div class="gs-hd"><h2>🔎 공시가격 주소조회</h2><span class="gs-sub" id="gs-data" style="margin:0"></span></div>'
+      + '<div class="gs-sub">단지·동·호를 넣으면 그 세대의 <b>공동주택 공시가격</b>과 <b>재산세 어림</b>을 바로 보여 드립니다. '
+      + '자료는 S실거래가 단지 브리핑에서 담아 둔 공시가격(인천)을 읽습니다 — 새로 올리기는 그 화면 「📥 공시가격 불러오기」에서.</div>'
+      + '<div class="gs-card inp"><div class="gs-row">'
+      + '<div><label>단지 (「마스터뷰22 2202동 1503호」처럼 한 번에 적어도 됩니다)</label><input id="gs-nm" placeholder="단지 이름" autocomplete="off" oninput="gsType()" onkeydown="if(event.key===\'Enter\')gsGo()"></div>'
+      + '<div><label>동</label><input id="gs-d" placeholder="예: 2202" autocomplete="off" list="gs-dl" onkeydown="if(event.key===\'Enter\')gsGo()" onchange="gsDong()"></div>'
+      + '<div><label>호</label><input id="gs-h" placeholder="예: 1503" autocomplete="off" list="gs-hl" onkeydown="if(event.key===\'Enter\')gsGo()"></div>'
+      + '<div><button class="gs-btn" type="button" onclick="gsGo()">조회</button></div>'
+      + '</div><datalist id="gs-dl"></datalist><datalist id="gs-hl"></datalist>'
+      + '<div class="gs-chips" id="gs-cands"></div><div class="gs-msg" id="gs-msg"></div></div>'
+      + '<div id="gs-out"></div>';
+  }
+  function msg(t, warn){ var m = $('gs-msg'); if(m){ m.innerHTML = t || ''; m.className = 'gs-msg' + (warn ? ' warn' : ''); } }
+  async function dataLine(){
+    await loadIdx();
+    var tot = IDX.reduce(function(a, o){ return a + (o.n || 0); }, 0), e = $('gs-data');
+    if(e) e.textContent = IDX.length ? '· 담긴 공시가격 ' + fmtN(IDX.length) + '개 단지 · ' + fmtN(tot) + '호' : '· 담긴 공시가격이 없습니다';
+    if(!IDX.length) msg('담긴 공시가격이 없습니다 — S실거래가 단지 브리핑에서 「📥 공시가격 불러오기」로 인천 자료를 먼저 담아 주세요.', true);
+  }
+
+  var TT = 0;
+  W.gsType = function(){
+    clearTimeout(TT);
+    TT = setTimeout(async function(){
+      await loadIdx();
+      var s = split(($('gs-nm') || {}).value);
+      if(s.d && !($('gs-d').value)) $('gs-d').value = s.d;
+      if(s.h && !($('gs-h').value)) $('gs-h').value = s.h;
+      var L = s.nm.length >= 2 ? candidates(s.nm) : [];
+      if(SEL && !same(SEL.nm, s.nm)) SEL = null;
+      paintCands(L);
+    }, 180);
+  };
+  function paintCands(L){
+    var box = $('gs-cands'); if(!box) return;
+    box.innerHTML = L.map(function(o, i){
+      return '<button type="button" class="gs-chip' + (SEL && SEL.key === o.key ? ' on' : '') + '" onclick="gsPick(\'' + esc(o.key) + '\')">'
+        + esc(o.nm) + '<small>' + esc(sggName(o.sgg)) + ' · ' + fmtN(o.n) + '호</small></button>';
+    }).join('');
+  }
+  W.gsPick = async function(key){
+    var o = IDX.filter(function(x){ return x.key === key; })[0]; if(!o) return;
+    SEL = o;
+    var s = split($('gs-nm').value); $('gs-nm').value = o.nm;
+    if(s.d && !$('gs-d').value) $('gs-d').value = s.d;
+    if(s.h && !$('gs-h').value) $('gs-h').value = s.h;
+    paintCands(candidates(o.nm));
+    msg('불러오는 중…');
+    var b = await loadBlob(o);
+    if(!b){ msg('「' + esc(o.nm) + '」 공시가격을 읽지 못했습니다 — 단지 브리핑에서 다시 올려 주세요.', true); return; }
+    CUR = b; fillLists();
+    msg('「' + esc(o.nm) + '」 ' + (b.year ? b.year + '년 ' : '') + '공시가격 ' + fmtN(b.rows.length) + '호 · 동 ' + dongs().length + '개 — 동·호를 넣고 「조회」');
+    if($('gs-d').value && $('gs-h').value) W.gsGo();
+    else (( !$('gs-d').value ? $('gs-d') : $('gs-h')) || {}).focus && (!$('gs-d').value ? $('gs-d') : $('gs-h')).focus();
+  };
+  function dongs(){
+    var m = {}; (CUR ? CUR.rows : []).forEach(function(r){ m[r._d] = r.d; });
+    return Object.keys(m).sort(function(a, b){ return (parseInt(a, 10) || 0) - (parseInt(b, 10) || 0) || a.localeCompare(b); }).map(function(k){ return [k, m[k]]; });
+  }
+  function fillLists(){
+    var dl = $('gs-dl'); if(dl) dl.innerHTML = dongs().map(function(x){ return '<option value="' + esc(x[0]) + '">'; }).join('');
+    W.gsDong();
+  }
+  W.gsDong = function(){
+    var hl = $('gs-hl'); if(!hl || !CUR) return;
+    var dk = dongKey($('gs-d').value);
+    hl.innerHTML = CUR.rows.filter(function(r){ return !dk || r._d === dk; }).slice(0, 600).map(function(r){ return '<option value="' + esc(r._h) + '">'; }).join('');
+  };
+
+  W.gsGo = async function(){
+    await loadIdx();
+    var raw = $('gs-nm').value, s = split(raw);
+    var dIn = $('gs-d').value || s.d, hIn = $('gs-h').value || s.h;
+    if(s.d || s.h){ $('gs-nm').value = s.nm; $('gs-d').value = dIn; $('gs-h').value = hIn; }
+    if(!SEL || !same(SEL.nm, s.nm)){
+      var L = candidates(s.nm);
+      if(!L.length){ msg(s.nm ? '「' + esc(s.nm) + '」 공시가격이 담겨 있지 않습니다 — 이름을 줄여 보시거나(예: 「마스터뷰22」) 단지 브리핑에서 올려 주세요.' : '단지 이름을 넣어 주세요.', true); paintCands([]); return; }
+      var ex = L.filter(function(o){ return nrm(o.nm) === nrm(s.nm); });
+      if(L.length > 1 && ex.length !== 1){ paintCands(L); msg('비슷한 단지가 ' + L.length + '곳 있습니다 — 아래에서 골라 주세요.', true); return; }
+      SEL = ex[0] || L[0]; $('gs-nm').value = SEL.nm; paintCands(candidates(SEL.nm));
+    }
+    if(!CUR || CUR.o.key !== SEL.key){ CUR = await loadBlob(SEL); if(!CUR){ msg('공시가격을 읽지 못했습니다.', true); return; } fillLists(); }
+    var dk = dongKey(dIn), hk = hoKey(hIn);
+    if(!dk){ msg('동을 넣어 주세요 — 이 단지 동: ' + dongs().map(function(x){ return '<button type="button" class="gs-chip" onclick="gsSetD(\'' + esc(x[0]) + '\')">' + esc(x[1] || x[0]) + '</button>'; }).join(' '), true); return; }
+    var inD = CUR.rows.filter(function(r){ return r._d === dk; });
+    if(!inD.length){ msg('「' + esc(dIn) + '동」이 없습니다 — 이 단지 동: ' + dongs().map(function(x){ return '<button type="button" class="gs-chip" onclick="gsSetD(\'' + esc(x[0]) + '\')">' + esc(x[1] || x[0]) + '</button>'; }).join(' '), true); return; }
+    if(!hk){ msg('호를 넣어 주세요 (예: 1503).', true); paintOut(null, inD); return; }
+    var hit = inD.filter(function(r){ return r._h === hk; })[0];
+    if(!hit){ msg('「' + esc(dIn) + '동 ' + esc(hIn) + '호」가 없습니다 — 아래 이 동의 호에서 골라 주세요.', true); paintOut(null, inD); return; }
+    msg('');
+    paintOut(hit, inD);
+  };
+  W.gsSetD = function(d){ $('gs-d').value = d; W.gsDong(); W.gsGo(); };
+  W.gsSetH = function(d, h){ $('gs-d').value = d; $('gs-h').value = h; W.gsGo(); };
+
+  // ── 재산세 어림 (주택분) ─────────────────────────────
+  function oneRatio(g){ return g <= 30000 ? 43 : g <= 60000 ? 44 : 45; }
+  function tax(g){
+    var ratio = TAX.ratio;
+    if(TAX.one && !TAX.ratioManual) ratio = oneRatio(g);
+    var base = Math.round(g * ratio / 100), t, sp = TAX.one && g <= 90000;
+    if(sp){
+      if(base <= 6000) t = base * 0.0005; else if(base <= 15000) t = 3 + (base - 6000) * 0.001;
+      else if(base <= 30000) t = 12 + (base - 15000) * 0.002; else t = 42 + (base - 30000) * 0.0035;
+    }else{
+      if(base <= 6000) t = base * 0.001; else if(base <= 15000) t = 6 + (base - 6000) * 0.0015;
+      else if(base <= 30000) t = 19.5 + (base - 15000) * 0.0025; else t = 57 + (base - 30000) * 0.004;
+    }
+    var city = base * TAX.city / 100, edu = t * TAX.edu / 100;
+    return { ratio:ratio, base:base, t:t, city:city, edu:edu, sum:t + city + edu, sp:sp };
+  }
+  W.gsTax = function(k, v){
+    if(k === 'one'){ TAX.one = !TAX.one; TAX.ratioManual = false; TAX.ratio = TAX.one ? 43 : 60; }
+    else if(k === 'ratio'){ TAX.ratio = parseFloat(v) || 0; TAX.ratioManual = true; }
+    else TAX[k] = parseFloat(v) || 0;
+    if(LAST) paintOut(LAST.hit, LAST.inD);
+  };
+  function wonMan(m){ return fmtN(Math.round(m * 10000)) + '원'; }
+
+  // ── 결과 ─────────────────────────────────────────────
+  function med(a){ if(!a.length) return 0; var s = a.slice().sort(function(x, y){ return x - y; }), h = s.length >> 1; return s.length % 2 ? s[h] : (s[h - 1] + s[h]) / 2; }
+  function paintOut(hit, inD){
+    LAST = { hit:hit, inD:inD };
+    var out = $('gs-out'); if(!out || !CUR) return;
+    var o = CUR.o, h = '';
+    if(hit){
+      var a = +hit.a || 0, g = +hit.p;
+      var sameA = CUR.rows.filter(function(r){ return a && Math.abs((+r.a || 0) - a) < 0.5; });
+      var ps = sameA.map(function(r){ return +r.p; }).sort(function(x, y){ return y - x; });
+      var rank = ps.indexOf(g) + 1, md = med(ps);
+      var tx = tax(g), y = Math.round(tx.sum), half = Math.round(y / 2);
+      var fl = hit.f || (String(hit._h).length > 2 ? parseInt(String(hit._h).slice(0, -2), 10) : '');
+      h += '<div class="gs-res"><div class="gs-card">'
+        + '<div class="gs-h">🏢 ' + esc(o.nm) + ' ' + esc(hit.d || hit._d) + (/동$/.test(String(hit.d)) ? '' : '동') + ' ' + esc(hit._h) + '호'
+        + ' <small>' + esc(sggName(o.sgg)) + (CUR.year ? ' · ' + esc(CUR.year) + '년 1월 1일 기준' : '') + '</small></div>'
+        + '<div style="font-size:12px;color:var(--text3)">공동주택 공시가격</div><div class="gs-big">' + eok(g) + '</div>'
+        + '<div class="gs-kv">'
+        + '<span>전용면적</span><div>' + (a ? a + '㎡ (' + (a / 3.3058).toFixed(1) + '평)' : '-') + '</div>'
+        + '<span>층 · 라인</span><div>' + (fl ? fl + '층' : '-') + (hit.l ? ' · ' + esc(hit.l) + '라인' : '') + '</div>'
+        + (ps.length > 1 ? '<span>같은 면적</span><div>' + fmtN(ps.length) + '호 중 <b>' + rank + '번째</b> · 중위 ' + eok(md) + (md ? ' (' + (g >= md ? '+' : '') + Math.round((g - md) / md * 1000) / 10 + '%)' : '') + '<br><span style="font-size:11px">최저 ' + eok(ps[ps.length - 1]) + ' ~ 최고 ' + eok(ps[0]) + '</span></div>' : '')
+        + '</div></div>'
+        + '<div class="gs-card"><div class="gs-h">🧾 재산세 어림 <small>주택분 · 연</small></div><div class="gs-tax">'
+        + '<div class="t">약 ' + fmtN(y) + '만원</div>'
+        + '<div style="font-size:12px;color:var(--text3);margin-top:2px">' + (y <= 20 ? '7월에 한 번에' : '7월 약 ' + fmtN(half) + '만원 · 9월 약 ' + fmtN(y - half) + '만원') + '</div>'
+        + '<div class="opt">'
+        + '<label style="display:inline;margin:0;color:var(--text)"><input type="checkbox"' + (TAX.one ? ' checked' : '') + ' onchange="gsTax(\'one\')"> 1세대1주택</label>'
+        + '<label style="display:inline;margin:0">공정시장가액비율 <input type="number" step="1" value="' + tx.ratio + '" onchange="gsTax(\'ratio\',this.value)">%</label>'
+        + '<label style="display:inline;margin:0">도시지역분 <input type="number" step="0.01" value="' + TAX.city + '" onchange="gsTax(\'city\',this.value)">%</label>'
+        + '<label style="display:inline;margin:0">지방교육세 <input type="number" step="1" value="' + TAX.edu + '" onchange="gsTax(\'edu\',this.value)">%</label>'
+        + '</div>'
+        + '<table class="gs-t"><tr><td>과세표준</td><td class="n">' + eok(tx.base) + ' <span style="color:var(--text3)">(공시가 × ' + tx.ratio + '%)</span></td></tr>'
+        + '<tr><td>재산세' + (tx.sp ? ' (1주택 특례세율)' : '') + '</td><td class="n">' + wonMan(tx.t) + '</td></tr>'
+        + '<tr><td>도시지역분 ' + TAX.city + '%</td><td class="n">' + wonMan(tx.city) + '</td></tr>'
+        + '<tr><td>지방교육세 ' + TAX.edu + '%</td><td class="n">' + wonMan(tx.edu) + '</td></tr>'
+        + '<tr><td><b>합계</b></td><td class="n"><b>' + wonMan(tx.sum) + '</b></td></tr></table>'
+        + (TAX.one && g > 90000 ? '<div class="gs-note" style="color:#c62828">공시가격 9억 초과 — 1주택 특례세율이 적용되지 않아 일반 세율로 셈했습니다.</div>' : '')
+        + '</div>'
+        + '<div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap"><button class="gs-btn sub" type="button" onclick="gsCopy()">📋 손님 안내 글 복사</button></div>'
+        + '</div></div>';
+    }
+    //  같은 동 — 층·라인 표 (누르면 그 호로)
+    var lines = {}, floors = {};
+    inD.forEach(function(r){ var l = r.l || String(r._h).slice(-2), f = r.f || parseInt(String(r._h).slice(0, -2), 10) || 0; lines[l] = 1; (floors[f] = floors[f] || {})[l] = r; });
+    var LS = Object.keys(lines).sort(), FS = Object.keys(floors).map(Number).sort(function(a, b){ return b - a; });
+    var all = inD.map(function(r){ return +r.p; }), lo = Math.min.apply(null, all), hi = Math.max.apply(null, all);
+    h += '<div class="gs-card"><div class="gs-h">📋 ' + esc(o.nm) + ' ' + esc(inD[0].d || inD[0]._d) + (/동$/.test(String(inD[0].d)) ? '' : '동') + ' 전체 <small>' + fmtN(inD.length) + '호 · ' + eok(lo) + ' ~ ' + eok(hi) + ' · 누르면 그 호를 조회</small></div>'
+      + '<div style="overflow:auto;max-height:520px"><table class="gs-t"><tr><th>층</th>' + LS.map(function(l){ return '<th class="n">' + esc(l) + '라인</th>'; }).join('') + '</tr>'
+      + FS.map(function(f){
+          return '<tr><td>' + f + '층</td>' + LS.map(function(l){
+            var r = floors[f][l]; if(!r) return '<td></td>';
+            var me = hit && r === hit, t = hi > lo ? (r.p - lo) / (hi - lo) : 0;
+            return '<td class="n" style="cursor:pointer;' + (me ? 'background:rgba(230,81,0,.18);font-weight:800;color:#e65100' : 'background:rgba(79,142,247,' + (0.05 + t * 0.22).toFixed(2) + ')') + '" title="' + esc(r._h) + '호 · ' + (r.a ? r.a + '㎡ · ' : '') + eok(r.p) + '" onclick="gsSetH(\'' + esc(r._d) + '\',\'' + esc(r._h) + '\')">'
+              + esc(r._h) + '<div style="font-size:10.5px;color:var(--text3);font-weight:400">' + (r.p >= 10000 ? (r.p / 10000).toFixed(2) + '억' : fmtN(r.p) + '만') + '</div></td>';
+          }).join('') + '</tr>';
+        }).join('') + '</table></div>'
+      + '<div class="gs-note"><b>공시가격은 실거래가가 아닙니다</b> — 재산세·건강보험료 등 산정의 바탕입니다. '
+      + '<b>재산세는 어림셈입니다.</b> 공정시장가액비율(1세대1주택 43~45%는 2025년 기준)·세율·세부담상한·감면에 따라 달라지니 손님께 세액을 단정해 말씀하지 마시고 고지서나 세무사 확인을 권해 주십시오. '
+      + '과세기준일 6월 1일 · 주택분은 7월(7.16~7.31)과 9월(9.16~9.30)에 절반씩, 연 20만원 이하면 7월에 한 번에.</div></div>';
+    out.innerHTML = h;
+  }
+
+  W.gsCopy = function(){
+    if(!LAST || !LAST.hit || !CUR) return;
+    var hit = LAST.hit, g = +hit.p, tx = tax(g), y = Math.round(tx.sum), half = Math.round(y / 2);
+    var t = '[' + CUR.o.nm + ' ' + (hit.d || hit._d) + (/동$/.test(String(hit.d)) ? '' : '동') + ' ' + hit._h + '호]\n'
+      + '· 공동주택 공시가격' + (CUR.year ? '(' + CUR.year + '년)' : '') + ': ' + eok(g) + '\n'
+      + (hit.a ? '· 전용면적: ' + hit.a + '㎡\n' : '')
+      + '· 재산세 어림(주택분, 연): 약 ' + fmtN(y) + '만원' + (y <= 20 ? ' (7월 일시)' : ' (7월 약 ' + fmtN(half) + '만 · 9월 약 ' + fmtN(y - half) + '만)') + '\n'
+      + '  - ' + (TAX.one ? '1세대1주택 기준, ' : '') + '공정시장가액비율 ' + tx.ratio + '% · 도시지역분·지방교육세 포함 어림셈입니다.\n'
+      + '  - 실제 세액은 세부담상한·감면 등에 따라 달라질 수 있으니 고지서로 확인해 주세요.\n'
+      + '송도제일공인중개사사무소 ☎ 032-851-6688';
+    var done = function(){ if(typeof showToast === 'function') showToast('📋 손님 안내 글을 복사했습니다'); };
+    var fall = function(){ var ta = document.createElement('textarea'); ta.value = t; ta.style.cssText = 'position:fixed;left:-9999px'; document.body.appendChild(ta); ta.select(); try{ document.execCommand('copy'); done(); }catch(e){ prompt('아래 글을 복사하세요', t); } document.body.removeChild(ta); };
+    if(navigator.clipboard && W.isSecureContext) navigator.clipboard.writeText(t).then(done, fall); else fall();
+  };
+
+  // ── 탭 만들기 ────────────────────────────────────────
+  function build(){
+    if($('tc' + TAB)) return true;
+    var nav = document.querySelector('.tab-nav-inner') || document.querySelector('.tab-nav'), host = $('tc0');
+    if(!nav || !host || !host.parentNode) return false;
+    var b = document.createElement('button');
+    b.className = 'tab-btn'; b.setAttribute('onclick', 'sw(' + TAB + ')'); b.innerHTML = '🔎 공시가격 조회';
+    nav.appendChild(b);
+    var p = document.createElement('div'); p.id = 'tc' + TAB; p.className = 'tc'; p.innerHTML = '<div id="gs-root"></div>';
+    host.parentNode.appendChild(p);
+    return true;
+  }
+  function hookSw(){
+    if(typeof W.sw !== 'function') return false;
+    if(W.sw.__gs) return true;
+    var orig = W.sw;
+    var w = function(n){ var out = orig.apply(this, arguments); if(n === TAB){ try{ shell(); dataLine(); setTimeout(function(){ var e = $('gs-nm'); if(e && !e.value) e.focus(); }, 50); }catch(e){ console.warn('[공시가격 조회]', e); } } return out; };
+    for(var k in orig) if(orig.hasOwnProperty(k)) w[k] = orig[k];
+    w.__gs = true; W.sw = w; return true;
+  }
+  W.sdGs = { tab:TAB, split:split, tax:tax, idx:function(){ return IDX; }, go:function(nm, d, h){ W.sw(TAB); setTimeout(function(){ $('gs-nm').value = nm || ''; $('gs-d').value = d || ''; $('gs-h').value = h || ''; SEL = null; W.gsGo(); }, 80); }, reload:function(){ IDX = null; BLOB = {}; return loadIdx(true); } };
+  var tries = 0;
+  (function start(){ var ok = build() && hookSw(); if(!ok && tries++ < 80) return void setTimeout(start, 200); })();
 })();
 </script>
 </body>
