@@ -17,6 +17,7 @@
      · 2026.10.04-7: 썸네일 보완 — 부제·후킹 여러 개(/), 특징·분위기, 골라 둔 문구 복사, 그림 소재(AI/장면/내 사진 6장 합치기), 글자 넣는 방법(프로그램이 얹기/AI가 그리기), 그리는 도구(제미나이/GPT 이미지), 콜라주 썸네일(가로·정사각), 바깥 도구 설명 16:9·9:16
      · 2026.10.04-8: 음성 보완 — 열쇠 칸을 음성 화면에(보기/가리기), 일레븐랩스 목소리 묶음·아이디 직접 넣기·계정 모델 목록(/v1/models, 한 번에 보낼 글자 수)·속도 0.7~1.2배, Fish 최신 모델(s2.1-pro, 안 되면 s1)·목소리 목록 고르기·속도 2배까지·중계 자동 확인, 내 이름 목소리 자동 고르기
      · 2026.10.04-9: 원고 보완 — 꼭 표시, 제목 예시 단추(비우면 AI 가 지음), 글자 수·길이별 넉넉함 안내, 12,000자 넘으면 경고 + 뒷부분 새 작업으로 떼기, 글 파일(.txt·.md) 불러오기, 화면 모양·길이 설명, 더 손보기(말투·대본 AI·장면 나누기 문장 1~5개), 원고 없으면 대본 만들기 막고 이유 표시
+     · 2026.10.04-10: 3차 — 8 유튜브에 올리기(구글 OAuth 토큰 · 이어 올리기 · 썸네일 · 자막 .srt · 첫 댓글 · 예약 공개 · 합성 콘텐츠 표시 · 설명 5,000바이트 맞춤)
      · 2026.10.04-5: 6 설명글(유튜브 제목 후보·설명란[요약·본문·목차·연락처·안내·해시태그]·태그·고정 댓글·썸네일 문구) · 7 썸네일(1280×720, 쇼츠 표지 1080×1920)
      · 2026.10.04-4: 블로그 스튜디오 「🎬 비디오 스튜디오로」 — 블로그가 IndexedDB(sd_video/projects)에 새 작업(from:'blog', blogPics)을 넣고 sdv.cur 로 이 화면을 연다
      · 2026.10.04-3: 도구 탭에서 빼내 블로그처럼 따로 된 프로그램 「🎬 영상」 — 프로그램 단추 줄 블로그 다음(--h:303)
@@ -320,7 +321,7 @@ html.sv-embed body{background:#f7f8fa}
    ═════════════════════════════════════════════════════════════════ */
 (function(){
 'use strict';
-var SD_VER = '2026.10.04-9';
+var SD_VER = '2026.10.04-10';
 window.SD_VERSION = SD_VER;
 var EMBED = /[?&]embed=1\b/.test(location.search);
 if(EMBED) document.documentElement.classList.add('sv-embed');
@@ -407,7 +408,7 @@ function openProject(id){
 }
 
 /* ───────── 단계 ───────── */
-var STEPS = [['src', '원고'], ['script', '대본'], ['pics', '화면'], ['voice', '음성'], ['video', '영상'], ['desc', '설명글'], ['thumb', '썸네일']];
+var STEPS = [['src', '원고'], ['script', '대본'], ['pics', '화면'], ['voice', '음성'], ['video', '영상'], ['desc', '설명글'], ['thumb', '썸네일'], ['upload', '올리기']];
 function stepDone(k){
   if(!P) return false;
   if(k === 'src') return nchar(P.src) > 20;
@@ -417,6 +418,7 @@ function stepDone(k){
   if(k === 'video') return !!OUT;
   if(k === 'desc') return !!(P.yt && P.yt.full);
   if(k === 'thumb') return !!(P.thumb && P.thumb.done);
+  if(k === 'upload') return !!(P.yt && P.yt.up);
   return false;
 }
 function go(k){ stopPreview(); P.step = k; touch(); render(); try{ window.scrollTo(0, 0); }catch(e){} }
@@ -431,7 +433,7 @@ function renderNow(){
     return '<button class="sv-st' + (P.step === s[0] ? ' on' : '') + (stepDone(s[0]) ? ' done' : '') + '" data-step="' + s[0] + '"><i>' + (stepDone(s[0]) && P.step !== s[0] ? '✓' : (i + 1)) + '</i>' + s[1] + '</button>';
   }).join('');
   $$('[data-step]').forEach(function(b){ b.onclick = function(){ go(b.dataset.step); }; });
-  var f = { src:pSrc, script:pScript, pics:pPics, voice:pVoice, video:pVideo, desc:pDesc, thumb:pThumb }[P.step] || pSrc;
+  var f = { src:pSrc, script:pScript, pics:pPics, voice:pVoice, video:pVideo, desc:pDesc, thumb:pThumb, upload:pUpload }[P.step] || pSrc;
   f($('#svPanel'));
   paintKey();
 }
@@ -2056,7 +2058,7 @@ function pThumb(el){
         + '<div class="sv-f"><label>16:9 용 설명</label><textarea class="sv-ta" id="svThExt" rows="9" readonly style="font-size:12px">' + esc(extPrompt('h')) + '</textarea><button class="sv-btn sm" data-excp="h" style="margin-top:6px">16:9 설명 복사</button></div>'
         + (V ? '<div class="sv-f"><label>9:16 (쇼츠) 용 설명</label><textarea class="sv-ta" id="svThExtV" rows="9" readonly style="font-size:12px">' + esc(extPrompt('v')) + '</textarea><button class="sv-btn sm" data-excp="v" style="margin-top:6px">9:16 설명 복사</button></div>' : '')
         + '<div class="sv-note">바깥 도구는 한글 글자가 틀리게 나올 수 있습니다. 그럴 땐 배경만 받아 「내 사진 사용」으로 넣고 글자는 여기서 얹으세요.</div>')
-    + foot('desc', '', '') + '</div>';
+    + foot('desc', 'upload', '다음: 유튜브에 올리기 →') + '</div>';
   var refresh = function(){ paintThumb(); var b = $('#svThBundle', el); if(b) b.value = thBundle(); var e1 = $('#svThExt', el); if(e1) e1.value = extPrompt('h'); var e2 = $('#svThExtV', el); if(e2) e2.value = extPrompt('v'); };
   $$('[data-det]', el).forEach(function(d){ d.ontoggle = function(){ TH_OPEN[d.dataset.det] = d.open; if(d.open && d.dataset.det === 'col') paintCollage(); }; });
   $$('[data-th-k]', el).forEach(function(i){ i.oninput = function(){ th[i.dataset.thK] = i.value; th.done = true; touch(); refresh(); }; });
@@ -2094,6 +2096,243 @@ function pThumb(el){
   paintThumb();
   if(document.fonts && document.fonts.load) document.fonts.load('900 40px "Noto Sans KR"').then(paintThumb, function(){});
 }
+/* ───────── 8 ── 유튜브에 올리기 (3차) — 브라우저에서 바로 (구글 OAuth · YouTube Data API v3) ───────── */
+var YT_SCOPE = 'https://www.googleapis.com/auth/youtube.upload https://www.googleapis.com/auth/youtube.force-ssl';
+var YT_CAT = [['22', '인물 · 블로그'], ['27', '교육'], ['25', '뉴스 · 정치'], ['19', '여행 · 이벤트'], ['24', '엔터테인먼트']];
+var YT = { tok:'', exp:0, ch:null, gis:null, busy:false, xhr:null, file:null, guide:null };
+function ytCid(){ return String(settings().ytClientId || '').trim(); }
+function ytCidOk(v){ return /^[0-9]+-[0-9a-z_]+\.apps\.googleusercontent\.com$/i.test(String(v || '').trim()); }
+function gisLoad(){
+  if(window.google && google.accounts && google.accounts.oauth2) return Promise.resolve();
+  if(YT.gis) return YT.gis;
+  YT.gis = new Promise(function(res, rej){
+    var s = document.createElement('script'); s.src = 'https://accounts.google.com/gsi/client'; s.async = true;
+    s.onload = function(){ res(); }; s.onerror = function(){ YT.gis = null; rej(new Error('구글 로그인 도구를 불러오지 못했습니다 (인터넷 연결을 확인해 주세요)')); };
+    document.head.appendChild(s);
+  });
+  return YT.gis;
+}
+function ytTokOk(){ return !!YT.tok && Date.now() < YT.exp - 60000; }
+/* 단추를 누른 바로 그 자리에서 불러야 팝업이 막히지 않는다 */
+function ytAuth(prompt){
+  if(!ytCidOk(ytCid())) return Promise.reject(new Error('구글 클라이언트 ID 를 먼저 넣어 주세요 (위 준비물 안내 참고)'));
+  return gisLoad().then(function(){ return new Promise(function(res, rej){
+    var c = google.accounts.oauth2.initTokenClient({ client_id:ytCid(), scope:YT_SCOPE,
+      callback:function(r){
+        if(r && r.access_token){
+          if(google.accounts.oauth2.hasGrantedAllScopes && !google.accounts.oauth2.hasGrantedAllScopes(r, 'https://www.googleapis.com/auth/youtube.upload')) return rej(new Error('「YouTube 동영상 관리」 허락에 체크해야 올릴 수 있습니다 — 다시 눌러 모든 항목에 체크해 주세요'));
+          YT.tok = r.access_token; YT.exp = Date.now() + (+r.expires_in || 3600) * 1000; res(YT.tok);
+        } else rej(new Error('허락을 받지 못했습니다' + (r && r.error ? ' (' + r.error + ')' : '')));
+      },
+      error_callback:function(e){ var t = e && e.type; rej(new Error(t === 'popup_closed' ? '허락 창을 닫았습니다' : t === 'popup_failed_to_open' ? '팝업이 막혔습니다 — 주소창 오른쪽에서 이 사이트의 팝업을 허용해 주세요' : '허락 오류' + (t ? ' (' + t + ')' : ''))); } });
+    c.requestAccessToken({ prompt:prompt || '' });
+  }); });
+}
+async function ytErr(r){
+  var d = {}; try{ d = await r.json(); }catch(e){}
+  var er = d.error || {}, reason = ((er.errors || [])[0] || {}).reason || er.status || '', m = er.message || '';
+  if(r.status === 401){ YT.tok = ''; return new Error('구글 허락이 끝났습니다 (1시간마다) — 다시 눌러 주세요'); }
+  if(/quotaExceeded|dailyLimitExceeded|rateLimitExceeded/i.test(reason)) return new Error('오늘 유튜브 API 사용량을 다 썼습니다 (기본 하루 약 6편). 내일 다시 하거나 구글 클라우드에서 할당량을 늘려 주세요.');
+  if(/youtubeSignupRequired/i.test(reason)) return new Error('이 구글 계정에 유튜브 채널이 없습니다 — 채널이 있는 계정으로 허락해 주세요.');
+  if(/uploadLimitExceeded/i.test(reason)) return new Error('오늘 이 채널의 올리기 한도를 넘었습니다. 내일 다시 해 주세요.');
+  if(/accessNotConfigured|SERVICE_DISABLED/i.test(reason + m)) return new Error('구글 클라우드 프로젝트에서 YouTube Data API v3 가 꺼져 있습니다 — 준비물 2번을 확인해 주세요.');
+  if(/insufficientPermissions|ACCESS_TOKEN_SCOPE_INSUFFICIENT/i.test(reason + m)){ YT.tok = ''; return new Error('허락 범위가 모자랍니다 — 「구글 계정으로 허락하기」를 다시 눌러 모든 항목에 체크해 주세요.'); }
+  return new Error('유튜브 오류 ' + r.status + (reason ? ' · ' + reason : '') + (m ? ': ' + m.slice(0, 180) : ''));
+}
+function ytFetch(url, o){ o = o || {}; o.headers = Object.assign({ authorization:'Bearer ' + YT.tok }, o.headers || {}); return fetch(url, o); }
+async function ytChannel(){
+  var r = await ytFetch('https://www.googleapis.com/youtube/v3/channels?part=snippet&mine=true');
+  if(!r.ok) throw await ytErr(r);
+  var d = await r.json(), c = (d.items || [])[0];
+  if(!c) throw new Error('이 구글 계정에 유튜브 채널이 없습니다 — 채널이 있는 계정으로 허락해 주세요.');
+  YT.ch = { id:c.id, title:(c.snippet || {}).title || '', pic:(((c.snippet || {}).thumbnails || {}).default || {}).url || '' };
+  return YT.ch;
+}
+/* 설명란은 5,000「바이트」 — 한글은 한 글자가 3바이트라 글자 수보다 먼저 찬다 */
+function u8len(s){ return new TextEncoder().encode(String(s || '')).length; }
+function u8cut(s, max){ s = String(s || ''); if(u8len(s) <= max) return s; var lo = 0, hi = s.length; while(lo < hi){ var mid = (lo + hi + 1) >> 1; if(u8len(s.slice(0, mid)) <= max) lo = mid; else hi = mid - 1; } return s.slice(0, lo); }
+function ytClean(s){ return String(s || '').replace(/</g, '＜').replace(/>/g, '＞'); }
+function ytTagList(s){ var out = [], len = 0; String(s || '').split(',').forEach(function(t){ t = t.replace(/[<>"]/g, '').trim(); if(!t || out.indexOf(t) >= 0) return; var w = t.length + (/\s/.test(t) ? 2 : 0) + (out.length ? 1 : 0); if(len + w > 500) return; out.push(t); len += w; }); return out; }
+function upOf(){ var y = ytOf(); if(!y.upOpt) y.upOpt = { privacy:'private', at:'', cat:'22', synth:false, cap:!OPT.sub, cmt:false, th:'thumb' }; if(!y.upTitle) y.upTitle = y.title || P.title || ''; if(!y.upDesc) y.upDesc = y.full || (y.summary || y.body ? composeDesc(y) : ''); if(!y.upTags) y.upTags = tagsText(y); return y; }
+function ytVideo(){ if(OUT && OUT.blob) return { blob:OUT.blob, name:OUT.name, size:OUT.size, dur:OUT.dur, mine:false }; if(YT.file) return { blob:YT.file, name:YT.file.name, size:YT.file.size, dur:0, mine:true }; return null; }
+function defAt(){ var d = new Date(Date.now() + 86400000); d.setHours(18, 0, 0, 0); var p = function(n){ return String(n).padStart(2, '0'); }; return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + 'T' + p(d.getHours()) + ':' + p(d.getMinutes()); }
+function ytMeta(y){
+  var o = y.upOpt, st = { privacyStatus: o.privacy === 'sched' ? 'private' : o.privacy, selfDeclaredMadeForKids:false, embeddable:true, license:'youtube', containsSyntheticMedia:!!o.synth };
+  if(o.privacy === 'sched') st.publishAt = new Date(o.at).toISOString();
+  return { snippet:{ title:ytClean(y.upTitle || P.title).trim().slice(0, 100), description:u8cut(ytClean(y.upDesc), 5000), tags:ytTagList(y.upTags), categoryId:o.cat || '22', defaultLanguage:'ko', defaultAudioLanguage:'ko' }, status:st };
+}
+/* 이어 올리기(resumable) — 끊기면 어디까지 갔는지 묻고 이어서 */
+function ytPut(loc, blob, start, onProg){
+  return new Promise(function(res, rej){
+    var x = new XMLHttpRequest(); YT.xhr = x;
+    x.open('PUT', loc); x.setRequestHeader('authorization', 'Bearer ' + YT.tok); x.setRequestHeader('content-type', blob.type || 'video/mp4');
+    if(start) x.setRequestHeader('content-range', 'bytes ' + start + '-' + (blob.size - 1) + '/' + blob.size);
+    x.upload.onprogress = function(e){ onProg(start + e.loaded, blob.size); };
+    x.onload = function(){
+      if(x.status === 200 || x.status === 201){ var j = {}; try{ j = JSON.parse(x.responseText); }catch(e){} return res({ done:true, json:j }); }
+      if(x.status >= 500 || x.status === 308) return res({ done:false });
+      var m = ''; try{ var d = JSON.parse(x.responseText); m = (d.error && d.error.message) || ''; }catch(e){}
+      if(x.status === 401) YT.tok = '';
+      rej(new Error(x.status === 401 ? '올리는 중에 구글 허락이 끝났습니다 — 다시 허락하고 올려 주세요' : '올리기 오류 ' + x.status + (m ? ': ' + m.slice(0, 160) : '')));
+    };
+    x.onerror = function(){ res({ done:false }); };
+    x.onabort = function(){ rej(new Error('올리기를 멈췄습니다')); };
+    x.send(start ? blob.slice(start) : blob);
+  });
+}
+async function ytWhere(loc, size){
+  try{
+    var r = await ytFetch(loc, { method:'PUT', headers:{ 'content-range':'bytes */' + size } });
+    if(r.status === 200 || r.status === 201) return { done:true, json:await r.json().catch(function(){ return {}; }) };
+    var m = /bytes=0-(\d+)/.exec(r.headers.get('range') || ''); return { start: m ? +m[1] + 1 : 0 };
+  }catch(e){ return { start:0 }; }
+}
+async function ytUpload(blob, meta, onProg){
+  var r = await ytFetch('https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status', { method:'POST',
+    headers:{ 'content-type':'application/json; charset=UTF-8', 'x-upload-content-type':blob.type || 'video/mp4', 'x-upload-content-length':String(blob.size) }, body:JSON.stringify(meta) });
+  if(!r.ok) throw await ytErr(r);
+  var loc = r.headers.get('location'); if(!loc) throw new Error('유튜브가 올릴 주소를 주지 않았습니다 — 잠시 뒤 다시 해 주세요');
+  var start = 0;
+  for(var t = 0; t < 5; t++){
+    var res = await ytPut(loc, blob, start, onProg); if(res.done) return res.json;
+    await sleep(2000 * (t + 1));
+    var w = await ytWhere(loc, blob.size); if(w.done) return w.json; start = w.start;
+  }
+  throw new Error('연결이 여러 번 끊겨 올리지 못했습니다 — 잠시 뒤 다시 해 주세요');
+}
+async function ytThumb(id, blob){
+  var r = await ytFetch('https://www.googleapis.com/upload/youtube/v3/thumbnails/set?videoId=' + encodeURIComponent(id) + '&uploadType=media', { method:'POST', headers:{ 'content-type':'image/jpeg' }, body:blob });
+  if(r.ok) return '';
+  var e = await ytErr(r);
+  return r.status === 403 ? '맞춤 썸네일을 쓰려면 채널 「전화번호 인증」이 필요합니다 (유튜브 스튜디오 → 설정 → 채널 → 기능 사용 자격). 인증한 뒤 「썸네일만 다시 올리기」를 눌러 주세요.' : e.message;
+}
+async function ytCaption(id, text){
+  var b = 'sjrws' + uid(), meta = { snippet:{ videoId:id, language:'ko', name:'한국어', isDraft:false } };
+  var body = '--' + b + '\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n' + JSON.stringify(meta) + '\r\n--' + b + '\r\nContent-Type: application/octet-stream\r\n\r\n' + text + '\r\n--' + b + '--';
+  var r = await ytFetch('https://www.googleapis.com/upload/youtube/v3/captions?part=snippet&uploadType=multipart', { method:'POST', headers:{ 'content-type':'multipart/related; boundary=' + b }, body:body });
+  return r.ok ? '' : (await ytErr(r)).message;
+}
+async function ytComment(id, text){
+  var r = await ytFetch('https://www.googleapis.com/youtube/v3/commentThreads?part=snippet', { method:'POST', headers:{ 'content-type':'application/json' }, body:JSON.stringify({ snippet:{ videoId:id, topLevelComment:{ snippet:{ textOriginal:text } } } }) });
+  return r.ok ? '' : (await ytErr(r)).message;
+}
+function upThumbBlob(o){
+  if(o.th === 'none') return Promise.resolve(null);
+  if(o.th === 'col') return collageBlob('h');
+  return thumbBlob(P.fmt === '9:16' ? 'v' : 'h');
+}
+function mb(n){ return (n / 1048576).toFixed(1) + 'MB'; }
+async function ytGo(btn){
+  var y = upOf(), o = y.upOpt, v = ytVideo(), out = $('#svUpOut');
+  if(!v) return toast('올릴 영상이 없습니다', true);
+  if(!String(y.upTitle || '').trim()) return toast('제목을 적어 주세요', true);
+  if(o.privacy === 'sched'){ var at = new Date(o.at); if(!o.at || isNaN(at) || at < Date.now() + 15 * 60000) return toast('예약 시각은 지금부터 15분 뒤 이후로 골라 주세요', true); }
+  var meta = ytMeta(y), PN = { private:'비공개', unlisted:'일부 공개', public:'공개', sched:'예약 공개' };
+  if(!confirm('유튜브에 올릴까요?\n\n· 채널: ' + (YT.ch ? YT.ch.title : '') + '\n· 영상: ' + v.name + ' (' + mb(v.size) + ')\n· 제목: ' + meta.snippet.title + '\n· 공개: ' + PN[o.privacy] + (o.privacy === 'sched' ? ' — ' + new Date(o.at).toLocaleString('ko-KR') : '')
+    + '\n· 썸네일: ' + ({ thumb:'7단계 썸네일', col:'콜라주', none:'넣지 않음' })[o.th] + (o.cap ? '\n· 자막(.srt) 함께' : '') + (y.up ? '\n\n⚠ 이 작업은 이미 한 번 올렸습니다 (' + y.up.id + '). 또 올리면 유튜브에 영상이 두 개가 됩니다.' : ''))) return;
+  YT.busy = true; btn.disabled = true;
+  var bar = function(p, label, right){ out.innerHTML = '<div class="sv-prog"><div class="bar"><i style="width:' + Math.round(p * 100) + '%"></i></div><div class="tx"><span>' + esc(label) + '</span><span>' + (right || Math.round(p * 100) + '%') + ' <button class="sv-btn sm" id="svUpStop">멈추기</button></span></div></div>'; var s = $('#svUpStop'); if(s) s.onclick = function(){ if(YT.xhr) YT.xhr.abort(); }; };
+  var t0 = Date.now();
+  try{
+    bar(0, '영상 올리는 중…');
+    var res = await ytUpload(v.blob, meta, function(done, tot){ var sp = done / Math.max(0.5, (Date.now() - t0) / 1000); bar(done / tot, '영상 올리는 중… ' + mb(done) + ' / ' + mb(tot), Math.round(done / tot * 100) + '% · ' + mb(sp) + '/초'); });
+    if(!res.id) throw new Error('유튜브가 영상 번호를 주지 않았습니다');
+    var up = { id:res.id, at:Date.now(), privacy:o.privacy, publishAt:meta.status.publishAt || '', title:meta.snippet.title, th:'', cap:'', cmt:'' };
+    y.up = up; touch(true);
+    if(o.th !== 'none'){ out.innerHTML = '<div class="sv-note">🖼 썸네일 올리는 중…</div>'; var tb = await upThumbBlob(o); up.th = tb ? (await ytThumb(res.id, tb)) || 'ok' : '썸네일을 만들지 못했습니다 (7단계를 먼저 해 주세요)'; }
+    if(o.cap){ out.innerHTML = '<div class="sv-note">💬 자막 올리는 중…</div>'; up.cap = (await ytCaption(res.id, srt())) || 'ok'; }
+    if(o.cmt && o.privacy === 'public' && y.pin){ up.cmt = (await ytComment(res.id, y.pin)) || 'ok'; }
+    y.up = up; touch(true); toast('유튜브에 올렸습니다 🎉');
+  }catch(e){ out.innerHTML = '<div class="sv-err">' + esc(e.message) + '</div>'; YT.busy = false; btn.disabled = false; return; }
+  YT.busy = false; render();
+}
+function pUpload(el){
+  var y = upOf(), o = y.upOpt, cid = ytCid(), v = ytVideo(), ok = ytTokOk(), V = P.fmt === '9:16', org = location.origin;
+  var guideOpen = YT.guide == null ? !ytCidOk(cid) : YT.guide;
+  var PRIV = [['private', '비공개'], ['unlisted', '일부 공개'], ['public', '공개'], ['sched', '예약 공개']];
+  var dB = u8len(ytClean(y.upDesc)), tl = ytTagList(y.upTags);
+  el.innerHTML = '<div class="sv-card"><div class="sv-h"><h3><b>8</b>유튜브에 올리기</h3>' + (y.up ? '<span class="sv-note">✓ 올림 · ' + new Date(y.up.at).toLocaleDateString('ko-KR') + '</span>' : '') + '</div>'
+    + '<p class="sv-sub">만든 영상 · 설명글 · 썸네일을 유튜브에 바로 올리고, 공개 시각을 예약할 수 있습니다. 올리기 전에 한 번 더 확인을 받습니다. 열쇠(허락)는 이 브라우저에서 1시간만 쓰고 어디에도 저장하지 않습니다.</p>'
+    + '<details class="sv-more" id="svUpGuide"' + (guideOpen ? ' open' : '') + '><summary><b>처음이신가요? 준비물 안내</b><span>구글에서 클라이언트 ID 를 한 번만 받아 두면 됩니다 (10분쯤)</span></summary><div style="margin-top:10px;font-size:13px;line-height:1.85">'
+    + '<ol style="margin:0 0 8px 18px;padding:0">'
+    + '<li><a href="https://console.cloud.google.com/projectcreate" target="_blank" rel="noopener">console.cloud.google.com</a> 에서 프로젝트를 하나 만듭니다 (이름 예: 송도제일 영상)</li>'
+    + '<li><a href="https://console.cloud.google.com/apis/library/youtube.googleapis.com" target="_blank" rel="noopener">API 라이브러리</a>에서 <b>YouTube Data API v3</b> 를 「사용」으로 켭니다</li>'
+    + '<li><a href="https://console.cloud.google.com/auth/overview" target="_blank" rel="noopener">OAuth 동의 화면</a>을 만듭니다 — 앱 이름 아무거나, 대상 <b>외부</b>, 그리고 <b>테스트 사용자</b>에 유튜브 채널이 있는 내 구글 계정을 넣습니다</li>'
+    + '<li><a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener">사용자 인증 정보</a> → <b>OAuth 클라이언트 ID</b> 만들기 → 유형 <b>웹 애플리케이션</b></li>'
+    + '<li><b>승인된 자바스크립트 원본</b>에 <code style="background:#fff;padding:1px 6px;border-radius:5px;border:1px solid #dee2e6">' + esc(org) + '</code> <button class="sv-btn sm" id="svUpOrg">복사</button> 를 넣습니다 (리디렉션 URI 는 비워 둡니다)</li>'
+    + '<li>나온 <b>클라이언트 ID</b>(…apps.googleusercontent.com)를 아래에 붙여 넣습니다</li></ol>'
+    + '<div class="sv-note" style="font-size:12.5px">· <b>클라이언트 보안 비밀번호는 필요 없습니다. 넣지 마세요.</b><br>· 구글 심사 전에는 허락할 때 「확인되지 않은 앱」 경고가 뜹니다 → <b>고급 → (앱 이름)(으)로 이동</b>을 눌러 계속하시면 됩니다. 내가 만든 앱이라 괜찮습니다.<br>'
+    + '· <b style="color:#c92a2a">꼭 알아 두세요:</b> 구글 정책상 <b>감사(심사)를 받지 않은 프로젝트로 올린 영상은 「비공개」로 잠길 수 있습니다.</b> 처음엔 짧은 영상을 비공개로 올려 시험해 보고, 잠기면 <a href="https://support.google.com/youtube/contact/yt_api_form" target="_blank" rel="noopener">YouTube API 감사 신청</a>(무료)을 하거나, 그동안은 5단계(영상)·7단계(썸네일)에서 받은 파일로 유튜브 스튜디오에서 직접 올려 주세요.<br>'
+    + '· 기본 사용량(하루 10,000)으로 하루 약 6편까지 올릴 수 있습니다 (영상 1편 1,600 · 썸네일 50 · 자막 400).</div></div></details>'
+    + '<div class="sv-f"><label>구글 클라이언트 ID ' + (ytCidOk(cid) ? '<span style="color:#2b8a3e">✓</span>' : '<span class="sv-req">꼭</span>') + '</label><input class="sv-in" id="svYtCid" placeholder="123456789012-xxxxxxxx.apps.googleusercontent.com" value="' + esc(cid) + '" spellcheck="false" autocomplete="off" style="font-family:ui-monospace,Consolas,monospace;font-size:12.5px">'
+    + (cid && !ytCidOk(cid) ? '<div class="sv-note" style="color:#c92a2a">…apps.googleusercontent.com 으로 끝나는 「클라이언트 ID」를 넣어 주세요 (보안 비밀번호 말고)</div>' : '<div class="sv-note">블로그 스튜디오와 같은 브라우저 저장소에 둡니다. 한 번 넣으면 됩니다.</div>') + '</div>'
+    + '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:14px">'
+    + (ok ? '<div class="sv-ok" style="margin:0;display:flex;gap:8px;align-items:center">' + (YT.ch && YT.ch.pic ? '<img src="' + esc(YT.ch.pic) + '" style="width:26px;height:26px;border-radius:50%">' : '') + '📺 <b>' + esc(YT.ch ? YT.ch.title : '') + '</b> 채널로 허락됨</div><button class="sv-btn sm" id="svYtSwitch">다른 계정으로</button><button class="sv-btn sm" id="svYtOut">허락 풀기</button>'
+      : '<button class="sv-btn" id="svYtAuth"' + (ytCidOk(cid) ? '' : ' disabled') + '>🔐 구글 계정으로 허락하기</button><span class="sv-note">유튜브 채널이 있는 계정으로 허락해 주세요. 허락은 1시간 동안 유지됩니다.</span>')
+    + '</div><div id="svYtAuthOut"></div>'
+    + (y.up ? '<div class="sv-ok" style="line-height:1.9">✅ <b>올렸습니다</b> — ' + esc(y.up.title || '') + '<br>'
+      + '<a href="https://youtu.be/' + esc(y.up.id) + '" target="_blank" rel="noopener">youtu.be/' + esc(y.up.id) + ' ↗</a> · <a href="https://studio.youtube.com/video/' + esc(y.up.id) + '/edit" target="_blank" rel="noopener">스튜디오에서 열기 ↗</a>'
+      + ' · ' + ({ private:'비공개', unlisted:'일부 공개', public:'공개', sched:'예약 공개' })[y.up.privacy] + (y.up.publishAt ? ' (' + new Date(y.up.publishAt).toLocaleString('ko-KR') + ' 공개)' : '')
+      + (y.up.th ? '<br>🖼 썸네일: ' + (y.up.th === 'ok' ? '올림' : '<span style="color:#c92a2a">' + esc(y.up.th) + '</span>') : '')
+      + (y.up.cap ? '<br>💬 자막: ' + (y.up.cap === 'ok' ? '올림' : '<span style="color:#c92a2a">' + esc(y.up.cap) + '</span>') : '')
+      + (y.up.cmt ? '<br>📌 첫 댓글: ' + (y.up.cmt === 'ok' ? '달았습니다 — 스튜디오 댓글에서 「고정」만 눌러 주세요' : '<span style="color:#c92a2a">' + esc(y.up.cmt) + '</span>') : (y.pin ? '<br>📌 고정 댓글은 공개된 뒤 직접 달고 고정해 주세요: 「' + esc(y.pin) + '」 <button class="sv-btn sm" id="svUpPinCp">복사</button>' : ''))
+      + '<br><span style="color:#495057">유튜브가 영상을 처리하는 데 몇 분 걸립니다. 스튜디오에서 「비공개로 잠김」 표시가 보이면 위 준비물 안내의 감사 신청을 참고하세요.</span>'
+      + (ok && y.up.th && y.up.th !== 'ok' ? '<div style="margin-top:6px"><button class="sv-btn sm" id="svUpReTh">🖼 썸네일만 다시 올리기</button></div>' : '') + '</div>' : '')
+    + (!v ? '<div class="sv-empty" style="padding:18px">5단계(영상)에서 영상을 만들면 여기에 올리기 칸이 나타납니다.<br>이미 내려받은 MP4 가 있으면 <label class="sv-btn sm" style="cursor:pointer">🎞 MP4 파일 고르기<input type="file" id="svUpFile" accept="video/mp4,video/*" hidden></label></div>'
+      : '<div class="sv-f" style="margin-top:6px"><label>올릴 영상</label><div class="sv-in" style="background:#f8f9fa;display:flex;gap:8px;align-items:center"><span style="flex:1">🎞 ' + esc(v.name) + ' · ' + mb(v.size) + (v.dur ? ' · ' + fmtT(v.dur) : '') + (v.mine ? ' · 고른 파일' : '') + '</span>'
+        + '<label class="sv-btn sm" style="cursor:pointer">다른 파일<input type="file" id="svUpFile" accept="video/mp4,video/*" hidden></label></div>'
+        + (V ? '<div class="sv-note">세로 · 3분 이하 영상은 유튜브가 알아서 <b>쇼츠</b>로 올립니다.</div>' : '') + '</div>'
+      + (y.full || y.title ? '' : '<div class="sv-warn">6단계 「설명글」을 먼저 만들면 제목·설명·태그가 채워집니다. <button class="sv-btn sm" data-go="desc">설명글로</button></div>')
+      + '<div class="sv-f"><label>제목 <span id="svUpTN">' + String(y.upTitle || '').length + '/100자</span><span style="flex:1"></span>' + (y.title && y.upTitle !== y.title ? '<button class="sv-btn sm" id="svUpTRe">설명글 제목으로</button>' : '') + '</label><input class="sv-in" id="svUpT" maxlength="100" value="' + esc(y.upTitle) + '"></div>'
+      + '<div class="sv-f"><label>설명 <span id="svUpDN">' + dB.toLocaleString() + ' / 5,000바이트' + (dB > 5000 ? ' — 넘는 끝부분은 잘립니다' : '') + '</span><span style="flex:1"></span>' + (y.full && y.upDesc !== y.full ? '<button class="sv-btn sm" id="svUpDRe">설명글 단계 글로</button>' : '') + '</label><textarea class="sv-ta" id="svUpD" rows="9">' + esc(y.upDesc) + '</textarea>'
+      + '<div class="sv-note">유튜브 설명란은 5,000<b>바이트</b>까지라 한글은 1,600자쯤에서 찹니다. 「＜ ＞」 기호는 유튜브가 막아서 비슷한 글자로 바꿔 올립니다.</div></div>'
+      + '<div class="sv-f"><label>태그 <span>' + tl.length + '개 · 쉼표로 나눔 · 합쳐 500자까지</span></label><textarea class="sv-ta" id="svUpG" rows="2">' + esc(y.upTags) + '</textarea></div>'
+      + '<div class="sv-opts">'
+      + '<div class="sv-f"><label>공개 범위</label>' + seg('upPriv', PRIV, o.privacy)
+      + (o.privacy === 'sched' ? '<input class="sv-in" type="datetime-local" id="svUpAt" value="' + esc(o.at || defAt()) + '" style="margin-top:8px"><div class="sv-note">이 시각까지 비공개로 있다가 저절로 공개됩니다.</div>' : '<div class="sv-note">' + ({ private:'나만 봅니다. 먼저 확인하고 스튜디오에서 공개로 바꿀 때 좋습니다.', unlisted:'주소를 아는 사람만 봅니다.', public:'바로 모두에게 공개됩니다.' })[o.privacy] + '</div>') + '</div>'
+      + '<div class="sv-f"><label>썸네일</label>' + seg('upTh', [['thumb', '7단계 썸네일'], ['col', '콜라주'], ['none', '넣지 않기']], o.th)
+      + '<div style="margin-top:8px"><canvas id="svUpThPv" width="256" height="144" style="width:192px;border-radius:8px;background:#111;display:' + (o.th === 'none' ? 'none' : 'block') + '"></canvas></div></div>'
+      + '<div class="sv-f"><label>카테고리</label><select class="sv-sel" id="svUpCat">' + YT_CAT.map(function(c){ return '<option value="' + c[0] + '"' + (c[0] === o.cat ? ' selected' : '') + '>' + c[1] + '</option>'; }).join('') + '</select><div class="sv-note">아동용 아님 · 한국어로 올립니다.</div></div>'
+      + '</div>'
+      + '<label class="sv-tg"><input type="checkbox" id="svUpCap"' + (o.cap ? ' checked' : '') + '> 자막 파일(.srt)도 함께 올리기 <span class="sv-note">' + (OPT.sub ? '— 영상에 자막을 이미 넣었으면 겹치니 끄세요' : '— 시청자가 CC 로 켜고 끌 수 있습니다') + '</span></label>'
+      + '<label class="sv-tg"><input type="checkbox" id="svUpSyn"' + (o.synth ? ' checked' : '') + '> 실제처럼 보이는 AI 그림·합성 목소리가 있습니다 <span class="sv-note">— 유튜브 「변경되거나 합성된 콘텐츠」 표시. 사실과 헷갈릴 수 있으면 켜 주세요</span></label>'
+      + (y.pin ? '<label class="sv-tg"><input type="checkbox" id="svUpCmt"' + (o.cmt ? ' checked' : '') + (o.privacy === 'public' ? '' : ' disabled') + '> 고정 댓글 문구를 첫 댓글로 달기 <span class="sv-note">— ' + (o.privacy === 'public' ? '고정은 스튜디오에서 눌러 주세요' : '바로 공개할 때만 됩니다') + '</span></label>' : '')
+      + '<div id="svUpOut"></div>'
+      + '<div style="display:flex;gap:8px;align-items:center;margin-top:12px"><span class="sv-note" style="flex:1">' + (ok ? '' : '먼저 위에서 「구글 계정으로 허락하기」를 눌러 주세요.') + '</span>'
+      + '<button class="sv-btn pri big" id="svUpGo"' + (ok ? '' : ' disabled') + '>📤 ' + (y.up ? '한 번 더 올리기' : '유튜브에 올리기') + '</button></div>')
+    + foot('thumb', '', '') + '</div>';
+  /* 묶기 */
+  var g = $('#svUpGuide', el); g.ontoggle = function(){ YT.guide = g.open; };
+  $('#svUpOrg', el).onclick = function(){ copyText(org, '주소를'); };
+  var ci = $('#svYtCid', el); ci.onchange = function(){ var s2 = LSX.get('sdbs.settings', {}) || {}; s2.ytClientId = this.value.trim(); LSX.set('sdbs.settings', s2); YT.tok = ''; YT.ch = null; if(ytCidOk(s2.ytClientId)){ YT.guide = false; gisLoad().catch(function(){}); toast('클라이언트 ID 를 저장했습니다'); } render(); };
+  var authed = function(){ return ytChannel().then(function(){ render(); toast('📺 ' + YT.ch.title + ' 채널로 허락됐습니다'); }); };
+  var fail = function(e){ var o2 = $('#svYtAuthOut'); if(o2) o2.innerHTML = '<div class="sv-err">' + esc(e.message) + (/redirect_uri|origin|invalid_client|idpiframe/i.test(e.message) ? '\n클라이언트 ID 의 「승인된 자바스크립트 원본」에 ' + org + ' 가 들어 있는지 확인해 주세요.' : '') + '</div>'; };
+  var au = $('#svYtAuth', el); if(au) au.onclick = function(){ au.disabled = true; au.textContent = '⏳ 구글 창에서 허락해 주세요…'; ytAuth('').then(authed).catch(function(e){ fail(e); au.disabled = false; au.textContent = '🔐 구글 계정으로 허락하기'; }); };
+  var sw = $('#svYtSwitch', el); if(sw) sw.onclick = function(){ ytAuth('select_account').then(authed).catch(fail); };
+  var lo = $('#svYtOut', el); if(lo) lo.onclick = function(){ var t = YT.tok; YT.tok = ''; YT.ch = null; try{ if(t && window.google) google.accounts.oauth2.revoke(t, function(){}); }catch(e){} render(); toast('허락을 풀었습니다'); };
+  if(ytCidOk(cid) && !ok) gisLoad().catch(function(){});   // 단추를 누를 때 팝업이 막히지 않게 미리
+  var pc = $('#svUpPinCp', el); if(pc) pc.onclick = function(){ copyText(y.pin, '고정 댓글을'); };
+  var rt = $('#svUpReTh', el); if(rt) rt.onclick = function(){ rt.disabled = true; upThumbBlob(o).then(function(b){ return b ? ytThumb(y.up.id, b) : '썸네일을 만들지 못했습니다'; }).then(function(m){ y.up.th = m || 'ok'; touch(true); render(); toast(m ? m : '썸네일을 올렸습니다', !!m); }); };
+  var uf = $('#svUpFile', el); if(uf) uf.onchange = function(){ var f = this.files && this.files[0]; if(!f) return; if(!/^video\//.test(f.type) && !/\.(mp4|mov|webm|m4v)$/i.test(f.name)) return toast('영상 파일(MP4)을 골라 주세요', true); YT.file = f; if(OUT && OUT.blob) OUT = null; render(); };
+  if(!v){ bindFoot(el); return; }
+  var tN = function(){ $('#svUpTN', el).textContent = String(y.upTitle || '').length + '/100자'; };
+  $('#svUpT', el).oninput = function(){ y.upTitle = this.value; tN(); touch(); };
+  $('#svUpD', el).oninput = function(){ y.upDesc = this.value; var n = u8len(ytClean(y.upDesc)); $('#svUpDN', el).textContent = n.toLocaleString() + ' / 5,000바이트' + (n > 5000 ? ' — 넘는 끝부분은 잘립니다' : ''); touch(); };
+  $('#svUpG', el).oninput = function(){ y.upTags = this.value; touch(); };
+  var tr = $('#svUpTRe', el); if(tr) tr.onclick = function(){ y.upTitle = y.title; touch(); render(); };
+  var dr = $('#svUpDRe', el); if(dr) dr.onclick = function(){ y.upDesc = y.full; touch(); render(); };
+  bindSeg(el, 'upPriv', function(x){ o.privacy = x; if(x === 'sched' && !o.at) o.at = defAt(); if(x !== 'public') o.cmt = false; touch(); render(); });
+  var at = $('#svUpAt', el); if(at) at.onchange = function(){ o.at = this.value; touch(); };
+  bindSeg(el, 'upTh', function(x){ o.th = x; touch(); render(); });
+  $('#svUpCat', el).onchange = function(){ o.cat = this.value; touch(); };
+  $('#svUpCap', el).onchange = function(){ o.cap = this.checked; touch(); };
+  $('#svUpSyn', el).onchange = function(){ o.synth = this.checked; touch(); };
+  var cm = $('#svUpCmt', el); if(cm) cm.onchange = function(){ o.cmt = this.checked; touch(); };
+  var pv = $('#svUpThPv', el); if(pv && o.th !== 'none') upThumbBlob(o).then(function(b){ if(!b) return; var im = new Image(); im.onload = function(){ var c = pv.getContext('2d'), k = Math.min(pv.width / im.width, pv.height / im.height), w = im.width * k, h = im.height * k; c.fillStyle = '#111'; c.fillRect(0, 0, pv.width, pv.height); c.drawImage(im, (pv.width - w) / 2, (pv.height - h) / 2, w, h); URL.revokeObjectURL(im.src); }; im.src = URL.createObjectURL(b); });
+  $('#svUpGo', el).onclick = function(){ var b = this; if(!ytTokOk()) return toast('먼저 「구글 계정으로 허락하기」를 눌러 주세요', true); ytGo(b); };
+  bindFoot(el);
+}
+
 /* ───────── 작업 파일 · 열쇠 ───────── */
 $('#svNew').onclick = function(){ stopPreview(); P = newProject(); OUT = null; LSX.set('sdv.cur', P.id); render(); paintList(); toast('새 작업을 시작합니다 — 제목을 적으면 왼쪽 목록에 남습니다'); };
 $('#svExport').onclick = function(){
@@ -2135,7 +2374,7 @@ function openKeys(focus){
   };
 }
 $('#svKeyBtn').onclick = function(){ openKeys(); };
-window.addEventListener('beforeunload', function(e){ if(ENC.busy){ e.preventDefault(); e.returnValue = ''; } });
+window.addEventListener('beforeunload', function(e){ if(ENC.busy || YT.busy){ e.preventDefault(); e.returnValue = ''; } });
 /* 고친 직후(0.7초 안)에 창을 닫거나 새로고침해도 저장되게 */
 window.addEventListener('pagehide', function(){ if(saveT && P){ clearTimeout(saveT); saveT = 0; try{ idbPut(P); }catch(e){} } });
 
@@ -2148,7 +2387,7 @@ refreshList().then(function(){
   render(); paintList();
 }, function(e){ P = newProject(); render(); toast('작업 저장소를 열지 못했습니다 (개인 정보 보호 창이면 저장되지 않습니다): ' + e.message, true); });
 
-window.sdVideo = { composeDesc:function(){ return composeDesc(ytOf()); }, chapterLines:function(){ return chapterLines(ytOf()); }, tagsText:function(){ return tagsText(ytOf()); }, thumbBlob:thumbBlob, collageBlob:collageBlob, thBundle:thBundle, extPrompt:extPrompt, get project(){ return P; }, timeline:timeline, cuesFor:cuesFor, srt:srt, drawFrame:drawFrame, encode:encode, go:go, opt:function(){ return OPT; }, out:function(){ return OUT; } };
+window.sdVideo = { composeDesc:function(){ return composeDesc(ytOf()); }, chapterLines:function(){ return chapterLines(ytOf()); }, tagsText:function(){ return tagsText(ytOf()); }, thumbBlob:thumbBlob, collageBlob:collageBlob, thBundle:thBundle, ytMeta:function(){ return ytMeta(upOf()); }, u8len:u8len, u8cut:u8cut, ytTagList:ytTagList, yt:YT, extPrompt:extPrompt, get project(){ return P; }, timeline:timeline, cuesFor:cuesFor, srt:srt, drawFrame:drawFrame, encode:encode, go:go, opt:function(){ return OPT; }, out:function(){ return OUT; } };
 })();
 </script>
 
