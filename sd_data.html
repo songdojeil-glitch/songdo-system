@@ -19402,7 +19402,13 @@ var BK_RULES=[
 ];
 var BK_GROUPS=['매물','고객','계약','일정','허브','현장','마케팅','블로그','상가','데이터','공통','기타'];
 //  열쇠·설정 — 기본으로 빼 둔다
-var BK_SECRET=/(_key|_secret|_token|apikey|api_key)$|_cfg$/i;
+var BK_SECRET=/(_key|_secret|_token|apikey|api_key)$|_cfg$|_config$/i;
+//  목록을 못 읽을 때 쓰는 「알려진 항목」 (2026-10 기준 프로그램들이 쓰는 sd/ 키)
+var BK_KNOWN=['sd_props','sd_listings_saved','sd_price_offers','sd_price_offer_rules','sd_custs','sd_contracts','sd_reviews','sd_todos_public','sd_todos',
+  'sd_notes_public','sd_hub_links','sd_dismissed','sd_news_latest','sd_news','sd_field','sd_mktg_posts','sd_mktg_news','sd_card_library','sd_marketing_ai_config',
+  'sd_buildings','sd_naver_sangga','sd_djc_idx','sd_kr_cfg','sd_brokers','sd_office','sd_sale_staff','sd_rent_staff','sd_sale_acct','sd_rent_acct','sd_dib_map',
+  'sd_versions','sd_gdrive_cfg','sd_gcal_cfg','sd_kakao_key','sd_vworld_key','sd_ngii_key','sd_api_key'];
+var _bkKeys=null, _bkSrc='';    // 목록(키 이름) · 어디서 읽었나
 //  sd/ 밖 루트 자료
 var BK_ROOT=[
   {paths:['sd_users'],  label:'👤 로그인 계정', on:true},
@@ -19443,26 +19449,50 @@ function bkChip(val, label, on, sub, color){
     +(sub?' <span style="color:#868e96;font-size:10px">'+bkEsc(sub)+'</span>':'')+'</label>';
 }
 function bkFmtSize(n){ return n>1048576?(n/1048576).toFixed(1)+'MB':n>1024?Math.round(n/1024)+'KB':n+'B'; }
+function bkTimeout(pr, ms, what){
+  return Promise.race([pr, new Promise(function(_, rej){ setTimeout(function(){ rej(new Error(what+' — '+Math.round(ms/1000)+'초 안에 응답 없음')); }, ms); })]);
+}
+function bkDbURL(){
+  try{ var u=window.firebase&&window.firebase.app&&window.firebase.app().options.databaseURL; if(u) return String(u).replace(/\/$/,''); }catch(e){}
+  return 'https://songdojeil-202604-default-rtdb.asia-southeast1.firebasedatabase.app';
+}
+async function bkToken(){
+  try{ var u=window.firebase&&window.firebase.auth&&window.firebase.auth().currentUser; if(u&&u.getIdToken) return await bkTimeout(u.getIdToken(), 8000, '로그인 확인'); }catch(e){}
+  return '';
+}
+//  sd/ 아래 「키 이름만」 읽는다 — REST shallow (내용은 내려받지 않아 빠르다)
+//  예전엔 sd/ 전체를 한 번에 내려받다가 자료가 커서 「목록을 읽는 중…」에서 멈췄다 (2026-10-04)
+async function bkListKeys(){
+  var t=await bkToken();
+  var r=await bkTimeout(fetch(bkDbURL()+'/sd.json?shallow=true'+(t?'&auth='+encodeURIComponent(t):''),{cache:'no-store'}), 15000, '목록 읽기');
+  if(!r.ok) throw new Error('목록 읽기 실패 ('+r.status+(r.status===401||r.status===403?' 권한':'')+')');
+  var j=await r.json();
+  return Object.keys(j||{});
+}
 async function openBackupModal(){
   var box=document.getElementById('backup-key-list');
   document.getElementById('backup-modal').style.display='flex';
-  box.innerHTML='<span style="font-size:12px;color:#5a6a82">⏳ 저장된 자료 목록을 읽는 중…</span>';
-  try{
-    if(!window._fbGet||!window._fbChild||!window._fbDb||!window._fbRef) throw new Error('Firebase 모듈 미초기화 — 잠시 후 다시 열어 주세요.');
-    var snap=await window._fbGet(window._fbChild(window._fbRef(window._fbDb),'sd'));
-    _bkSd=snap.val()||{};
-  }catch(e){ box.innerHTML='<span style="font-size:12px;color:#c92a2a">❌ '+bkEsc(e.message)+'</span>'; return; }
-  var items=bkItems(_bkSd), html='';
+  _bkKeys=null; _bkSrc='';
+  box.innerHTML='<span style="font-size:12px;color:#5a6a82">⏳ 저장된 자료 목록(이름만)을 읽는 중…</span>';
+  var keys, warn='';
+  try{ keys=await bkListKeys(); _bkSrc='서버 목록'; }
+  catch(e){
+    keys=BK_KNOWN.slice(); _bkSrc='알려진 항목';
+    warn='<div style="width:100%;font-size:11px;color:#b35c00;background:#fff4e6;border-radius:6px;padding:5px 8px;margin-bottom:4px">⚠️ 서버 목록을 읽지 못해('+bkEsc(e.message)+') <b>알려진 항목</b>으로 보여 줍니다. 개인 메모·할 일처럼 사람마다 따로인 항목과 새로 생긴 항목은 빠질 수 있습니다.</div>';
+  }
+  _bkKeys=keys;
+  var fake={}; keys.forEach(function(k){ fake[k]=null; });
+  var items=bkItems(fake), html=warn;
   BK_GROUPS.forEach(function(g){
     var its=items.filter(function(it){ return it.grp===g; }); if(!its.length) return;
     html+='<div style="width:100%;font-size:10.5px;font-weight:700;color:#5a6a82;margin:6px 0 2px">'+g+'</div>'
-      + its.map(function(it){ return bkChip('sd:'+it.keys.join('|'), it.label, it.on, (it.keys.length>1?it.keys.length+'개 · ':'')+bkFmtSize(it.size), it.sec?'#e8590c':'#1971c2'); }).join('');
+      + its.map(function(it){ return bkChip('sd:'+it.keys.join('|'), it.label, it.on, it.keys.length>1?it.keys.length+'개':'', it.sec?'#e8590c':'#1971c2'); }).join('');
   });
   html+='<div style="width:100%;font-size:10.5px;font-weight:700;color:#5a6a82;margin:10px 0 2px;border-top:1px solid #d4dae3;padding-top:8px">루트 자료 (sd 밖 · 데이터 화면 업로드분·계정)</div>'
     + BK_ROOT.map(function(r){ return bkChip('root:'+r.paths.join('|'), r.label, r.on, r.note||'', r.paths[0]==='sd_ext'?'#e8590c':'#2b8a3e'); }).join('');
-  html+='<div style="width:100%;margin-top:8px;display:flex;gap:6px"><button type="button" onclick="bkAll(true)" style="font-size:11px;padding:3px 9px;border:1px solid #adb5bd;border-radius:6px;background:#fff;cursor:pointer">모두 선택</button>'
+  html+='<div style="width:100%;margin-top:8px;display:flex;gap:6px;flex-wrap:wrap"><button type="button" onclick="bkAll(true)" style="font-size:11px;padding:3px 9px;border:1px solid #adb5bd;border-radius:6px;background:#fff;cursor:pointer">모두 선택</button>'
     +'<button type="button" onclick="bkAll(false)" style="font-size:11px;padding:3px 9px;border:1px solid #adb5bd;border-radius:6px;background:#fff;cursor:pointer">모두 해제</button>'
-    +'<span style="font-size:10.5px;color:#868e96;align-self:center">🔑 열쇠·설정과 대용량 자료는 기본으로 빠져 있습니다 · 사진 파일(Storage)은 포함되지 않습니다</span></div>';
+    +'<span style="font-size:10.5px;color:#868e96;align-self:center">🔑 열쇠·설정과 대용량 자료는 기본으로 빠져 있습니다 · 사진 파일(Storage)은 포함되지 않습니다 · 목록: '+_bkSrc+' '+keys.length+'개</span></div>';
   box.innerHTML=html;
 }
 function bkAll(on){ document.querySelectorAll('#backup-key-list input[type=checkbox]').forEach(function(cb){ cb.checked=on; }); }
@@ -19479,22 +19509,23 @@ async function doBackup(){
   st.style.display='block';st.style.background='#e7f0ff';st.style.color='#1971c2';st.textContent='⏳ Firebase 연결 확인 중...';
   try{
     if(!window._fbGet||!window._fbChild||!window._fbDb||!window._fbRef) throw new Error('Firebase 모듈 미초기화 — 잠시 후 다시 시도해 주세요.');
+    if(!_bkKeys) throw new Error('자료 목록을 아직 읽는 중입니다 — 목록이 나온 뒤 다시 눌러 주세요.');
     var sel=[]; document.querySelectorAll('#backup-key-list input[type=checkbox]:checked').forEach(function(cb){ sel.push(cb.value); });
     if(!sel.length) throw new Error('백업할 항목을 하나 이상 고르세요.');
     var sdKeys=[], rootPaths=[];
     sel.forEach(function(v){ var p=v.split(':'), ks=p.slice(1).join(':').split('|'); (p[0]==='sd'?sdKeys:rootPaths).push.apply(p[0]==='sd'?sdKeys:rootPaths, ks); });
     var obj={_meta:{createdAt:new Date().toISOString(),createdBy:(window._authProfile||{}).name||'unknown',version:'2.0',keys:sdKeys,rootPaths:rootPaths,
       note:'sd/ 아래 키는 이름 그대로, 루트 자료는 앞에 / 를 붙여 담음'}};
-    if(sdKeys.length){
-      st.textContent='⏳ 업무 자료(sd) 읽는 중...';
-      var sd=(await window._fbGet(window._fbChild(window._fbRef(window._fbDb),'sd'))).val()||{}; _bkSd=sd;
-      sdKeys.forEach(function(k){ obj[k]=(k in sd)?sd[k]:null; });
+    //  고른 항목만 하나씩 읽는다 (한 항목이 안 오면 그 항목만 빼고 계속)
+    var jobs=sdKeys.map(function(k){ return [k,'sd/'+k]; }).concat(rootPaths.map(function(p){ return ['/'+p,p]; })), failed=[];
+    for(var i=0;i<jobs.length;i++){
+      st.textContent='⏳ 읽는 중... ('+(i+1)+'/'+jobs.length+') '+jobs[i][1];
+      try{
+        var s2=await bkTimeout(window._fbGet(window._fbChild(window._fbRef(window._fbDb),jobs[i][1])), 120000, jobs[i][1]);
+        obj[jobs[i][0]]=s2.exists()?s2.val():null;
+      }catch(e){ failed.push(jobs[i][1]); console.warn('[백업] 읽기 실패',jobs[i][1],e); }
     }
-    for(var i=0;i<rootPaths.length;i++){
-      st.textContent='⏳ 루트 자료 읽는 중... ('+rootPaths[i]+')';
-      var s2=await window._fbGet(window._fbChild(window._fbRef(window._fbDb),rootPaths[i]));
-      obj['/'+rootPaths[i]]=s2.exists()?s2.val():null;
-    }
+    obj._meta.failed=failed;
     var keys=Object.keys(obj).filter(function(k){ return k!=='_meta'&&obj[k]!==null; });
     if(!keys.length) throw new Error('읽은 자료가 모두 비어 있습니다. Firebase 경로를 확인해 주세요.');
     var now=new Date();
@@ -19505,7 +19536,9 @@ async function doBackup(){
     var url=URL.createObjectURL(blob);var a=document.createElement('a');a.href=url;a.download=fname;document.body.appendChild(a);a.click();a.remove();setTimeout(function(){URL.revokeObjectURL(url);},4000);
     var skipped=Object.keys(obj).filter(function(k){ return k!=='_meta'&&obj[k]===null; });
     st.style.background='#e6f6ec';st.style.color='#2b8a3e';
-    st.textContent='✅ '+fname+' ('+bkFmtSize(jsonStr.length)+') — '+keys.length+'개 항목 저장'+(skipped.length?' · 비어 있어 뺀 것: '+skipped.join(', '):'');
+    st.textContent='✅ '+fname+' ('+bkFmtSize(jsonStr.length)+') — '+keys.length+'개 항목 저장'+(skipped.length?' · 비어 있어 뺀 것: '+skipped.join(', '):'')
+      +(failed.length?' · ⚠️ 읽지 못한 것: '+failed.join(', '):'');
+    if(failed.length){ st.style.background='#fff4e6'; st.style.color='#b35c00'; }
   }catch(e){
     st.style.background='#fff0f0';st.style.color='#c92a2a';
     st.textContent='❌ 백업 실패: '+e.message;
@@ -19626,7 +19659,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.10.03-7';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.10.04-1';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_data.html';      // 이 파일 이름
   var SD_NAME = '실거래가';      // 사람이 부르는 이름
 
