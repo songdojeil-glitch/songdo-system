@@ -19396,11 +19396,19 @@ var BK_RULES=[
   [/^sd_mktg_posts$/,'📢 마케팅 글','마케팅'], [/^sd_mktg_news$/,'📢 마케팅 소식','마케팅'], [/^sd_card_library$/,'🪪 명함·카드','마케팅'], [/^sd_mktg_|^sd_marketing/,'📢 마케팅 기타','마케팅'],
   [/^sd_blog/,'✍️ 블로그','블로그'],
   [/^sd_buildings$/,'🏪 상가(건물)','상가'], [/^sd_bldg_/,'🏪 상가 사진·자료','상가'], [/^sd_naver_sangga$/,'🏪 네이버 상가','상가'],
-  [/^sd_kb_/,'📊 KB 시세','데이터'], [/^sd_djc/,'🏘️ 단지 자료','데이터'], [/^sd_naver_apt/,'🏠 네이버APT','데이터'], [/^sd_reb/,'🏛️ 부동산원 지표','데이터'],
+  [/^sd_kb_/,'🏷️ 공시가격 (단지별)','다시 받기',{regen:1,unit:'단지'}], [/^sd_djc/,'🗄️ 실거래 임시 저장','다시 받기',{regen:1}], [/^sd_sun_/,'☀️ 일조 분석 지도','다시 받기',{regen:1,unit:'단지'}], [/^sd_kr_fp_/,'🔎 신고 감시 목록','다시 받기',{regen:1}],
+  [/^sd_nv_ev_/,'📈 네이버 호가 추이 기록','데이터'], [/^sd_naver_apt/,'🏠 네이버APT','데이터'], [/^sd_reb/,'🏛️ 부동산원 지표','데이터'],
   [/^sd_brokers$/,'🤝 중개사','공통'], [/^sd_office$/,'🏢 사무소 정보','공통'], [/^sd_(sale|rent)_staff$/,'👔 담당자','공통'], [/^sd_(sale|rent)_acct$/,'🧾 입금 계좌','공통'],
   [/^sd_dib_map$/,'🗺️ 지도 표시','공통'], [/^sd_users$/,'👤 사용자','공통'], [/^sd_versions$/,'🏷️ 프로그램 버전 기록','공통']
 ];
-var BK_GROUPS=['매물','고객','계약','일정','허브','현장','마케팅','블로그','상가','데이터','공통','기타'];
+var BK_GROUPS=['매물','고객','계약','일정','허브','현장','마케팅','블로그','상가','데이터','공통','기타','다시 받기'];
+//  「다시 받을 수 있는 자료」 — 원본 파일·API 로 다시 만들 수 있어 평소 백업에서 뺀다 (기본 해제)
+//   · sd_kb_*  단지별 공시가격(인천 수천 단지 · 수십 MB) — 단지 브리핑 「📥 공시가격 불러오기」로 공공데이터 원본 파일에서 다시 넣는다
+//   · sd_djc_* 국토부 실거래 임시 저장 — 화면을 열면 자동으로 다시 받는다
+//   · sd_sun_* 일조 분석 지도(건물 윤곽·높이) — V-World 에서 다시 계산
+//   · sd_kr_fp_* 신고 감시 중복 확인 목록
+//   ※ 네이버 호가 추이 기록(sd_nv_ev_*)은 지난 회차를 다시 받을 수 없으므로 「데이터」에 두고 백업한다
+var BK_GROUP_NM={'다시 받기':'다시 받을 수 있는 자료 — 기본 해제 (원본 파일·API 로 다시 만들 수 있음)'};
 //  열쇠·설정 — 기본으로 빼 둔다
 var BK_SECRET=/(_key|_secret|_token|apikey|api_key)$|_cfg$|_config$/i;
 //  목록을 못 읽을 때 쓰는 「알려진 항목」 (2026-10 기준 프로그램들이 쓰는 sd/ 키)
@@ -19424,7 +19432,7 @@ var BK_ROOT=[
   {paths:['sd_ext'],          label:'🔑 추출기 열쇠', on:false, note:'민감 — 열쇠가 파일에 담김'}
 ];
 function bkRule(k){
-  for(var i=0;i<BK_RULES.length;i++) if(BK_RULES[i][0].test(k)) return {label:BK_RULES[i][1], grp:BK_RULES[i][2]};
+  for(var i=0;i<BK_RULES.length;i++) if(BK_RULES[i][0].test(k)){ var o=BK_RULES[i][3]||{}; return {label:BK_RULES[i][1], grp:BK_RULES[i][2], regen:!!o.regen, unit:o.unit||''}; }
   return {label:k, grp:'기타'};
 }
 function bkSecret(k){ return BK_SECRET.test(k); }
@@ -19436,7 +19444,7 @@ function bkItems(sd){
   var items={};
   Object.keys(sd||{}).sort().forEach(function(k){
     var r=bkRule(k), sec=bkSecret(k), lab=sec?('🔑 '+(r.grp==='기타'?k:r.label+' ('+k+')')):r.label, id=(sec?'S:':'L:')+lab;
-    if(!items[id]) items[id]={label:lab, grp:r.grp, keys:[], on:!sec, sec:sec, n:0, size:0};
+    if(!items[id]) items[id]={label:lab, grp:r.grp, keys:[], on:!sec&&!r.regen, sec:sec, regen:r.regen, unit:r.unit, n:0, size:0};
     items[id].keys.push(k); items[id].n+=bkCnt(sd[k]);
     try{ items[id].size+=JSON.stringify(sd[k]).length; }catch(e){}
   });
@@ -19485,8 +19493,13 @@ async function openBackupModal(){
   var items=bkItems(fake), html=warn;
   BK_GROUPS.forEach(function(g){
     var its=items.filter(function(it){ return it.grp===g; }); if(!its.length) return;
-    html+='<div style="width:100%;font-size:10.5px;font-weight:700;color:#5a6a82;margin:6px 0 2px">'+g+'</div>'
-      + its.map(function(it){ return bkChip('sd:'+it.keys.join('|'), it.label, it.on, it.keys.length>1?it.keys.length+'개':'', it.sec?'#e8590c':'#1971c2'); }).join('');
+    html+='<div style="width:100%;font-size:10.5px;font-weight:700;color:#5a6a82;margin:6px 0 2px'+(g==='다시 받기'?';border-top:1px solid #d4dae3;padding-top:8px;margin-top:10px':'')+'">'+(BK_GROUP_NM[g]||g)+'</div>'
+      + its.map(function(it){
+          //  단지별 공시가격처럼 키가 수천 개 — 색인(sd_kb_idx) 하나를 빼고 단지 수로 센다
+          var nUnit=it.unit?it.keys.filter(function(k){ return !/_idx$/.test(k); }).length:it.keys.length;
+          var sub=it.unit?(it.unit+' '+nUnit.toLocaleString()+'개'):(it.keys.length>1?it.keys.length.toLocaleString()+'개':'');
+          return bkChip('sd:'+it.keys.join('|'), it.label, it.on, sub, it.sec?'#e8590c':(it.regen?'#868e96':'#1971c2'));
+        }).join('');
   });
   html+='<div style="width:100%;font-size:10.5px;font-weight:700;color:#5a6a82;margin:10px 0 2px;border-top:1px solid #d4dae3;padding-top:8px">루트 자료 (sd 밖 · 데이터 화면 업로드분·계정)</div>'
     + BK_ROOT.map(function(r){ return bkChip('root:'+r.paths.join('|'), r.label, r.on, r.note||'', r.paths[0]==='sd_ext'?'#e8590c':'#2b8a3e'); }).join('');
@@ -19518,13 +19531,20 @@ async function doBackup(){
       note:'sd/ 아래 키는 이름 그대로, 루트 자료는 앞에 / 를 붙여 담음'}};
     //  고른 항목만 하나씩 읽는다 (한 항목이 안 오면 그 항목만 빼고 계속)
     var jobs=sdKeys.map(function(k){ return [k,'sd/'+k]; }).concat(rootPaths.map(function(p){ return ['/'+p,p]; })), failed=[];
-    for(var i=0;i<jobs.length;i++){
-      st.textContent='⏳ 읽는 중... ('+(i+1)+'/'+jobs.length+') '+jobs[i][1];
-      try{
-        var s2=await bkTimeout(window._fbGet(window._fbChild(window._fbRef(window._fbDb),jobs[i][1])), 120000, jobs[i][1]);
-        obj[jobs[i][0]]=s2.exists()?s2.val():null;
-      }catch(e){ failed.push(jobs[i][1]); console.warn('[백업] 읽기 실패',jobs[i][1],e); }
+    //  한 번에 6개씩 나눠 읽는다 (공시가격처럼 수천 개를 고르면 하나씩은 너무 느리다)
+    var next=0, doneN=0;
+    async function worker(){
+      while(next<jobs.length){
+        var jb=jobs[next++];
+        try{
+          var s2=await bkTimeout(window._fbGet(window._fbChild(window._fbRef(window._fbDb),jb[1])), 120000, jb[1]);
+          obj[jb[0]]=s2.exists()?s2.val():null;
+        }catch(e){ failed.push(jb[1]); console.warn('[백업] 읽기 실패',jb[1],e); }
+        doneN++; st.textContent='⏳ 읽는 중... ('+doneN+'/'+jobs.length+') '+jb[1];
+      }
     }
+    var ws=[]; for(var w=0;w<Math.min(6,jobs.length);w++) ws.push(worker());
+    await Promise.all(ws);
     obj._meta.failed=failed;
     var keys=Object.keys(obj).filter(function(k){ return k!=='_meta'&&obj[k]!==null; });
     if(!keys.length) throw new Error('읽은 자료가 모두 비어 있습니다. Firebase 경로를 확인해 주세요.');
@@ -19536,8 +19556,8 @@ async function doBackup(){
     var url=URL.createObjectURL(blob);var a=document.createElement('a');a.href=url;a.download=fname;document.body.appendChild(a);a.click();a.remove();setTimeout(function(){URL.revokeObjectURL(url);},4000);
     var skipped=Object.keys(obj).filter(function(k){ return k!=='_meta'&&obj[k]===null; });
     st.style.background='#e6f6ec';st.style.color='#2b8a3e';
-    st.textContent='✅ '+fname+' ('+bkFmtSize(jsonStr.length)+') — '+keys.length+'개 항목 저장'+(skipped.length?' · 비어 있어 뺀 것: '+skipped.join(', '):'')
-      +(failed.length?' · ⚠️ 읽지 못한 것: '+failed.join(', '):'');
+    st.textContent='✅ '+fname+' ('+bkFmtSize(jsonStr.length)+') — '+keys.length+'개 항목 저장'+(skipped.length?' · 비어 있어 뺀 것: '+skipped.slice(0,8).join(', ')+(skipped.length>8?' 외 '+(skipped.length-8)+'개':''):'')
+      +(failed.length?' · ⚠️ 읽지 못한 것: '+failed.slice(0,8).join(', ')+(failed.length>8?' 외 '+(failed.length-8)+'개':''):'');
     if(failed.length){ st.style.background='#fff4e6'; st.style.color='#b35c00'; }
   }catch(e){
     st.style.background='#fff0f0';st.style.color='#c92a2a';
@@ -19557,12 +19577,18 @@ function onRestoreFileSelect(input){
       _restoreData=JSON.parse(e.target.result);
       var meta=_restoreData._meta||{};
       var keys=Object.keys(_restoreData).filter(function(k){return k!=='_meta';});
-      document.getElementById('restore-key-list').innerHTML=keys.map(function(k){
-        var d=_restoreData[k];
-        if(d===null||d===undefined) return '<span style="font-size:10.5px;color:#adb5bd;padding:3px 6px">'+bkEsc(bkRestoreLabel(k))+' — 비어 있음(건너뜀)</span>';
-        var sec=k.charAt(0)!=='/'&&bkSecret(k);
-        return bkChip(k, bkRestoreLabel(k), !sec, bkCnt(d)+'건', k.charAt(0)==='/'?'#2b8a3e':(sec?'#e8590c':'#1971c2'));
-      }).join('');
+      //  sd/ 키는 백업 창과 같은 이름으로 묶는다 (단지별 공시가격 수천 개 → 한 칸)
+      var empty=keys.filter(function(k){ var d=_restoreData[k]; return d===null||d===undefined; });
+      var sdK={}, rootK=[];
+      keys.forEach(function(k){ if(empty.indexOf(k)>=0) return; if(k.charAt(0)==='/') rootK.push(k); else sdK[k]=_restoreData[k]; });
+      var html=bkItems(sdK).sort(function(a,b){ return BK_GROUPS.indexOf(a.grp)-BK_GROUPS.indexOf(b.grp); }).map(function(it){
+        var nUnit=it.unit?it.keys.filter(function(k){ return !/_idx$/.test(k); }).length:0;
+        var sub=it.unit?(it.unit+' '+nUnit.toLocaleString()+'개'):(it.keys.length>1?it.keys.length.toLocaleString()+'개':it.n+'건');
+        return bkChip(it.keys.join('|'), it.label+(it.regen?' (다시 받기)':''), it.on, sub, it.sec?'#e8590c':(it.regen?'#868e96':'#1971c2'));
+      }).join('')
+      + rootK.map(function(k){ return bkChip(k, bkRestoreLabel(k), true, bkCnt(_restoreData[k])+'건', '#2b8a3e'); }).join('')
+      + (empty.length?'<span style="font-size:10.5px;color:#adb5bd;padding:3px 6px;width:100%">비어 있어 건너뜀: '+bkEsc(empty.slice(0,6).map(bkRestoreLabel).join(', '))+(empty.length>6?' 외 '+(empty.length-6)+'개':'')+'</span>':'');
+      document.getElementById('restore-key-list').innerHTML=html;
       document.getElementById('restore-preview').style.display='block';
       var rb=document.getElementById('restore-btn');rb.disabled=false;rb.style.opacity='1';rb.style.cursor='pointer';rb.style.background='#cc3333';rb.style.color='#fff';
       var st=document.getElementById('restore-status');
@@ -19575,9 +19601,10 @@ function onRestoreFileSelect(input){
 async function doRestore(){
   if(!_restoreData){alert('복원할 파일을 먼저 선택해 주세요.');return;}
   var selKeys=[];
-  document.querySelectorAll('#restore-key-list input[type=checkbox]:checked').forEach(function(cb){selKeys.push(cb.value);});
+  var labels=[];
+  document.querySelectorAll('#restore-key-list input[type=checkbox]:checked').forEach(function(cb){ selKeys.push.apply(selKeys, cb.value.split('|')); labels.push(cb.parentNode.textContent.trim()); });
   if(!selKeys.length){alert('복원할 항목을 선택해 주세요.');return;}
-  var keyNames=selKeys.map(bkRestoreLabel).join(', ');
+  var keyNames=labels.join(', ');
   if(!confirm('⚠️ 정말 복원하시겠습니까?\n\n복원 항목: '+keyNames+'\n\n현재 데이터가 완전히 덮어쓰입니다.\n이 작업은 되돌릴 수 없습니다!'))return;
   var st=document.getElementById('restore-status');
   st.style.display='block';st.style.background='#e7f0ff';st.style.color='#1971c2';st.textContent='⏳ 복원 중...';
@@ -19659,7 +19686,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.10.04-1';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.10.04-2';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_data.html';      // 이 파일 이름
   var SD_NAME = '실거래가';      // 사람이 부르는 이름
 
