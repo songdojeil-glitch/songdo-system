@@ -19341,14 +19341,14 @@ window.addEventListener('resize', function(){
 <div id="backup-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:9900;align-items:center;justify-content:center">
   <div style="background:#eef1f5;border:1px solid #d4dae3;border-radius:16px;padding:28px;width:560px;max-width:94vw;max-height:90vh;overflow-y:auto">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
-      <h3 style="font-size:16px;font-weight:700;color:#e8ecf4;margin:0">💾 Firebase 백업 / 복원</h3>
+      <h3 style="font-size:16px;font-weight:700;color:#1a2744;margin:0">💾 Firebase 백업 / 복원</h3>
       <button onclick="closeBackupModal()" style="background:none;border:none;color:#5a6a82;font-size:20px;cursor:pointer">✕</button>
     </div>
     <!-- 백업 -->
     <div style="background:#eef1f5;border:1px solid #d4dae3;border-radius:10px;padding:18px;margin-bottom:14px">
       <p style="font-size:13px;font-weight:700;color:#1971c2;margin:0 0 6px">📥 전체 백업 (다운로드)</p>
-      <p style="font-size:11px;color:#5a6a82;margin:0 0 12px">Firebase의 모든 데이터를 JSON 파일로 저장합니다.</p>
-      <div style="margin-bottom:12px"><p style="font-size:11px;color:#718096;margin:0 0 8px">백업할 키 선택:</p><div id="backup-key-list" style="display:flex;flex-wrap:wrap;gap:6px"></div></div>
+      <p style="font-size:11px;color:#5a6a82;margin:0 0 12px">Firebase에 저장된 업무 자료를 프로그램별로 골라 JSON 파일로 저장합니다. 새로 만든 프로그램의 자료도 자동으로 목록에 나옵니다.</p>
+      <div style="margin-bottom:12px"><p style="font-size:11px;color:#718096;margin:0 0 8px">백업할 항목 선택:</p><div id="backup-key-list" style="display:flex;flex-wrap:wrap;gap:6px;max-height:46vh;overflow-y:auto"></div></div>
       <button onclick="doBackup()" style="width:100%;padding:10px;background:#1565c0;border:none;color:#fff;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer">💾 지금 백업하기</button>
       <div id="backup-status" style="display:none;margin-top:10px;padding:8px 12px;border-radius:8px;font-size:12px"></div>
     </div>
@@ -19362,7 +19362,7 @@ window.addEventListener('resize', function(){
       </label>
       <div id="restore-preview" style="display:none;margin-bottom:12px">
         <p style="font-size:11px;color:#1971c2;margin:0 0 8px">📋 복원 가능 항목:</p>
-        <div id="restore-key-list" style="display:flex;flex-wrap:wrap;gap:6px"></div>
+        <div id="restore-key-list" style="display:flex;flex-wrap:wrap;gap:6px;max-height:30vh;overflow-y:auto"></div>
       </div>
       <button onclick="doRestore()" id="restore-btn" disabled style="width:100%;padding:10px;background:#c92a2a;border:none;color:#fff;border-radius:8px;font-size:13px;font-weight:700;cursor:not-allowed;opacity:.5">🔄 복원 실행</button>
       <div id="restore-status" style="display:none;margin-top:10px;padding:8px 12px;border-radius:8px;font-size:12px"></div>
@@ -19371,27 +19371,102 @@ window.addEventListener('resize', function(){
 </div>
 
 <script>
+/* ═══════════════════════════════════════════════════════════════════
+   Firebase 백업 / 복원  v2.0  (2026-10-02)
+   - 예전(v1.2): sd/ 아래 8개 키만 고정 목록으로 백업 → 새로 만든 프로그램(현장·마케팅·블로그·가격제안·
+     허브 메모/할일·데이터 설정 등)과 루트 자료(계정·실거래·네이버·지수)는 빠져 있었다.
+   - 지금: ① sd/ 아래 「실제로 있는」 키를 모두 읽어 프로그램별로 묶어 보여 준다 (새 프로그램이 생겨도 자동으로 잡힘)
+           ② sd/ 밖 루트 자료는 아래 BK_ROOT 목록 — 새 루트 경로를 만들면 여기에 한 줄 더한다
+   - 열쇠·설정(API 키 등)은 기본으로 빼 둔다(🔑) — 필요하면 직접 체크
+   - 백업 파일: sd/ 키는 그대로 "sd_props", 루트 자료는 앞에 / 를 붙여 "/sd_users" 로 담는다 (예전 백업 파일도 그대로 복원됨)
+   - 복원: 모듈러 SDK 의 _fbSet 으로 쓴다 (예전 코드의 ref.set() 은 모듈러 SDK 에 없어 복원이 실패했다).
+           백업 때 비어 있던(null) 항목은 지우지 않고 건너뛴다.
+   - Firebase Storage 의 사진 파일(상가 사진 등)은 JSON 백업에 들어가지 않는다.
+   ═══════════════════════════════════════════════════════════════════ */
 var _restoreData=null;
-var _selectedBackupKeys=[];
-var BACKUP_KEYS=[
-  {key:'sd_contracts',   label:'📑 계약',     color:'#ef9a9a'},
-  {key:'sd_props',       label:'🏢 매물',     color:'#4caf50'},
-  {key:'sd_custs',       label:'👥 고객',     color:'#1971c2'},
-  {key:'sd_todos_public',label:'📋 업무일정', color:'#ffcc80'},
-  {key:'sd_buildings',   label:'🏪 상가',     color:'#ce93d8'},
-  {key:'sd_naver_apt',   label:'🏠 네이버APT',color:'#80cbc4'},
-  {key:'sd_brokers',     label:'🤝 중개사',   color:'#bcaaa4'},
-  {key:'sd_users',       label:'👤 사용자',   color:'#fff176'},
+var _bkSd=null;              // 모달을 열 때 읽은 sd/ 전체
+//  sd/ 키 → 이름·프로그램 (위에서부터 처음 맞는 것)
+var BK_RULES=[
+  [/^sd_props$/,'🏢 매물','매물'], [/^sd_listings_saved$/,'📌 저장한 매물 목록','매물'], [/^sd_price_offers?$/,'🤝 직방 가격 제안','매물'], [/^sd_price_offer_rules$/,'🤝 가격 제안 규칙','매물'],
+  [/^sd_custs$/,'👥 고객','고객'],
+  [/^sd_contracts$/,'📑 계약','계약'], [/^sd_reviews$/,'🔍 계약 사전검토','계약'],
+  [/^sd_todos_public$/,'📋 업무일정(공용)','일정'], [/^sd_todos$/,'📋 할 일','일정'], [/^sd_todos_personal_/,'📋 개인 할 일','일정'], [/^sd_schedule/,'📅 일정','일정'],
+  [/^sd_notes_public$/,'📝 메모(공용)','허브'], [/^sd_notes_personal_/,'📝 개인 메모','허브'], [/^sd_hub_links$/,'🔗 바로가기','허브'], [/^sd_dismissed$/,'🔕 숨긴 알림','허브'], [/^sd_news/,'📰 허브 뉴스','허브'],
+  [/^sd_field/,'🥾 현장업무실','현장'],
+  [/^sd_mktg_posts$/,'📢 마케팅 글','마케팅'], [/^sd_mktg_news$/,'📢 마케팅 소식','마케팅'], [/^sd_card_library$/,'🪪 명함·카드','마케팅'], [/^sd_mktg_|^sd_marketing/,'📢 마케팅 기타','마케팅'],
+  [/^sd_blog/,'✍️ 블로그','블로그'],
+  [/^sd_buildings$/,'🏪 상가(건물)','상가'], [/^sd_bldg_/,'🏪 상가 사진·자료','상가'], [/^sd_naver_sangga$/,'🏪 네이버 상가','상가'],
+  [/^sd_kb_/,'📊 KB 시세','데이터'], [/^sd_djc/,'🏘️ 단지 자료','데이터'], [/^sd_naver_apt/,'🏠 네이버APT','데이터'], [/^sd_reb/,'🏛️ 부동산원 지표','데이터'],
+  [/^sd_brokers$/,'🤝 중개사','공통'], [/^sd_office$/,'🏢 사무소 정보','공통'], [/^sd_(sale|rent)_staff$/,'👔 담당자','공통'], [/^sd_(sale|rent)_acct$/,'🧾 입금 계좌','공통'],
+  [/^sd_dib_map$/,'🗺️ 지도 표시','공통'], [/^sd_users$/,'👤 사용자','공통'], [/^sd_versions$/,'🏷️ 프로그램 버전 기록','공통']
 ];
-
-function openBackupModal(){
-  _selectedBackupKeys=BACKUP_KEYS.map(function(k){return k.key;});
-  document.getElementById('backup-key-list').innerHTML=BACKUP_KEYS.map(function(k){
-    return '<label style="display:inline-flex;align-items:center;gap:4px;font-size:11px;color:'+k.color+';cursor:pointer;padding:3px 8px;border:1px solid '+k.color+'44;border-radius:6px;background:'+k.color+'11">'
-      +'<input type="checkbox" checked value="'+k.key+'" style="accent-color:'+k.color+';width:11px;height:11px" onchange="updBackupSel()"> '+k.label+'</label>';
-  }).join('');
-  document.getElementById('backup-modal').style.display='flex';
+var BK_GROUPS=['매물','고객','계약','일정','허브','현장','마케팅','블로그','상가','데이터','공통','기타'];
+//  열쇠·설정 — 기본으로 빼 둔다
+var BK_SECRET=/(_key|_secret|_token|apikey|api_key)$|_cfg$/i;
+//  sd/ 밖 루트 자료
+var BK_ROOT=[
+  {paths:['sd_users'],  label:'👤 로그인 계정', on:true},
+  {paths:['users'],     label:'🔐 사용자 권한', on:true},
+  {paths:['sd_naver_apt'],    label:'🏠 네이버 아파트 매물', on:true},
+  {paths:['sd_naver_op'],     label:'🏨 네이버 오피스텔·생숙', on:true},
+  {paths:['sd_naver_sangga'], label:'🏪 네이버 상가 매물', on:true},
+  {paths:['sd_housing'],      label:'🏘️ 단지 마스터', on:true},
+  {paths:['sd_price_index'],  label:'📈 가격지수', on:true},
+  {paths:['sd_data'],         label:'📊 실거래 매매·전월세', on:false, note:'대용량 · 엑셀로 다시 올릴 수 있음'},
+  {paths:['sd_naver_apt_hist','sd_naver_apt_hist_index'], label:'🕘 네이버APT 날짜별 기록', on:false, note:'대용량'},
+  {paths:['sd_reb'],          label:'🏛️ 부동산원 지표', on:false, note:'매일 자동 수집'},
+  {paths:['sd_ext'],          label:'🔑 추출기 열쇠', on:false, note:'민감 — 열쇠가 파일에 담김'}
+];
+function bkRule(k){
+  for(var i=0;i<BK_RULES.length;i++) if(BK_RULES[i][0].test(k)) return {label:BK_RULES[i][1], grp:BK_RULES[i][2]};
+  return {label:k, grp:'기타'};
 }
+function bkSecret(k){ return BK_SECRET.test(k); }
+function bkSize(v){ try{ var n=JSON.stringify(v).length; return n>1048576?(n/1048576).toFixed(1)+'MB':n>1024?Math.round(n/1024)+'KB':n+'B'; }catch(e){ return ''; } }
+function bkCnt(v){ if(v==null) return 0; if(Array.isArray(v)) return v.length; if(typeof v==='string'){ try{ var j=JSON.parse(v); return Array.isArray(j)?j.length:(j&&typeof j==='object'?Object.keys(j).length:1); }catch(e){ return 1; } } return typeof v==='object'?Object.keys(v).length:1; }
+function bkEsc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+//  sd/ 키들을 이름(label)별로 묶는다 — 개인 메모처럼 사람마다 키가 따로인 것은 한 칸으로
+function bkItems(sd){
+  var items={};
+  Object.keys(sd||{}).sort().forEach(function(k){
+    var r=bkRule(k), sec=bkSecret(k), lab=sec?('🔑 '+(r.grp==='기타'?k:r.label+' ('+k+')')):r.label, id=(sec?'S:':'L:')+lab;
+    if(!items[id]) items[id]={label:lab, grp:r.grp, keys:[], on:!sec, sec:sec, n:0, size:0};
+    items[id].keys.push(k); items[id].n+=bkCnt(sd[k]);
+    try{ items[id].size+=JSON.stringify(sd[k]).length; }catch(e){}
+  });
+  return Object.keys(items).map(function(id){ return items[id]; });
+}
+function bkChip(val, label, on, sub, color){
+  color=color||'#1971c2';
+  return '<label style="display:inline-flex;align-items:center;gap:4px;font-size:11px;color:#1a2744;cursor:pointer;padding:3px 8px;border:1px solid '+color+'44;border-radius:6px;background:'+color+'11">'
+    +'<input type="checkbox" '+(on?'checked ':'')+'value="'+bkEsc(val)+'" style="accent-color:'+color+';width:11px;height:11px"> '+bkEsc(label)
+    +(sub?' <span style="color:#868e96;font-size:10px">'+bkEsc(sub)+'</span>':'')+'</label>';
+}
+function bkFmtSize(n){ return n>1048576?(n/1048576).toFixed(1)+'MB':n>1024?Math.round(n/1024)+'KB':n+'B'; }
+async function openBackupModal(){
+  var box=document.getElementById('backup-key-list');
+  document.getElementById('backup-modal').style.display='flex';
+  box.innerHTML='<span style="font-size:12px;color:#5a6a82">⏳ 저장된 자료 목록을 읽는 중…</span>';
+  try{
+    if(!window._fbGet||!window._fbChild||!window._fbDb||!window._fbRef) throw new Error('Firebase 모듈 미초기화 — 잠시 후 다시 열어 주세요.');
+    var snap=await window._fbGet(window._fbChild(window._fbRef(window._fbDb),'sd'));
+    _bkSd=snap.val()||{};
+  }catch(e){ box.innerHTML='<span style="font-size:12px;color:#c92a2a">❌ '+bkEsc(e.message)+'</span>'; return; }
+  var items=bkItems(_bkSd), html='';
+  BK_GROUPS.forEach(function(g){
+    var its=items.filter(function(it){ return it.grp===g; }); if(!its.length) return;
+    html+='<div style="width:100%;font-size:10.5px;font-weight:700;color:#5a6a82;margin:6px 0 2px">'+g+'</div>'
+      + its.map(function(it){ return bkChip('sd:'+it.keys.join('|'), it.label, it.on, (it.keys.length>1?it.keys.length+'개 · ':'')+bkFmtSize(it.size), it.sec?'#e8590c':'#1971c2'); }).join('');
+  });
+  html+='<div style="width:100%;font-size:10.5px;font-weight:700;color:#5a6a82;margin:10px 0 2px;border-top:1px solid #d4dae3;padding-top:8px">루트 자료 (sd 밖 · 데이터 화면 업로드분·계정)</div>'
+    + BK_ROOT.map(function(r){ return bkChip('root:'+r.paths.join('|'), r.label, r.on, r.note||'', r.paths[0]==='sd_ext'?'#e8590c':'#2b8a3e'); }).join('');
+  html+='<div style="width:100%;margin-top:8px;display:flex;gap:6px"><button type="button" onclick="bkAll(true)" style="font-size:11px;padding:3px 9px;border:1px solid #adb5bd;border-radius:6px;background:#fff;cursor:pointer">모두 선택</button>'
+    +'<button type="button" onclick="bkAll(false)" style="font-size:11px;padding:3px 9px;border:1px solid #adb5bd;border-radius:6px;background:#fff;cursor:pointer">모두 해제</button>'
+    +'<span style="font-size:10.5px;color:#868e96;align-self:center">🔑 열쇠·설정과 대용량 자료는 기본으로 빠져 있습니다 · 사진 파일(Storage)은 포함되지 않습니다</span></div>';
+  box.innerHTML=html;
+}
+function bkAll(on){ document.querySelectorAll('#backup-key-list input[type=checkbox]').forEach(function(cb){ cb.checked=on; }); }
+function updBackupSel(){}    // (예전 이름 호환)
 function closeBackupModal(){
   document.getElementById('backup-modal').style.display='none';
   ['backup-status','restore-status'].forEach(function(id){document.getElementById(id).style.display='none';});
@@ -19399,55 +19474,47 @@ function closeBackupModal(){
   var rb=document.getElementById('restore-btn');rb.disabled=true;rb.style.opacity='.5';rb.style.cursor='not-allowed';rb.style.background='#7f0000';rb.style.color='#ffcccc';
   _restoreData=null;
 }
-function updBackupSel(){
-  _selectedBackupKeys=[];
-  document.querySelectorAll('#backup-key-list input[type=checkbox]:checked').forEach(function(cb){_selectedBackupKeys.push(cb.value);});
-}
 async function doBackup(){
   var st=document.getElementById('backup-status');
-  st.style.display='block';st.style.background='#0f2040';st.style.color='#1971c2';st.textContent='⏳ Firebase 연결 확인 중...';
+  st.style.display='block';st.style.background='#e7f0ff';st.style.color='#1971c2';st.textContent='⏳ Firebase 연결 확인 중...';
   try{
-    // sd_data.html은 모듈러 SDK 사용 (window._fbGet, _fbChild, _fbDb, _fbRef)
-    if(!window._fbGet||!window._fbChild||!window._fbDb||!window._fbRef)
-      throw new Error('Firebase 모듈 미초기화 — 잠시 후 다시 시도해 주세요.');
-
-    st.textContent='⏳ 전체 데이터 읽는 중...';
-    var rootRef = window._fbRef(window._fbDb);
-    var sdRef   = window._fbChild(rootRef, 'sd');
-    var snap    = await window._fbGet(sdRef);
-    var allData = snap.val()||{};
-
-    st.textContent='⏳ 백업 파일 생성 중...';
-    var obj={_meta:{createdAt:new Date().toISOString(),createdBy:(window._authProfile||{}).name||'unknown',version:'1.2',keys:_selectedBackupKeys}};
-
-    _selectedBackupKeys.forEach(function(k){
-      obj[k] = (k in allData) ? allData[k] : null;
-    });
-
-    var nonNull = _selectedBackupKeys.filter(function(k){return obj[k]!==null;});
-    if(!nonNull.length) throw new Error('읽은 데이터가 모두 null입니다. Firebase 경로를 확인해 주세요.');
-
+    if(!window._fbGet||!window._fbChild||!window._fbDb||!window._fbRef) throw new Error('Firebase 모듈 미초기화 — 잠시 후 다시 시도해 주세요.');
+    var sel=[]; document.querySelectorAll('#backup-key-list input[type=checkbox]:checked').forEach(function(cb){ sel.push(cb.value); });
+    if(!sel.length) throw new Error('백업할 항목을 하나 이상 고르세요.');
+    var sdKeys=[], rootPaths=[];
+    sel.forEach(function(v){ var p=v.split(':'), ks=p.slice(1).join(':').split('|'); (p[0]==='sd'?sdKeys:rootPaths).push.apply(p[0]==='sd'?sdKeys:rootPaths, ks); });
+    var obj={_meta:{createdAt:new Date().toISOString(),createdBy:(window._authProfile||{}).name||'unknown',version:'2.0',keys:sdKeys,rootPaths:rootPaths,
+      note:'sd/ 아래 키는 이름 그대로, 루트 자료는 앞에 / 를 붙여 담음'}};
+    if(sdKeys.length){
+      st.textContent='⏳ 업무 자료(sd) 읽는 중...';
+      var sd=(await window._fbGet(window._fbChild(window._fbRef(window._fbDb),'sd'))).val()||{}; _bkSd=sd;
+      sdKeys.forEach(function(k){ obj[k]=(k in sd)?sd[k]:null; });
+    }
+    for(var i=0;i<rootPaths.length;i++){
+      st.textContent='⏳ 루트 자료 읽는 중... ('+rootPaths[i]+')';
+      var s2=await window._fbGet(window._fbChild(window._fbRef(window._fbDb),rootPaths[i]));
+      obj['/'+rootPaths[i]]=s2.exists()?s2.val():null;
+    }
+    var keys=Object.keys(obj).filter(function(k){ return k!=='_meta'&&obj[k]!==null; });
+    if(!keys.length) throw new Error('읽은 자료가 모두 비어 있습니다. Firebase 경로를 확인해 주세요.');
     var now=new Date();
     var ts=now.getFullYear()+String(now.getMonth()+1).padStart(2,'0')+String(now.getDate()).padStart(2,'0')
           +'_'+String(now.getHours()).padStart(2,'0')+String(now.getMinutes()).padStart(2,'0')+String(now.getSeconds()).padStart(2,'0');
-    var fname='sd_backup_'+ts+'.json';
-    var jsonStr=JSON.stringify(obj,null,2);
+    var fname='sd_backup_'+ts+'.json', jsonStr=JSON.stringify(obj,null,1);
     var blob=new Blob([jsonStr],{type:'application/json'});
-    var url=URL.createObjectURL(blob);var a=document.createElement('a');a.href=url;a.download=fname;a.click();URL.revokeObjectURL(url);
-
-    var sz=(jsonStr.length/1024/1024).toFixed(1);
-    var summary=nonNull.map(function(k){
-      var d=obj[k];var cnt=Array.isArray(d)?d.length:typeof d==='object'?Object.keys(d).length:1;
-      var info=BACKUP_KEYS.find(function(b){return b.key===k;})||{label:k};
-      return info.label.replace(/[📑🏢👥📋🏪🏠🤝👤]/g,'').trim()+'('+cnt+')';
-    }).join(' / ');
-    st.style.background='#0d3020';st.style.color='#4caf50';
-    st.textContent='✅ '+fname+' ('+sz+'MB) — '+summary;
+    var url=URL.createObjectURL(blob);var a=document.createElement('a');a.href=url;a.download=fname;document.body.appendChild(a);a.click();a.remove();setTimeout(function(){URL.revokeObjectURL(url);},4000);
+    var skipped=Object.keys(obj).filter(function(k){ return k!=='_meta'&&obj[k]===null; });
+    st.style.background='#e6f6ec';st.style.color='#2b8a3e';
+    st.textContent='✅ '+fname+' ('+bkFmtSize(jsonStr.length)+') — '+keys.length+'개 항목 저장'+(skipped.length?' · 비어 있어 뺀 것: '+skipped.join(', '):'');
   }catch(e){
-    st.style.background='#3d0000';st.style.color='#e85c5c';
+    st.style.background='#fff0f0';st.style.color='#c92a2a';
     st.textContent='❌ 백업 실패: '+e.message;
     console.error('[백업 오류]',e);
   }
+}
+function bkRestoreLabel(k){
+  if(k.charAt(0)==='/'){ var p=k.slice(1), r=BK_ROOT.filter(function(x){ return x.paths.indexOf(p)>=0; })[0]; return (r?r.label:'📁 '+p)+' ('+p+')'; }
+  var b=bkRule(k); return (bkSecret(k)?'🔑 ':'')+(b.grp==='기타'?k:b.label+(/_$|personal_|_kb_|djc/.test(k)?' ('+k+')':''));
 }
 function onRestoreFileSelect(input){
   var file=input.files[0];if(!file)return;
@@ -19458,16 +19525,16 @@ function onRestoreFileSelect(input){
       var meta=_restoreData._meta||{};
       var keys=Object.keys(_restoreData).filter(function(k){return k!=='_meta';});
       document.getElementById('restore-key-list').innerHTML=keys.map(function(k){
-        var info=BACKUP_KEYS.find(function(b){return b.key===k;})||{label:k,color:'#5a6a82'};
-        var d=_restoreData[k];var cnt=d?Array.isArray(d)?d.length:typeof d==='object'?Object.keys(d).length:1:0;
-        return '<label style="display:inline-flex;align-items:center;gap:4px;font-size:11px;color:'+info.color+';cursor:pointer;padding:3px 8px;border:1px solid '+info.color+'44;border-radius:6px;background:'+info.color+'11">'
-          +'<input type="checkbox" checked value="'+k+'" style="accent-color:'+info.color+';width:11px;height:11px"> '+info.label+' ('+cnt+'건)</label>';
+        var d=_restoreData[k];
+        if(d===null||d===undefined) return '<span style="font-size:10.5px;color:#adb5bd;padding:3px 6px">'+bkEsc(bkRestoreLabel(k))+' — 비어 있음(건너뜀)</span>';
+        var sec=k.charAt(0)!=='/'&&bkSecret(k);
+        return bkChip(k, bkRestoreLabel(k), !sec, bkCnt(d)+'건', k.charAt(0)==='/'?'#2b8a3e':(sec?'#e8590c':'#1971c2'));
       }).join('');
       document.getElementById('restore-preview').style.display='block';
       var rb=document.getElementById('restore-btn');rb.disabled=false;rb.style.opacity='1';rb.style.cursor='pointer';rb.style.background='#cc3333';rb.style.color='#fff';
       var st=document.getElementById('restore-status');
-      st.style.display='block';st.style.background='#1a1000';st.style.color='#b8860b';
-      st.textContent='📋 백업일시: '+(meta.createdAt||'알수없음')+' | 작성자: '+(meta.createdBy||'알수없음');
+      st.style.display='block';st.style.background='#fff8e1';st.style.color='#8a6d00';
+      st.textContent='📋 백업일시: '+(meta.createdAt||'알수없음')+' | 작성자: '+(meta.createdBy||'알수없음')+' | 형식 v'+(meta.version||'1');
     }catch(err){alert('JSON 파일 파싱 오류: '+err.message);}
   };
   reader.readAsText(file);
@@ -19477,26 +19544,22 @@ async function doRestore(){
   var selKeys=[];
   document.querySelectorAll('#restore-key-list input[type=checkbox]:checked').forEach(function(cb){selKeys.push(cb.value);});
   if(!selKeys.length){alert('복원할 항목을 선택해 주세요.');return;}
-  var keyNames=selKeys.map(function(k){var info=BACKUP_KEYS.find(function(b){return b.key===k;});return info?info.label:k;}).join(', ');
+  var keyNames=selKeys.map(bkRestoreLabel).join(', ');
   if(!confirm('⚠️ 정말 복원하시겠습니까?\n\n복원 항목: '+keyNames+'\n\n현재 데이터가 완전히 덮어쓰입니다.\n이 작업은 되돌릴 수 없습니다!'))return;
   var st=document.getElementById('restore-status');
-  st.style.display='block';st.style.background='#0f2040';st.style.color='#1971c2';st.textContent='⏳ 복원 중...';
+  st.style.display='block';st.style.background='#e7f0ff';st.style.color='#1971c2';st.textContent='⏳ 복원 중...';
   try{
-    if(!window._fbDb||!window._fbRef) throw new Error('Firebase 모듈 미초기화');
+    if(!window._fbDb||!window._fbRef||!window._fbSet) throw new Error('Firebase 모듈 미초기화');
     for(var i=0;i<selKeys.length;i++){
-      var k=selKeys[i];
-      st.textContent='⏳ 복원 중... ('+k+')';
-      var kRef=window._fbChild(window._fbRef(window._fbDb),'sd/'+k);
-      var val=_restoreData[k];
-      if(val===null||val===undefined){
-        await kRef.remove();
-      }else{
-        await kRef.set(val);
-      }
+      var k=selKeys[i], val=_restoreData[k];
+      if(val===null||val===undefined) continue;                       // 비어 있던 항목은 지우지 않는다
+      var path=k.charAt(0)==='/'?k.slice(1):'sd/'+k;
+      st.textContent='⏳ 복원 중... ('+(i+1)+'/'+selKeys.length+' · '+path+')';
+      await window._fbSet(window._fbRef(window._fbDb,path), val);
     }
-    st.style.background='#0d3020';st.style.color='#4caf50';st.textContent='✅ 복원 완료! 잠시 후 새로고침됩니다.';
+    st.style.background='#e6f6ec';st.style.color='#2b8a3e';st.textContent='✅ 복원 완료! 잠시 후 새로고침됩니다.';
     setTimeout(function(){if(confirm('복원 완료! 지금 새로고침할까요?'))location.reload();},1500);
-  }catch(e){st.style.background='#3d0000';st.style.color='#e85c5c';st.textContent='❌ 복원 실패: '+e.message;console.error('[복원 오류]',e);}
+  }catch(e){st.style.background='#fff0f0';st.style.color='#c92a2a';st.textContent='❌ 복원 실패: '+e.message;console.error('[복원 오류]',e);}
 }
 </script>
 
@@ -19563,7 +19626,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.10.03-6';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.10.03-7';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_data.html';      // 이 파일 이름
   var SD_NAME = '실거래가';      // 사람이 부르는 이름
 
