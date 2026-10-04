@@ -3341,7 +3341,7 @@ function vdPaintLen(){ var e=document.getElementById('vdLen'); if(e) e.textConte
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.10.04-2';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.10.04-3';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_blog.html';      // 이 파일 이름
   var SD_NAME = '블로그 스튜디오';      // 사람이 부르는 이름
 
@@ -3685,6 +3685,15 @@ function vdPaintLen(){ var e=document.getElementById('vdLen'); if(e) e.textConte
 .kr-tbl .why{color:var(--ink3);font-size:11.5px;margin-top:2px;line-height:1.5}
 .kr-chip{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border:1px solid var(--line);border-radius:14px;font-size:11.5px;margin:0 5px 5px 0;background:#fff;cursor:pointer}
 .kr-chip:hover{border-color:var(--accent-line);color:var(--accent)}
+.kr-rec{border:1px solid #f1d3a8;background:#fffaf2;border-radius:10px;padding:10px 12px;margin-bottom:12px}
+.kr-rec h4{margin:0 0 3px;font-size:13px}
+.kr-rec .sub{font-size:11.5px;color:var(--ink3);margin-bottom:8px}
+.kr-rec .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:6px}
+.kr-rec .it{display:flex;align-items:center;gap:6px;background:#fff;border:1px solid var(--line);border-radius:8px;padding:6px 8px;font-size:12.5px}
+.kr-rec .it .k{flex:1;min-width:0;font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.kr-rec .it .v{font-variant-numeric:tabular-nums;font-weight:700;white-space:nowrap}
+.kr-rec .it .btn{padding:2px 7px;font-size:11px}
+.kr-lt10{color:var(--ink3);font-weight:600}
 .kr-chip b{color:var(--accent);font-weight:700}
 .kr-comp{font-size:11px;padding:1px 6px;border-radius:6px;background:#f1f3f5;color:#495057}
 .kr-comp.low{background:#e6f6ec;color:#2b8a3e}.kr-comp.high{background:#fff0f0;color:#c92a2a}
@@ -3876,7 +3885,8 @@ function krPrompt(inp){
     + (inp.inflow ? '[내 블로그에 이미 들어오는 검색어 — 이와 이어지는 글감을 우선]\n' + inp.inflow + '\n' : '')
     + (KR.files.length ? '[첨부 자료] 블로그 통계·분석 캡처나 PDF 입니다. 유입 키워드·인기 글을 읽어 참고하세요.\n' : '')
     + '\n조건:\n'
-    + '- 키워드(kw)는 네이버 검색창에 실제로 칠 법한 짧은 말(2~5어절). 특수문자 없이. 지역 키워드는 지역명을 앞에.\n'
+    + '- 키워드(kw)는 사람들이 네이버 검색창에 실제로 치는 2~3어절 핵심어(예: 송도 학군, 송도 1공구 시세, GTX-B 송도역). 4어절 이상은 쓰지 않는다 — 길면 한 달 검색이 10번도 안 된다. 특수문자 없이, 지역명을 앞에.\n'
+    + '- 꾸밈말·긴 설명(분석, 흐름, 시기와 전략 등)은 kw 에 넣지 말고 title 에만 쓴다.\n'
     + '- 분야마다 6~8개. 서로 겹치지 않게. 이미 블로그에 들어오는 검색어와 같은 말은 빼고, 이어지는 말을 뽑는다.\n'
     + '- 지어내지 않는다. 조사로 확인한 사실만 fact 에 한 줄로(날짜·기관이 있으면 함께). 확인 못 했으면 fact 는 빈 문자열.\n'
     + '- 부동산과 관계없는 주제(건강·여행·육아·자동차 등)는 넣지 않는다.\n'
@@ -3922,6 +3932,26 @@ function krHot(r){
   if(r.blog != null && r.blog > 0) return r.total >= 100 && r.total / r.blog >= 0.05;
   return r.total >= 100 && r.comp !== '높음';
 }
+/* 검색광고는 10 미만을 「< 10」으로만 준다(스크립트가 5로 바꿔 보냄) — 숫자 대신 「10 미만」으로 보여 준다 */
+function krLt(n){ return n != null && n > 0 && n < 10; }
+function krVolHTML(r){
+  if(r.none) return '<span class="kr-lt10">집계 없음</span>';
+  if(krLt(r.pc) && krLt(r.mo)) return '<span class="kr-lt10">10 미만</span>';
+  return nf(r.total);
+}
+function krPart(n){ return krLt(n) ? '&lt;10' : nf(n); }
+/* 추천 키워드 — 네이버 연관 검색어 중 실제로 많이 찾는 것.
+   「송도」처럼 가장 좁은 지역 이름이 든 것 → 「인천」처럼 넓은 지역 이름이 든 것 → 나머지(지역 키워드가 모자랄 때만) 순서 */
+function krRecommend(L){
+  var rel = (L.related || []).filter(function(x){ return x && x.total >= 30; });
+  var stems = String((L.input && L.input.area) || '').split(/\s+/).map(function(w){ return w.replace(/(국제도시|광역시|특별시|시|군|구|동|읍|면)$/, ''); }).filter(function(w){ return w.length >= 2; });
+  var narrow = stems.slice(-1), wide = stems.slice(0, -1);
+  var tier = function(k){ k = k.replace(/\s+/g, ''); return narrow.some(function(w){ return k.indexOf(w) >= 0; }) ? 0 : wide.some(function(w){ return k.indexOf(w) >= 0; }) ? 1 : 2; };
+  var list = rel.map(function(x, i){ return { x:x, i:i, t:tier(x.kw) }; })
+    .sort(function(a, b){ return a.t - b.t || b.x.total - a.x.total; });
+  var local = list.filter(function(o){ return o.t < 2; });
+  return (local.length >= 6 ? local : list).slice(0, 12);
+}
 function krRender(){
   var L = KR.last, out = q('#krOut'); if(!out || !L) return;
   var rows = L.rows.slice();
@@ -3929,6 +3959,18 @@ function krRender(){
   var compCls = function(c){ return c === '낮음' ? 'low' : c === '높음' ? 'high' : ''; };
   var html = '<div class="notice ok" style="margin-bottom:10px"><b>' + esc(L.input.area) + '</b> · ' + new Date(L.at).toLocaleString('ko-KR') + (L.web ? ' · 인터넷 조사' : ' · 조사 없이(챗GPT)') + '<br>' + esc(L.summary || '') + '</div>'
     + (L.volErr ? '<div class="notice warn">검색량을 붙이지 못했습니다: ' + esc(L.volErr) + '</div>' : '')
+    + (function(){
+        if(!L.vol) return '';
+        var rec = krRecommend(L), lowAll = L.rows.length && L.rows.every(function(r){ return r.none || (krLt(r.pc) && krLt(r.mo)); });
+        if(!rec.length) return lowAll ? '<div class="notice warn">AI 가 뽑은 키워드가 모두 한 달 검색 10번 미만입니다. 지역·분야를 넓혀 다시 해 보거나 <a href="' + KW_SITE + '" target="_blank" rel="noopener">키워드 찾기 사이트 ↗</a>에서 짧은 핵심어를 찾아보세요.</div>' : '';
+        return '<div class="kr-rec"><h4>⭐ 추천 키워드 — 사람들이 실제로 많이 찾는 말</h4>'
+          + '<div class="sub">네이버 연관 검색어 중 검색량이 많은 것' + (lowAll ? ' · <b style="color:#c0392b">아래 AI 키워드는 모두 한 달 10번 미만이라, 이 키워드로 쓰는 편이 낫습니다</b>' : '') + '</div><div class="grid">'
+          + rec.map(function(o){ var x = o.x;
+              return '<div class="it" title="PC ' + krPart(x.pc).replace('&lt;', '<') + ' · 모바일 ' + krPart(x.mo).replace('&lt;', '<') + '"><span class="k">' + esc(x.kw) + '</span>'
+                + '<span class="v">' + nf(x.total) + '</span>' + (x.comp ? '<span class="kr-comp ' + compCls(x.comp) + '">' + esc(x.comp) + '</span>' : '')
+                + '<button class="btn sm" data-relw="' + o.i + '">✍️</button><button class="btn sm" data-rel="' + o.i + '">📅</button></div>';
+            }).join('') + '</div></div>';
+      })()
     + (!L.vol && !L.volErr ? '<div class="notice warn">네이버 검색량이 연결되어 있지 않아 AI 조사 결과만 보여 줍니다. [엔진 설정] → 「키워드 검색량」에 앱스 스크립트 주소·토큰을 넣으면 월간 검색량·경쟁도가 붙습니다. <a href="' + KW_SITE + '" target="_blank" rel="noopener">키워드 찾기 사이트 ↗</a>에서 직접 확인할 수도 있습니다.</div>' : '')
     + '<div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap">'
     + '<b style="font-size:13px">글감 ' + rows.length + '개</b>'
@@ -3944,23 +3986,25 @@ function krRender(){
           + '<td><div class="kw">' + esc(r.kw) + (writtenBefore(r.title) ? ' <span style="font-size:10.5px;color:#c0392b">이미 쓴 주제</span>' : '') + '</div><div class="tt">' + esc(r.title) + '</div>'
           + '<div class="why">' + esc(r.why) + (r.fact ? '<br>📌 ' + esc(r.fact) : '') + '</div></td>'
           + '<td style="font-size:11.5px;color:var(--ink2);white-space:nowrap">' + esc(r.field) + '</td>'
-          + (L.vol ? '<td class="n" title="PC ' + nf(r.pc) + ' · 모바일 ' + nf(r.mo) + '"><b>' + (r.none ? '<span style="color:var(--ink3)">집계 없음</span>' : nf(r.total)) + '</b>' + (r.none ? '' : '<div style="font-size:10.5px;color:var(--ink3)">PC ' + nf(r.pc) + ' · 모 ' + nf(r.mo) + '</div>') + '</td>'
+          + (L.vol ? '<td class="n"><b>' + krVolHTML(r) + '</b>' + (r.none || (krLt(r.pc) && krLt(r.mo)) ? '' : '<div style="font-size:10.5px;color:var(--ink3)">PC ' + krPart(r.pc) + ' · 모 ' + krPart(r.mo) + '</div>') + '</td>'
             + '<td>' + (r.comp ? '<span class="kr-comp ' + compCls(r.comp) + '">' + esc(r.comp) + '</span>' : '') + '</td>'
             + (rows.some(function(x){ return x.blog != null; }) ? '<td class="n">' + nf(r.blog) + '</td>' : '') : '')
           + '<td style="white-space:nowrap"><button class="btn sm" data-write="' + i + '">✍️ 쓰기</button> <button class="btn sm" data-bp="' + i + '">📅 담기</button></td></tr>';
       }).join('')
     + '</tbody></table></div>'
-    + (L.related && L.related.length ? '<div style="margin-top:14px"><div class="fl">네이버 연관 검색어 (검색량 순 · 누르면 묶음 예약에 담깁니다)</div>'
-      + L.related.map(function(x, i){ return '<span class="kr-chip" data-rel="' + i + '">' + esc(x.kw) + ' <b>' + nf(x.total) + '</b></span>'; }).join('') + '</div>' : '')
+    + (L.related && L.related.length ? '<div style="margin-top:14px"><div class="fl">네이버 연관 검색어 전체 (검색량 순 · 누르면 묶음 예약에 담깁니다)</div>'
+      + L.related.map(function(x, i){ return '<span class="kr-chip" data-rel="' + i + '">' + esc(x.kw) + ' <b>' + (krLt(x.pc) && krLt(x.mo) ? '&lt;10' : nf(x.total)) + '</b></span>'; }).join('') + '</div>' : '')
     + (L.sources && L.sources.length ? '<details style="margin-top:12px;font-size:12px"><summary style="cursor:pointer;color:var(--ink2);font-weight:600">조사에 쓴 출처 ' + L.sources.length + '개</summary><ul style="margin:6px 0 0 18px;padding:0;line-height:1.8">'
       + L.sources.map(function(s){ return '<li><a href="' + esc(s.url) + '" target="_blank" rel="noopener">' + esc(s.title || s.url) + '</a></li>'; }).join('') + '</ul></details>' : '')
-    + '<div style="font-size:11px;color:var(--ink3);margin-top:10px">검색량은 네이버 검색광고의 최근 한 달 집계(10 미만은 약 5로 표시)입니다. AI 조사 결과는 발행 전에 사실을 한 번 더 확인해 주세요.</div>';
+    + '<div style="font-size:11px;color:var(--ink3);margin-top:10px">검색량은 네이버 검색광고의 최근 한 달 집계입니다(PC·모바일 각각 10번 미만이면 「10 미만」). 「블로그 글」은 그 말로 네이버 블로그를 검색했을 때 나오는 전체 글 수(경쟁 정도)입니다. AI 조사 결과는 발행 전에 사실을 한 번 더 확인해 주세요.</div>';
   out.innerHTML = html;
   var s = q('#krSort'); if(s) s.onchange = function(){ KR.sort = s.value; krRender(); };
   qa('[data-write]', out).forEach(function(b){ b.onclick = function(){ var r = L.rows[+b.dataset.write];
     pick({ t:r.title || r.kw, k:r.kw, cat:'키워드 리서치' }); xmClose(); toast('주제를 정했습니다. [생성하기]를 누르세요.'); }; });
   qa('[data-bp]', out).forEach(function(b){ b.onclick = function(){ var r = L.rows[+b.dataset.bp]; bpQueue([{ t:r.title || r.kw, k:r.kw }]); }; });
   qa('[data-rel]', out).forEach(function(b){ b.onclick = function(){ var x = L.related[+b.dataset.rel]; bpQueue([{ t:x.kw, k:x.kw }]); }; });
+  qa('[data-relw]', out).forEach(function(b){ b.onclick = function(){ var x = L.related[+b.dataset.relw];
+    pick({ t:x.kw, k:x.kw, cat:'키워드 리서치' }); xmClose(); toast('주제를 정했습니다. [생성하기]를 누르세요.'); }; });
   q('#krAllBp', out).onclick = function(){
     var list = qa('[data-pick]', out).filter(function(c){ return c.checked; }).map(function(c){ var r = L.rows[+c.dataset.pick]; return { t:r.title || r.kw, k:r.kw }; });
     if(!list.length) return toast('표 왼쪽 칸을 체크해 고르세요', true);
