@@ -3341,7 +3341,7 @@ function vdPaintLen(){ var e=document.getElementById('vdLen'); if(e) e.textConte
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.10.04-3';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.10.04-4';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_blog.html';      // 이 파일 이름
   var SD_NAME = '블로그 스튜디오';      // 사람이 부르는 이름
 
@@ -3694,6 +3694,12 @@ function vdPaintLen(){ var e=document.getElementById('vdLen'); if(e) e.textConte
 .kr-rec .it .v{font-variant-numeric:tabular-nums;font-weight:700;white-space:nowrap}
 .kr-rec .it .btn{padding:2px 7px;font-size:11px}
 .kr-lt10{color:var(--ink3);font-weight:600}
+.kr-saved{border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.kr-saved .row{display:flex;align-items:center;gap:6px;padding:9px 12px;border-bottom:1px solid var(--line2);font-size:13px}
+.kr-saved .row:last-child{border-bottom:0}
+.kr-saved .row.cur{background:#fff8ef}
+.kr-saved .nm{flex:1;min-width:0}
+.kr-saved .mt{font-size:11.5px;color:var(--ink3);margin-top:2px}
 .kr-chip b{color:var(--accent);font-weight:700}
 .kr-comp{font-size:11px;padding:1px 6px;border-radius:6px;background:#f1f3f5;color:#495057}
 .kr-comp.low{background:#e6f6ec;color:#2b8a3e}.kr-comp.high{background:#fff0f0;color:#c92a2a}
@@ -3818,6 +3824,118 @@ async function kwVolumes(list){
   if(!d.ok) throw new Error(d.error || '검색량을 받지 못했습니다');
   return d;
 }
+/* 앱스 스크립트는 한 번에 40개까지 — 나눠서 받고 합친다 */
+async function kwVolumesAll(list){
+  var all = { list:[], related:[] }, rel = {};
+  for(var i = 0; i < list.length; i += 40){
+    var v = await kwVolumes(list.slice(i, i + 40));
+    all.list = all.list.concat(v.list || []);
+    (v.related || []).forEach(function(x){ if(!rel[x.kw] || rel[x.kw].total < x.total) rel[x.kw] = x; });
+  }
+  all.related = Object.keys(rel).map(function(k){ return rel[k]; }).sort(function(a, b){ return b.total - a.total; }).slice(0, 40);
+  return all;
+}
+function krApplyVol(L, v){
+  var by = {}; (v.list || []).forEach(function(o){ by[o.kw] = o; });
+  L.rows.forEach(function(r){ var o = by[r.kw]; if(o){ r.pc = o.pc; r.mo = o.mo; r.total = o.total; r.comp = o.comp; r.blog = o.blog; r.none = o.none; } });
+  L.related = v.related || []; L.vol = true; L.volErr = ''; L.volAt = Date.now();
+}
+
+/* ── 💾 저장한 리서치 — 「저장」을 누른 것만 Firebase(sd_blog_kw)에. 집·사무실 PC·휴대폰에서 같이 본다 ── */
+var KW_FB = 'sd_blog_kw';
+function kwFbOk(){ return !!(fbReady && window._fbDb && window._fbSet && window._fbGet); }
+async function krSavedLoad(){
+  var list = null;
+  if(kwFbOk()){
+    try{
+      var snap = await window._fbGet(window._fbRef(window._fbDb, KW_FB));
+      var o = (snap && snap.exists()) ? (snap.val() || {}) : {};
+      list = Object.keys(o).map(function(id){ return Object.assign({ id:id }, o[id]); });
+    }catch(e){ list = null; }
+  }
+  if(!list) list = LS.get('kwSaved', []);
+  list = list.filter(function(r){ return r && r.data && r.data.rows; });
+  list.forEach(function(r){ r.data.related = r.data.related || []; r.data.sources = r.data.sources || []; r.data.input = r.data.input || { area:r.area || '', fields:[], inflow:'' }; });
+  list.sort(function(a, b){ return (b.savedAt || 0) - (a.savedAt || 0); });
+  KR.saved = list; LS.set('kwSaved', list);
+  return list;
+}
+function krPlain(L){
+  var c = JSON.parse(JSON.stringify(L));
+  delete c.savedId; delete c.savedName; delete c.dirty;
+  return c;
+}
+async function krSave(name){
+  var L = KR.last; if(!L || !L.rows) return;
+  var id = L.savedId || ('k' + Date.now().toString(36));
+  var rec = { name:name, savedAt:Date.now(), area:(L.input && L.input.area) || '', n:L.rows.length, vol:!!L.vol, data:krPlain(L) };
+  var where = 'cloud';
+  if(kwFbOk()){
+    try{ await window._fbSet(window._fbRef(window._fbDb, KW_FB + '/' + id), rec); }
+    catch(e){ where = 'local'; }
+  }else where = 'local';
+  KR.saved = (KR.saved || LS.get('kwSaved', [])).filter(function(r){ return r.id !== id; });
+  KR.saved.unshift(Object.assign({ id:id }, rec)); LS.set('kwSaved', KR.saved);
+  L.savedId = id; L.savedName = name; L.dirty = false; LS.set('kwLast', L);
+  toast(where === 'cloud' ? '💾 「' + name + '」 저장했습니다 — 다른 PC 에서도 불러올 수 있습니다' : '💾 저장했습니다 (Firebase 연결이 안 돼 이 브라우저에만)', where !== 'cloud');
+}
+async function krSavedDel(id){
+  if(kwFbOk()){ try{ await window._fbSet(window._fbRef(window._fbDb, KW_FB + '/' + id), null); }catch(e){ return toast('지우지 못했습니다: ' + e.message, true); } }
+  KR.saved = (KR.saved || []).filter(function(r){ return r.id !== id; }); LS.set('kwSaved', KR.saved);
+  if(KR.last && KR.last.savedId === id){ delete KR.last.savedId; delete KR.last.savedName; LS.set('kwLast', KR.last); }
+}
+async function krSavedRename(id, name){
+  if(kwFbOk()){ try{ await window._fbSet(window._fbRef(window._fbDb, KW_FB + '/' + id + '/name'), name); }catch(e){ return toast('이름을 바꾸지 못했습니다: ' + e.message, true); } }
+  (KR.saved || []).forEach(function(r){ if(r.id === id) r.name = name; }); LS.set('kwSaved', KR.saved);
+  if(KR.last && KR.last.savedId === id){ KR.last.savedName = name; LS.set('kwLast', KR.last); }
+}
+function krDefName(L){
+  var d = new Date(L.at || Date.now());
+  return ((L.input && L.input.area) || '리서치') + ' · ' + (d.getMonth() + 1) + '/' + d.getDate() + ' · 글감 ' + L.rows.length + '개';
+}
+function krShowSaved(){
+  var out = q('#krOut'); if(!out) return;
+  out.innerHTML = '<div class="card"><div class="progress"><div class="big"><span class="spin"></span> 저장한 리서치를 불러오는 중</div></div></div>';
+  krSavedLoad().then(function(list){
+    out.innerHTML = '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><b style="font-size:13px">📂 저장한 리서치 ' + list.length + '개</b>'
+      + '<span style="font-size:11.5px;color:var(--ink3)">· 「💾 이 결과 저장」을 누른 것만 여기에 남습니다' + (kwFbOk() ? ' · 다른 PC 와 같이 봄' : ' · <b style="color:#b35c00">Firebase 연결 안 됨 — 이 브라우저 것만</b>') + '</span>'
+      + '<span style="flex:1"></span>' + (KR.last && KR.last.rows ? '<button class="btn sm" id="krBack">← 지금 결과로</button>' : '') + '</div>'
+      + (list.length ? '<div class="kr-saved">' + list.map(function(r){
+          var d = new Date(r.savedAt || 0), cur = KR.last && KR.last.savedId === r.id;
+          return '<div class="row' + (cur ? ' cur' : '') + '"><div class="nm"><b>' + esc(r.name || '이름 없음') + '</b>' + (cur ? ' <span style="font-size:10.5px;color:var(--accent)">· 지금 보는 것</span>' : '')
+            + '<div class="mt">' + esc(r.area || '') + ' · 글감 ' + (r.n || 0) + '개' + (r.vol ? ' · 검색량 있음' : '') + ' · 저장 ' + d.toLocaleDateString('ko-KR') + ' ' + pad2(d.getHours()) + ':' + pad2(d.getMinutes()) + '</div></div>'
+            + '<button class="btn sm primary" data-kload="' + esc(r.id) + '">불러오기</button><button class="btn sm" data-kren="' + esc(r.id) + '" title="이름 바꾸기">✎</button><button class="btn sm" data-kdel="' + esc(r.id) + '" title="지우기">🗑</button></div>';
+        }).join('') + '</div>'
+        : '<div class="notice">아직 저장한 리서치가 없습니다. 리서치 결과 위의 <b>💾 이 결과 저장</b>을 누르면 여기에 남습니다.</div>');
+    var bk = q('#krBack', out); if(bk) bk.onclick = krRender;
+    qa('[data-kload]', out).forEach(function(b){ b.onclick = function(){ krLoadSaved(b.dataset.kload); }; });
+    qa('[data-kren]', out).forEach(function(b){ b.onclick = async function(){
+      var r = KR.saved.find(function(x){ return x.id === b.dataset.kren; }); if(!r) return;
+      var nm = window.prompt('새 이름', r.name || ''); if(nm == null || !nm.trim()) return;
+      await krSavedRename(r.id, nm.trim().slice(0, 60)); krShowSaved(); }; });
+    qa('[data-kdel]', out).forEach(function(b){ b.onclick = async function(){
+      var r = KR.saved.find(function(x){ return x.id === b.dataset.kdel; }); if(!r) return;
+      if(!window.confirm('「' + (r.name || '') + '」 저장한 리서치를 지울까요?')) return;
+      await krSavedDel(r.id); toast('지웠습니다'); krShowSaved(); }; });
+  });
+}
+function krLoadSaved(id){
+  var r = (KR.saved || []).find(function(x){ return x.id === id; }); if(!r) return;
+  KR.last = Object.assign(JSON.parse(JSON.stringify(r.data)), { savedId:r.id, savedName:r.name, dirty:false });
+  LS.set('kwLast', KR.last);
+  var f = q('#krForm'); if(f){ f.innerHTML = krForm(); krBindForm(); }
+  krRender(); toast('「' + r.name + '」 불러왔습니다');
+}
+async function krRefreshVol(){
+  var L = KR.last, b = q('#krRefresh'); if(!L || !L.rows) return;
+  if(b){ b.disabled = true; b.textContent = '⏳ 검색량 받는 중…'; }
+  try{
+    var v = await kwVolumesAll(L.rows.map(function(r){ return r.kw; }));
+    krApplyVol(L, v); if(L.savedId) L.dirty = true;
+    LS.set('kwLast', L); krRender();
+    toast('네이버 검색량을 지금 기준으로 새로 받았습니다' + (L.savedId ? ' — 저장해 두려면 「💾 저장 내용 바꾸기」' : ''));
+  }catch(e){ toast('검색량을 받지 못했습니다: ' + e.message, true); if(b){ b.disabled = false; b.textContent = '🔄 검색량만 새로'; } }
+}
 window.sdKwPing = async function(){
   var u = String(state.settings.kwUrl || '').trim();
   var r = await fetch(u + (u.indexOf('?') >= 0 ? '&' : '?') + 'k=' + encodeURIComponent(state.settings.kwToken || '') + '&ping=1', { cache:'no-store' });
@@ -3835,7 +3953,7 @@ function krForm(){
     + '<textarea id="krIn" placeholder="예: 송도 더샵 시세, 송도 gtx-b 착공, 전세 계약 특약, 송도 3공구 학원가 …">' + esc(inp.inflow || '') + '</textarea></div>'
     + '</div>'
     + '<div style="display:flex;align-items:center;gap:10px;margin-top:10px;flex-wrap:wrap">'
-    + '<button class="btn sm" id="krAttach">📎 자료 첨부 (PDF·캡처)</button><span id="krFiles" style="font-size:12px;color:var(--ink3)"></span>'
+    + '<button class="btn sm" id="krAttach">📎 자료 첨부 (PDF·캡처)</button><button class="btn sm" id="krSavedBtn">📂 저장한 리서치</button><span id="krFiles" style="font-size:12px;color:var(--ink3)"></span>'
     + '<span style="flex:1"></span>'
     + (kwConfigured() ? '<span style="font-size:11.5px;color:#2b8a3e">● 네이버 검색량 연결됨</span>'
                       : '<span style="font-size:11.5px;color:#b35c00">● 검색량 연결 안 됨 — [엔진 설정] → 「키워드 검색량」 (AI 조사만 합니다)</span>')
@@ -3848,10 +3966,14 @@ function openKwResearch(){
     + '<button class="x" data-x>닫기</button></div>'
     + '<div class="xm-b"><div id="krForm">' + krForm() + '</div><div id="krOut" style="margin-top:16px"></div></div>');
   q('[data-x]', m).onclick = xmClose;
-  q('#krAttach', m).onclick = krAttach;
-  q('#krGo', m).onclick = krRun;
-  krPaintFiles();
+  krBindForm();
   if(KR.last && KR.last.rows) krRender();
+}
+function krBindForm(){
+  q('#krAttach').onclick = krAttach;
+  q('#krGo').onclick = krRun;
+  q('#krSavedBtn').onclick = krShowSaved;
+  krPaintFiles();
 }
 function krPaintFiles(){
   var el = q('#krFiles'); if(!el) return;
@@ -3914,10 +4036,7 @@ async function krRun(){
     if(kwConfigured()){
       out.querySelector('.sm').textContent = '네이버 검색량을 붙이는 중…';
       try{
-        var v = await kwVolumes(rows.map(function(r){ return r.kw; }));
-        var by = {}; (v.list || []).forEach(function(o){ by[o.kw] = o; });
-        rows.forEach(function(r){ var o = by[r.kw]; if(o){ r.pc = o.pc; r.mo = o.mo; r.total = o.total; r.comp = o.comp; r.blog = o.blog; r.none = o.none; } });
-        KR.last.related = v.related || []; KR.last.vol = true;
+        krApplyVol(KR.last, await kwVolumesAll(rows.map(function(r){ return r.kw; })));
       }catch(e){ KR.last.volErr = e.message; }
     }
     LS.set('kwLast', KR.last);
@@ -3957,7 +4076,9 @@ function krRender(){
   var rows = L.rows.slice();
   if(KR.sort === 'vol' && L.vol) rows.sort(function(a, b){ return (b.total || 0) - (a.total || 0); });
   var compCls = function(c){ return c === '낮음' ? 'low' : c === '높음' ? 'high' : ''; };
-  var html = '<div class="notice ok" style="margin-bottom:10px"><b>' + esc(L.input.area) + '</b> · ' + new Date(L.at).toLocaleString('ko-KR') + (L.web ? ' · 인터넷 조사' : ' · 조사 없이(챗GPT)') + '<br>' + esc(L.summary || '') + '</div>'
+  var html = '<div class="notice ok" style="margin-bottom:10px">' + (L.savedId ? '💾 <b>' + esc(L.savedName || '') + '</b>' + (L.dirty ? ' <span style="color:#b35c00">(바뀐 내용 저장 안 됨)</span>' : '') + '<br>' : '')
+    + '<b>' + esc(L.input.area) + '</b> · ' + new Date(L.at).toLocaleString('ko-KR') + (L.web ? ' · 인터넷 조사' : ' · 조사 없이(챗GPT)')
+    + (L.volAt ? ' · 검색량 ' + new Date(L.volAt).toLocaleDateString('ko-KR') + ' 기준' : '') + '<br>' + esc(L.summary || '') + '</div>'
     + (L.volErr ? '<div class="notice warn">검색량을 붙이지 못했습니다: ' + esc(L.volErr) + '</div>' : '')
     + (function(){
         if(!L.vol) return '';
@@ -3977,7 +4098,10 @@ function krRender(){
     + (L.vol ? '<span style="font-size:11.5px;color:var(--ink3)">· 주황 줄 = 검색량이 있고 경쟁이 덜한 글감</span>' : '')
     + '<span style="flex:1"></span>'
     + (L.vol ? '<select id="krSort"><option value="vol"' + (KR.sort === 'vol' ? ' selected' : '') + '>검색량 많은 순</option><option value="field"' + (KR.sort === 'field' ? ' selected' : '') + '>분야 순</option></select>' : '')
+    + (kwConfigured() ? '<button class="btn sm" id="krRefresh" title="AI 조사는 다시 하지 않고 네이버 검색량만 지금 기준으로 받습니다 (AI 비용 없음)">🔄 검색량만 새로</button>' : '')
+    + '<button class="btn sm' + (L.savedId && !L.dirty ? '' : ' primary') + '" id="krSave">' + (L.savedId ? (L.dirty ? '💾 저장 내용 바꾸기' : '✔ 저장됨') : '💾 이 결과 저장') + '</button>'
     + '<button class="btn sm" id="krAllBp">☑ 고른 것 📅 묶음 예약에 담기</button></div>'
+    + '<div id="krSaveRow" style="display:none;gap:6px;align-items:center;margin:-2px 0 8px;flex-wrap:wrap"><span style="font-size:12px;color:var(--ink2)">저장 이름</span><input type="text" id="krSaveName" style="flex:1;min-width:220px" maxlength="60"><button class="btn sm primary" id="krSaveOk">저장</button><button class="btn sm" id="krSaveNo">취소</button></div>'
     + '<div style="max-height:52vh;overflow-y:auto;border:1px solid var(--line);border-radius:10px"><table class="kr-tbl"><thead><tr><th></th><th>키워드 · 제목 제안</th><th>분야</th>'
     + (L.vol ? '<th class="n">월 검색량</th><th>경쟁</th>' + (rows.some(function(r){ return r.blog != null; }) ? '<th class="n">블로그 글</th>' : '') : '')
     + '<th></th></tr></thead><tbody>'
@@ -3999,6 +4123,16 @@ function krRender(){
     + '<div style="font-size:11px;color:var(--ink3);margin-top:10px">검색량은 네이버 검색광고의 최근 한 달 집계입니다(PC·모바일 각각 10번 미만이면 「10 미만」). 「블로그 글」은 그 말로 네이버 블로그를 검색했을 때 나오는 전체 글 수(경쟁 정도)입니다. AI 조사 결과는 발행 전에 사실을 한 번 더 확인해 주세요.</div>';
   out.innerHTML = html;
   var s = q('#krSort'); if(s) s.onchange = function(){ KR.sort = s.value; krRender(); };
+  var rf = q('#krRefresh', out); if(rf) rf.onclick = krRefreshVol;
+  q('#krSave', out).onclick = function(){
+    if(L.savedId && !L.dirty) return toast('이미 저장되어 있습니다 — 📂 저장한 리서치에서 볼 수 있습니다');
+    var row = q('#krSaveRow', out), nm = q('#krSaveName', out);
+    if(L.savedId){ krSave(L.savedName || krDefName(L)).then(krRender); return; }
+    row.style.display = 'flex'; nm.value = krDefName(L); nm.focus(); nm.select();
+  };
+  q('#krSaveNo', out).onclick = function(){ q('#krSaveRow', out).style.display = 'none'; };
+  q('#krSaveOk', out).onclick = function(){ var nm = q('#krSaveName', out).value.trim() || krDefName(L); krSave(nm.slice(0, 60)).then(krRender); };
+  q('#krSaveName', out).onkeydown = function(e){ if(e.key === 'Enter') q('#krSaveOk', out).click(); };
   qa('[data-write]', out).forEach(function(b){ b.onclick = function(){ var r = L.rows[+b.dataset.write];
     pick({ t:r.title || r.kw, k:r.kw, cat:'키워드 리서치' }); xmClose(); toast('주제를 정했습니다. [생성하기]를 누르세요.'); }; });
   qa('[data-bp]', out).forEach(function(b){ b.onclick = function(){ var r = L.rows[+b.dataset.bp]; bpQueue([{ t:r.title || r.kw, k:r.kw }]); }; });
@@ -4018,6 +4152,9 @@ function krRender(){
 var BP_INTERVALS = [['1d','하루 간격'],['2d','이틀 간격'],['3d','사흘 간격'],['w2','주 2회 (월·목)'],['w1','주 1회']];
 var BP_DEF = { n:5, start:'', interval:'1d', hh:8, mm:0, photos:3, len:3000, rep:'card', style:'black', repBg:'ai', logo:false, legal:true, publish:true, useCur:true };
 var BP = { opt: Object.assign({}, BP_DEF, LS.get('bpOpt', {})), rows:[], queue: LS.get('bpQueue', []), src:'cat:apt', aiTopics:null, running:false, stop:false };
+function bpSavedOpts(){
+  return (KR.saved || LS.get('kwSaved', []) || []).filter(function(r){ return r && r.data && r.data.rows; }).map(function(r){ return '<option value="saved:' + esc(r.id) + '">💾 ' + esc(r.name || '저장한 리서치') + ' (' + (r.n || r.data.rows.length) + ')</option>'; }).join('');
+}
 function bpSaveOpt(){ var o = Object.assign({}, BP.opt); delete o.start; LS.set('bpOpt', o); }
 function bpQueue(list){
   list.forEach(function(x){ if(!BP.queue.some(function(y){ return sameTopic(y.t, x.t); })) BP.queue.push(x); });
@@ -4050,6 +4187,8 @@ function bpSourceTopics(){
   if(src === 'queue') return BP.queue.map(function(x){ return { t:x.t, k:x.k || '' }; });
   if(src === 'ai') return (BP.aiTopics || []);
   if(src === 'research') return ((KR.last && KR.last.rows) || []).map(function(r){ return { t:r.title || r.kw, k:r.kw }; });
+  if(src.indexOf('saved:') === 0){ var sv = (KR.saved || []).find(function(r){ return 'saved:' + r.id === src; });
+    return sv ? sv.data.rows.slice().sort(function(a, b){ return (b.total || 0) - (a.total || 0); }).map(function(r){ return { t:r.title || r.kw, k:r.kw }; }) : []; }
   var c = allCats().find(function(x){ return 'cat:' + x.id === src; });
   return c ? c.topics.map(function(t){ return { t:t.t, k:t.k || '' }; }) : [];
 }
@@ -4067,6 +4206,7 @@ function openBatch(){
     + '<div><div class="fl" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">① 주제 목록에서 고르기 <select id="bpSrc">'
     + (BP.queue.length ? '<option value="queue">🔎 리서치에서 담은 주제 (' + BP.queue.length + ')</option>' : '')
     + (KR.last && KR.last.rows ? '<option value="research">🔎 지난 키워드 리서치 결과</option>' : '')
+    + bpSavedOpts()
     + catOpts + '<option value="ai">✨ 지난 글 추천 주제</option></select></div>'
     + '<div style="display:flex;gap:6px;margin:6px 0 8px;flex-wrap:wrap"><button class="btn sm" id="bpAiRec">✨ 지난 글 추천 주제 받기</button><button class="btn sm" id="bpOwn">✎ 내가 주제 넣기</button>'
     + (BP.queue.length ? '<button class="btn sm" id="bpQClr">담은 주제 비우기</button>' : '') + '<span style="flex:1"></span><span id="bpCnt" style="font-size:12px;color:var(--accent);font-weight:700"></span></div>'
@@ -4094,8 +4234,18 @@ function openBatch(){
     + '<div class="bp-sum" id="bpSum"></div></div>'
     + '<div class="xm-f" id="bpFoot"><span id="bpFill" style="font-size:12.5px;color:var(--ink2)"></span><span style="flex:1"></span><button class="btn primary" id="bpGo">▶ 바로 시작</button></div>');
   q('[data-x]', m).onclick = function(){ if(!BP.running) xmClose(); };
-  var src = q('#bpSrc'); src.value = BP.src; if(src.value !== BP.src){ BP.src = src.value; }
+  var src = q('#bpSrc'), want = BP.src; src.value = BP.src; if(src.value !== BP.src){ BP.src = src.value; }
   src.onchange = function(){ BP.src = src.value; bpPaintList(); };
+  /* 저장한 리서치를 받아 와서 목록에 끼운다 (Firebase) */
+  krSavedLoad().then(function(){
+    var s2 = q('#bpSrc'); if(!s2 || s2 !== src) return;
+    var cur = s2.value; qa('option[value^="saved:"]', s2).forEach(function(o){ o.remove(); });
+    var tmp = document.createElement('select'); tmp.innerHTML = bpSavedOpts();
+    var anchor = s2.querySelector('option[value^="cat:"]');
+    Array.prototype.slice.call(tmp.options).forEach(function(o){ s2.insertBefore(o, anchor); });
+    s2.value = want.indexOf('saved:') === 0 && s2.querySelector('option[value="' + want + '"]') ? want : cur;
+    if(s2.value !== BP.src){ BP.src = s2.value; bpPaintList(); }
+  });
   q('#bpN').onchange = function(){ BP.opt.n = +this.value; while(BP.rows.length < BP.opt.n) BP.rows.push({ t:'', k:'' }); bpSaveOpt(); bpRecalc(); bpPaintRows(); bpPaintList(); };
   q('#bpOld').onclick = openOldPosts;
   q('#bpAiRec').onclick = bpAiRecommend;
