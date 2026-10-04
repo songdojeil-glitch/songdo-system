@@ -13,6 +13,7 @@
 <link rel="apple-touch-icon" sizes="180x180" href="sjrws-180.png">
 <!-- ═════════════════════════════════════════════════════════════════
      🎬 영상 (video) · 비디오 스튜디오 (sd_video.html)  v2026.10.04-3
+     · 2026.10.04-4: 블로그 스튜디오 「🎬 비디오 스튜디오로」 — 블로그가 IndexedDB(sd_video/projects)에 새 작업(from:'blog', blogPics)을 넣고 sdv.cur 로 이 화면을 연다
      · 2026.10.04-3: 도구 탭에서 빼내 블로그처럼 따로 된 프로그램 「🎬 영상」 — 프로그램 단추 줄 블로그 다음(--h:303)
      · 2026.10.04-2: 가로 9분 · 대본 AI 제미나이/클로드/챗GPT
      · 원고 → 대본(장면) → 화면(AI 그림·내 사진·글자 카드) → 음성(제미나이 TTS) → 자막 → MP4 (브라우저 안에서)
@@ -300,7 +301,7 @@ html.sv-embed body{background:#f7f8fa}
    ═════════════════════════════════════════════════════════════════ */
 (function(){
 'use strict';
-var SD_VER = '2026.10.04-3';
+var SD_VER = '2026.10.04-4';
 window.SD_VERSION = SD_VER;
 var EMBED = /[?&]embed=1\b/.test(location.search);
 if(EMBED) document.documentElement.classList.add('sv-embed');
@@ -433,6 +434,7 @@ function pSrc(el){
   el.innerHTML = '<div class="sv-card"><div class="sv-h"><h3><b>1</b>원고</h3></div>'
     + '<p class="sv-sub">블로그 글이나 직접 쓴 글을 넣으면, AI 가 영상용 대본(장면마다 화면 글 · 읽을 말 · 그림 설명)으로 바꿉니다.</p>'
     + (keysOf('gemini').length || textEngine() ? '' : '<div class="sv-warn">대본을 만들려면 AI 열쇠가 필요합니다. 왼쪽 <b>🔑 열쇠</b>에서 제미나이 열쇠를 넣어 주세요. (블로그 스튜디오에 넣은 열쇠가 있으면 그대로 씁니다)</div>')
+    + (P.from === 'blog' ? '<div class="sv-ok">✍️ 블로그 스튜디오에서 넘어온 글입니다' + (BPICS().length ? ' · 사진 <b>' + BPICS().length + '장</b> (3단계 「화면」에서 장면에 넣을 수 있습니다)' : '') + '. 화면 모양·길이를 고르고 <b>대본 만들기</b>를 누르세요.</div>' : '')
     + '<div class="sv-f"><label>제목</label><input class="sv-in" id="svTitle" maxlength="80" placeholder="예: 송도 1공구 학군지 아파트, 지금 사도 될까?" value="' + esc(P.title) + '"></div>'
     + '<div class="sv-f"><label>원고 <span id="svSrcN"></span><span style="flex:1"></span><button class="sv-btn sm" id="svFromBlog">✍️ 블로그 보관함에서 가져오기</button></label>'
     + '<textarea class="sv-ta" id="svSrc" rows="13" placeholder="여기에 원고를 붙여 넣으세요.\n\n블로그 글을 그대로 넣어도 됩니다. 영상 길이에 맞게 AI 가 줄이고 말하듯 바꿉니다.">' + esc(P.src) + '</textarea></div>'
@@ -644,14 +646,16 @@ function pPics(el){
     + '<p class="sv-sub">장면마다 배경 그림을 넣습니다. <b>AI 그림</b>을 만들거나 <b>내 사진</b>(현장·매물 사진)을 넣으세요. 비워 두면 <b>글자 카드</b>로 나옵니다.</p>'
     + '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px"><span class="sv-note">그림 느낌</span>' + seg('imgSty', Object.keys(IMG_STY).map(function(k){ return [k, IMG_STY[k].n]; }), OPT.imgStyle)
     + '<span style="flex:1"></span><button class="sv-btn pri" id="svAllPics"' + (keysOf('gemini').length ? '' : ' disabled title="제미나이 열쇠가 필요합니다"') + '>✨ 빈 장면 AI 그림 모두 만들기' + (miss ? ' (' + miss + ')' : '') + '</button></div>'
+    + (BPICS().length ? '<div class="sv-ok" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">📎 블로그 글에 넣었던 사진 <b>' + BPICS().length + '장</b>을 장면에 쓸 수 있습니다.<span style="flex:1"></span><button class="sv-btn sm pri" id="svBpFill">빈 장면에 차례로 넣기</button></div>' : '')
     + '<div id="svPicProg"></div>'
     + '<div class="sv-grid' + (P.fmt === '16:9' ? ' w' : '') + '">' + P.scenes.map(function(s, i){
         return '<div class="sv-pc" data-i="' + i + '"><div class="th">' + (s.pic ? '<img src="' + s.pic + '" alt="">' : '<div class="card">' + esc(s.head || s.say.slice(0, 30) || '글자 카드') + '</div>')
-          + '<span class="n">' + (i + 1) + (s.picKind === 'mine' ? ' · 내 사진' : s.pic ? ' · AI' : ' · 글자 카드') + '</span>' + (BUSY[s.id] ? '<div class="busy">⏳ 그리는 중…</div>' : '') + '</div>'
+          + '<span class="n">' + (i + 1) + (s.picKind === 'mine' ? ' · 내 사진' : s.picKind === 'blog' ? ' · 블로그 사진' : s.pic ? ' · AI' : ' · 글자 카드') + '</span>' + (BUSY[s.id] ? '<div class="busy">⏳ 그리는 중…</div>' : '') + '</div>'
           + '<div class="bd"><div class="hd">' + esc(s.head || '(화면 글 없음)') + '</div>'
           + '<textarea class="sv-ta" data-k="img" placeholder="그림 설명">' + esc(s.img) + '</textarea>'
           + '<div class="bt"><button class="sv-btn sm" data-ai>' + (s.pic && s.picKind !== 'mine' ? '↻ 다시' : '✨ AI 그림') + '</button>'
           + '<label class="sv-btn sm" style="cursor:pointer">📷 내 사진<input type="file" accept="image/*" data-mine hidden></label>'
+          + (BPICS().length ? '<button class="sv-btn sm" data-bp>📎 블로그 사진</button>' : '')
           + (s.pic ? '<button class="sv-btn sm" data-clr title="그림 빼기 (글자 카드)">✕</button>' : '') + '</div></div></div>';
       }).join('') + '</div>'
     + foot('script', 'voice', '다음: 음성 만들기 →') + '</div>';
@@ -662,9 +666,23 @@ function pPics(el){
     $('[data-ai]', card).onclick = function(){ onePic(s).then(function(){ render(); }, function(e){ toast(e.message, true); render(); }); render(); };
     $('[data-mine]', card).onchange = function(){ var f = this.files[0]; if(!f) return; fileToJpeg(f, 1920).then(function(u){ s.pic = u; s.picKind = 'mine'; OUT = null; touch(true); render(); }); };
     var c = $('[data-clr]', card); if(c) c.onclick = function(){ s.pic = ''; s.picKind = ''; OUT = null; touch(); render(); };
+    var bp = $('[data-bp]', card); if(bp) bp.onclick = function(){ pickBlogPic(s); };
   });
   $('#svAllPics', el).onclick = allPics;
+  var bf = $('#svBpFill', el); if(bf) bf.onclick = function(){
+    var pics = BPICS(), used = P.scenes.map(function(s){ return s.pic; }), k = 0, n = 0;
+    P.scenes.forEach(function(s){ if(s.pic) return; while(k < pics.length && used.indexOf(pics[k]) >= 0) k++; if(k < pics.length){ s.pic = pics[k++]; s.picKind = 'blog'; n++; } });
+    if(!n) return toast('넣을 빈 장면이나 남은 사진이 없습니다');
+    OUT = null; touch(true); render(); toast('블로그 사진 ' + n + '장을 빈 장면에 넣었습니다');
+  };
   bindFoot(el);
+}
+/* 블로그 스튜디오에서 「🎬 비디오 스튜디오로」 보낸 사진 (P.blogPics) */
+function BPICS(){ return (P && Array.isArray(P.blogPics)) ? P.blogPics.filter(Boolean) : []; }
+function pickBlogPic(s){
+  var pics = BPICS();
+  var m = modal('📎 블로그 사진 고르기', '<div class="sv-grid' + (P.fmt === '16:9' ? ' w' : '') + '">' + pics.map(function(u, i){ return '<div class="sv-pc" data-k="' + i + '" style="cursor:pointer"><div class="th"><img src="' + u + '" alt=""><span class="n">' + (i + 1) + '</span></div></div>'; }).join('') + '</div>');
+  $$('[data-k]', m).forEach(function(n){ n.onclick = function(){ s.pic = pics[+n.dataset.k]; s.picKind = 'blog'; OUT = null; touch(true); m.remove(); render(); }; });
 }
 function fileToJpeg(f, max){
   return new Promise(function(res, rej){
@@ -1274,6 +1292,7 @@ refreshList().then(function(){
   var cur = LSX.get('sdv.cur', '');
   var p = cur && LIST.find(function(x){ return x.id === cur; });
   if(p){ P = JSON.parse(JSON.stringify(p)); P.scenes = P.scenes || []; } else P = newProject();
+  if(P.from === 'blog' && !P.fromSeen){ P.fromSeen = true; P.step = 'src'; touch(true); setTimeout(function(){ toast('✍️ 블로그 글을 가져왔습니다' + (BPICS().length ? ' (사진 ' + BPICS().length + '장)' : '') + ' — 길이를 고르고 [대본 만들기]'); }, 300); }
   render(); paintList();
 }, function(e){ P = newProject(); render(); toast('작업 저장소를 열지 못했습니다 (개인 정보 보호 창이면 저장되지 않습니다): ' + e.message, true); });
 

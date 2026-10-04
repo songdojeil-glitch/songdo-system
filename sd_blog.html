@@ -2121,6 +2121,7 @@ function renderPubBar(){
       <input type="checkbox" id="pubMap" ${state.settings.withMap?'checked':''}> 글 끝에 사무소 지도
     </label>
     <div style="flex:1"></div>
+    <button class="btn" id="btnToVideo" title="이 글(과 넣은 사진)로 유튜브·쇼츠 영상을 만듭니다 — 비디오 스튜디오가 새 탭으로 열립니다">🎬 비디오 스튜디오로</button>
     <button class="btn" id="btnSaveArc">보관함에 저장</button>
     <button class="btn" id="btnCopyTitle">제목 복사</button>
     <button class="btn primary" id="btnPublish">네이버에 바로 발행</button>`;
@@ -2130,6 +2131,7 @@ function renderPubBar(){
   $('#btnCopyTitle').onclick = ()=> navigator.clipboard.writeText(state.post.title).then(()=>toast('제목을 복사했습니다'));
   $('#btnSaveArc').onclick = saveArchive;
   $('#btnPublish').onclick = doPublish;
+  $('#btnToVideo').onclick = ()=>{ syncArticle(); const pics = imageSlots().map((_, n) => state.images[n]).filter(u => /^data:image\//.test(u || '')); blogToVideo(state.post, pics); };
 }
 
 async function checkHelper(){
@@ -2211,6 +2213,41 @@ async function doPublish(){
   }catch(e){
     toast('발행 실패: ' + e.message, true);
   }finally{ btn.disabled = false; btn.innerHTML = old; }
+}
+
+/* ---------- 🎬 비디오 스튜디오로 (sd_video.html) ----------
+   블로그 안의 「🎬 영상 만들기」(블로그에 올릴 홍보 영상)와는 따로 — 이 글을 유튜브·쇼츠 영상의 원고로 넘긴다.
+   비디오 스튜디오의 작업 저장소(IndexedDB sd_video/projects)에 새 작업을 바로 넣고(사진은 크기 때문에 localStorage 가 아니라 여기로),
+   sdv.cur 를 그 작업으로 맞춘 뒤 새 탭으로 연다. 작업 모양은 sd_video 의 newProject() 와 같게 둔다. */
+function blogTextOf(rec){
+  return (rec.blocks || []).map(b => {
+    if(!b) return '';
+    if(Array.isArray(b.items)) return b.items.map(x => '· ' + x).join('\n');
+    if(b.t === 'image' || b.t === 'map') return '';
+    return String(b.text || '').trim();
+  }).filter(Boolean).join('\n\n');
+}
+function blogToVideo(rec, pics){
+  if(!rec) return toast('넘길 글이 없습니다', true);
+  const src = blogTextOf(rec);
+  if(src.replace(/\s+/g, '').length < 20) return toast('글이 너무 짧습니다', true);
+  const w = window.open('', '_blank');   // 누른 순간에 창부터 연다 (팝업 막힘 방지)
+  const id = 'v' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), now = Date.now();
+  const proj = { id, title: rec.title || '', src, fmt:'9:16', len:'short', scenes:[], step:'src', createdAt:now, updatedAt:now,
+    from:'blog', fromTitle: rec.title || '', blogPics: (pics || []).slice(0, 30) };
+  const go = ()=>{ try{ localStorage.setItem('sdv.cur', JSON.stringify(id)); }catch(e){}
+    if(w && !w.closed) w.location.href = 'sd_video.html'; else location.href = 'sd_video.html'; };
+  const fail = (e)=>{ if(w && !w.closed) w.close(); toast('비디오 스튜디오로 넘기지 못했습니다: ' + ((e && e.message) || e), true); };
+  let rq; try{ rq = indexedDB.open('sd_video', 1); }catch(e){ return fail(e); }
+  rq.onupgradeneeded = ()=>{ if(!rq.result.objectStoreNames.contains('projects')) rq.result.createObjectStore('projects', { keyPath:'id' }); };
+  rq.onerror = ()=> fail(rq.error);
+  rq.onsuccess = ()=>{
+    try{
+      const tx = rq.result.transaction('projects', 'readwrite'); tx.objectStore('projects').put(proj);
+      tx.oncomplete = ()=>{ rq.result.close(); toast('🎬 비디오 스튜디오로 넘겼습니다' + (proj.blogPics.length ? ' (사진 ' + proj.blogPics.length + '장)' : '')); go(); };
+      tx.onerror = ()=> fail(tx.error);
+    }catch(e){ fail(e); }
+  };
 }
 
 /* ---------- 보관함 ---------- */
@@ -2423,6 +2460,7 @@ function openArchive(){
       <div style="font-size:11.5px;color:var(--ink3);margin:3px 0 7px">${new Date(r.at).toLocaleString('ko-KR')}
         ${r.url?` · <a href="${esc(r.url)}" target="_blank" rel="noopener">발행된 글 ↗</a>`:''}</div>
       <button class="btn sm" data-open="${r.id}">불러오기</button>
+      <button class="btn sm" data-video="${r.id}">🎬 비디오 스튜디오로</button>
       <button class="btn sm" data-del="${r.id}">삭제</button>
     </div>`).join('')}
   ` : `<div class="emptynote">아직 저장된 글이 없습니다.</div>`,
@@ -2431,6 +2469,9 @@ function openArchive(){
     const r = state.archive.find(x => x.id === +b.dataset.open);
     state.post = Object.assign({}, r); state.images = {}; state.imgSrc = {};
     close(); renderPost(); toast('불러왔습니다. 사진은 다시 넣어 주세요.');
+  });
+  $('#modalHost').querySelectorAll('[data-video]').forEach(b => b.onclick = ()=>{
+    const r = state.archive.find(x => x.id === +b.dataset.video); if(r){ close(); blogToVideo(r, []); }
   });
   $('#modalHost').querySelectorAll('[data-del]').forEach(b => b.onclick = ()=>{
     state.archive = state.archive.filter(x => x.id !== +b.dataset.del);
@@ -3342,7 +3383,7 @@ function vdPaintLen(){ var e=document.getElementById('vdLen'); if(e) e.textConte
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.10.04-5';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.10.04-6';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_blog.html';      // 이 파일 이름
   var SD_NAME = '블로그 스튜디오';      // 사람이 부르는 이름
 
