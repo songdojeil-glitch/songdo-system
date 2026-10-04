@@ -16,6 +16,7 @@
      · 2026.10.04-6: 2차 목소리 — 일레븐랩스(with-timestamps, 글자 시각으로 자막) · Fish Audio(앱스 스크립트 sd_kw_volume.gs v2026.10.04-2 중계, mp3→PCM)
      · 2026.10.04-7: 썸네일 보완 — 부제·후킹 여러 개(/), 특징·분위기, 골라 둔 문구 복사, 그림 소재(AI/장면/내 사진 6장 합치기), 글자 넣는 방법(프로그램이 얹기/AI가 그리기), 그리는 도구(제미나이/GPT 이미지), 콜라주 썸네일(가로·정사각), 바깥 도구 설명 16:9·9:16
      · 2026.10.04-8: 음성 보완 — 열쇠 칸을 음성 화면에(보기/가리기), 일레븐랩스 목소리 묶음·아이디 직접 넣기·계정 모델 목록(/v1/models, 한 번에 보낼 글자 수)·속도 0.7~1.2배, Fish 최신 모델(s2.1-pro, 안 되면 s1)·목소리 목록 고르기·속도 2배까지·중계 자동 확인, 내 이름 목소리 자동 고르기
+     · 2026.10.04-9: 원고 보완 — 꼭 표시, 제목 예시 단추(비우면 AI 가 지음), 글자 수·길이별 넉넉함 안내, 12,000자 넘으면 경고 + 뒷부분 새 작업으로 떼기, 글 파일(.txt·.md) 불러오기, 화면 모양·길이 설명, 더 손보기(말투·대본 AI·장면 나누기 문장 1~5개), 원고 없으면 대본 만들기 막고 이유 표시
      · 2026.10.04-5: 6 설명글(유튜브 제목 후보·설명란[요약·본문·목차·연락처·안내·해시태그]·태그·고정 댓글·썸네일 문구) · 7 썸네일(1280×720, 쇼츠 표지 1080×1920)
      · 2026.10.04-4: 블로그 스튜디오 「🎬 비디오 스튜디오로」 — 블로그가 IndexedDB(sd_video/projects)에 새 작업(from:'blog', blogPics)을 넣고 sdv.cur 로 이 화면을 연다
      · 2026.10.04-3: 도구 탭에서 빼내 블로그처럼 따로 된 프로그램 「🎬 영상」 — 프로그램 단추 줄 블로그 다음(--h:303)
@@ -190,6 +191,7 @@ html.sv-embed body{background:#f7f8fa}
 @media(max-width:700px){.sv-row2{grid-template-columns:1fr}}
 .sv-vopt{display:block}
 .sv-link{display:inline-block;font-size:12px;color:#1971c2;margin-top:6px;text-decoration:underline;cursor:pointer}
+.sv-req{display:inline-block;font-size:10.5px;font-weight:800;color:#fff;background:#d6336c;border-radius:9px;padding:1px 7px;line-height:1.5;vertical-align:1px}
 .sv-drop{display:block;border:2px dashed #ced4da;border-radius:11px;padding:14px;text-align:center;cursor:pointer;font-size:13px;font-weight:700;background:#fff;color:var(--sv-ink2,#343a40)}
 .sv-drop:hover{border-color:#f783ac;background:#fff0f6}
 .sv-drop span{display:block;font-weight:400;font-size:11.5px;color:var(--sv-ink3);margin-top:4px;line-height:1.5}
@@ -318,7 +320,7 @@ html.sv-embed body{background:#f7f8fa}
    ═════════════════════════════════════════════════════════════════ */
 (function(){
 'use strict';
-var SD_VER = '2026.10.04-8';
+var SD_VER = '2026.10.04-9';
 window.SD_VERSION = SD_VER;
 var EMBED = /[?&]embed=1\b/.test(location.search);
 if(EMBED) document.documentElement.classList.add('sv-embed');
@@ -454,38 +456,88 @@ var LEN = { short:{ n:'쇼츠 · 1분 안', sc:'6~9', ch:'280~380' }, mid:{ n:'�
   xl:{ n:'약 9분', sc:'38~48', ch:'3100~3500', wide:true } };     /* 9분은 가로(유튜브)만 — 8분이 넘어야 중간 광고(미드롤)를 넣을 수 있다 */
 function lenKeys(){ return Object.keys(LEN).filter(function(k){ return !LEN[k].wide || P.fmt === '16:9'; }); }
 var TONE = { friendly:'친근하게', calm:'차분한 설명', news:'뉴스처럼' };
+var SRC_MAX = 12000;   /* 이보다 긴 원고는 앞부분만 대본에 들어간다 — 한 편 분량씩 나눠 넣기 */
+var LEN_TIP = { short:{ min:200, d:'1분 안 · 장면 6~9개 · 핵심 한두 가지만 빠르게' }, mid:{ min:700, d:'약 3분 · 장면 14~20개 · 요점을 차례로' }, long:{ min:1200, d:'약 5분 · 장면 22~30개 · 하나씩 짚어 가며 차분하게' }, xl:{ min:1500, d:'약 9분 · 장면 38~48개 · 소주제 4~5개' } };
+var FMT_TIP = { '9:16':'쇼츠·릴스용 세로 화면입니다. 그림도 9:16 세로로 만듭니다.', '16:9':'유튜브 일반 영상입니다. 그림은 16:9 가로로 만듭니다.' };
+var TITLE_EX = ['송도 전세 계약 전에 꼭 봐야 할 세 가지', '등기부등본, 이 세 줄만 보세요', '송도 1공구 학군지 아파트 지금 사도 될까?', '계약금 돌려받는 법'];
+var PER = [['0', '자동'], ['1', '1'], ['2', '2'], ['3', '3'], ['4', '4'], ['5', '5']];
+var SRC_OPEN = false;
+function srcState(){
+  var n = nchar(P.src), raw = String(P.src || '').length, tip = LEN_TIP[P.len] || LEN_TIP.short;
+  if(n < 20) return { ok:false, n:n, msg:n.toLocaleString() + '자 입력됨. 너무 길면(' + SRC_MAX.toLocaleString() + '자 넘게) 뒷부분이 빠지니 한 편 분량씩 나눠 넣는 것이 좋습니다.', why:'원고를 20자 이상 넣어 주세요. 원고가 있어야 대본을 만들 수 있습니다.' };
+  if(raw > SRC_MAX) return { ok:true, n:n, long:true, msg:'<b style="color:#c92a2a">' + raw.toLocaleString() + '자 — 너무 깁니다.</b> 앞 ' + SRC_MAX.toLocaleString() + '자까지만 대본에 들어가고 뒷부분은 빠집니다. 한 편 분량씩 나눠 넣는 것이 좋습니다.' };
+  return { ok:true, n:n, msg:n.toLocaleString() + '자 입력됨. ' + (n < tip.min ? '<span style="color:#8a5a00">' + (LEN[P.len] || LEN.short).n + ' 영상엔 조금 짧습니다 (' + tip.min.toLocaleString() + '자 이상이면 넉넉) — 모자란 곳은 AI 가 풀어 설명하되 숫자·법령은 지어내지 않습니다.</span>' : (LEN[P.len] || LEN.short).n + ' 영상에 넉넉합니다.') };
+}
+/* 긴 원고 — 앞 SRC_MAX 자 안에서 문단 끝을 찾아 자르고, 나머지는 새 작업으로 */
+function splitSrc(){
+  var s = String(P.src || ''); if(s.length <= SRC_MAX) return;
+  var cut = s.lastIndexOf('\n\n', SRC_MAX); if(cut < SRC_MAX * 0.5) cut = s.lastIndexOf('\n', SRC_MAX); if(cut < SRC_MAX * 0.5) cut = Math.max(s.lastIndexOf('. ', SRC_MAX) + 1, SRC_MAX * 0.5 | 0);
+  var rest = s.slice(cut).trim(), base = String(P.title || '').replace(/\s*\(\d+\)\s*$/, '');
+  if(!confirm('원고를 ' + cut.toLocaleString() + '자 자리(문단 끝)에서 나눕니다.\n뒷부분 ' + rest.length.toLocaleString() + '자는 「' + (base || '제목 없음') + ' (2)」 새 작업으로 떼어 둘까요?')) return;
+  var np = newProject(); np.title = base ? base + ' (2)' : ''; np.src = rest; np.fmt = P.fmt; np.len = P.len; np.per = P.per; np.createdAt = np.updatedAt = Date.now() - 1000;
+  P.src = s.slice(0, cut).trim(); if(base && !/\(\d+\)\s*$/.test(P.title)) P.title = base + ' (1)';
+  idbPut(np).then(function(){ touch(true); render(); toast('뒷부분을 새 작업으로 떼어 두었습니다 — 왼쪽 「내 작업」에 있습니다'); }, function(e){ toast('새 작업을 만들지 못했습니다: ' + e.message, true); });
+}
+function srcFile(f){
+  if(!f) return;
+  if(!/\.(txt|md|text|csv|html?)$/i.test(f.name) && !/^text\//.test(f.type)) return toast('글 파일(.txt · .md)만 불러올 수 있습니다. 한글·워드 파일은 내용을 복사해서 붙여 넣어 주세요.', true);
+  f.text().then(function(x){
+    if(/\.html?$/i.test(f.name)){ var d = document.createElement('div'); d.innerHTML = x.replace(/<(script|style)[\s\S]*?<\/\1>/gi, ''); x = d.innerText || d.textContent || ''; }
+    x = x.replace(/\r\n?/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+    if(P.src && nchar(P.src) > 20 && !confirm('지금 원고를 이 파일 내용으로 바꿀까요?')) return;
+    P.src = x; if(!P.title) P.title = f.name.replace(/\.[^.]+$/, '').slice(0, 80); touch(true); render(); toast('「' + f.name + '」을 원고로 불러왔습니다 (' + nchar(x).toLocaleString() + '자)');
+  });
+}
 function pSrc(el){
+  var st = srcState(), tip = LEN_TIP[P.len] || LEN_TIP.short, per = +P.per || 0;
   el.innerHTML = '<div class="sv-card"><div class="sv-h"><h3><b>1</b>원고</h3></div>'
-    + '<p class="sv-sub">블로그 글이나 직접 쓴 글을 넣으면, AI 가 영상용 대본(장면마다 화면 글 · 읽을 말 · 그림 설명)으로 바꿉니다.</p>'
+    + '<p class="sv-sub"><span class="sv-req">꼭</span> 표시가 붙은 칸만 채우면 됩니다. 블로그 글이나 직접 쓴 글을 넣으면, AI 가 영상용 대본(장면마다 화면 글 · 읽을 말 · 그림 설명)으로 바꿉니다. 제목을 적어 두면 왼쪽 「내 작업」에 그 이름으로 남아 나중에 찾기 쉽습니다.</p>'
     + (keysOf('gemini').length || textEngine() ? '' : '<div class="sv-warn">대본을 만들려면 AI 열쇠가 필요합니다. 왼쪽 <b>🔑 열쇠</b>에서 제미나이 열쇠를 넣어 주세요. (블로그 스튜디오에 넣은 열쇠가 있으면 그대로 씁니다)</div>')
     + (P.from === 'blog' ? '<div class="sv-ok">✍️ 블로그 스튜디오에서 넘어온 글입니다' + (BPICS().length ? ' · 사진 <b>' + BPICS().length + '장</b> (3단계 「화면」에서 장면에 넣을 수 있습니다)' : '') + '. 화면 모양·길이를 고르고 <b>대본 만들기</b>를 누르세요.</div>' : '')
-    + '<div class="sv-f"><label>제목</label><input class="sv-in" id="svTitle" maxlength="80" placeholder="예: 송도 1공구 학군지 아파트, 지금 사도 될까?" value="' + esc(P.title) + '"></div>'
-    + '<div class="sv-f"><label>원고 <span id="svSrcN"></span><span style="flex:1"></span><button class="sv-btn sm" id="svFromBlog">✍️ 블로그 보관함에서 가져오기</button></label>'
-    + '<textarea class="sv-ta" id="svSrc" rows="13" placeholder="여기에 원고를 붙여 넣으세요.\n\n블로그 글을 그대로 넣어도 됩니다. 영상 길이에 맞게 AI 가 줄이고 말하듯 바꿉니다.">' + esc(P.src) + '</textarea></div>'
+    + '<div class="sv-f"><label>제목 <span>비워 두면 대본을 만들 때 AI 가 지어 줍니다</span></label><input class="sv-in" id="svTitle" maxlength="80" placeholder="예: ' + esc(TITLE_EX[0]) + '" value="' + esc(P.title) + '">'
+    + (P.title ? '' : '<div class="sv-note" style="display:flex;flex-wrap:wrap;gap:5px;align-items:center;margin-top:6px">이런 식으로 적으시면 됩니다 →' + TITLE_EX.map(function(x, i){ return '<button class="sv-btn sm" data-tex="' + i + '">' + esc(x) + '</button>'; }).join('') + '</div>') + '</div>'
+    + '<div class="sv-f"><div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:5px"><label for="svSrc" style="font-size:12px;font-weight:700;color:var(--sv-ink2)">원고 <span class="sv-req">꼭</span></label><span style="flex:1"></span><label class="sv-btn sm" style="cursor:pointer">📄 글 파일 불러오기<input type="file" id="svSrcFile" accept=".txt,.md,.text,.html,.htm,text/plain,text/markdown" hidden></label><button class="sv-btn sm" id="svFromBlog">✍️ 블로그 보관함에서 가져오기</button></div>'
+    + '<textarea class="sv-ta" id="svSrc" rows="13" placeholder="여기에 원고를 붙여 넣으세요.\n\n예를 들면 이런 내용입니다.\n\n전세 계약을 하기 전에는 등기부등본에서 세 가지를 꼭 확인해야 합니다. 첫째, 집주인이 등기부의 소유자와 같은 사람인지 봅니다. 둘째, 을구에 근저당이 얼마나 잡혀 있는지 봅니다…\n\n블로그 글을 그대로 넣어도 됩니다. 영상 길이에 맞게 AI 가 줄이고 말하듯 바꿉니다.">' + esc(P.src) + '</textarea>'
+    + '<div class="sv-note" id="svSrcN">' + st.msg + '</div>'
+    + '<div id="svSplit">' + (st.long ? '<button class="sv-btn sm" id="svSplitBtn" style="margin-top:6px">✂ 뒷부분을 새 작업으로 떼어 두기</button>' : '') + '</div></div>'
     + '<div class="sv-opts">'
-    + '<div class="sv-f"><label>화면 모양</label>' + seg('fmt', [['9:16', '📱 세로 (쇼츠)'], ['16:9', '🖥 가로 (유튜브)']], P.fmt) + '</div>'
-    + '<div class="sv-f"><label>길이' + (P.fmt === '16:9' ? '' : ' <span>9분은 가로(유튜브)에서</span>') + '</label>' + seg('len', lenKeys().map(function(k){ return [k, LEN[k].n]; }), P.len) + '</div>'
-    + '<div class="sv-f"><label>말투</label>' + seg('tone', Object.keys(TONE).map(function(k){ return [k, TONE[k]]; }), OPT.tone) + '</div>'
-    + '<div class="sv-f"><label>대본 쓸 AI <span>그림·목소리는 제미나이</span></label>' + seg('eng', ['gemini', 'claude', 'openai'].map(function(k){ return [k, ENG_N[k] + (keysOf(k).length ? '' : ' · 열쇠 없음')]; }), textEngine() || 'gemini') + '</div>'
+    + '<div class="sv-f"><label>화면 모양</label>' + seg('fmt', [['9:16', '📱 세로 (쇼츠)'], ['16:9', '🖥 가로 (유튜브)']], P.fmt) + '<div class="sv-note">' + FMT_TIP[P.fmt] + '</div></div>'
+    + '<div class="sv-f"><label>길이' + (P.fmt === '16:9' ? '' : ' <span>9분은 가로(유튜브)에서</span>') + '</label>' + seg('len', lenKeys().map(function(k){ return [k, LEN[k].n]; }), P.len) + '<div class="sv-note">' + tip.d + (per ? ' (장면 나누기에 따라 달라짐)' : '') + '</div></div>'
     + '</div>'
     + (P.len === 'xl' ? '<div class="sv-ok">⏱ <b>약 9분 가로 영상</b> — 유튜브는 <b>8분이 넘는 영상</b>에 중간 광고(미드롤)를 넣을 수 있습니다 (수익 창출이 켜진 채널). 대본은 소주제 4~5개로 나눠 씁니다.'
         + (nchar(P.src) < 1500 ? '<br><span style="color:#8a5a00">원고가 ' + nchar(P.src).toLocaleString() + '자로 짧습니다 — 9분을 채우려면 1,500자 이상 넣는 것이 좋습니다. 모자라면 AI 가 설명을 덧붙이되 숫자·법령은 지어내지 않습니다.</span>' : '') + '</div>' : '')
+    + '<details class="sv-more" id="svSrcMore"' + (SRC_OPEN ? ' open' : '') + '><summary><b>더 손보기 — 말투 · 대본 쓸 AI · 장면 나누기</b><span>안 건드려도 됩니다. 지금: ' + TONE[OPT.tone] + ' · ' + ENG_N[textEngine() || 'gemini'] + ' · 장면 나누기 ' + (per ? '문장 ' + per + '개' : '자동') + '</span></summary>'
+    + '<div class="sv-opts" style="margin:10px 0 0">'
+    + '<div class="sv-f"><label>말투</label>' + seg('tone', Object.keys(TONE).map(function(k){ return [k, TONE[k]]; }), OPT.tone) + '</div>'
+    + '<div class="sv-f"><label>대본 쓸 AI <span>그림·목소리는 제미나이</span></label>' + seg('eng', ['gemini', 'claude', 'openai'].map(function(k){ return [k, ENG_N[k] + (keysOf(k).length ? '' : ' · 열쇠 없음')]; }), textEngine() || 'gemini') + '</div>'
+    + '<div class="sv-f"><label>장면 나누기 <span>장면 하나에 읽을 문장 수</span></label>' + seg('per', PER, String(per))
+    + '<div class="sv-note">' + (per ? '장면마다 문장 ' + per + '개씩 읽습니다. ' + (per <= 1 ? '그림이 자주 바뀌어 빠르고 경쾌합니다.' : per >= 4 ? '그림이 천천히 바뀌어 차분하게 설명합니다.' : '보통 빠르기로 그림이 바뀝니다.') + ' 장면 수는 길이에 맞춰 정합니다.' : 'AI 가 내용에 맞춰 장면마다 1~3문장으로 나눕니다.') + '</div></div>'
+    + '</div></details>'
     + '<div id="svMakeOut"></div>'
     + '<div class="sv-foot"><span class="sv-note">' + (textEngine() ? ENG_N[textEngine()] + '로 대본을 씁니다 · ' + esc(engModel(textEngine())) : '') + '</span><span class="sp"></span>'
     + (P.scenes.length ? '<button class="sv-btn" data-go="script">만든 대본 보기</button>' : '')
-    + '<button class="sv-btn pri big" id="svMake">' + (P.scenes.length ? '대본 다시 만들기' : '대본 만들기 →') + '</button></div></div>';
+    + '<button class="sv-btn pri big" id="svMake"' + (st.ok ? '' : ' disabled') + '>' + (P.scenes.length ? '대본 다시 만들기' : '대본 만들기 →') + '</button></div>'
+    + '<div class="sv-note" id="svMakeWhy" style="text-align:right;margin-top:6px' + (st.ok ? ';display:none' : '') + '">' + (st.ok ? '' : st.why) + '</div></div>';
   var t = $('#svTitle', el), s = $('#svSrc', el);
-  var cnt = function(){ $('#svSrcN', el).textContent = nchar(s.value).toLocaleString() + '자'; };
-  cnt();
+  var upd = function(){
+    var x = srcState(); $('#svSrcN', el).innerHTML = x.msg; $('#svMake', el).disabled = !x.ok;
+    var w = $('#svMakeWhy', el); w.style.display = x.ok ? 'none' : ''; w.innerHTML = x.ok ? '' : x.why;
+    var sp = $('#svSplit', el); if(!!x.long !== !!$('#svSplitBtn', el)){ sp.innerHTML = x.long ? '<button class="sv-btn sm" id="svSplitBtn" style="margin-top:6px">✂ 뒷부분을 새 작업으로 떼어 두기</button>' : ''; var bb = $('#svSplitBtn', el); if(bb) bb.onclick = splitSrc; }
+  };
   t.oninput = function(){ P.title = t.value; touch(); };
-  s.oninput = function(){ P.src = s.value; cnt(); touch(); };
+  s.oninput = function(){ P.src = s.value; upd(); touch(); };
+  $$('[data-tex]', el).forEach(function(b){ b.onclick = function(){ P.title = TITLE_EX[+b.dataset.tex]; touch(); render(); var ti = $('#svTitle'); if(ti){ ti.focus(); ti.select(); } }; });
+  var sf = $('#svSrcFile', el); sf.onchange = function(){ srcFile(this.files && this.files[0]); this.value = ''; };
+  var spb = $('#svSplitBtn', el); if(spb) spb.onclick = splitSrc;
+  var sm = $('#svSrcMore', el); sm.ontoggle = function(){ SRC_OPEN = sm.open; };
   bindSeg(el, 'fmt', function(v){ P.fmt = v; if(LEN[P.len] && LEN[P.len].wide && v !== '16:9') P.len = 'long'; OUT = null; touch(); render(); });
   bindSeg(el, 'len', function(v){ P.len = v; touch(); render(); });
+  bindSeg(el, 'per', function(v){ P.per = +v; touch(); render(); });
   bindSeg(el, 'eng', function(v){
     if(!keysOf(v).length){ toast(ENG_N[v] + ' 열쇠를 먼저 넣어 주세요'); render(); openKeys(v === 'claude' ? 'claudeKeys' : v === 'openai' ? 'openaiKeys' : 'geminiKeys'); return; }
     OPT.scriptEngine = v; saveOpt(); render();
   });
-  bindSeg(el, 'tone', function(v){ OPT.tone = v; saveOpt(); });
+  bindSeg(el, 'tone', function(v){ OPT.tone = v; saveOpt(); render(); });
   $('#svFromBlog', el).onclick = pickBlog;
   $('#svMake', el).onclick = makeScript;
   bindFoot(el);
@@ -585,17 +637,23 @@ async function aiText(prompt){
   }
   throw last;
 }
+/* 장면 나누기 — 장면마다 문장 N개면 장면 수는 글자 수에서 거꾸로 (한 문장 40자 안팎) */
+function sceneRange(){
+  var L = LEN[P.len] || LEN.short, per = +P.per || 0; if(!per) return L.sc;
+  var c = String(L.ch).split('~').map(Number), lo = Math.max(3, Math.round(c[0] / (44 * per))), hi = Math.max(lo + 1, Math.round(c[1] / (36 * per)));
+  return lo + '~' + hi;
+}
 function scriptPrompt(){
-  var a = author(), L = LEN[P.len] || LEN.short;
+  var a = author(), L = LEN[P.len] || LEN.short, per = +P.per || 0;
   return '당신은 부동산 유튜브 채널의 영상 대본 작가입니다. 아래 원고로 ' + (P.fmt === '9:16' ? '세로 쇼츠' : '가로 유튜브') + ' 영상 대본을 쓰세요.\n\n'
     + '[말하는 사람] ' + a.area + ' 에서 일하는 ' + (a.years ? a.years + '년차 ' : '') + a.title + ' ' + a.name + ' (' + a.office + ')\n'
     + '[영상 제목] ' + (P.title || '(원고를 보고 정해 주세요)') + '\n'
-    + '[길이] ' + L.n + ' — 장면 ' + L.sc + '개, 읽을 말 전체 ' + L.ch + '자\n'
+    + '[길이] ' + L.n + ' — 장면 ' + sceneRange() + '개, 읽을 말 전체 ' + L.ch + '자\n'
     + '[말투] ' + TONE[OPT.tone] + ' — 귀로 듣기 쉬운 짧은 문장, 존댓말\n\n'
-    + '[원고]\n' + String(P.src || '').slice(0, 12000) + '\n\n'
+    + '[원고]\n' + String(P.src || '').slice(0, SRC_MAX) + '\n\n'
     + '조건:\n'
     + '- 첫 장면은 시청자가 멈춰서 볼 질문이나 핵심 한 줄로 시작한다.\n'
-    + '- 장면마다 head(화면에 크게 나올 글, 14자 이내, 꾸밈 없이), say(목소리로 읽을 말, 1~3문장, 40~110자), img(그 장면 배경 그림 설명, 영어 한 문장, 글자·간판·사람 얼굴 없이).\n'
+    + '- 장면마다 head(화면에 크게 나올 글, 14자 이내, 꾸밈 없이), say(목소리로 읽을 말, ' + (per ? '꼭 ' + per + '문장 — 장면마다 문장 수를 맞춘다' : '1~3문장, 40~110자') + '), img(그 장면 배경 그림 설명, 영어 한 문장, 글자·간판·사람 얼굴 없이).\n'
     + '- 원고에 없는 숫자·법령·사실은 지어내지 않는다. 숫자는 원고 그대로.\n'
     + '- 마지막 장면은 정리 한 줄과 「자세한 상담은 ' + a.office + '로 연락 주세요」 같은 안내.\n'
     + '- say 에는 이모지·괄호·영어 약어 설명을 넣지 않는다 (읽기 어색함).\n'
