@@ -11,7 +11,7 @@
 <link rel="shortcut icon" href="favicon.ico">
 <link rel="apple-touch-icon" sizes="180x180" href="sjrws-180.png">
 <!-- ═════════════════════════════════════════════════════════════════
-     🎬 영상 만들기 (sd_video.html)  v2026.10.04-1 — 1차
+     🎬 영상 만들기 (sd_video.html)  v2026.10.04-2 — 1차 (+가로 9분 · 대본 AI 제미나이/클로드/챗GPT)
      · 원고 → 대본(장면) → 화면(AI 그림·내 사진·글자 카드) → 음성(제미나이 TTS) → 자막 → MP4 (브라우저 안에서)
      · 도구 화면의 「🎬 영상 만들기」 탭이 이 파일을 sd_video.html?embed=1 로 띄운다 (머리줄·단추 줄 숨김)
      · 열쇠는 블로그 스튜디오와 같은 localStorage(sdbs.settings) · 작업은 IndexedDB(sd_video)
@@ -272,7 +272,7 @@ html.sv-embed body{background:#f7f8fa}
     <div class="sv-box">
       <h4>🔑 열쇠</h4>
       <div id="svKeyInfo" class="sv-note"></div>
-      <button class="sv-btn sm w" id="svKeyBtn" style="margin-top:8px">제미나이 열쇠 넣기 · 바꾸기</button>
+      <button class="sv-btn sm w" id="svKeyBtn" style="margin-top:8px">열쇠 넣기 · 바꾸기</button>
     </div>
   </aside>
   <main>
@@ -293,7 +293,7 @@ html.sv-embed body{background:#f7f8fa}
    ═════════════════════════════════════════════════════════════════ */
 (function(){
 'use strict';
-var SD_VER = '2026.10.04-1';
+var SD_VER = '2026.10.04-2';
 window.SD_VERSION = SD_VER;
 var EMBED = /[?&]embed=1\b/.test(location.search);
 if(EMBED) document.documentElement.classList.add('sv-embed');
@@ -323,11 +323,12 @@ function uid(){ return Date.now().toString(36) + Math.random().toString(36).slic
 function settings(){ return Object.assign({ engine:'gemini', geminiModel:'gemini-3.6-flash', geminiImageModel:'gemini-3.6-flash-image', claudeModel:'claude-sonnet-4-5', openaiModel:'gpt-4.1-mini' }, LSX.get('sdbs.settings', {}) || {}); }
 function keysOf(e){ var s = settings(); var raw = e === 'claude' ? s.claudeKeys : e === 'openai' ? s.openaiKeys : s.geminiKeys; return String(raw || '').split(/[\n,]/).map(function(x){ return x.trim(); }).filter(Boolean); }
 function author(){ return Object.assign({ name:'문형은', title:'공인중개사', office:'송도제일공인중개사사무소', area:'인천 송도국제도시', phone:'032-851-6688' }, LSX.get('sdbs.author', {}) || {}); }
-function textEngine(){ var e = settings().engine; if(keysOf(e).length) return e; if(keysOf('gemini').length) return 'gemini'; if(keysOf('claude').length) return 'claude'; if(keysOf('openai').length) return 'openai'; return ''; }
+function textEngine(){ var o = OPT.scriptEngine; if(o && keysOf(o).length) return o; var e = settings().engine; if(keysOf(e).length) return e; if(keysOf('gemini').length) return 'gemini'; if(keysOf('claude').length) return 'claude'; if(keysOf('openai').length) return 'openai'; return ''; }
 var ENG_N = { gemini:'제미나이', claude:'클로드', openai:'챗GPT' };
+function engModel(e){ var s = settings(); return e === 'claude' ? (s.claudeModel || 'claude-sonnet-4-5') : e === 'openai' ? (s.openaiModel || 'gpt-4.1-mini') : (s.geminiModel || 'gemini-3.6-flash'); }
 
 /* 영상 설정 — 이 브라우저에 */
-var OPT_DEF = { voice:'Kore', ttsModel:'gemini-3.1-flash-tts-preview', speed:'normal', tone:'calm', style:'clean', imgStyle:'photo', sub:true, subSize:'m', motion:true, intro:true, outro:true, bgmVol:0.12 };
+var OPT_DEF = { scriptEngine:'', voice:'Kore', ttsModel:'gemini-3.1-flash-tts-preview', speed:'normal', tone:'calm', style:'clean', imgStyle:'photo', sub:true, subSize:'m', motion:true, intro:true, outro:true, bgmVol:0.12 };
 var OPT = Object.assign({}, OPT_DEF, LSX.get('sdv.opt', {}) || {});
 function saveOpt(){ LSX.set('sdv.opt', OPT); }
 
@@ -410,13 +411,16 @@ function seg(name, list, cur){
 }
 function bindSeg(root, name, fn){ var s = $('[data-seg="' + name + '"]', root); if(!s) return; $$('button', s).forEach(function(b){ b.onclick = function(){ $$('button', s).forEach(function(x){ x.classList.toggle('on', x === b); }); fn(b.dataset.v); }; }); }
 function paintKey(){
-  var g = keysOf('gemini').length, e = textEngine();
-  $('#svKeyInfo').innerHTML = g ? '제미나이 열쇠 <b>' + g + '개</b> — 대본·그림·목소리에 씁니다.' + (e && e !== 'gemini' ? '<br>대본은 블로그 설정대로 <b>' + ENG_N[e] + '</b>로 씁니다.' : '')
-    : '<b style="color:#c92a2a">제미나이 열쇠가 없습니다.</b><br>그림·목소리를 만들려면 구글 AI 스튜디오 열쇠가 필요합니다.';
+  var g = keysOf('gemini').length, c = keysOf('claude').length, o = keysOf('openai').length, e = textEngine();
+  $('#svKeyInfo').innerHTML = (g ? '제미나이 <b>' + g + '개</b> — 그림·목소리' + (e === 'gemini' ? '·대본' : '') : '<b style="color:#c92a2a">제미나이 열쇠가 없습니다</b> — 그림·목소리에 꼭 필요합니다')
+    + '<br>클로드 ' + (c ? '<b>' + c + '개</b>' : '없음') + ' · 챗GPT ' + (o ? '<b>' + o + '개</b>' : '없음')
+    + (e ? '<br>대본: <b>' + ENG_N[e] + '</b>' : '');
 }
 
 /* 1 ── 원고 */
-var LEN = { short:{ n:'쇼츠 · 1분 안', sc:'6~9', ch:'280~380' }, mid:{ n:'약 3분', sc:'14~20', ch:'900~1100' }, long:{ n:'약 5분', sc:'22~30', ch:'1500~1800' } };
+var LEN = { short:{ n:'쇼츠 · 1분 안', sc:'6~9', ch:'280~380' }, mid:{ n:'약 3분', sc:'14~20', ch:'900~1100' }, long:{ n:'약 5분', sc:'22~30', ch:'1500~1800' },
+  xl:{ n:'약 9분', sc:'38~48', ch:'3100~3500', wide:true } };     /* 9분은 가로(유튜브)만 — 8분이 넘어야 중간 광고(미드롤)를 넣을 수 있다 */
+function lenKeys(){ return Object.keys(LEN).filter(function(k){ return !LEN[k].wide || P.fmt === '16:9'; }); }
 var TONE = { friendly:'친근하게', calm:'차분한 설명', news:'뉴스처럼' };
 function pSrc(el){
   el.innerHTML = '<div class="sv-card"><div class="sv-h"><h3><b>1</b>원고</h3></div>'
@@ -427,11 +431,14 @@ function pSrc(el){
     + '<textarea class="sv-ta" id="svSrc" rows="13" placeholder="여기에 원고를 붙여 넣으세요.\n\n블로그 글을 그대로 넣어도 됩니다. 영상 길이에 맞게 AI 가 줄이고 말하듯 바꿉니다.">' + esc(P.src) + '</textarea></div>'
     + '<div class="sv-opts">'
     + '<div class="sv-f"><label>화면 모양</label>' + seg('fmt', [['9:16', '📱 세로 (쇼츠)'], ['16:9', '🖥 가로 (유튜브)']], P.fmt) + '</div>'
-    + '<div class="sv-f"><label>길이</label>' + seg('len', Object.keys(LEN).map(function(k){ return [k, LEN[k].n]; }), P.len) + '</div>'
+    + '<div class="sv-f"><label>길이' + (P.fmt === '16:9' ? '' : ' <span>9분은 가로(유튜브)에서</span>') + '</label>' + seg('len', lenKeys().map(function(k){ return [k, LEN[k].n]; }), P.len) + '</div>'
     + '<div class="sv-f"><label>말투</label>' + seg('tone', Object.keys(TONE).map(function(k){ return [k, TONE[k]]; }), OPT.tone) + '</div>'
+    + '<div class="sv-f"><label>대본 쓸 AI <span>그림·목소리는 제미나이</span></label>' + seg('eng', ['gemini', 'claude', 'openai'].map(function(k){ return [k, ENG_N[k] + (keysOf(k).length ? '' : ' · 열쇠 없음')]; }), textEngine() || 'gemini') + '</div>'
     + '</div>'
+    + (P.len === 'xl' ? '<div class="sv-ok">⏱ <b>약 9분 가로 영상</b> — 유튜브는 <b>8분이 넘는 영상</b>에 중간 광고(미드롤)를 넣을 수 있습니다 (수익 창출이 켜진 채널). 대본은 소주제 4~5개로 나눠 씁니다.'
+        + (nchar(P.src) < 1500 ? '<br><span style="color:#8a5a00">원고가 ' + nchar(P.src).toLocaleString() + '자로 짧습니다 — 9분을 채우려면 1,500자 이상 넣는 것이 좋습니다. 모자라면 AI 가 설명을 덧붙이되 숫자·법령은 지어내지 않습니다.</span>' : '') + '</div>' : '')
     + '<div id="svMakeOut"></div>'
-    + '<div class="sv-foot"><span class="sv-note">' + (textEngine() ? ENG_N[textEngine()] + '로 대본을 씁니다' : '') + '</span><span class="sp"></span>'
+    + '<div class="sv-foot"><span class="sv-note">' + (textEngine() ? ENG_N[textEngine()] + '로 대본을 씁니다 · ' + esc(engModel(textEngine())) : '') + '</span><span class="sp"></span>'
     + (P.scenes.length ? '<button class="sv-btn" data-go="script">만든 대본 보기</button>' : '')
     + '<button class="sv-btn pri big" id="svMake">' + (P.scenes.length ? '대본 다시 만들기' : '대본 만들기 →') + '</button></div></div>';
   var t = $('#svTitle', el), s = $('#svSrc', el);
@@ -439,8 +446,12 @@ function pSrc(el){
   cnt();
   t.oninput = function(){ P.title = t.value; touch(); };
   s.oninput = function(){ P.src = s.value; cnt(); touch(); };
-  bindSeg(el, 'fmt', function(v){ P.fmt = v; OUT = null; touch(); });
-  bindSeg(el, 'len', function(v){ P.len = v; touch(); });
+  bindSeg(el, 'fmt', function(v){ P.fmt = v; if(LEN[P.len] && LEN[P.len].wide && v !== '16:9') P.len = 'long'; OUT = null; touch(); render(); });
+  bindSeg(el, 'len', function(v){ P.len = v; touch(); render(); });
+  bindSeg(el, 'eng', function(v){
+    if(!keysOf(v).length){ toast(ENG_N[v] + ' 열쇠를 먼저 넣어 주세요'); render(); openKeys(v === 'claude' ? 'claudeKeys' : v === 'openai' ? 'openaiKeys' : 'geminiKeys'); return; }
+    OPT.scriptEngine = v; saveOpt(); render();
+  });
   bindSeg(el, 'tone', function(v){ OPT.tone = v; saveOpt(); });
   $('#svFromBlog', el).onclick = pickBlog;
   $('#svMake', el).onclick = makeScript;
@@ -511,15 +522,20 @@ async function aiText(prompt){
     try{
       if(e === 'claude'){
         var r = await fetch('https://api.anthropic.com/v1/messages', { method:'POST', headers:{ 'content-type':'application/json', 'x-api-key':keys[i], 'anthropic-version':'2023-06-01', 'anthropic-dangerous-direct-browser-access':'true' },
-          body: JSON.stringify({ model:s.claudeModel || 'claude-sonnet-4-5', max_tokens:16000, messages:[{ role:'user', content: prompt + '\n\nJSON 한 덩어리만 출력하세요.' }] }) });
+          body: JSON.stringify({ model:s.claudeModel || 'claude-sonnet-4-5', max_tokens:P.len === 'xl' ? 32000 : 16000, messages:[{ role:'user', content: prompt + '\n\nJSON 한 덩어리만 출력하세요. 설명이나 코드블록 표시는 붙이지 마세요.' }] }) });
         var d = await r.json().catch(function(){ return {}; });
-        if(!r.ok) throw new Error('클로드 오류 ' + r.status + ': ' + ((d.error && d.error.message) || '').slice(0, 200));
+        if(!r.ok) throw new Error('클로드 오류 ' + r.status + ': ' + ((d.error && d.error.message) || '').slice(0, 200) + (r.status === 404 ? '\n모델 이름을 확인해 주세요 (왼쪽 🔑 열쇠 → 클로드 모델)' : ''));
         return (d.content || []).map(function(c){ return c.text || ''; }).join('');
       }
       if(e === 'openai'){
-        var r2 = await fetch('https://api.openai.com/v1/chat/completions', { method:'POST', headers:{ 'content-type':'application/json', 'authorization':'Bearer ' + keys[i] },
-          body: JSON.stringify({ model:s.openaiModel || 'gpt-4.1-mini', messages:[{ role:'user', content:prompt }], response_format:{ type:'json_object' } }) });
+        var oBody = { model:s.openaiModel || 'gpt-4.1-mini', messages:[{ role:'user', content:prompt }], response_format:{ type:'json_object' }, max_completion_tokens:P.len === 'xl' ? 32000 : 16000 };
+        var r2 = await fetch('https://api.openai.com/v1/chat/completions', { method:'POST', headers:{ 'content-type':'application/json', 'authorization':'Bearer ' + keys[i] }, body: JSON.stringify(oBody) });
         var d2 = await r2.json().catch(function(){ return {}; });
+        if(!r2.ok && r2.status === 400 && /max_completion_tokens/.test((d2.error && d2.error.message) || '')){   /* 옛 모델은 max_tokens */
+          delete oBody.max_completion_tokens; oBody.max_tokens = 16000;
+          r2 = await fetch('https://api.openai.com/v1/chat/completions', { method:'POST', headers:{ 'content-type':'application/json', 'authorization':'Bearer ' + keys[i] }, body: JSON.stringify(oBody) });
+          d2 = await r2.json().catch(function(){ return {}; });
+        }
         if(!r2.ok) throw new Error('챗GPT 오류 ' + r2.status + ': ' + ((d2.error && d2.error.message) || '').slice(0, 200));
         return ((((d2.choices || [])[0] || {}).message) || {}).content || '';
       }
@@ -549,13 +565,16 @@ function scriptPrompt(){
     + '- 장면마다 head(화면에 크게 나올 글, 14자 이내, 꾸밈 없이), say(목소리로 읽을 말, 1~3문장, 40~110자), img(그 장면 배경 그림 설명, 영어 한 문장, 글자·간판·사람 얼굴 없이).\n'
     + '- 원고에 없는 숫자·법령·사실은 지어내지 않는다. 숫자는 원고 그대로.\n'
     + '- 마지막 장면은 정리 한 줄과 「자세한 상담은 ' + a.office + '로 연락 주세요」 같은 안내.\n'
-    + '- say 에는 이모지·괄호·영어 약어 설명을 넣지 않는다 (읽기 어색함).\n\n'
+    + '- say 에는 이모지·괄호·영어 약어 설명을 넣지 않는다 (읽기 어색함).\n'
+    + (P.len !== 'short' ? '- 원고가 정해진 길이보다 짧으면 원고 내용을 더 자세히 풀어 설명한다(배경·절차·주의점·실제 상담에서 자주 받는 질문). 그래도 숫자·법령·사례는 지어내지 않는다.\n' : '')
+    + (P.len === 'xl' ? '- 약 9분짜리 영상이다. 소주제 4~5개로 나누고, 소주제가 시작하는 장면의 head 에 소주제 이름을 쓴다. 중간중간 「잠깐, 여기서 중요한 점」처럼 시청자를 붙잡는 장면을 넣는다. 읽을 말 전체가 ' + L.ch + '자가 되도록 장면 수를 채운다.\n' : '')
+    + '\n'
     + '출력 JSON (이 구조 그대로, JSON 만):\n{"title":"영상 제목","scenes":[{"head":"화면 글","say":"읽을 말","img":"English background image description"}]}';
 }
 async function makeScript(){
   if(nchar(P.src) < 20) return toast('원고를 20자 이상 넣어 주세요', true);
   if(P.scenes.length && !confirm('지금 대본·그림·음성을 새 대본으로 바꿀까요?')) return;
-  var b = $('#svMake'), out = $('#svMakeOut'); b.disabled = true; var t0 = b.textContent; b.textContent = '⏳ 대본 쓰는 중… (30초~1분)';
+  var b = $('#svMake'), out = $('#svMakeOut'); b.disabled = true; var t0 = b.textContent; b.textContent = '⏳ ' + ENG_N[textEngine()] + '가 대본 쓰는 중… (' + (P.len === 'xl' ? '1~3분' : P.len === 'long' ? '1~2분' : '30초~1분') + ')';
   out.innerHTML = '';
   try{
     var d = parseJSON(await aiText(scriptPrompt()));
@@ -1005,6 +1024,8 @@ function pVideo(el){
   var tl = timeline(), noAud = P.scenes.filter(function(s){ return s.say && !hasAudio(s); }).length, D = dims();
   el.innerHTML = '<div class="sv-card"><div class="sv-h"><h3><b>5</b>영상 만들기</h3><span class="sv-note">' + fmtT(tl.total) + ' · ' + D.W + '×' + D.H + ' · 30fps</span></div>'
     + '<p class="sv-sub">미리보기로 확인하고 <b>MP4 만들기</b>를 누르세요. 컴퓨터가 직접 영상 파일을 만듭니다 (크롬·엣지 PC 권장).</p>'
+    + (P.len === 'xl' && P.fmt === '16:9' ? (tl.total >= 480 ? '<div class="sv-ok">⏱ ' + fmtT(tl.total) + ' — 8분이 넘어 유튜브 중간 광고(미드롤)를 넣을 수 있는 길이입니다.</div>'
+        : '<div class="sv-warn">⏱ 지금 ' + fmtT(tl.total) + ' — <b>8분이 안 됩니다</b> (' + fmtT(480 - tl.total) + ' 모자람). 대본에 장면을 더하거나 음성 빠르기를 「느리게」로 해 보세요.</div>') : '')
     + (noAud ? '<div class="sv-warn">' + noAud + '개 장면에 음성이 없습니다 — 그 장면은 소리 없이 글 길이만큼 나옵니다. <button class="sv-btn sm" data-go="voice">음성 만들러 가기</button></div>' : '')
     + '<div class="sv-vid"><div><div class="sv-pv ' + (P.fmt === '16:9' ? 'h' : 'v') + '"><canvas id="svCv" width="' + D.W / 2 + '" height="' + D.H / 2 + '"></canvas></div>'
     + '<div class="sv-ctl"><button class="sv-btn sm" id="svPlay">▶ 재생</button><input type="range" id="svSeek" min="0" max="' + tl.total.toFixed(2) + '" step="0.05" value="' + Math.min(PV.t, tl.total) + '"><small id="svTm">' + fmtT(PV.t) + ' / ' + fmtT(tl.total) + '</small></div></div>'
@@ -1075,11 +1096,12 @@ function loadMuxer(){
   if(window.Mp4Muxer) return Promise.resolve(window.Mp4Muxer);
   return new Promise(function(res, rej){ var s = document.createElement('script'); s.src = MUXER_URL; s.onload = function(){ window.Mp4Muxer ? res(window.Mp4Muxer) : rej(new Error('영상 도구를 읽지 못했습니다')); }; s.onerror = function(){ rej(new Error('영상 도구(mp4-muxer)를 내려받지 못했습니다 — 인터넷 연결을 확인해 주세요')); }; document.head.appendChild(s); });
 }
-async function pickCodecs(W, H){
+async function pickCodecs(W, H, total){
   if(!window.VideoEncoder || !window.VideoFrame) throw new Error('이 브라우저는 영상 파일 만들기를 지원하지 않습니다. PC 의 크롬이나 엣지에서 열어 주세요.');
   var vlist = [['avc1.640033', 'avc'], ['avc1.640028', 'avc'], ['avc1.4d0033', 'avc'], ['avc1.42003e', 'avc'], ['vp09.00.40.08', 'vp9'], ['av01.0.08M.08', 'av1']], v = null, a = null;
   for(var i = 0; i < vlist.length && !v; i++){
-    var cfg = { codec:vlist[i][0], width:W, height:H, bitrate:W * H > 2e6 ? 8e6 : 6e6, framerate:30 };
+    /* 그림이 천천히 움직이는 영상이라 6Mbps 면 충분 — 6분이 넘으면 4.5Mbps 로 (9분 ≈ 300MB) */
+    var cfg = { codec:vlist[i][0], width:W, height:H, bitrate:(total || 0) > 360 ? 4.5e6 : 6e6, framerate:30 };
     if(vlist[i][1] === 'avc') cfg.avc = { format:'avc' };
     try{ var r = await VideoEncoder.isConfigSupported(cfg); if(r.supported) v = { cfg:cfg, mux:vlist[i][1] }; }catch(e){}
   }
@@ -1102,27 +1124,27 @@ async function encode(){
   try{
     bar(0, '준비하는 중…');
     var D = dims(), W = D.W, H = D.H, FPS = 30, tl = timeline();
-    var M = await loadMuxer(), cd = await pickCodecs(W, H);
+    var M = await loadMuxer(), cd = await pickCodecs(W, H, tl.total);
     if(document.fonts && document.fonts.load){ try{ await Promise.all(['900', '800', '700', '400'].map(function(w){ return document.fonts.load(w + ' 48px "Noto Sans KR"'); })); }catch(e){} }
     await loadImgs();
     bar(0.02, '소리 섞는 중…');
     var mix = await mixAudio(tl), err = null;
-    var target = new M.ArrayBufferTarget();
-    var mux = new M.Muxer({ target:target, video:{ codec:cd.v.mux, width:W, height:H, frameRate:FPS }, audio: cd.a ? { codec:cd.a.mux, numberOfChannels:2, sampleRate:48000 } : undefined, fastStart:'in-memory', firstTimestampBehavior:'offset' });
-    /* 소리 */
-    if(cd.a){
-      var aenc = new AudioEncoder({ output:function(ch, meta){ mux.addAudioChunk(ch, meta); }, error:function(e){ err = e; } });
-      aenc.configure(cd.a.cfg);
-      var SR = 48000, L = mix.getChannelData(0), R = mix.numberOfChannels > 1 ? mix.getChannelData(1) : L, N = Math.min(L.length, Math.ceil(tl.total * SR)), STEP = 4800;
-      for(var o = 0; o < N; o += STEP){
-        var n = Math.min(STEP, N - o), data = new Float32Array(n * 2); data.set(L.subarray(o, o + n), 0); data.set(R.subarray(o, o + n), n);
-        var ad = new AudioData({ format:'f32-planar', sampleRate:SR, numberOfFrames:n, numberOfChannels:2, timestamp:Math.round(o / SR * 1e6), data:data });
-        aenc.encode(ad); ad.close();
-        if(aenc.encodeQueueSize > 20) await sleep(1);
+    /* 긴 영상도 메모리를 두 배로 쓰지 않게 — 조각(8MB)으로 받아 두었다가 마지막에 한 파일로 */
+    var pieces = [];
+    var target = new M.StreamTarget({ chunked:true, chunkSize:8 * 1048576, onData:function(data, pos){ putPiece(pieces, data, pos); } });
+    var mux = new M.Muxer({ target:target, video:{ codec:cd.v.mux, width:W, height:H, frameRate:FPS }, audio: cd.a ? { codec:cd.a.mux, numberOfChannels:2, sampleRate:48000 } : undefined, fastStart:false, firstTimestampBehavior:'offset' });
+    /* 소리 — 화면과 번갈아 1초씩 넣는다 (파일 안에서 시간 순서대로 섞이게) */
+    var aenc = null, SR = 48000, aPos = 0, L = mix.getChannelData(0), R = mix.numberOfChannels > 1 ? mix.getChannelData(1) : L, N = Math.min(L.length, Math.ceil(tl.total * SR));
+    if(cd.a){ aenc = new AudioEncoder({ output:function(ch, meta){ mux.addAudioChunk(ch, meta); }, error:function(e){ err = e; } }); aenc.configure(cd.a.cfg); }
+    var audioTo = async function(sec){
+      if(!aenc) return; var end = Math.min(N, Math.ceil(sec * SR));
+      while(aPos < end){
+        var n = Math.min(4800, end - aPos), data = new Float32Array(n * 2); data.set(L.subarray(aPos, aPos + n), 0); data.set(R.subarray(aPos, aPos + n), n);
+        var ad = new AudioData({ format:'f32-planar', sampleRate:SR, numberOfFrames:n, numberOfChannels:2, timestamp:Math.round(aPos / SR * 1e6), data:data });
+        aenc.encode(ad); ad.close(); aPos += n;
       }
-      await aenc.flush(); aenc.close();
-      if(err) throw err;
-    }
+      if(aenc.encodeQueueSize > 20) await sleep(1);
+    };
     /* 화면 */
     var cv = document.createElement('canvas'); cv.width = W; cv.height = H; var cx = cv.getContext('2d', { alpha:false });
     var venc = new VideoEncoder({ output:function(ch, meta){ mux.addVideoChunk(ch, meta); }, error:function(e){ err = e; } });
@@ -1131,6 +1153,7 @@ async function encode(){
     for(var f = 0; f < frames; f++){
       if(ENC.stop) throw new Error('중지했습니다');
       if(err) throw err;
+      if(f % FPS === 0) await audioTo(f / FPS + 1);
       drawFrame(cx, f / FPS, W, H, tl);
       var vf = new VideoFrame(cv, { timestamp:Math.round(f * 1e6 / FPS), duration:Math.round(1e6 / FPS) });
       venc.encode(vf, { keyFrame: f % (FPS * 2) === 0 }); vf.close();
@@ -1142,9 +1165,12 @@ async function encode(){
       }
     }
     bar(0.99, '마무리하는 중…');
-    await venc.flush(); venc.close(); if(err) throw err;
+    await audioTo(tl.total + 1);
+    await venc.flush(); venc.close();
+    if(aenc){ await aenc.flush(); aenc.close(); }
+    if(err) throw err;
     mux.finalize();
-    var blob = new Blob([target.buffer], { type:'video/mp4' });
+    var blob = piecesBlob(pieces); pieces = null;
     OUT = { url:URL.createObjectURL(blob), blob:blob, size:blob.size, codec:cd.v.mux + (cd.a ? '+' + cd.a.mux : ' (소리 없음)'), dur:tl.total, name:fileBase() + '.mp4' };
     out.innerHTML = '';
     render();
@@ -1153,6 +1179,25 @@ async function encode(){
   }catch(e){
     out.innerHTML = '<div class="sv-err">' + esc(e.message || String(e)) + '</div>';
   }finally{ ENC.busy = false; var b2 = $('#svEnc'); if(b2) b2.disabled = false; }
+}
+/* 조각 모으기 — 대부분 뒤에 이어 붙고, 마지막에 앞쪽 몇 바이트(크기 표시)를 고쳐 쓴다 */
+function putPiece(list, data, pos){
+  var d = new Uint8Array(data), end = pos + d.length, cov = [];
+  for(var i = 0; i < list.length; i++){
+    var p = list[i], pe = p.pos + p.d.length;
+    if(p.pos < end && pe > pos){ var a = Math.max(pos, p.pos), b = Math.min(end, pe); p.d.set(d.subarray(a - pos, b - pos), a - p.pos); cov.push([a, b]); }
+  }
+  if(!cov.length){ list.push({ pos:pos, d:d }); return; }
+  cov.sort(function(x, y){ return x[0] - y[0]; });
+  var cur = pos;
+  cov.forEach(function(c){ if(c[0] > cur) list.push({ pos:cur, d:d.slice(cur - pos, c[0] - pos) }); cur = Math.max(cur, c[1]); });
+  if(cur < end) list.push({ pos:cur, d:d.slice(cur - pos) });
+}
+function piecesBlob(list){
+  list.sort(function(a, b){ return a.pos - b.pos; });
+  var parts = [], at = 0;
+  list.forEach(function(p){ if(p.pos > at) parts.push(new Uint8Array(p.pos - at)); parts.push(p.d); at = Math.max(at, p.pos + p.d.length); });
+  return new Blob(parts, { type:'video/mp4' });
 }
 function fileBase(){ return String(P.title || '송도제일_영상').replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, '_').slice(0, 60); }
 function outHtml(){
@@ -1195,13 +1240,26 @@ $('#svImport').onchange = function(){
     }catch(e){ toast('파일을 읽지 못했습니다: ' + e.message, true); }
   }; fr.readAsText(f);
 };
-$('#svKeyBtn').onclick = function(){
-  var cur = settings().geminiKeys || '';
-  var m = modal('🔑 제미나이 열쇠', '<div class="sv-note" style="margin-bottom:10px">구글 AI 스튜디오(<a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a>)에서 받은 열쇠입니다. 블로그 스튜디오와 같은 칸이라, 여기서 바꾸면 블로그에도 그대로 들어갑니다. 열쇠는 이 브라우저에만 저장되고 서버로 보내지 않습니다.</div>'
-    + '<textarea class="sv-ta" id="svKeyIn" rows="3" placeholder="AIza… (여러 개면 줄을 바꿔 넣기)">' + esc(cur) + '</textarea>'
-    + '<div style="display:flex;justify-content:flex-end;gap:6px;margin-top:10px"><button class="sv-btn pri" id="svKeySave">저장</button></div>');
-  $('#svKeySave', m).onclick = function(){ var s = LSX.get('sdbs.settings', {}) || {}; s.geminiKeys = $('#svKeyIn', m).value.trim(); LSX.set('sdbs.settings', s); m.remove(); render(); toast('열쇠를 저장했습니다'); };
-};
+function openKeys(focus){
+  var st = settings();
+  var m = modal('🔑 AI 열쇠', '<div class="sv-note" style="margin-bottom:12px">블로그 스튜디오 [엔진 설정]과 같은 칸입니다 — 여기서 바꾸면 블로그에도 그대로 들어갑니다. 열쇠는 이 브라우저에만 저장되고 서버로 보내지 않습니다. 요금은 각자 본인 계정에서 나갑니다. 여러 개면 줄을 바꿔 넣으세요.</div>'
+    + '<div class="sv-f"><label>제미나이 (구글 AI 스튜디오) <span>그림·목소리에 꼭 필요 · 대본도 가능</span></label><textarea class="sv-ta" data-key="geminiKeys" rows="2" placeholder="AIza…">' + esc(st.geminiKeys || '') + '</textarea>'
+    + '<div class="sv-note"><a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey 에서 받기 ↗</a></div></div>'
+    + '<div class="sv-f"><label>클로드 (앤트로픽) <span>대본만 · 선택</span></label><textarea class="sv-ta" data-key="claudeKeys" rows="2" placeholder="sk-ant-…">' + esc(st.claudeKeys || '') + '</textarea>'
+    + '<div style="display:flex;gap:8px;align-items:center;margin-top:5px"><span class="sv-note">모델</span><input class="sv-in" data-key="claudeModel" style="flex:1;font-size:12.5px;padding:6px 9px" value="' + esc(st.claudeModel || 'claude-sonnet-4-5') + '"></div>'
+    + '<div class="sv-note"><a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com 에서 받기 ↗</a></div></div>'
+    + '<div class="sv-f"><label>챗GPT (OpenAI) <span>대본만 · 선택</span></label><textarea class="sv-ta" data-key="openaiKeys" rows="2" placeholder="sk-…">' + esc(st.openaiKeys || '') + '</textarea>'
+    + '<div style="display:flex;gap:8px;align-items:center;margin-top:5px"><span class="sv-note">모델</span><input class="sv-in" data-key="openaiModel" style="flex:1;font-size:12.5px;padding:6px 9px" value="' + esc(st.openaiModel || 'gpt-4.1-mini') + '"></div>'
+    + '<div class="sv-note"><a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener">platform.openai.com 에서 받기 ↗</a></div></div>'
+    + '<div style="display:flex;justify-content:flex-end;gap:6px;margin-top:6px"><button class="sv-btn pri" id="svKeySave">저장</button></div>');
+  if(focus){ var fx = $('[data-key="' + focus + '"]', m); if(fx) setTimeout(function(){ fx.focus(); }, 30); }
+  $('#svKeySave', m).onclick = function(){
+    var s2 = LSX.get('sdbs.settings', {}) || {};
+    $$('[data-key]', m).forEach(function(i){ var v = i.value.trim(); if(/Model$/.test(i.dataset.key) && !v) return; s2[i.dataset.key] = v; });
+    LSX.set('sdbs.settings', s2); m.remove(); render(); toast('열쇠를 저장했습니다');
+  };
+}
+$('#svKeyBtn').onclick = function(){ openKeys(); };
 window.addEventListener('beforeunload', function(e){ if(ENC.busy){ e.preventDefault(); e.returnValue = ''; } });
 
 /* ───────── 시작 ───────── */
