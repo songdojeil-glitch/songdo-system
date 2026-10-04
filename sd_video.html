@@ -13,6 +13,7 @@
 <link rel="apple-touch-icon" sizes="180x180" href="sjrws-180.png">
 <!-- ═════════════════════════════════════════════════════════════════
      🎬 영상 (video) · 비디오 스튜디오 (sd_video.html)  v2026.10.04-3
+     · 2026.10.04-5: 6 설명글(유튜브 제목 후보·설명란[요약·본문·목차·연락처·안내·해시태그]·태그·고정 댓글·썸네일 문구) · 7 썸네일(1280×720, 쇼츠 표지 1080×1920)
      · 2026.10.04-4: 블로그 스튜디오 「🎬 비디오 스튜디오로」 — 블로그가 IndexedDB(sd_video/projects)에 새 작업(from:'blog', blogPics)을 넣고 sdv.cur 로 이 화면을 연다
      · 2026.10.04-3: 도구 탭에서 빼내 블로그처럼 따로 된 프로그램 「🎬 영상」 — 프로그램 단추 줄 블로그 다음(--h:303)
      · 2026.10.04-2: 가로 9분 · 대본 AI 제미나이/클로드/챗GPT
@@ -301,7 +302,7 @@ html.sv-embed body{background:#f7f8fa}
    ═════════════════════════════════════════════════════════════════ */
 (function(){
 'use strict';
-var SD_VER = '2026.10.04-4';
+var SD_VER = '2026.10.04-5';
 window.SD_VERSION = SD_VER;
 var EMBED = /[?&]embed=1\b/.test(location.search);
 if(EMBED) document.documentElement.classList.add('sv-embed');
@@ -388,7 +389,7 @@ function openProject(id){
 }
 
 /* ───────── 단계 ───────── */
-var STEPS = [['src', '원고'], ['script', '대본'], ['pics', '화면'], ['voice', '음성'], ['video', '영상']];
+var STEPS = [['src', '원고'], ['script', '대본'], ['pics', '화면'], ['voice', '음성'], ['video', '영상'], ['desc', '설명글'], ['thumb', '썸네일']];
 function stepDone(k){
   if(!P) return false;
   if(k === 'src') return nchar(P.src) > 20;
@@ -396,6 +397,8 @@ function stepDone(k){
   if(k === 'pics') return P.scenes.length > 0 && P.scenes.every(function(s){ return !!s.pic; });
   if(k === 'voice') return P.scenes.length > 0 && P.scenes.every(function(s){ return hasAudio(s); });
   if(k === 'video') return !!OUT;
+  if(k === 'desc') return !!(P.yt && P.yt.full);
+  if(k === 'thumb') return !!(P.thumb && P.thumb.done);
   return false;
 }
 function go(k){ stopPreview(); P.step = k; touch(); render(); try{ window.scrollTo(0, 0); }catch(e){} }
@@ -405,7 +408,7 @@ function render(){
     return '<button class="sv-st' + (P.step === s[0] ? ' on' : '') + (stepDone(s[0]) ? ' done' : '') + '" data-step="' + s[0] + '"><i>' + (stepDone(s[0]) && P.step !== s[0] ? '✓' : (i + 1)) + '</i>' + s[1] + '</button>';
   }).join('');
   $$('[data-step]').forEach(function(b){ b.onclick = function(){ go(b.dataset.step); }; });
-  var f = { src:pSrc, script:pScript, pics:pPics, voice:pVoice, video:pVideo }[P.step] || pSrc;
+  var f = { src:pSrc, script:pScript, pics:pPics, voice:pVoice, video:pVideo, desc:pDesc, thumb:pThumb }[P.step] || pSrc;
   f($('#svPanel'));
   paintKey();
 }
@@ -695,15 +698,16 @@ function fileToJpeg(f, max){
 function shrinkData(u, max){
   return new Promise(function(res){ var im = new Image(); im.onload = function(){ var k = Math.min(1, max / Math.max(im.width, im.height)), c = document.createElement('canvas'); c.width = Math.round(im.width * k); c.height = Math.round(im.height * k); c.getContext('2d').drawImage(im, 0, 0, c.width, c.height); res(c.toDataURL('image/jpeg', 0.88)); }; im.onerror = function(){ res(u); }; im.src = u; });
 }
-async function genImage(prompt){
+async function genImage(prompt, aspect){
+  aspect = aspect || P.fmt;
   var keys = keysOf('gemini'); if(!keys.length) throw new Error('AI 그림은 제미나이 열쇠가 필요합니다 (왼쪽 🔑 열쇠).');
   var model = settings().geminiImageModel || 'gemini-3.6-flash-image', last;
-  var full = prompt + ', ' + IMG_STY[OPT.imgStyle].p + ', no text, no letters, no watermark, no logos, no people faces, ' + (P.fmt === '16:9' ? 'wide 16:9 composition' : 'tall vertical 9:16 composition');
+  var full = prompt + ', ' + IMG_STY[OPT.imgStyle].p + ', no text, no letters, no watermark, no logos, no people faces, ' + (aspect === '16:9' ? 'wide 16:9 composition' : 'tall vertical 9:16 composition');
   for(var i = 0; i < keys.length; i++){
     for(var tryCfg = 0; tryCfg < 2; tryCfg++){
       try{
         var body = { contents:[{ role:'user', parts:[{ text:full }] }] };
-        if(tryCfg === 0) body.generationConfig = { responseModalities:['TEXT', 'IMAGE'], imageConfig:{ aspectRatio:P.fmt } };
+        if(tryCfg === 0) body.generationConfig = { responseModalities:['TEXT', 'IMAGE'], imageConfig:{ aspectRatio:aspect } };
         var r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(model) + ':generateContent?key=' + encodeURIComponent(keys[i]), { method:'POST', headers:{ 'content-type':'application/json' }, body:JSON.stringify(body) });
         var d = await r.json().catch(function(){ return {}; });
         if(!r.ok){
@@ -1066,7 +1070,7 @@ function pVideo(el){
     + '<div style="margin-top:16px"><button class="sv-btn pri big w" id="svEnc"' + (P.scenes.length ? '' : ' disabled') + '>🎬 MP4 만들기</button></div>'
     + '<div id="svEncOut"></div></div></div>'
     + (OUT ? outHtml() : '')
-    + foot('voice', '', '') + '</div>';
+    + foot('voice', 'desc', '다음: 유튜브 설명글 →') + '</div>';
   bindSeg(el, 'style', function(v){ OPT.style = v; saveOpt(); OUT = null; drawAt(PV.t); });
   bindSeg(el, 'subSize', function(v){ OPT.subSize = v; saveOpt(); OUT = null; drawAt(PV.t); });
   $$('[data-o]', el).forEach(function(c){ c.onchange = function(){ OPT[c.dataset.o] = c.checked; saveOpt(); OUT = null; stopPreview(); render(); }; });
@@ -1246,6 +1250,297 @@ function srt(){
 }
 function scriptTxt(){ return (P.title || '') + '\n\n' + P.scenes.map(function(s, i){ return '[' + (i + 1) + '] ' + (s.head || '') + '\n' + s.say; }).join('\n\n') + '\n'; }
 
+/* ═════════════════════════════════════════════════════════════════
+   6 ── 설명글 (유튜브 올릴 때 쓰는 제목·설명란·태그·썸네일 문구)
+   7 ── 썸네일 (1280×720 — 글자는 프로그램이 직접 얹어 한글이 깨지지 않음)
+   ═════════════════════════════════════════════════════════════════ */
+function ytOf(){ if(!P.yt) P.yt = { titles:[], title:'', summary:'', body:'', chapters:[], hashtags:[], tags:[], pin:'', full:'', thumb:null }; return P.yt; }
+function thOf(){ if(!P.thumb) P.thumb = { main:'', sub:'', hook:'', style:'yellow', bg:'auto', bgData:'', office:true, done:false }; return P.thumb; }
+function sceneStart(i){ var tl = timeline(), g = tl.segs.find(function(x){ return x.kind === 'scene' && x.i === i; }); return g ? g.t0 : 0; }
+function mmss(t){ t = Math.max(0, Math.floor(t)); var h = Math.floor(t / 3600), m = Math.floor(t % 3600 / 60), s = t % 60; return (h ? h + ':' + String(m).padStart(2, '0') : m) + ':' + String(s).padStart(2, '0'); }
+function chapterLines(y){
+  /* 유튜브 챕터 규칙: 0:00 부터, 3개 이상, 각 10초 이상 — 맞지 않으면 넣지 않는다 */
+  if(P.fmt !== '16:9' || !(y.chapters || []).length) return [];
+  var tl = timeline(), list = [];
+  (y.chapters || []).forEach(function(c){
+    var i = Math.max(0, Math.min(P.scenes.length - 1, (+c.scene || 1) - 1)), t = list.length ? sceneStart(i) : 0;
+    if(list.length && t - list[list.length - 1].t < 10) return;
+    if(tl.total - t < 10) return;
+    list.push({ t:t, title:String(c.title || '').trim() });
+  });
+  return list.length >= 3 ? list.map(function(c){ return mmss(c.t) + ' ' + c.title; }) : [];
+}
+function contactBlock(){
+  var a = author(), L = [];
+  L.push('📍 ' + a.office + (a.title || a.name ? ' | ' + (a.title || '') + ' ' + (a.name || '') : ''));
+  if(a.phone) L.push('📞 ' + a.phone);
+  if(a.addr) L.push('🏠 ' + a.addr);
+  if(a.regno) L.push('등록번호 ' + a.regno);
+  return L.join('\n');
+}
+var YT_NOTE = '※ 이 영상은 일반적인 정보 안내입니다. 세금·대출·법령은 개인 상황과 시점에 따라 달라질 수 있으니 계약 전 전문가와 꼭 확인하세요.';
+function composeDesc(y){
+  var parts = [];
+  if(y.summary) parts.push(y.summary.trim());
+  if(y.body) parts.push(y.body.trim());
+  var ch = chapterLines(y); if(ch.length) parts.push('⏱ 목차\n' + ch.join('\n'));
+  parts.push(contactBlock());
+  parts.push(YT_NOTE);
+  if((y.hashtags || []).length) parts.push(y.hashtags.join(' '));
+  return parts.join('\n\n').slice(0, 5000);
+}
+function tagsText(y){
+  var out = [], len = 0;
+  (y.tags || []).forEach(function(t){ t = String(t).replace(/[#<>,]/g, '').trim(); if(!t || out.indexOf(t) >= 0) return; if(len + t.length + 2 > 500) return; out.push(t); len += t.length + 2; });
+  return out.join(', ');
+}
+function descPrompt(){
+  var a = author(), tl = timeline();
+  var sc = P.scenes.map(function(s, i){ return (i + 1) + '. [' + mmss(sceneStart(i)) + '] ' + (s.head ? '(' + s.head + ') ' : '') + s.say; }).join('\n');
+  return '당신은 부동산 유튜브 채널 운영 담당입니다. 아래 영상 대본으로 유튜브에 올릴 때 쓸 글을 만들어 주세요.\n\n'
+    + '[채널] ' + a.office + ' — ' + a.area + ' 에서 일하는 ' + (a.years ? a.years + '년차 ' : '') + a.title + ' ' + a.name + '\n'
+    + '[영상] ' + (P.fmt === '9:16' ? '세로 쇼츠' : '가로 일반 영상') + ' · 길이 ' + mmss(tl.total) + '\n'
+    + '[영상 제목(가제)] ' + (P.title || '') + '\n\n[대본 — 장면 번호 · 시작 시각]\n' + sc + '\n\n'
+    + '조건:\n'
+    + '- titles: 유튜브 제목 후보 5개. 40자 안팎, 핵심 검색어(지역명·주제)를 앞쪽에, 숫자·질문형 활용, 낚시성·과장 금지.' + (P.fmt === '9:16' ? ' 쇼츠라 짧게.' : '') + '\n'
+    + '- summary: 설명란 첫 2~3줄 (검색 결과에 보이는 부분 — 무엇을 알 수 있는지 핵심만).\n'
+    + '- body: 본문 설명 3~6문단. 대본에 있는 내용만, 숫자·법령은 대본 그대로. 줄바꿈은 \\n.\n'
+    + (P.fmt === '16:9' ? '- chapters: 유튜브 목차(챕터) 4~8개. {"scene":장면 번호,"title":"12자 이내"} — 첫 챕터는 1번 장면, 소주제가 바뀌는 장면만.\n' : '- chapters: 빈 배열.\n')
+    + '- hashtags: 해시태그 3~5개 (#송도 처럼 띄어쓰기 없이, 앞의 3개가 제목 위에 보임).\n'
+    + '- tags: 유튜브 태그(검색어) 15~25개, 짧은 검색어 위주(예: 송도 아파트, 송도 학군, 인천 부동산).\n'
+    + '- pin: 고정 댓글 한 줄 (질문을 유도하거나 상담 안내).\n'
+    + '- thumb: 썸네일 문구. main 3개(10자 안팎, 크게 들어갈 핵심 — 강조할 낱말은 [대괄호]로), sub 4개(18자 이내 부제), hook 4개(8자 이내 짧은 후킹, 예: 꼭 보세요 · 2026 최신).\n\n'
+    + '출력 JSON (이 구조 그대로, JSON 만):\n{"titles":["..."],"summary":"...","body":"...","chapters":[{"scene":1,"title":"..."}],"hashtags":["#..."],"tags":["..."],"pin":"...","thumb":{"main":["..."],"sub":["..."],"hook":["..."]}}';
+}
+async function makeDesc(){
+  if(!P.scenes.length) return toast('대본을 먼저 만들어 주세요', true);
+  var b = $('#svDescMake'), out = $('#svDescOut'); b.disabled = true; var t0 = b.textContent; b.textContent = '⏳ ' + ENG_N[textEngine()] + '가 쓰는 중… (30초~1분)'; out.innerHTML = '';
+  try{
+    var d = parseJSON(await aiText(descPrompt())), y = ytOf();
+    y.titles = (d.titles || []).map(String).filter(Boolean).slice(0, 6);
+    y.title = y.titles[0] || P.title || '';
+    y.summary = String(d.summary || ''); y.body = String(d.body || '').replace(/\\n/g, '\n');
+    y.chapters = Array.isArray(d.chapters) ? d.chapters : [];
+    y.hashtags = (d.hashtags || []).map(function(h){ h = String(h).replace(/\s+/g, ''); return h ? (h[0] === '#' ? h : '#' + h) : ''; }).filter(Boolean).slice(0, 8);
+    y.tags = (d.tags || []).map(String);
+    y.pin = String(d.pin || '');
+    y.thumb = d.thumb && typeof d.thumb === 'object' ? { main:(d.thumb.main || []).map(String), sub:(d.thumb.sub || []).map(String), hook:(d.thumb.hook || []).map(String) } : null;
+    y.full = composeDesc(y);
+    var th = thOf(); if(y.thumb){ if(!th.main) th.main = y.thumb.main[0] || ''; if(!th.sub) th.sub = y.thumb.sub[0] || ''; if(!th.hook) th.hook = y.thumb.hook[0] || ''; }
+    touch(true); render(); toast('유튜브 제목·설명·태그·썸네일 문구를 만들었습니다');
+  }catch(e){ out.innerHTML = '<div class="sv-err">' + esc(e.message) + '</div>'; }
+  finally{ if(b.isConnected){ b.disabled = false; b.textContent = t0; } }
+}
+function copyText(t, what){
+  var done = function(){ toast((what || '') + ' 복사했습니다'); };
+  if(navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(t).then(done, function(){ fallbackCopy(t); done(); });
+  else { fallbackCopy(t); done(); }
+}
+function fallbackCopy(t){ var a = document.createElement('textarea'); a.value = t; a.style.position = 'fixed'; a.style.opacity = '0'; document.body.appendChild(a); a.select(); try{ document.execCommand('copy'); }catch(e){} a.remove(); }
+function pDesc(el){
+  var y = ytOf(), has = !!(y.full || y.titles.length), tl = timeline(), tg = tagsText(y);
+  el.innerHTML = '<div class="sv-card"><div class="sv-h"><h3><b>6</b>설명글 · 유튜브 올릴 글</h3><span class="sv-note">' + fmtT(tl.total) + (P.fmt === '16:9' ? ' · 가로' : ' · 쇼츠') + '</span></div>'
+    + '<p class="sv-sub">유튜브에 올릴 때 넣는 <b>제목 · 설명란 · 태그</b>와 <b>썸네일 문구</b>를 대본을 보고 만듭니다. 설명란에는 ' + (P.fmt === '16:9' ? '<b>목차(타임스탬프)</b>, ' : '') + '사무소 연락처와 안내 문구가 자동으로 붙습니다. 이 글은 눈으로 읽는 글이라 숫자·기호를 그대로 씁니다.</p>'
+    + (P.scenes.length ? '' : '<div class="sv-warn">대본을 먼저 만들어 주세요. 대본을 보고 설명글을 씁니다.</div>')
+    + '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px"><span class="sv-note">' + (textEngine() ? ENG_N[textEngine()] + '로 씁니다 · ' + esc(engModel(textEngine())) : 'AI 열쇠가 없습니다') + '</span><span style="flex:1"></span>'
+    + '<button class="sv-btn pri" id="svDescMake"' + (P.scenes.length && textEngine() ? '' : ' disabled') + '>' + (has ? '↻ 다시 만들기' : '✨ 유튜브 글 만들기') + '</button></div>'
+    + '<div id="svDescOut"></div>'
+    + (has ? ''
+      + '<div class="sv-f"><label>제목 <span>' + (y.title || '').length + '/100자 · 앞쪽 40자 정도가 목록에 보입니다</span><span style="flex:1"></span><button class="sv-btn sm" data-cp="title">복사</button></label>'
+      + '<input class="sv-in" id="svYtTitle" maxlength="100" value="' + esc(y.title) + '">'
+      + (y.titles.length ? '<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:6px">' + y.titles.map(function(t, i){ return '<button class="sv-btn sm" data-tt="' + i + '"' + (t === y.title ? ' style="border-color:#f783ac;color:#a61e4d"' : '') + '>' + esc(t) + '</button>'; }).join('') + '</div>' : '') + '</div>'
+      + '<div class="sv-f"><label>설명란 <span id="svFullN">' + (y.full || '').length + '/5000자</span><span style="flex:1"></span><button class="sv-btn sm" id="svRecompose" title="요약·본문·목차·연락처·해시태그로 다시 묶기">↻ 다시 묶기</button><button class="sv-btn sm" data-cp="full">복사</button></label>'
+      + '<textarea class="sv-ta" id="svYtFull" rows="16">' + esc(y.full) + '</textarea>'
+      + '<div class="sv-note">요약 → 본문 → ' + (P.fmt === '16:9' ? '목차(챕터 · 0:00 부터 3개 이상일 때만) → ' : '') + '사무소 연락처 → 안내 문구 → 해시태그 순서. 여기서 바로 고쳐도 됩니다 (「다시 묶기」를 누르면 고친 내용이 사라집니다).</div></div>'
+      + '<div class="sv-f"><label>태그 <span>' + tg.length + '/500자 · 유튜브 스튜디오 「태그」 칸에 붙여 넣기</span><span style="flex:1"></span><button class="sv-btn sm" data-cp="tags">복사</button></label>'
+      + '<textarea class="sv-ta" id="svYtTags" rows="3">' + esc(tg) + '</textarea></div>'
+      + (y.pin ? '<div class="sv-f"><label>고정 댓글 <span>올린 뒤 첫 댓글로 달고 고정</span><span style="flex:1"></span><button class="sv-btn sm" data-cp="pin">복사</button></label><input class="sv-in" id="svYtPin" value="' + esc(y.pin) + '"></div>' : '')
+      + (y.thumb ? '<div class="sv-ok">🖼 썸네일 문구도 만들었습니다 — 주제 ' + y.thumb.main.length + ' · 부제 ' + y.thumb.sub.length + ' · 후킹 ' + y.thumb.hook.length + '개. 다음 단계에서 골라 씁니다.</div>' : '')
+      + '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px"><button class="sv-btn" id="svYtAll">📋 제목·설명·태그 한꺼번에 복사</button><button class="sv-btn" id="svYtTxt">⬇ 유튜브 글(.txt)</button>'
+      + '<a class="sv-btn" href="https://studio.youtube.com" target="_blank" rel="noopener">유튜브 스튜디오 열기 ↗</a></div>'
+      + '<div class="sv-note" style="margin-top:8px">올리는 순서: 유튜브 스튜디오 → 만들기 → 동영상 업로드(MP4) → 제목·설명 붙여 넣기 → 썸네일 업로드 → 「자세히 보기」에서 태그 → 자막 → 자막 파일(.srt) 업로드.</div>'
+      : '')
+    + foot('video', 'thumb', '다음: 썸네일 만들기 →') + '</div>';
+  var mk = $('#svDescMake', el); if(mk) mk.onclick = makeDesc;
+  if(has){
+    $('#svYtTitle', el).oninput = function(){ y.title = this.value; touch(); };
+    $$('[data-tt]', el).forEach(function(b){ b.onclick = function(){ y.title = y.titles[+b.dataset.tt]; touch(); render(); }; });
+    $('#svYtFull', el).oninput = function(){ y.full = this.value; $('#svFullN', el).textContent = y.full.length + '/5000자'; touch(); };
+    $('#svYtTags', el).oninput = function(){ y.tags = this.value.split(',').map(function(x){ return x.trim(); }).filter(Boolean); touch(); };
+    var pn = $('#svYtPin', el); if(pn) pn.oninput = function(){ y.pin = this.value; touch(); };
+    $('#svRecompose', el).onclick = function(){ if(y.full && y.full !== composeDesc(y) && !confirm('설명란을 다시 묶을까요? 직접 고친 내용은 사라집니다.')) return; y.full = composeDesc(y); touch(); render(); };
+    $$('[data-cp]', el).forEach(function(b){ b.onclick = function(){ var k = b.dataset.cp; copyText(k === 'title' ? y.title : k === 'full' ? y.full : k === 'tags' ? tagsText(y) : y.pin, { title:'제목을', full:'설명란을', tags:'태그를', pin:'고정 댓글을' }[k]); }; });
+    $('#svYtAll', el).onclick = function(){ copyText(ytAllText(), '제목·설명·태그를'); };
+    $('#svYtTxt', el).onclick = function(){ dl(fileBase() + '_유튜브.txt', ytAllText(), 'text/plain'); };
+  }
+  bindFoot(el);
+}
+function ytAllText(){ var y = ytOf(); return '[제목]\n' + y.title + '\n\n[설명]\n' + y.full + '\n\n[태그]\n' + tagsText(y) + (y.pin ? '\n\n[고정 댓글]\n' + y.pin : '') + '\n'; }
+
+/* ───────── 7 ── 썸네일 ───────── */
+var TH_STY = {
+  yellow:{ n:'노랑 굵은 글씨', main:'#ffe600', ac:'#ff3b30', stroke:'#000', sub:'#ffffff', hookBg:'#ff3b30', hookFg:'#fff', shade:0.55 },
+  red:{ n:'흰 글씨 · 빨강 강조', main:'#ffffff', ac:'#ff2d2d', stroke:'#000', sub:'#ffe066', hookBg:'#111', hookFg:'#ffe600', shade:0.6 },
+  blue:{ n:'송도제일 블루', main:'#ffffff', ac:'#8ce99a', stroke:'#0a2f57', sub:'#d0ebff', hookBg:'#1864ab', hookFg:'#fff', shade:0, band:'rgba(10,47,87,.82)' },
+  clean:{ n:'깔끔한 흰 카드', main:'#15181c', ac:'#d6336c', stroke:'', sub:'#495057', hookBg:'#d6336c', hookFg:'#fff', shade:0, card:true }
+};
+function thBgSrc(th){
+  if(th.bg === 'none') return '';
+  if((th.bg === 'ai' || th.bg === 'mine') && th.bgData) return th.bgData;
+  if(/^scene:/.test(th.bg)){ var s = P.scenes.find(function(x){ return 'scene:' + x.id === th.bg; }); if(s && s.pic) return s.pic; }
+  var f = P.scenes.find(function(x){ return x.pic; }); return f ? f.pic : '';
+}
+var TH_IMG = { src:'', el:null };
+function thImg(src){
+  if(!src) return Promise.resolve(null);
+  if(TH_IMG.src === src && TH_IMG.el && TH_IMG.el.complete) return Promise.resolve(TH_IMG.el);
+  return new Promise(function(res){ var im = new Image(); im.onload = function(){ TH_IMG = { src:src, el:im }; res(im); }; im.onerror = function(){ res(null); }; im.src = src; });
+}
+/* [대괄호] 안 글자는 강조색 */
+function richParse(t){ var plain = '', hl = [], on = false; String(t || '').split('').forEach(function(ch){ if(ch === '['){ on = true; return; } if(ch === ']'){ on = false; return; } plain += ch; hl.push(on); }); return { t:plain, hl:hl }; }
+function wrapIdx(ctx, text, maxW, maxLines){
+  var lines = [], start = 0, i = 0, lastSp = -1;
+  while(i < text.length){
+    if(text[i] === '\n'){ lines.push([start, i]); start = i + 1; lastSp = -1; i++; continue; }
+    if(text[i] === ' ') lastSp = i;
+    if(ctx.measureText(text.slice(start, i + 1)).width > maxW && i > start){
+      if(lastSp > start){ lines.push([start, lastSp]); start = lastSp + 1; } else { lines.push([start, i]); start = i; }
+      lastSp = -1;
+    }
+    i++;
+  }
+  if(start < text.length) lines.push([start, text.length]);
+  return maxLines ? lines.slice(0, maxLines) : lines;
+}
+function drawRich(ctx, r, rng, x, y, size, color, ac, stroke, align){
+  var s = r.t.slice(rng[0], rng[1]).replace(/^\s+|\s+$/g, ''), off = rng[0] + r.t.slice(rng[0], rng[1]).search(/\S|$/);
+  ctx.font = '900 ' + size + 'px ' + FONT; ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
+  var w = ctx.measureText(s).width, cx = align === 'center' ? x - w / 2 : x;
+  /* 같은 색끼리 묶어 그린다 */
+  var runs = [], cur = null;
+  for(var i = 0; i < s.length; i++){ var h = !!r.hl[off + i]; if(!cur || cur.h !== h){ cur = { h:h, t:'' }; runs.push(cur); } cur.t += s[i]; }
+  runs.forEach(function(run){
+    if(stroke){ ctx.lineJoin = 'round'; ctx.lineWidth = size * 0.16; ctx.strokeStyle = stroke; ctx.strokeText(run.t, cx, y); }
+    ctx.shadowColor = stroke ? 'rgba(0,0,0,.35)' : 'transparent'; ctx.shadowBlur = stroke ? size * 0.12 : 0; ctx.shadowOffsetY = stroke ? size * 0.05 : 0;
+    ctx.fillStyle = run.h ? ac : color; ctx.fillText(run.t, cx, y);
+    ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
+    cx += ctx.measureText(run.t).width;
+  });
+}
+function drawThumb(ctx, W, H, th, im){
+  var st = TH_STY[th.style] || TH_STY.yellow, V = H > W, u = V ? W : H;
+  ctx.save(); ctx.fillStyle = '#111'; ctx.fillRect(0, 0, W, H);
+  if(im){ var k = Math.max(W / im.naturalWidth, H / im.naturalHeight), w = im.naturalWidth * k, h = im.naturalHeight * k; ctx.drawImage(im, (W - w) / 2, (H - h) / 2, w, h); }
+  else { var g = ctx.createLinearGradient(0, 0, W, H); g.addColorStop(0, '#1d3557'); g.addColorStop(1, '#0b1626'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H); }
+  if(st.shade && im){ var sg = V ? ctx.createLinearGradient(0, H, 0, H * 0.25) : ctx.createLinearGradient(0, 0, W * 0.78, 0); sg.addColorStop(0, 'rgba(0,0,0,' + st.shade + ')'); sg.addColorStop(1, 'rgba(0,0,0,0)'); ctx.fillStyle = sg; ctx.fillRect(0, 0, W, H); }
+  if(st.band){ ctx.fillStyle = st.band; if(V) ctx.fillRect(0, H * 0.52, W, H * 0.48); else ctx.fillRect(0, 0, W * 0.62, H); }
+  if(st.card){ ctx.fillStyle = 'rgba(255,255,255,.94)'; if(V){ rr(ctx, W * 0.05, H * 0.5, W * 0.9, H * 0.42, u * 0.04); } else { rr(ctx, W * 0.04, H * 0.1, W * 0.58, H * 0.8, u * 0.05); } ctx.fill(); }
+  var left = V ? W / 2 : W * (st.card ? 0.08 : 0.06), maxW = V ? W * 0.86 : W * (st.card ? 0.5 : 0.62), align = V ? 'center' : 'left';
+  var main = richParse(th.main || P.title || '제목을 적어 주세요'), ms = u * (V ? 0.13 : 0.2);
+  ctx.font = '900 ' + ms + 'px ' + FONT;
+  var lines = wrapIdx(ctx, main.t, maxW, 3);
+  while(lines.length > 2 && ms > u * 0.1){ ms *= 0.88; ctx.font = '900 ' + ms + 'px ' + FONT; lines = wrapIdx(ctx, main.t, maxW, 3); }
+  var subS = u * (V ? 0.05 : 0.075), hookS = u * (V ? 0.045 : 0.065), lh = ms * 1.12;
+  var blockH = (th.hook ? hookS * 1.9 : 0) + lines.length * lh + (th.sub ? subS * 1.7 : 0);
+  var y = V ? H * 0.71 - blockH / 2 : (H - blockH) / 2;
+  if(th.hook){
+    ctx.font = '800 ' + hookS + 'px ' + FONT; var hw = ctx.measureText(th.hook).width + hookS * 1.2, hx = V ? W / 2 - hw / 2 : left;
+    ctx.fillStyle = st.hookBg; rr(ctx, hx, y, hw, hookS * 1.5, hookS * 0.3); ctx.fill();
+    txt(ctx, th.hook, hx + hw / 2, y + hookS * 0.76, hookS, 800, st.hookFg, 'center', false);
+    y += hookS * 1.9;
+  }
+  lines.forEach(function(rng, i){ drawRich(ctx, main, rng, left, y + lh * (i + 0.5), ms, st.main, st.ac, st.stroke, align); });
+  y += lines.length * lh;
+  if(th.sub){
+    ctx.font = '800 ' + subS + 'px ' + FONT; var sl = wrap(ctx, th.sub, maxW, 1)[0] || '';
+    if(st.stroke){ ctx.lineJoin = 'round'; ctx.lineWidth = subS * 0.18; ctx.strokeStyle = st.stroke; ctx.textAlign = align; ctx.textBaseline = 'middle'; ctx.strokeText(sl, left, y + subS * 0.9); }
+    txt(ctx, sl, left, y + subS * 0.9, subS, 800, st.sub, align, false);
+  }
+  if(th.office){
+    var os = u * (V ? 0.03 : 0.042), on = author().office; ctx.font = '700 ' + os + 'px ' + FONT;
+    var ow = ctx.measureText(on).width + os * 1.4, ox = V ? W / 2 - ow / 2 : W - ow - u * 0.04, oy = V ? H * 0.045 : H - os * 1.7 - u * 0.04;
+    ctx.fillStyle = 'rgba(0,0,0,.6)'; rr(ctx, ox, oy, ow, os * 1.7, os * 0.85); ctx.fill();
+    txt(ctx, on, ox + ow / 2, oy + os * 0.86, os, 700, '#fff', 'center', false);
+  }
+  ctx.restore();
+}
+function thDims(kind){ return kind === 'v' ? { W:1080, H:1920 } : { W:1280, H:720 }; }
+function paintThumb(){
+  var th = thOf();
+  thImg(thBgSrc(th)).then(function(im){
+    $$('canvas[data-th]').forEach(function(cv){ var D = thDims(cv.dataset.th), c = cv.getContext('2d'); c.setTransform(cv.width / D.W, 0, 0, cv.height / D.H, 0, 0); drawThumb(c, D.W, D.H, th, im); });
+  });
+}
+function thumbBlob(kind){
+  var th = thOf(), D = thDims(kind);
+  return thImg(thBgSrc(th)).then(function(im){
+    var cv = document.createElement('canvas'); cv.width = D.W; cv.height = D.H; drawThumb(cv.getContext('2d'), D.W, D.H, th, im);
+    /* 유튜브 썸네일은 2MB 이하 — JPEG 품질을 낮춰 가며 맞춘다 */
+    var q = 0.92;
+    var once = function(){ return new Promise(function(r){ cv.toBlob(r, 'image/jpeg', q); }); };
+    return once().then(function loop(b){ if(b && b.size > 1.95 * 1048576 && q > 0.5){ q -= 0.1; return once().then(loop); } return b; });
+  });
+}
+function extPrompt(){
+  var th = thOf(), m = richParse(th.main).t;
+  return '유튜브 썸네일 이미지를 만들어 주세요 (가로 1280×720, 16:9).\n'
+    + '- 큰 제목 글자: 「' + m + '」 — 아주 굵고 크게, 왼쪽에 2줄 이내' + (/\[/.test(th.main || '') ? ' (강조: ' + (String(th.main).match(/\[([^\]]+)\]/g) || []).join(', ').replace(/[\[\]]/g, '') + ' 은 다른 색)' : '') + '\n'
+    + (th.sub ? '- 부제: 「' + th.sub + '」 — 제목 아래 작게\n' : '')
+    + (th.hook ? '- 작은 띠 문구: 「' + th.hook + '」 — 왼쪽 위\n' : '')
+    + '- 배경: ' + (P.scenes[0] && P.scenes[0].img ? P.scenes[0].img : '송도국제도시 아파트 단지') + ', 밝고 선명하게, 글자가 잘 보이도록 왼쪽은 어둡게\n'
+    + '- 분위기: 부동산 정보 채널, 믿음직하고 깔끔하게, 과장된 표정·사람 얼굴 없이\n'
+    + '- 한글 글자는 위에 적은 그대로 정확하게 (맞춤법 바꾸지 말 것)';
+}
+async function thAi(btn){
+  var th = thOf(); btn.disabled = true; var t0 = btn.textContent; btn.textContent = '⏳ 그리는 중…';
+  try{
+    var base = (P.scenes[0] && P.scenes[0].img) || P.title || 'Songdo international city apartment complex';
+    th.bgData = await genImage(base + ', eye-catching YouTube thumbnail background, vivid, high contrast, empty space on the left for text', '16:9');
+    th.bg = 'ai'; touch(true); render();
+  }catch(e){ toast(e.message, true); btn.disabled = false; btn.textContent = t0; }
+}
+function pThumb(el){
+  var th = thOf(), y = ytOf(), T = y.thumb || { main:[], sub:[], hook:[] };
+  var chips = function(k, list){ return list.length ? '<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:6px">' + list.map(function(t, i){ return '<button class="sv-btn sm" data-ch="' + k + ':' + i + '"' + (th[k] === t ? ' style="border-color:#f783ac;color:#a61e4d"' : '') + '>' + esc(t) + '</button>'; }).join('') + '</div>' : ''; };
+  var scOpts = P.scenes.map(function(s, i){ return s.pic ? '<option value="scene:' + esc(s.id) + '"' + (th.bg === 'scene:' + s.id ? ' selected' : '') + '>' + (i + 1) + '번 장면 그림</option>' : ''; }).join('');
+  el.innerHTML = '<div class="sv-card"><div class="sv-h"><h3><b>7</b>썸네일 만들기</h3><span class="sv-note">1280×720 · 2MB 이하 JPEG</span></div>'
+    + '<p class="sv-sub">주제·부제·후킹 문구를 고르고 배경을 정하면 썸네일이 만들어집니다. 글자는 프로그램이 직접 얹어서 <b>한글이 깨지지 않습니다</b>. 강조할 낱말은 <b>[대괄호]</b>로 감싸면 다른 색이 됩니다.</p>'
+    + (y.thumb ? '' : '<div class="sv-warn">6단계 「설명글」에서 유튜브 글을 먼저 만들면 썸네일 문구 후보를 골라 쓸 수 있습니다. 직접 적어도 됩니다. <button class="sv-btn sm" data-go="desc">설명글로</button></div>')
+    + '<div class="sv-vid"><div><div class="sv-pv h" style="background:#000"><canvas data-th="h" width="640" height="360"></canvas></div>'
+    + (P.fmt === '9:16' ? '<div class="sv-note" style="margin:10px 0 4px">쇼츠 표지 (1080×1920)</div><div class="sv-pv v" style="width:180px"><canvas data-th="v" width="270" height="480"></canvas></div>' : '')
+    + '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px"><button class="sv-btn pri" id="svThDl">⬇ 썸네일 내려받기 (1280×720)</button>' + (P.fmt === '9:16' ? '<button class="sv-btn" id="svThDlV">⬇ 쇼츠 표지 (1080×1920)</button>' : '') + '</div></div>'
+    + '<div>'
+    + '<div class="sv-f"><label>주제 <span>크게 들어가는 핵심 · 10자 안팎</span></label><input class="sv-in" data-th-k="main" maxlength="40" placeholder="예: 송도 [학군지] 지금 살까?" value="' + esc(th.main) + '">' + chips('main', T.main) + '</div>'
+    + '<div class="sv-f"><label>부제</label><input class="sv-in" data-th-k="sub" maxlength="40" placeholder="예: 1공구 학원가 실거래로 본 3가지" value="' + esc(th.sub) + '">' + chips('sub', T.sub) + '</div>'
+    + '<div class="sv-f"><label>후킹 문구 <span>왼쪽 위 작은 띠 · 비우면 안 넣음</span></label><input class="sv-in" data-th-k="hook" maxlength="16" placeholder="예: 꼭 보세요" value="' + esc(th.hook) + '">' + chips('hook', T.hook) + '</div>'
+    + '<div class="sv-f"><label>스타일</label>' + seg('thSty', Object.keys(TH_STY).map(function(k){ return [k, TH_STY[k].n]; }), th.style) + '</div>'
+    + '<div class="sv-f"><label>배경</label><div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">'
+    + '<select class="sv-sel" id="svThBg" style="width:auto;min-width:170px"><option value="auto"' + (th.bg === 'auto' ? ' selected' : '') + '>첫 장면 그림 (자동)</option>' + scOpts
+    + (th.bgData && th.bg === 'ai' ? '<option value="ai" selected>AI 배경</option>' : '') + (th.bgData && th.bg === 'mine' ? '<option value="mine" selected>내 사진</option>' : '') + '<option value="none"' + (th.bg === 'none' ? ' selected' : '') + '>그림 없이 (단색)</option></select>'
+    + '<button class="sv-btn sm" id="svThAi"' + (keysOf('gemini').length ? '' : ' disabled') + '>✨ AI 배경 그리기</button>'
+    + '<label class="sv-btn sm" style="cursor:pointer">📷 내 사진<input type="file" accept="image/*" id="svThMine" hidden></label></div></div>'
+    + '<label class="sv-tg"><input type="checkbox" id="svThOff"' + (th.office ? ' checked' : '') + '> 사무소 이름 넣기</label>'
+    + '<details style="margin-top:8px;font-size:12.5px"><summary style="cursor:pointer;font-weight:700;color:#4a5568">＋ 다른 그림 도구로 만들기 (챗GPT 등에 붙여 넣을 설명)</summary>'
+    + '<textarea class="sv-ta" id="svThExt" rows="7" readonly style="margin-top:8px;font-size:12px">' + esc(extPrompt()) + '</textarea><button class="sv-btn sm" id="svThExtCp" style="margin-top:6px">설명 복사</button>'
+    + '<div class="sv-note">바깥 도구는 한글 글자가 틀리게 나올 수 있습니다. 그럴 땐 배경만 받아 「📷 내 사진」으로 넣고 글자는 여기서 얹으세요.</div></details>'
+    + '</div></div>'
+    + foot('desc', '', '') + '</div>';
+  $$('[data-th-k]', el).forEach(function(i){ i.oninput = function(){ th[i.dataset.thK] = i.value; th.done = true; touch(); paintThumb(); var ex = $('#svThExt', el); if(ex) ex.value = extPrompt(); }; });
+  $$('[data-ch]', el).forEach(function(b){ b.onclick = function(){ var p = b.dataset.ch.split(':'); th[p[0]] = T[p[0]][+p[1]]; th.done = true; touch(); render(); }; });
+  bindSeg(el, 'thSty', function(v){ th.style = v; touch(); paintThumb(); });
+  $('#svThBg', el).onchange = function(){ th.bg = this.value; touch(); paintThumb(); };
+  $('#svThAi', el).onclick = function(){ thAi(this); };
+  $('#svThMine', el).onchange = function(){ var f = this.files[0]; if(!f) return; fileToJpeg(f, 1920).then(function(u){ th.bgData = u; th.bg = 'mine'; touch(true); render(); }); };
+  $('#svThOff', el).onchange = function(){ th.office = this.checked; touch(); paintThumb(); };
+  $('#svThExtCp', el).onclick = function(){ copyText(extPrompt(), '설명을'); };
+  var save = function(kind){ thumbBlob(kind).then(function(b){ if(!b) return toast('썸네일을 만들지 못했습니다', true); th.done = true; touch(); var u = URL.createObjectURL(b), a = document.createElement('a'); a.href = u; a.download = fileBase() + (kind === 'v' ? '_쇼츠표지' : '_썸네일') + '.jpg'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(function(){ URL.revokeObjectURL(u); }, 2000); toast('썸네일을 내려받았습니다 (' + Math.round(b.size / 1024) + 'KB)'); }); };
+  $('#svThDl', el).onclick = function(){ save('h'); };
+  var dv = $('#svThDlV', el); if(dv) dv.onclick = function(){ save('v'); };
+  bindFoot(el);
+  paintThumb();
+  if(document.fonts && document.fonts.load) document.fonts.load('900 40px "Noto Sans KR"').then(paintThumb, function(){});
+}
+
 /* ───────── 작업 파일 · 열쇠 ───────── */
 $('#svNew').onclick = function(){ stopPreview(); P = newProject(); OUT = null; LSX.set('sdv.cur', P.id); render(); paintList(); toast('새 작업을 시작합니다 — 제목을 적으면 왼쪽 목록에 남습니다'); };
 $('#svExport').onclick = function(){
@@ -1286,6 +1581,8 @@ function openKeys(focus){
 }
 $('#svKeyBtn').onclick = function(){ openKeys(); };
 window.addEventListener('beforeunload', function(e){ if(ENC.busy){ e.preventDefault(); e.returnValue = ''; } });
+/* 고친 직후(0.7초 안)에 창을 닫거나 새로고침해도 저장되게 */
+window.addEventListener('pagehide', function(){ if(saveT && P){ clearTimeout(saveT); saveT = 0; try{ idbPut(P); }catch(e){} } });
 
 /* ───────── 시작 ───────── */
 refreshList().then(function(){
@@ -1296,7 +1593,7 @@ refreshList().then(function(){
   render(); paintList();
 }, function(e){ P = newProject(); render(); toast('작업 저장소를 열지 못했습니다 (개인 정보 보호 창이면 저장되지 않습니다): ' + e.message, true); });
 
-window.sdVideo = { get project(){ return P; }, timeline:timeline, cuesFor:cuesFor, srt:srt, drawFrame:drawFrame, encode:encode, go:go, opt:function(){ return OPT; }, out:function(){ return OUT; } };
+window.sdVideo = { composeDesc:function(){ return composeDesc(ytOf()); }, chapterLines:function(){ return chapterLines(ytOf()); }, tagsText:function(){ return tagsText(ytOf()); }, thumbBlob:thumbBlob, get project(){ return P; }, timeline:timeline, cuesFor:cuesFor, srt:srt, drawFrame:drawFrame, encode:encode, go:go, opt:function(){ return OPT; }, out:function(){ return OUT; } };
 })();
 </script>
 
