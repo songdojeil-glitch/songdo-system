@@ -15,6 +15,7 @@
      🎬 영상 (video) · 비디오 스튜디오 (sd_video.html)  v2026.10.04-3
      · 2026.10.04-6: 2차 목소리 — 일레븐랩스(with-timestamps, 글자 시각으로 자막) · Fish Audio(앱스 스크립트 sd_kw_volume.gs v2026.10.04-2 중계, mp3→PCM)
      · 2026.10.04-7: 썸네일 보완 — 부제·후킹 여러 개(/), 특징·분위기, 골라 둔 문구 복사, 그림 소재(AI/장면/내 사진 6장 합치기), 글자 넣는 방법(프로그램이 얹기/AI가 그리기), 그리는 도구(제미나이/GPT 이미지), 콜라주 썸네일(가로·정사각), 바깥 도구 설명 16:9·9:16
+     · 2026.10.04-8: 음성 보완 — 열쇠 칸을 음성 화면에(보기/가리기), 일레븐랩스 목소리 묶음·아이디 직접 넣기·계정 모델 목록(/v1/models, 한 번에 보낼 글자 수)·속도 0.7~1.2배, Fish 최신 모델(s2.1-pro, 안 되면 s1)·목소리 목록 고르기·속도 2배까지·중계 자동 확인, 내 이름 목소리 자동 고르기
      · 2026.10.04-5: 6 설명글(유튜브 제목 후보·설명란[요약·본문·목차·연락처·안내·해시태그]·태그·고정 댓글·썸네일 문구) · 7 썸네일(1280×720, 쇼츠 표지 1080×1920)
      · 2026.10.04-4: 블로그 스튜디오 「🎬 비디오 스튜디오로」 — 블로그가 IndexedDB(sd_video/projects)에 새 작업(from:'blog', blogPics)을 넣고 sdv.cur 로 이 화면을 연다
      · 2026.10.04-3: 도구 탭에서 빼내 블로그처럼 따로 된 프로그램 「🎬 영상」 — 프로그램 단추 줄 블로그 다음(--h:303)
@@ -185,6 +186,10 @@ html.sv-embed body{background:#f7f8fa}
 /* 대본 */
 .sv-more{border:1px solid var(--sv-line);border-radius:11px;background:#f8f9fa;padding:10px 14px;margin:0 0 14px}
 .sv-more summary{cursor:pointer;font-size:13px;list-style:revert}
+.sv-row2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px}
+@media(max-width:700px){.sv-row2{grid-template-columns:1fr}}
+.sv-vopt{display:block}
+.sv-link{display:inline-block;font-size:12px;color:#1971c2;margin-top:6px;text-decoration:underline;cursor:pointer}
 .sv-drop{display:block;border:2px dashed #ced4da;border-radius:11px;padding:14px;text-align:center;cursor:pointer;font-size:13px;font-weight:700;background:#fff;color:var(--sv-ink2,#343a40)}
 .sv-drop:hover{border-color:#f783ac;background:#fff0f6}
 .sv-drop span{display:block;font-weight:400;font-size:11.5px;color:var(--sv-ink3);margin-top:4px;line-height:1.5}
@@ -313,7 +318,7 @@ html.sv-embed body{background:#f7f8fa}
    ═════════════════════════════════════════════════════════════════ */
 (function(){
 'use strict';
-var SD_VER = '2026.10.04-7';
+var SD_VER = '2026.10.04-8';
 window.SD_VERSION = SD_VER;
 var EMBED = /[?&]embed=1\b/.test(location.search);
 if(EMBED) document.documentElement.classList.add('sv-embed');
@@ -348,7 +353,7 @@ var ENG_N = { gemini:'제미나이', claude:'클로드', openai:'챗GPT' };
 function engModel(e){ var s = settings(); return e === 'claude' ? (s.claudeModel || 'claude-sonnet-4-5') : e === 'openai' ? (s.openaiModel || 'gpt-4.1-mini') : (s.geminiModel || 'gemini-3.6-flash'); }
 
 /* 영상 설정 — 이 브라우저에 */
-var OPT_DEF = { scriptEngine:'', ttsEngine:'google', elVoice:'', elVoiceName:'', elModel:'eleven_multilingual_v2', elStab:0.5, fishRef:'', fishName:'', fishModel:'s1', voice:'Kore', ttsModel:'gemini-3.1-flash-tts-preview', speed:'normal', tone:'calm', style:'clean', imgStyle:'photo', sub:true, subSize:'m', motion:true, intro:true, outro:true, bgmVol:0.12 };
+var OPT_DEF = { scriptEngine:'', ttsEngine:'google', elVoice:'', elVoiceName:'', elModel:'eleven_multilingual_v2', elStab:0.5, elSpeed:1, fishRef:'', fishName:'', fishModel:'s2.1-pro', fishSpeed:1, voice:'Kore', ttsModel:'gemini-3.1-flash-tts-preview', speed:'normal', tone:'calm', style:'clean', imgStyle:'photo', sub:true, subSize:'m', motion:true, intro:true, outro:true, bgmVol:0.12 };
 var OPT = Object.assign({}, OPT_DEF, LSX.get('sdv.opt', {}) || {});
 function saveOpt(){ LSX.set('sdv.opt', OPT); }
 
@@ -801,7 +806,9 @@ async function toPcm(buf){
 }
 function b64Buf(b64){ var bin = atob(b64), u = new Uint8Array(bin.length); for(var i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return u.buffer; }
 /* ── 일레븐랩스 — 글자마다 시작 시각(with-timestamps)이 와서 자막이 정확하다 ── */
-var EL_MODELS = [['eleven_multilingual_v2', '멀티링구얼 v2 (한국어 자연스러움 · 기본)'], ['eleven_v3', 'v3 (감정 표현 · 최신)'], ['eleven_flash_v2_5', '플래시 v2.5 (빠르고 저렴)'], ['eleven_turbo_v2_5', '터보 v2.5']];
+/* 계정의 최신 모델은 「목록 불러오기」 때 /v1/models 에서 받아 온다 — 아래는 그 전에 쓰는 기본 목록 */
+var EL_MODELS = [['eleven_multilingual_v2', 'Eleven Multilingual v2 (한국어 자연스러움 · 기본)'], ['eleven_v3', 'Eleven v3 (감정 표현)'], ['eleven_flash_v2_5', 'Eleven Flash v2.5 (빠르고 저렴)'], ['eleven_turbo_v2_5', 'Eleven Turbo v2.5']];
+var EL_MAX = { eleven_multilingual_v2:10000, eleven_flash_v2_5:40000, eleven_turbo_v2_5:40000 };
 async function ttsEleven(text){
   var keys = keysOf('eleven'); if(!keys.length) throw new Error('일레븐랩스 열쇠가 없습니다 — 왼쪽 🔑 열쇠에서 넣어 주세요.');
   if(!OPT.elVoice) throw new Error('일레븐랩스 목소리를 먼저 골라 주세요 (「내 목소리 불러오기」).');
@@ -810,7 +817,7 @@ async function ttsEleven(text){
     for(var fmt of ['pcm_24000', 'mp3_44100_128']){
       var r = await fetch('https://api.elevenlabs.io/v1/text-to-speech/' + encodeURIComponent(OPT.elVoice) + '/with-timestamps?output_format=' + fmt, {
         method:'POST', headers:{ 'content-type':'application/json', 'xi-api-key':keys[i] },
-        body: JSON.stringify({ text:text, model_id:OPT.elModel, voice_settings:{ stability:+OPT.elStab || 0.5, similarity_boost:0.8, speed:SPD_NUM[OPT.speed] || 1 } }) });
+        body: JSON.stringify({ text:text, model_id:OPT.elModel, voice_settings:{ stability:+OPT.elStab || 0.5, similarity_boost:0.8, speed:spdOf('eleven') } }) });
       var d = await r.json().catch(function(){ return {}; });
       if(r.ok && d.audio_base64){
         var a = fmt === 'pcm_24000' ? { b64:d.audio_base64, rate:24000, dur:(atob(d.audio_base64).length / 2) / 24000 } : await toPcm(b64Buf(d.audio_base64));
@@ -821,6 +828,14 @@ async function ttsEleven(text){
       var det = d.detail || {}, em = (typeof det === 'string' ? det : (det.message || det.status || '')) || (d.message || '');
       last = new Error('일레븐랩스 오류 ' + r.status + ': ' + String(em).slice(0, 180) + (r.status === 401 ? '\n열쇠를 확인해 주세요.' : /quota|credit|limit/i.test(em) ? '\n이번 달 글자 수(크레딧)를 다 썼습니다.' : ''));
       if(fmt === 'pcm_24000' && (r.status === 400 || r.status === 403 || r.status === 422) && /output_format|pcm|tier|subscription/i.test(em)) continue;   // 요금제에 PCM 이 없으면 mp3 로
+      if((r.status === 400 || r.status === 422) && /timestamp|alignment/i.test(em)){
+        /* 글자 시각을 못 주는 모델 — 소리만 받고 자막은 쉬는 곳으로 맞춘다 */
+        var r2 = await fetch('https://api.elevenlabs.io/v1/text-to-speech/' + encodeURIComponent(OPT.elVoice) + '?output_format=mp3_44100_128', {
+          method:'POST', headers:{ 'content-type':'application/json', 'xi-api-key':keys[i] },
+          body: JSON.stringify({ text:text, model_id:OPT.elModel, voice_settings:{ stability:+OPT.elStab || 0.5, similarity_boost:0.8, speed:spdOf('eleven') } }) });
+        if(r2.ok){ var a2 = await toPcm(await r2.arrayBuffer()); a2.al = null; a2.text = text; a2.voice = voiceKey(); a2.model = OPT.elModel; a2.eng = 'eleven'; return a2; }
+        last = new Error('일레븐랩스 오류 ' + r2.status);
+      }
       break;
     }
     if(!/401|429|quota|credit/i.test(last.message)) throw last;
@@ -847,7 +862,7 @@ async function elLoadVoices(){
   return EL_VOICES;
 }
 /* ── Fish Audio — 브라우저에서 바로 못 불러서 앱스 스크립트 웹 앱(키워드 검색량과 같은 주소)이 중계 ── */
-var FISH_MODELS = [['s1', 's1 (최신 · 기본)'], ['speech-1.6', 'speech-1.6'], ['speech-1.5', 'speech-1.5']];
+var FISH_MODELS = [['s2.1-pro', '최신 (s2.1-pro)'], ['s2-pro', 's2-pro'], ['s1', 's1'], ['speech-1.6', 'speech-1.6 (예전)']];
 function fishRelay(){ var s = settings(); return { url:String(s.kwUrl || '').trim(), k:String(s.kwToken || '') }; }
 function fishNoRelay(){ return new Error('Fish Audio 는 앱스 스크립트 중계가 필요합니다 — 블로그 [엔진 설정]의 「키워드 검색량」 웹 앱 주소·토큰을 그대로 씁니다. 그 칸이 비어 있습니다.'); }
 async function fishJson(r){
@@ -857,8 +872,13 @@ async function fishJson(r){
 async function ttsFish(text){
   var R = fishRelay(); if(!R.url || !R.k) throw fishNoRelay();
   if(!OPT.fishRef) throw new Error('Fish 목소리(모델 ID)를 먼저 넣어 주세요.');
-  var r = await fetch(R.url, { method:'POST', body: JSON.stringify({ k:R.k, fish:{ text:text, ref:OPT.fishRef, model:OPT.fishModel, speed:SPD_NUM[OPT.speed] || 1 } }) });
-  var d = await fishJson(r);
+  var send = function(model){ return fetch(R.url, { method:'POST', body: JSON.stringify({ k:R.k, fish:{ text:text, ref:OPT.fishRef, model:model, speed:spdOf('fish') } }) }).then(fishJson); };
+  var d = await send(OPT.fishModel);
+  if(!d.ok && OPT.fishModel !== 's1' && /Fish 오류 (400|404|422)|model/i.test(d.error || '')){
+    /* 최신 모델을 아직 못 쓰는 계정 — s1 으로 바꿔 다시 */
+    var d2 = await send('s1');
+    if(d2.ok){ toast('「' + OPT.fishModel + '」 모델이 안 돼서 s1 으로 읽었습니다', true); OPT.fishModel = 's1'; saveOpt(); d = d2; }
+  }
   if(!d.ok) throw new Error(/doPost|알 수 없는|Script function not found/i.test(d.error || '') ? '앱스 스크립트에 Fish 중계가 아직 없습니다 — 새 버전(2026.10.04-2)으로 바꿔 주세요.' : (d.error || 'Fish 목소리를 받지 못했습니다'));
   var a = await toPcm(b64Buf(d.b64));
   a.text = text; a.voice = voiceKey(); a.model = OPT.fishModel; a.eng = 'fish';
@@ -920,14 +940,14 @@ function stopPcm(){ if(PLAYING){ try{ PLAYING.stop(); }catch(e){} PLAYING = null
 function pVoice(el){
   var have = P.scenes.filter(hasAudio).length, tot = P.scenes.reduce(function(a, s){ return a + (hasAudio(s) ? s.audio.dur : 0); }, 0);
   el.innerHTML = '<div class="sv-card"><div class="sv-h"><h3><b>4</b>음성 만들기</h3><span class="sv-note">' + have + '/' + P.scenes.length + ' 장면 · ' + fmtT(tot) + '</span></div>'
-    + '<p class="sv-sub">장면마다 목소리를 만들고 자막 시간을 맞춥니다. <b>구글</b>은 미리 만든 목소리(제미나이 열쇠 하나로 됨), <b>일레븐랩스</b>·<b>Fish Audio</b>는 복제한 <b>내 목소리</b>로 읽게 할 때 씁니다. 요금은 각자 본인 계정에서 나갑니다.</p>'
+    + '<p class="sv-sub">장면마다 목소리를 만들고, 자막이 나올 시간도 같이 정해 둡니다. 기본은 <b>구글 목소리</b>라 제미나이 열쇠 하나면 됩니다. <b>일레븐랩스</b>·<b>Fish Audio</b>는 복제해 둔 <b>내 목소리</b>로 읽게 할 때 씁니다. 자막 시간은 일레븐랩스만 글자 하나하나 정확하고, 구글·Fish 는 소리에서 문장 사이 쉬는 곳을 찾아 맞춥니다. 어긋나면 아래 장면마다 <b>⏱ 자막</b> 단추로 손으로 맞출 수 있습니다.</p>'
     + '<div class="sv-f"><label>어떤 목소리로 읽을까요</label>' + seg('ttsEng', Object.keys(TTS_ENG).map(function(k){ return [k, TTS_ENG[k]]; }), OPT.ttsEngine) + '</div>'
+    + '<div class="sv-note" style="margin:-6px 0 14px">' + ({ google:'구글이 미리 만들어 둔 목소리 가운데 고릅니다. 자막은 소리에서 문장 사이 쉬는 곳을 찾아 문장 단위로 맞춥니다.', eleven:'내 목소리를 일레븐랩스에 복제해 두신 분용입니다. 글자 하나하나의 시간을 받아 와서 자막이 가장 정확하게 맞습니다.', fish:'내 목소리를 Fish Audio 에 복제해 두신 분용입니다. 자막은 소리에서 문장 사이 쉬는 곳을 찾아 문장 단위로 맞춥니다.' })[OPT.ttsEngine] + '</div>'
     + (function(){ var vo = voiceOpts();
-        return '<div class="sv-opts">' + vo.main + '</div>'
-          + '<details class="sv-more" id="svMore"' + (MORE_OPEN ? ' open' : '') + '><summary><b>더 손보기 — 목소리 모델 · 말하는 속도</b><span>안 건드려도 됩니다. 보통 속도가 기본입니다.</span></summary>'
-          + '<div class="sv-opts" style="margin:10px 0 0">' + vo.more + '<div class="sv-f"><label>말하는 속도</label>' + seg('speed', Object.keys(SPEED).map(function(k){ return [k, SPEED[k][0]]; }), OPT.speed) + '</div></div></details>';
+        return '<div class="sv-opts sv-vopt">' + vo.main + '</div>'
+          + (vo.more ? '<details class="sv-more" id="svMore"' + (MORE_OPEN ? ' open' : '') + '><summary><b>' + vo.moreT + '</b><span>' + vo.moreS + '</span></summary>'
+          + '<div class="sv-opts sv-vopt" style="margin:10px 0 0">' + vo.more + '</div></details>' : '');
       })()
-    + '<div class="sv-note" style="margin:-6px 0 10px">' + ({ google:'자막: 소리에서 문장 사이 쉬는 곳을 찾아 문장 단위로 맞춥니다.', eleven:'자막: 일레븐랩스가 글자마다 소리 나는 시각을 알려 줘서 가장 정확합니다.', fish:'자막: 소리에서 문장 사이 쉬는 곳을 찾아 맞춥니다. Fish 는 앱스 스크립트(키워드 검색량과 같은 웹 앱)가 중계합니다.' })[OPT.ttsEngine] + '</div>'
     + '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px"><button class="sv-btn" id="svTry">🔊 짧게 시험 삼아 만들어 보기</button><span class="sp" style="flex:1"></span>'
     + '<button class="sv-btn pri" id="svAllVoice"' + (voiceReady() ? '' : ' disabled') + '>🎙 음성 모두 만들기' + (P.scenes.length - have ? ' (' + (P.scenes.length - have) + ')' : '') + '</button></div>'
     + '<div id="svVoProg"></div>'
@@ -941,7 +961,6 @@ function pVoice(el){
   bindSeg(el, 'ttsEng', function(v){ OPT.ttsEngine = v; saveOpt(); MIXKEY = ''; OUT = null; render(); });
   bindVoiceOpts(el);
   var mo = $('#svMore', el); if(mo) mo.ontoggle = function(){ MORE_OPEN = mo.open; };
-  bindSeg(el, 'speed', function(v){ OPT.speed = v; saveOpt(); });
   $('#svTry', el).onclick = function(){
     var b = this; b.disabled = true; b.textContent = '⏳ 만드는 중…';
     tts('안녕하세요, ' + author().office + '입니다. 오늘은 ' + (P.title || '송도 부동산 소식') + '을 알려 드리겠습니다.')
@@ -965,62 +984,149 @@ function voiceReady(){
   if(OPT.ttsEngine === 'fish'){ var R = fishRelay(); return !!(R.url && R.k && OPT.fishRef); }
   return keysOf('gemini').length > 0;
 }
+/* 이 화면에서 바로 넣는 열쇠 칸 — 🔑 열쇠 창(블로그 [엔진 설정])과 같은 자리에 저장 */
+var KEY_SHOW = {};
+function keyField(sk, label, ph, link){
+  var raw = String(settings()[sk] || '').trim(), list = raw.split(/[\n,]/).map(function(x){ return x.trim(); }).filter(Boolean);
+  var body = list.length > 1
+    ? '<div style="display:flex;gap:6px;align-items:center"><div class="sv-in" style="flex:1;background:#f8f9fa;color:#495057">열쇠 ' + list.length + '개가 들어 있습니다 (하나가 막히면 다음 열쇠로)</div><button class="sv-btn sm" data-keyopen="' + sk + '">🔑 고치기</button></div>'
+    : '<div style="display:flex;gap:6px;align-items:center"><input class="sv-in" data-keyin="' + sk + '" type="' + (KEY_SHOW[sk] ? 'text' : 'password') + '" autocomplete="off" spellcheck="false" placeholder="' + ph + '" value="' + esc(list[0] || '') + '" style="flex:1;font-family:ui-monospace,Consolas,monospace;font-size:12.5px"><button class="sv-btn sm" data-keyeye="' + sk + '" title="열쇠 보기/가리기">' + (KEY_SHOW[sk] ? '🙈' : '👁') + '</button></div>';
+  return '<div class="sv-f"><label>' + label + (list.length ? ' <span style="color:#2b8a3e">✓ 들어 있음</span>' : ' <span style="color:#c92a2a;font-weight:700">비어 있음</span>') + '</label>' + body
+    + '<div class="sv-note">🔑 열쇠 창(블로그 스튜디오 [엔진 설정])과 같은 칸입니다 — 여기서 넣어도 되고 거기서 넣어도 됩니다. 열쇠는 이 브라우저에만 저장되고, 요금은 본인 계정에서 나갑니다.' + (link ? ' <a href="' + link + '" target="_blank" rel="noopener">열쇠 받기 ↗</a>' : '') + '</div></div>';
+}
+function bindKeyFields(el, after){
+  $$('[data-keyin]', el).forEach(function(i){ i.onchange = function(){
+    var s2 = LSX.get('sdbs.settings', {}) || {}; s2[i.dataset.keyin] = i.value.trim(); LSX.set('sdbs.settings', s2);
+    toast(i.value.trim() ? '열쇠를 저장했습니다' : '열쇠를 지웠습니다'); if(after) after(i.dataset.keyin); render();
+  }; });
+  $$('[data-keyeye]', el).forEach(function(b){ b.onclick = function(){ var k = b.dataset.keyeye, i = $('[data-keyin="' + k + '"]', el); KEY_SHOW[k] = !KEY_SHOW[k]; if(i) i.type = KEY_SHOW[k] ? 'text' : 'password'; b.textContent = KEY_SHOW[k] ? '🙈' : '👁'; }; });
+  $$('[data-keyopen]', el).forEach(function(b){ b.onclick = function(){ openKeys(b.dataset.keyopen); }; });
+}
+/* 말하는 속도 — 일레븐랩스 0.7~1.2배, Fish 0.5~2배 (구글은 느리게·보통·빠르게) */
+function spdOf(eng){ var v = eng === 'fish' ? OPT.fishSpeed : OPT.elSpeed; v = +v || SPD_NUM[OPT.speed] || 1; return eng === 'fish' ? Math.max(0.5, Math.min(2, v)) : Math.max(0.7, Math.min(1.2, v)); }
+function speedSlider(eng){
+  var v = spdOf(eng), lo = eng === 'fish' ? 0.5 : 0.7, hi = eng === 'fish' ? 2 : 1.2;
+  return '<div class="sv-f"><label>말하는 속도 — <b id="svSpdN">' + v.toFixed(2) + '배</b></label>'
+    + '<input type="range" id="svSpd" min="' + lo + '" max="' + hi + '" step="0.05" value="' + v + '" style="width:min(260px,100%);accent-color:#d6336c">'
+    + '<div class="sv-note">1.00배가 기본입니다. 낮추면 천천히, 올리면 빠르게 읽습니다.' + (eng === 'fish' ? ' 2배까지 됩니다.' : ' 일레븐랩스는 0.7~1.2배까지 됩니다.') + '</div></div>';
+}
+/* 내 이름이 들어간 목소리를 먼저 고른다 */
+function pickMine(list, nameOf){
+  var nm = String(author().name || '').trim(), off = String(author().office || '').replace(/공인중개사사무소|사무소/g, '').trim();
+  return list.find(function(v){ return nm && nameOf(v).indexOf(nm) >= 0; }) || list.find(function(v){ return off && nameOf(v).indexOf(off) >= 0; }) || null;
+}
+var EL_MODELS_LIVE = LSX.get('sdv.elModels', []) || [];
+function elModelList(){
+  var l = EL_MODELS_LIVE.length ? EL_MODELS_LIVE.slice() : EL_MODELS.map(function(m){ return { id:m[0], name:m[1], max:EL_MAX[m[0]] || 0 }; });
+  if(OPT.elModel && !l.some(function(m){ return m.id === OPT.elModel; })) l.push({ id:OPT.elModel, name:OPT.elModel, max:0 });
+  return l;
+}
+async function elLoadModels(){
+  var keys = keysOf('eleven'); if(!keys.length) return EL_MODELS_LIVE;
+  var r = await fetch('https://api.elevenlabs.io/v1/models', { headers:{ 'xi-api-key':keys[0] } }), d = await r.json().catch(function(){ return []; });
+  if(!r.ok || !Array.isArray(d)) return EL_MODELS_LIVE;
+  var l = d.filter(function(m){
+    if(m.can_do_text_to_speech === false || /_sts|monolingual|english/i.test(m.model_id)) return false;
+    var langs = (m.languages || []).map(function(x){ return String(x.language_id || x.id || '').toLowerCase(); });
+    return !langs.length || langs.indexOf('ko') >= 0 || langs.indexOf('kor') >= 0;
+  }).map(function(m){ return { id:m.model_id, name:m.name || m.model_id, max:+(m.max_characters_request_subscribed_user || m.maximum_text_length_per_request || 0) }; });
+  if(l.length){ EL_MODELS_LIVE = l; LSX.set('sdv.elModels', l); }
+  return EL_MODELS_LIVE;
+}
+var FISH_VOICES = LSX.get('sdv.fishVoices', []) || [], FISH_PING = null, AUTO_LOADED = {};
+function fishPingHtml(d){
+  return !d ? '' : d.err ? '<b style="color:#c92a2a">❌ ' + esc(d.err) + '</b>' : !d.ok ? '<b style="color:#c92a2a">❌ ' + esc(d.error || '') + '</b>'
+    : d.fish ? '<b style="color:#2b8a3e">✅ 중계 연결됨 · Fish 열쇠 있음</b> (앱스 스크립트 v' + esc(d.ver || '') + ')'
+    : d.ver && d.ver >= '2026.10.04-2' ? '<b style="color:#c92a2a">연결은 됐지만 스크립트 속성 FISH_API_KEY 가 비어 있습니다</b>' : '<b style="color:#c92a2a">연결은 됐지만 앱스 스크립트가 옛 버전입니다</b> — 2026.10.04-2 로 바꾸고 「배포 관리 → 편집 → 새 버전」';
+}
+function fishPing(){
+  var R = fishRelay(); if(!R.url || !R.k) return Promise.resolve(null);
+  return fetch(R.url + (R.url.indexOf('?') >= 0 ? '&' : '?') + 'k=' + encodeURIComponent(R.k) + '&ping=1', { cache:'no-store' }).then(fishJson).then(function(d){ FISH_PING = d; return d; }, function(e){ FISH_PING = { err:e.message }; return FISH_PING; });
+}
 function voiceOpts(){
   if(OPT.ttsEngine === 'eleven'){
     var has = keysOf('eleven').length, list = EL_VOICES.slice();
-    if(OPT.elVoice && !list.some(function(v){ return v.id === OPT.elVoice; })) list.unshift({ id:OPT.elVoice, name:OPT.elVoiceName || OPT.elVoice, cat:'' });
-    return { main:'<div class="sv-f"><label>일레븐랩스 목소리 <span>' + (has ? '열쇠 ' + has + '개' : '<b style="color:#c92a2a">열쇠 없음</b>') + '</span></label>'
-      + (has ? '' : '<button class="sv-btn sm" id="svElKey" style="margin-bottom:6px">🔑 일레븐랩스 열쇠 넣기</button>')
-      + '<div style="display:flex;gap:6px"><select class="sv-sel" id="svElVoice" style="flex:1">' + (list.length ? list.map(function(v){ return '<option value="' + esc(v.id) + '"' + (v.id === OPT.elVoice ? ' selected' : '') + '>' + esc(v.name) + (v.cat ? ' · ' + esc(v.cat) : '') + '</option>'; }).join('') : '<option value="">← 「불러오기」를 눌러 주세요</option>') + '</select>'
-      + '<button class="sv-btn sm" id="svElLoad"' + (has ? '' : ' disabled') + '>불러오기</button></div>'
-      + '<div class="sv-note">elevenlabs.io → Voices 에서 복제한 내 목소리가 맨 위에 나옵니다.</div></div>'
-      , more:'<div class="sv-f"><label>일레븐랩스 모델</label><select class="sv-sel" id="svElModel">' + EL_MODELS.map(function(m){ return '<option value="' + m[0] + '"' + (m[0] === OPT.elModel ? ' selected' : '') + '>' + m[1] + '</option>'; }).join('') + '</select>'
-      + '<div style="display:flex;gap:8px;align-items:center;margin-top:6px;font-size:12px;color:#868e96">안정감 <input type="range" id="svElStab" min="0.2" max="0.9" step="0.05" value="' + (+OPT.elStab || 0.5) + '" style="flex:1;accent-color:#d6336c"> <span id="svElStabN">' + (+OPT.elStab || 0.5).toFixed(2) + '</span></div>'
-      + '<div class="sv-note">안정감을 높이면 차분하고 고르게, 낮추면 감정이 풍부하게 읽습니다.</div></div>' };
+    if(OPT.elVoice && !list.some(function(v){ return v.id === OPT.elVoice; })) list.unshift({ id:OPT.elVoice, name:OPT.elVoiceName || OPT.elVoice, cat:'직접 넣은 아이디' });
+    var groups = []; list.forEach(function(v){ var g = groups.find(function(x){ return x.c === (v.cat || '기타'); }); if(!g){ g = { c:v.cat || '기타', l:[] }; groups.push(g); } g.l.push(v); });
+    var ms = elModelList(), cur = ms.find(function(m){ return m.id === OPT.elModel; }) || {};
+    return { main:keyField('elevenKeys', '일레븐랩스 API 키', 'sk_…', 'https://elevenlabs.io/app/settings/api-keys')
+      + '<div style="margin:-4px 0 12px"><button class="sv-btn sm" id="svElLoad"' + (has ? '' : ' disabled') + '>📋 내 목소리 목록 불러오기</button></div>'
+      + '<div class="sv-row2"><div class="sv-f"><label>목소리</label><select class="sv-sel" id="svElVoice">' + (list.length ? groups.map(function(g){ return '<optgroup label="' + esc(g.c) + '">' + g.l.map(function(v){ return '<option value="' + esc(v.id) + '"' + (v.id === OPT.elVoice ? ' selected' : '') + '>' + esc(v.name) + '</option>'; }).join('') + '</optgroup>'; }).join('') : '<option value="">← 「내 목소리 목록 불러오기」를 눌러 주세요</option>') + '</select>'
+      + '<a href="#" class="sv-link" id="svElIdTg">목록에 없는 목소리 아이디 직접 넣기</a><div id="svElIdBox" style="display:none;margin-top:6px"><div style="display:flex;gap:6px"><input class="sv-in" id="svElId" placeholder="목소리 아이디 (예: 21m00Tcm4TlvDq8ikWAM)" style="flex:1"><button class="sv-btn sm" id="svElIdOk">넣기</button></div></div>'
+      + '<div class="sv-note">elevenlabs.io → Voices 에서 복제한 <b>내 목소리</b>가 맨 위 묶음에 나옵니다.</div></div>'
+      + '<div class="sv-f"><label>음성 모델</label><select class="sv-sel" id="svElModel">' + ms.map(function(m){ return '<option value="' + esc(m.id) + '"' + (m.id === OPT.elModel ? ' selected' : '') + '>' + esc(m.name) + '</option>'; }).join('') + '</select>'
+      + '<div class="sv-note">' + (cur.max ? '한 번에 ' + cur.max.toLocaleString() + '자까지 보낼 수 있습니다. ' : '') + (EL_MODELS_LIVE.length ? '내 계정에서 쓸 수 있는 한국어 모델만 보여 줍니다.' : '「목록 불러오기」를 누르면 내 계정의 최신 모델이 나옵니다.') + '</div></div></div>'
+      + speedSlider('eleven')
+      , more:'<div class="sv-f"><label>안정감 — <b id="svElStabN">' + (+OPT.elStab || 0.5).toFixed(2) + '</b></label><input type="range" id="svElStab" min="0.2" max="0.9" step="0.05" value="' + (+OPT.elStab || 0.5) + '" style="width:min(260px,100%);accent-color:#d6336c">'
+      + '<div class="sv-note">높이면 차분하고 고르게, 낮추면 감정이 풍부하게 읽습니다.</div></div>'
+      , moreT:'더 손보기 — 안정감', moreS:'안 건드려도 됩니다. 0.50이 기본입니다.' };
   }
   if(OPT.ttsEngine === 'fish'){
-    var R = fishRelay();
-    return { main:'<div class="sv-f"><label>Fish 목소리 (모델 ID)</label>'
-      + (R.url && R.k ? '' : '<div class="sv-warn" style="margin-bottom:6px">중계용 앱스 스크립트 주소가 없습니다. 블로그 스튜디오 [엔진 설정]의 「키워드 검색량」 웹 앱 주소·토큰을 그대로 씁니다.</div>')
-      + '<div style="display:flex;gap:6px"><input class="sv-in" id="svFishRef" placeholder="fish.audio 목소리 페이지 주소 끝의 ID" value="' + esc(OPT.fishRef) + '" style="flex:1"><button class="sv-btn sm" id="svFishLoad"' + (R.url && R.k ? '' : ' disabled') + '>내 목소리 불러오기</button></div>'
-      + (OPT.fishName ? '<div class="sv-note">🎙 ' + esc(OPT.fishName) + '</div>' : '')
-      + '<div id="svFishList"></div>'
-      + '<div class="sv-note">Fish 열쇠는 브라우저가 아니라 앱스 스크립트의 스크립트 속성 <b>FISH_API_KEY</b> 에 넣습니다.</div>'
-      + '<button class="sv-btn sm" id="svFishPing" style="margin-top:6px"' + (R.url && R.k ? '' : ' disabled') + '>🔌 중계 연결 시험</button><div class="sv-note" id="svFishPingOut"></div></div>'
-      , more:'<div class="sv-f"><label>Fish 모델</label><select class="sv-sel" id="svFishModel">' + FISH_MODELS.map(function(m){ return '<option value="' + m[0] + '"' + (m[0] === OPT.fishModel ? ' selected' : '') + '>' + m[1] + '</option>'; }).join('') + '</select></div>' };
+    var R = fishRelay(), ok = !!(R.url && R.k), fl = FISH_VOICES.slice();
+    if(OPT.fishRef && !fl.some(function(v){ return v.id === OPT.fishRef; })) fl.unshift({ id:OPT.fishRef, title:OPT.fishName || '직접 넣은 아이디' });
+    return { main:'<div class="sv-f"><label>Fish Audio 키</label>'
+      + (ok ? '<div class="sv-in" style="background:#f8f9fa;color:#495057;display:flex;gap:8px;align-items:center"><span id="svFishPingOut" style="flex:1">' + (fishPingHtml(FISH_PING) || '⏳ 중계 연결 확인 중…') + '</span><button class="sv-btn sm" id="svFishPing">🔌 다시 확인</button></div>'
+        : '<div class="sv-warn" style="margin:0">중계용 앱스 스크립트 주소가 없습니다. 블로그 스튜디오 [엔진 설정]의 「키워드 검색량」 웹 앱 주소·토큰을 그대로 씁니다.</div>')
+      + '<div class="sv-note">Fish 는 브라우저에서 바로 부를 수 없어 앱스 스크립트(키워드 검색량과 같은 웹 앱)가 중계합니다. 열쇠는 이 화면이 아니라 앱스 스크립트의 스크립트 속성 <b>FISH_API_KEY</b> 에만 있어 밖으로 나가지 않습니다.</div></div>'
+      + '<div style="margin:-4px 0 12px"><button class="sv-btn sm" id="svFishLoad"' + (ok ? '' : ' disabled') + '>📋 내 목소리 목록 불러오기</button></div>'
+      + '<div class="sv-row2"><div class="sv-f"><label>목소리</label>'
+      + (fl.length ? '<select class="sv-sel" id="svFishSel" style="margin-bottom:6px">' + (OPT.fishRef ? '' : '<option value="">— 고르세요 —</option>') + fl.map(function(v){ return '<option value="' + esc(v.id) + '"' + (v.id === OPT.fishRef ? ' selected' : '') + '>' + esc(v.title || v.id) + '</option>'; }).join('') + '</select>' : '')
+      + '<input class="sv-in" id="svFishRef" placeholder="목소리 아이디를 붙여 넣거나 위에서 목록을 불러오세요" value="' + esc(OPT.fishRef) + '">'
+      + '<div class="sv-note">fish.audio 목소리 페이지 주소를 통째로 붙여 넣어도 됩니다. 목록에 「' + esc(author().name) + '」 이 들어간 목소리가 있으면 알아서 고릅니다.</div></div>'
+      + '<div class="sv-f"><label>음성 모델</label><select class="sv-sel" id="svFishModel">' + FISH_MODELS.concat(FISH_MODELS.some(function(m){ return m[0] === OPT.fishModel; }) ? [] : [[OPT.fishModel, OPT.fishModel]]).map(function(m){ return '<option value="' + m[0] + '"' + (m[0] === OPT.fishModel ? ' selected' : '') + '>' + m[1] + '</option>'; }).join('') + '</select>'
+      + '<div class="sv-note">최신 모델이 안 되면 s1 으로 바꿔 읽습니다.</div></div></div>'
+      + speedSlider('fish')
+      , more:'' };
   }
-  return { main:'<div class="sv-f"><label>목소리 <span>구글이 미리 만들어 둔 목소리 · 제미나이 열쇠 하나로 됩니다</span></label><select class="sv-sel" id="svVoice">' + VOICES.map(function(v){ return '<option value="' + v[0] + '"' + (v[0] === OPT.voice ? ' selected' : '') + '>' + v[0] + ' — ' + v[1] + '</option>'; }).join('') + '</select></div>'
-    , more:'<div class="sv-f"><label>음성 모델 <span>안 되면 다음 모델로 자동</span></label><select class="sv-sel" id="svTtsM">' + TTS_MODELS.map(function(m){ return '<option' + (m === OPT.ttsModel ? ' selected' : '') + '>' + m + '</option>'; }).join('') + '</select></div>' };
+  return { main:keyField('geminiKeys', '구글 AI 스튜디오 열쇠', 'AIza…', 'https://aistudio.google.com/apikey')
+      + '<div class="sv-f"><label>목소리 <span>구글이 미리 만들어 둔 목소리 · 이 열쇠 하나로 됩니다</span></label><select class="sv-sel" id="svVoice">' + VOICES.map(function(v){ return '<option value="' + v[0] + '"' + (v[0] === OPT.voice ? ' selected' : '') + '>' + v[0] + ' — ' + v[1] + '</option>'; }).join('') + '</select></div>'
+    , more:'<div class="sv-f"><label>음성 모델 <span>안 되면 다음 모델로 자동</span></label><select class="sv-sel" id="svTtsM">' + TTS_MODELS.map(function(m){ return '<option' + (m === OPT.ttsModel ? ' selected' : '') + '>' + m + '</option>'; }).join('') + '</select></div>'
+      + '<div class="sv-f"><label>말하는 속도</label>' + seg('speed', Object.keys(SPEED).map(function(k){ return [k, SPEED[k][0]]; }), OPT.speed) + '</div>'
+    , moreT:'더 손보기 — 음성 모델 · 말하는 속도', moreS:'안 건드려도 됩니다. 보통 속도가 기본입니다.' };
 }
 var MORE_OPEN = false;
 function bindVoiceOpts(el){
+  bindKeyFields(el, function(k){ if(k === 'elevenKeys'){ AUTO_LOADED.el = false; } });
   var g = $('#svVoice', el); if(g) g.onchange = function(){ OPT.voice = this.value; saveOpt(); render(); };
   var gm = $('#svTtsM', el); if(gm) gm.onchange = function(){ OPT.ttsModel = this.value; saveOpt(); };
-  var ek = $('#svElKey', el); if(ek) ek.onclick = function(){ openKeys('elevenKeys'); };
-  var ev = $('#svElVoice', el); if(ev) ev.onchange = function(){ OPT.elVoice = this.value; OPT.elVoiceName = (this.options[this.selectedIndex] || {}).text || ''; OPT.elVoiceName = OPT.elVoiceName.replace(/ · .*$/, ''); saveOpt(); render(); };
-  var el2 = $('#svElLoad', el); if(el2) el2.onclick = function(){ var b = this; b.disabled = true; b.textContent = '⏳'; elLoadVoices().then(function(l){ toast('일레븐랩스 목소리 ' + l.length + '개를 불러왔습니다'); render(); }, function(e){ toast(e.message, true); b.disabled = false; b.textContent = '불러오기'; }); };
+  bindSeg(el, 'speed', function(v){ OPT.speed = v; saveOpt(); });
+  var sp = $('#svSpd', el); if(sp){ sp.oninput = function(){ $('#svSpdN', el).textContent = (+this.value).toFixed(2) + '배'; }; sp.onchange = function(){ if(OPT.ttsEngine === 'fish') OPT.fishSpeed = +this.value; else OPT.elSpeed = +this.value; saveOpt(); }; }
+  /* 일레븐랩스 */
+  var elLoad = function(quiet){
+    var b = $('#svElLoad', el), had = !!OPT.elVoice; if(b){ b.disabled = true; b.textContent = '⏳ 불러오는 중…'; }
+    return Promise.all([elLoadVoices(), elLoadModels().catch(function(){ return EL_MODELS_LIVE; })]).then(function(r){
+      var mine = pickMine(r[0], function(v){ return v.name; });
+      if(mine && !had){ OPT.elVoice = mine.id; OPT.elVoiceName = mine.name; saveOpt(); }
+      if(r[1].length && !r[1].some(function(m){ return m.id === OPT.elModel; })){ var pv = r[1].find(function(m){ return m.id === 'eleven_multilingual_v2'; }) || r[1][0]; OPT.elModel = pv.id; saveOpt(); }
+      if(!quiet) toast('일레븐랩스 목소리 ' + r[0].length + '개 · 모델 ' + r[1].length + '개를 불러왔습니다'); render();
+    }, function(e){ if(!quiet) toast(e.message, true); if(b){ b.disabled = false; b.textContent = '📋 내 목소리 목록 불러오기'; } });
+  };
+  var el2 = $('#svElLoad', el); if(el2) el2.onclick = function(){ elLoad(false); };
+  if(OPT.ttsEngine === 'eleven' && keysOf('eleven').length && !AUTO_LOADED.el && (!EL_VOICES.length || !EL_MODELS_LIVE.length)){ AUTO_LOADED.el = true; elLoad(true); }
+  var ev = $('#svElVoice', el); if(ev) ev.onchange = function(){ OPT.elVoice = this.value; OPT.elVoiceName = (this.options[this.selectedIndex] || {}).text || ''; saveOpt(); render(); };
+  var tg = $('#svElIdTg', el); if(tg) tg.onclick = function(e){ e.preventDefault(); var bx = $('#svElIdBox', el); bx.style.display = bx.style.display === 'none' ? '' : 'none'; if(bx.style.display === '') $('#svElId', el).focus(); };
+  var eo = $('#svElIdOk', el); if(eo) eo.onclick = function(){ var v = $('#svElId', el).value.trim(); if(!/^[A-Za-z0-9]{10,40}$/.test(v)) return toast('목소리 아이디 모양이 아닙니다 (영문·숫자 20자 안팎)', true); OPT.elVoice = v; OPT.elVoiceName = v; saveOpt(); toast('목소리 아이디를 넣었습니다'); render(); };
   var em = $('#svElModel', el); if(em) em.onchange = function(){ OPT.elModel = this.value; saveOpt(); render(); };
   var es = $('#svElStab', el); if(es){ es.oninput = function(){ $('#svElStabN', el).textContent = (+this.value).toFixed(2); }; es.onchange = function(){ OPT.elStab = +this.value; saveOpt(); }; }
-  /* 칸을 고치는 동안 화면을 다시 그리지 않는다 (다른 단추의 첫 클릭이 사라지지 않게) */
-  var fr = $('#svFishRef', el); if(fr) fr.oninput = fr.onchange = function(){ var v = this.value.trim(), m = /([0-9a-f]{32})/i.exec(v); OPT.fishRef = m ? m[1] : v; OPT.fishName = ''; saveOpt(); var b = $('#svAllVoice'); if(b) b.disabled = !voiceReady(); };
+  /* Fish — 칸을 고치는 동안 화면을 다시 그리지 않는다 (다른 단추의 첫 클릭이 사라지지 않게) */
+  var fr = $('#svFishRef', el); if(fr) fr.oninput = fr.onchange = function(){ var v = this.value.trim(), m = /([0-9a-f]{32})/i.exec(v); OPT.fishRef = m ? m[1] : v; var f = FISH_VOICES.find(function(x){ return x.id === OPT.fishRef; }); OPT.fishName = f ? f.title : ''; saveOpt(); var b = $('#svAllVoice'); if(b) b.disabled = !voiceReady(); };
+  var fs = $('#svFishSel', el); if(fs) fs.onchange = function(){ var f = FISH_VOICES.find(function(x){ return x.id === fs.value; }); OPT.fishRef = fs.value; OPT.fishName = f ? f.title : ''; saveOpt(); render(); };
   var fm = $('#svFishModel', el); if(fm) fm.onchange = function(){ OPT.fishModel = this.value; saveOpt(); render(); };
-  var fl = $('#svFishLoad', el); if(fl) fl.onclick = function(){
-    var b = this; b.disabled = true; b.textContent = '⏳';
-    fishLoadModels().then(function(list){
-      b.disabled = false; b.textContent = '내 목소리 불러오기';
-      var box = $('#svFishList', el);
-      if(!list.length){ box.innerHTML = '<div class="sv-note">Fish 계정에 내 목소리가 없습니다 — fish.audio 에서 먼저 목소리를 복제해 주세요.</div>'; return; }
-      box.innerHTML = '<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:6px">' + list.map(function(m, i){ return '<button class="sv-btn sm" data-fm="' + i + '">' + esc(m.title || m.id) + '</button>'; }).join('') + '</div>';
-      $$('[data-fm]', box).forEach(function(x){ x.onclick = function(){ var m = list[+x.dataset.fm]; OPT.fishRef = m.id; OPT.fishName = m.title || ''; saveOpt(); render(); }; });
-    }, function(e){ toast(e.message, true); b.disabled = false; b.textContent = '내 목소리 불러오기'; });
+  var fishLoad = function(quiet){
+    var b = $('#svFishLoad', el); if(b){ b.disabled = true; b.textContent = '⏳ 불러오는 중…'; }
+    return fishLoadModels().then(function(list){
+      FISH_VOICES = list; LSX.set('sdv.fishVoices', list);
+      if(!list.length){ if(!quiet) toast('Fish 계정에 내 목소리가 없습니다 — fish.audio 에서 먼저 목소리를 복제해 주세요.', true); }
+      else { if(!quiet) toast('Fish 목소리 ' + list.length + '개를 불러왔습니다'); if(!OPT.fishRef){ var mine = pickMine(list, function(v){ return v.title || ''; }) || list[0]; OPT.fishRef = mine.id; OPT.fishName = mine.title || ''; saveOpt(); } }
+      render();
+    }, function(e){ if(!quiet) toast(e.message, true); if(b){ b.disabled = false; b.textContent = '📋 내 목소리 목록 불러오기'; } });
   };
-  var fp = $('#svFishPing', el); if(fp) fp.onclick = function(){
-    var R = fishRelay(), out = $('#svFishPingOut', el); out.textContent = '⏳ 확인 중…';
-    fetch(R.url + (R.url.indexOf('?') >= 0 ? '&' : '?') + 'k=' + encodeURIComponent(R.k) + '&ping=1', { cache:'no-store' }).then(fishJson).then(function(d){
-      out.innerHTML = !d.ok ? '<b style="color:#c92a2a">❌ ' + esc(d.error || '') + '</b>' : d.fish ? '<b style="color:#2b8a3e">✅ 연결됨 · Fish 열쇠 있음</b> (앱스 스크립트 v' + esc(d.ver || '') + ')'
-        : d.ver && d.ver >= '2026.10.04-2' ? '<b style="color:#c92a2a">연결은 됐지만 스크립트 속성 FISH_API_KEY 가 비어 있습니다</b>' : '<b style="color:#c92a2a">연결은 됐지만 앱스 스크립트가 옛 버전입니다</b> — 2026.10.04-2 로 바꾸고 「배포 관리 → 편집 → 새 버전」';
-    }, function(e){ out.innerHTML = '<b style="color:#c92a2a">❌ ' + esc(e.message) + '</b>'; });
-  };
+  var fl = $('#svFishLoad', el); if(fl) fl.onclick = function(){ fishLoad(false); };
+  var fp = $('#svFishPing', el); if(fp) fp.onclick = function(){ var out = $('#svFishPingOut', el); out.textContent = '⏳ 확인 중…'; fishPing().then(function(d){ out.innerHTML = fishPingHtml(d); }); };
+  if(OPT.ttsEngine === 'fish' && fishRelay().url && fishRelay().k){
+    if(!FISH_PING && !AUTO_LOADED.ping){ AUTO_LOADED.ping = true; fishPing().then(function(d){ var out = $('#svFishPingOut'); if(out) out.innerHTML = fishPingHtml(d); if(d && d.fish && !FISH_VOICES.length && !AUTO_LOADED.fish){ AUTO_LOADED.fish = true; fishLoad(true); } }); }
+    else if(FISH_PING && FISH_PING.fish && !FISH_VOICES.length && !AUTO_LOADED.fish){ AUTO_LOADED.fish = true; fishLoad(true); }
+  }
 }
 /* 자막 시간 손보기 — 조각마다 시작 시각(초)을 고치고 ▶ 로 그 자리부터 들어 본다 */
 function cueEditor(row, s){
