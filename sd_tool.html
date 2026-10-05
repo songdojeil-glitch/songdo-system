@@ -10,7 +10,7 @@
 <link rel="shortcut icon" href="favicon.ico">
 <link rel="apple-touch-icon" sizes="180x180" href="sjrws-180.png">
 <!-- ═════════════════════════════════════════════════════════════════
-     🧰 도구 (sd_tool.html)  v2026.10.03-1
+     🧰 도구 (sd_tool.html)  v2026.10.05-1
      · 데이터관리에 있던 다섯 가지를 따로 모은 화면
          🧰 전체 도구(20) · 🤝 직방 가격 제안(26) · 🔎 공시가격 조회(27) · 🏗️ 건축물대장(24) · 🔑 추출기 열쇠(25)
      · 이 도구들은 데이터관리의 실거래·매물 자료와 엔진(실거래 API·단지 사전·엑셀·로그인)을 함께 쓴다.
@@ -18,6 +18,7 @@
        도구 모드에서는 데이터관리의 머리줄·메뉴가 숨고 도구 화면만 보인다.
      · 🧮 부동산 계산기(tab=calc)는 데이터관리를 띄우지 않고 이 파일 안에서 바로 그린다 (아래 sdCalc 모듈)
        sd_tool.html?tab=calc&c=acq|cgt|hold|fee|yield|loan|conv|etc
+     · 📸 프로필 사진(tab=photo)도 이 파일 안에서 바로 그린다 (아래 sdPhoto 모듈) — 2026.10.05-1
      · 주소: sd_tool.html?tab=26 처럼 바로 열 수 있다. 마지막에 본 도구는 이 컴퓨터가 기억한다.
      · 도구 안에서 데이터관리 화면(예: S실거래가)으로 가는 단추는 바깥 창을 데이터관리로 옮긴다.
      ═════════════════════════════════════════════════════════════════ -->
@@ -145,13 +146,15 @@ a.sjb-btn.on::after,span.sjb-btn.on::after{background:linear-gradient(100deg,rgb
   <iframe id="tool-frame" title="도구" allow="clipboard-read; clipboard-write"></iframe>
 </div>
 <div id="calc-wrap" class="sjb-zoom"><div id="calc-root"></div></div>
+<div id="photo-wrap" class="sjb-zoom"><div id="photo-root"></div></div>
 <script>
 (function(){
   'use strict';
-  var SD_VER = '2026.10.04-2';
+  var SD_VER = '2026.10.05-1';
   var TABS = [
     [20, '🧰 전체 도구'],
     ['calc', '🧮 부동산 계산기'],
+    ['photo', '📸 프로필 사진'],
     [26, '🤝 직방 가격 제안'],
     [27, '🔎 공시가격 조회'],
     [24, '🏗️ 건축물대장'],
@@ -168,7 +171,7 @@ a.sjb-btn.on::after,span.sjb-btn.on::after{background:linear-gradient(100deg,rgb
     if(me && se.name) me.innerHTML = '<b>' + String(se.name).replace(/[<>&"]/g, '') + '</b>' + (se.role ? '<span class="rl">' + (RL[se.role] || String(se.role).replace(/[<>&"]/g, '')) + '</span>' : '') + '<a href="sd_hub.html" style="color:#3b5bdb;text-decoration:none">허브</a>';
   }catch(e){}
   //  탭 열쇠: 숫자(데이터관리 도구 모드 탭) 또는 'calc'(이 파일 안의 부동산 계산기)
-  function key(n){ if(n === 'calc' || n === 'video') return n; var k = parseInt(n, 10); return isNaN(k) ? null : k; }
+  function key(n){ if(n === 'calc' || n === 'video' || n === 'photo') return n; var k = parseInt(n, 10); return isNaN(k) ? null : k; }
   function ok(n){ n = key(n); return TABS.some(function(t){ return t[0] === n; }); }
   function paint(){
     document.getElementById('tl-tabs').innerHTML = TABS.map(function(t){
@@ -177,6 +180,7 @@ a.sjb-btn.on::after,span.sjb-btn.on::after{background:linear-gradient(100deg,rgb
     var t = TABS.filter(function(x){ return x[0] === CUR; })[0];
     document.title = (t ? t[1].replace(/^\S+\s/, '') + ' · ' : '') + '도구 (tool) - SJRWS';
     document.body.classList.toggle('calc-on', CUR === 'calc');
+    document.body.classList.toggle('photo-on', CUR === 'photo');
   }
   //  도구 화면 안에서 탭이 바뀌면(전체 도구 카드를 누른 경우 등) 여기도 따라 바꾼다
   window.sdToolTab = function(n, extra){
@@ -195,6 +199,7 @@ a.sjb-btn.on::after,span.sjb-btn.on::after{background:linear-gradient(100deg,rgb
       if(window.sdCalc) window.sdCalc.go(c || (function(){ try{ return localStorage.getItem('sd_calc_last') || 'home'; }catch(e){ return 'home'; } })());
       return;
     }
+    if(n === 'photo'){ window.sdToolTab('photo'); if(window.sdPhoto) window.sdPhoto.go(); return; }
     if(n === 'video'){ location.href = 'sd_video.html'; return; }
     var w = null; try{ w = fr.contentWindow; }catch(e){}
     if(FRAME_N && w && typeof w.sw === 'function' && w.document && w.document.getElementById('tc' + n)){ window.sdToolTab(n); w.sw(n); try{ w.scrollTo(0, 0); }catch(e){} return; }
@@ -211,6 +216,7 @@ a.sjb-btn.on::after,span.sjb-btn.on::after{background:linear-gradient(100deg,rgb
   CUR = q; paint();
   //  계산기는 아래 모듈이 다 읽힌 뒤에 그린다. 데이터관리(무거움)는 숫자 탭을 처음 열 때만 띄운다
   window.__sdToolStart = function(){
+    if(q === 'photo'){ window.sdToolTab('photo'); window.sdPhoto && window.sdPhoto.go(); return; }
     if(q === 'calc'){ var c = sp.get('c'); window.sdToolTab('calc', c ? '&c=' + encodeURIComponent(c) : ''); window.sdCalc && window.sdCalc.go(c || 'home', true); }
     else { window.sdToolTab(q); loadFrame(q); }
   };
@@ -1181,6 +1187,336 @@ details.cx-dt summary{cursor:pointer;color:#495057;font-weight:600}
     last:function(){ return LAST; },
     // 시험용
     _acq:acqCalc, _fee:feeCalc, _prop:propTax, _jong:jongTax, _prog:prog, _cgtCalc:cgtCalc, _cgtRule:cgtRule, _holdCalc:holdCalc, _holdRule:holdRule, _annuity:annuity, _stress:stressRatio
+  };
+})();
+</script>
+<!-- ═════════════════════════════════════════════════════════════════
+     📸 프로필 사진 (sd_tool.html · window.sdPhoto)  2026-10-05
+     · 사진 한 장으로 얼굴·옷차림은 그대로 두고 포즈만 바꾼 개인 프로필 8종 (세로 1024×1536)
+       (ko372.com 프로필 스튜디오 구성을 따름 — 중개사용으로 서류철·상담 포즈, 배경 고르기 추가)
+     · 그리는 곳: OpenAI GPT 이미지(images/edits · input_fidelity high) 또는 구글 제미나이(나노바나나, 사진+글 → 그림)
+       열쇠는 블로그 스튜디오·비디오 스튜디오와 같은 칸(localStorage sdbs.settings — openaiKeys / geminiKeys)
+     · 사진·결과는 이 브라우저(IndexedDB sd_photo)에만 — 서버로 보내지 않는다. 8장 ZIP 저장(압축 없이 묶기)
+     · 주소로 열기: sd_tool.html?tab=photo
+     ═════════════════════════════════════════════════════════════════ -->
+<style>
+#photo-wrap{flex:1 1 auto;min-height:0;overflow:auto;display:none;scrollbar-gutter:stable both-edges}
+body.photo-on .tl-wrap{display:none}
+body.photo-on #photo-wrap{display:block}
+#photo-root{max-width:2560px;margin:0 auto;padding:16px 20px 60px;color:var(--text);font-size:13px}
+#photo-root *{box-sizing:border-box}
+#photo-root>*{max-width:1180px}
+.pp-hero{background:linear-gradient(135deg,#fff 0%,#f3f0ff 60%,#e7f5ff 100%);border:1px solid var(--border);border-radius:16px;padding:22px 26px;margin-bottom:16px;position:relative;overflow:hidden}
+.pp-hero .k{font-size:10.5px;letter-spacing:2px;color:#7048e8;font-weight:800}
+.pp-hero h2{margin:6px 0 6px;font-size:23px;line-height:1.35;color:#1a202c}
+.pp-hero h2 em{font-style:normal;color:#7048e8}
+.pp-hero p{margin:0;color:#4a5568;line-height:1.7;font-size:13px;max-width:640px}
+.pp-hero .big{position:absolute;right:18px;bottom:-34px;font-size:150px;font-weight:900;color:rgba(112,72,232,.08);line-height:1;font-style:italic}
+.pp-chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:12px}
+.pp-chips span{font-size:11.5px;background:#fff;border:1px solid var(--border);border-radius:20px;padding:3px 10px;color:#4a5568}
+.pp-cols{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:16px;align-items:start}
+.pp-card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:18px 20px}
+.pp-step{margin-bottom:22px}
+.pp-step:last-child{margin-bottom:0}
+.pp-step h3{margin:0 0 4px;font-size:15px;display:flex;align-items:baseline;gap:8px}
+.pp-step h3 i{font-style:italic;color:#7048e8;font-weight:800;font-size:13px}
+.pp-sub{color:#718096;font-size:12px;margin:0 0 10px;line-height:1.6}
+.pp-seg{display:inline-flex;background:#f1f3f5;border-radius:10px;padding:3px;gap:2px;flex-wrap:wrap}
+.pp-seg button{border:0;background:none;padding:7px 14px;border-radius:8px;font-size:12.5px;font-weight:600;color:#495057;cursor:pointer;font-family:inherit}
+.pp-seg button.on{background:#fff;color:#5f3dc4;box-shadow:0 1px 3px rgba(0,0,0,.12)}
+.pp-in{width:100%;padding:9px 11px;border:1px solid var(--border);border-radius:9px;font-size:13px;font-family:inherit;background:#fff}
+.pp-in:focus{outline:2px solid #d0bfff;border-color:#9775fa}
+.pp-row{display:flex;gap:6px;align-items:center}
+.pp-note{font-size:11.5px;color:#718096;line-height:1.6;margin-top:6px}
+.pp-tip{font-size:12px;color:#5c3d00;background:#fff9db;border:1px solid #ffe8a1;border-radius:10px;padding:10px 12px;line-height:1.7;margin-top:10px}
+.pp-tip a{color:#7048e8}
+.pp-btn{border:1px solid var(--border);background:#fff;border-radius:9px;padding:8px 14px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:inherit;color:#343a40;white-space:nowrap}
+.pp-btn:hover{border-color:#9775fa;color:#5f3dc4}
+.pp-btn.pri{background:#7048e8;border-color:#7048e8;color:#fff}
+.pp-btn.pri:hover{background:#5f3dc4;color:#fff}
+.pp-btn:disabled{opacity:.45;cursor:not-allowed}
+.pp-btn.big{width:100%;padding:13px;font-size:14.5px;border-radius:12px}
+.pp-btn.sm{padding:5px 10px;font-size:11.5px}
+.pp-drop{border:2px dashed #ced4da;border-radius:12px;min-height:190px;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:6px;cursor:pointer;background:#fcfcfd;text-align:center;padding:14px;transition:.15s}
+.pp-drop:hover,.pp-drop.ov{border-color:#9775fa;background:#f8f0fc}
+.pp-drop .pl{width:34px;height:34px;border-radius:50%;border:1px solid #b197fc;color:#7048e8;display:flex;align-items:center;justify-content:center;font-size:18px}
+.pp-drop b{font-size:13px}
+.pp-drop small{color:#868e96;font-size:11px}
+.pp-ref{display:flex;gap:14px;align-items:flex-start}
+.pp-ref img{width:150px;height:200px;object-fit:cover;border-radius:10px;border:1px solid var(--border);background:#f1f3f5}
+.pp-grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
+.pp-f label{display:block;font-size:12px;font-weight:700;color:#4a5568;margin-bottom:5px}
+.pp-f label span{font-weight:400;color:#868e96}
+.pp-chk{display:flex;gap:8px;align-items:flex-start;font-size:12px;color:#495057;line-height:1.6;margin-top:12px;cursor:pointer}
+.pp-chk input{margin-top:3px}
+.pp-guide{background:#1f1f24;color:#e9ecef;border-radius:14px;padding:20px;position:sticky;top:12px}
+.pp-guide .k{font-size:10px;letter-spacing:2px;color:#b197fc;font-weight:800}
+.pp-guide h4{margin:6px 0 14px;font-size:15px;color:#fff}
+.pp-guide .it{display:flex;gap:10px;padding:10px 0;border-top:1px solid rgba(255,255,255,.08)}
+.pp-guide .it i{color:#b197fc;font-style:italic;font-weight:800;font-size:12px;min-width:20px}
+.pp-guide .it b{display:block;font-size:12.5px;margin-bottom:2px}
+.pp-guide .it span{font-size:11.5px;color:#adb5bd;line-height:1.55}
+.pp-guide .box{margin-top:12px;background:rgba(255,255,255,.06);border-left:3px solid #b197fc;border-radius:8px;padding:10px 12px;font-size:11.5px;color:#ced4da;line-height:1.65}
+.pp-guide .box b{color:#fff}
+.pp-res-h{display:flex;align-items:flex-end;gap:10px;margin:28px 0 10px;border-bottom:1px solid var(--border);padding-bottom:10px}
+.pp-res-h h3{margin:0;font-size:19px}
+.pp-res-h .k{font-size:10px;letter-spacing:2px;color:#7048e8;font-weight:800;display:block;margin-bottom:4px}
+.pp-res{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.pp-shot{background:var(--card);border:1px solid var(--border);border-radius:12px;overflow:hidden;display:flex;flex-direction:column}
+.pp-shot .im{aspect-ratio:2/3;background:#f1f3f5;display:flex;align-items:center;justify-content:center;position:relative;cursor:default}
+.pp-shot .im img{width:100%;height:100%;object-fit:cover;display:block;cursor:zoom-in}
+.pp-shot .im .no{width:38px;height:38px;border-radius:50%;border:1px solid #ced4da;color:#adb5bd;display:flex;align-items:center;justify-content:center;font-style:italic;font-size:12px}
+.pp-shot .im .sp{width:30px;height:30px;border:3px solid #e5dbff;border-top-color:#7048e8;border-radius:50%;animation:ppSpin 1s linear infinite}
+.pp-shot .im .er{font-size:11px;color:#c92a2a;padding:10px;text-align:center;line-height:1.5}
+.pp-shot .ft{padding:10px 12px}
+.pp-shot .ft small{font-size:10.5px;color:#7048e8;font-style:italic}
+.pp-shot .ft b{display:block;font-size:12.5px;margin:2px 0 8px}
+.pp-shot .ft .pp-row{gap:4px}
+@keyframes ppSpin{to{transform:rotate(360deg)}}
+.pp-prog{margin-top:10px;font-size:12px;color:#5f3dc4;display:flex;align-items:center;gap:8px}
+.pp-prog .bar{flex:1;height:7px;background:#f1f3f5;border-radius:5px;overflow:hidden}
+.pp-prog .bar i{display:block;height:100%;background:linear-gradient(90deg,#9775fa,#7048e8);transition:width .3s}
+.pp-lb{position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:10050;display:flex;align-items:center;justify-content:center;cursor:zoom-out;padding:20px}
+.pp-lb img{max-width:100%;max-height:100%;border-radius:8px;box-shadow:0 10px 40px rgba(0,0,0,.5)}
+.pp-toast{position:fixed;bottom:26px;left:50%;transform:translateX(-50%);background:#212529;color:#fff;padding:9px 18px;border-radius:20px;font-size:13px;z-index:10060;max-width:90vw;text-align:center;line-height:1.5}
+.pp-toast.bad{background:#c92a2a}
+@media(max-width:1000px){.pp-cols{grid-template-columns:1fr}.pp-guide{position:static}.pp-res{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:560px){.pp-grid2{grid-template-columns:1fr}.pp-ref{flex-direction:column}.pp-hero h2{font-size:19px}}
+</style>
+<script>
+(function(){
+  'use strict';
+  var $ = function(id){ return document.getElementById(id); };
+  var esc = function(s){ return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); };
+  var POSES = [
+    ['자신감 있는 팔짱 포즈', 'standing upright with arms crossed over the chest, confident and approachable, slight smile, looking straight at the camera', '팔짱'],
+    ['재킷 라펠 잡기', 'standing, one hand lightly holding the jacket lapel at chest height, the other arm relaxed at the side, confident expression', '라펠'],
+    ['사색하는 전문가', 'thoughtful expert pose: one hand gently touching the chin, the other arm folded across the body, looking slightly off to the side', '사색'],
+    ['설명하는 오픈 팜', 'explaining something to the viewer with one open palm extended forward at waist height, friendly and engaged expression, as if presenting', '오픈팜'],
+    ['서류철을 든 포즈', 'holding a dark leather document folder against the chest with one arm, standing confidently like a trusted real estate consultant', '서류철'],
+    ['정중한 양손 포즈', 'standing politely with both hands clasped together in front of the body, warm and trustworthy smile, slight respectful posture', '양손'],
+    ['옆을 가리키는 포즈', 'pointing to the side with one hand as if introducing information on a screen beside him, body turned slightly, looking at the camera', '가리키기'],
+    ['앉아서 상담하는 포즈', 'sitting on a tall stool, leaning slightly forward with forearms on the knees and hands loosely together, as if giving a consultation or talk', '앉아서']
+  ];
+  var BGS = { studio:['스튜디오 회색', 'a seamless studio backdrop with a soft grey gradient, gentle vignette'], white:['밝은 흰 배경', 'a clean bright white seamless studio background'],
+    office:['사무실 (흐리게)', 'a modern bright real estate office interior, softly blurred background (shallow depth of field)'], city:['도시 풍경 (흐리게)', 'a modern high-rise city skyline with apartment towers, softly blurred background, daylight'] };
+  var QUAL = { low:['빠르게 · 저렴', 'low'], medium:['표준 · 권장', 'medium'], high:['고품질', 'high'] };
+  var DEF = { eng:'', q:'medium', bg:'studio', extra:'', agree:false };
+  var ST = Object.assign({}, DEF), REF = '', SHOTS = [], BUSY = {}, RUN = null, KEYSHOW = false, DRAWN = false;
+  try{ Object.assign(ST, JSON.parse(localStorage.getItem('sd_photo_opt') || '{}')); }catch(e){}
+  ST.agree = false;
+  function saveOpt(){ try{ var o = Object.assign({}, ST); delete o.agree; localStorage.setItem('sd_photo_opt', JSON.stringify(o)); }catch(e){} }
+  function settings(){ try{ return JSON.parse(localStorage.getItem('sdbs.settings') || '{}') || {}; }catch(e){ return {}; } }
+  function keysOf(e){ var s = settings(), raw = e === 'openai' ? s.openaiKeys : s.geminiKeys; return String(raw || '').split(/[\n,]/).map(function(x){ return x.trim(); }).filter(Boolean); }
+  function eng(){ if(ST.eng === 'openai' || ST.eng === 'gemini') return ST.eng; return keysOf('gemini').length || !keysOf('openai').length ? 'gemini' : 'openai'; }
+  function toast(m, bad){ var t = document.createElement('div'); t.className = 'pp-toast' + (bad ? ' bad' : ''); t.textContent = m; document.body.appendChild(t); setTimeout(function(){ t.remove(); }, bad ? 5200 : 2600); }
+  /* ── 저장소 (이 브라우저에만) ── */
+  var DBP = null;
+  function db(){ if(DBP) return DBP; DBP = new Promise(function(res, rej){ var q = indexedDB.open('sd_photo', 1); q.onupgradeneeded = function(){ q.result.createObjectStore('kv'); }; q.onsuccess = function(){ res(q.result); }; q.onerror = function(){ rej(q.error); }; }); return DBP; }
+  function dbDo(mode, fn){ return db().then(function(d){ return new Promise(function(res, rej){ var tx = d.transaction('kv', mode), r = fn(tx.objectStore('kv')); tx.oncomplete = function(){ res(r && r.result); }; tx.onerror = function(){ rej(tx.error); }; }); }); }
+  function persist(){ return dbDo('readwrite', function(s){ return s.put({ ref:REF, shots:SHOTS.map(function(x){ return x ? { url:x.url, at:x.at, eng:x.eng } : null; }) }, 'last'); }).catch(function(e){ toast('결과를 이 브라우저에 저장하지 못했습니다: ' + e.message, true); }); }
+  function restore(){ return dbDo('readonly', function(s){ return s.get('last'); }).then(function(v){ if(v){ REF = v.ref || ''; SHOTS = (v.shots || []).slice(0, 8); } }, function(){}); }
+  /* ── 사진 다듬기 ── */
+  function loadImg(src){ return new Promise(function(res, rej){ var im = new Image(); im.onload = function(){ res(im); }; im.onerror = function(){ rej(new Error('그림을 읽지 못했습니다')); }; im.src = src; }); }
+  function fileToRef(f){
+    return new Promise(function(res, rej){
+      var u = URL.createObjectURL(f);
+      loadImg(u).then(function(im){ var k = Math.min(1, 1536 / Math.max(im.naturalWidth, im.naturalHeight)), c = document.createElement('canvas'); c.width = Math.round(im.naturalWidth * k); c.height = Math.round(im.naturalHeight * k);
+        var x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height); x.drawImage(im, 0, 0, c.width, c.height); URL.revokeObjectURL(u); res(c.toDataURL('image/jpeg', 0.92)); }, function(e){ URL.revokeObjectURL(u); rej(e); });
+    });
+  }
+  /* 결과는 세로 1024×1536 JPEG 로 맞춘다 (제미나이 2:3 그림도 같은 크기로) */
+  function toPortrait(src){ return loadImg(src).then(function(im){ var W = 1024, H = 1536, c = document.createElement('canvas'); c.width = W; c.height = H; var x = c.getContext('2d'), k = Math.max(W / im.naturalWidth, H / im.naturalHeight), w = im.naturalWidth * k, h = im.naturalHeight * k; x.fillStyle = '#fff'; x.fillRect(0, 0, W, H); x.drawImage(im, (W - w) / 2, (H - h) / 2, w, h); return c.toDataURL('image/jpeg', 0.92); }); }
+  function dataBlob(u){ var m = /^data:([^;]+);base64,(.*)$/.exec(u), bin = atob(m[2]), a = new Uint8Array(bin.length); for(var i = 0; i < bin.length; i++) a[i] = bin.charCodeAt(i); return new Blob([a], { type:m[1] }); }
+  /* ── 그리기 ── */
+  function prompt(i){
+    var p = POSES[i];
+    return 'Create a professional personal-branding portrait photo of the SAME person shown in the reference image.\n'
+      + 'IDENTITY (most important): keep the exact same face, facial features, face shape, age, hairstyle, glasses (if any), skin tone and body type. The person must be clearly recognizable as the same individual. Do not beautify or change the face.\n'
+      + 'OUTFIT: keep the same clothing and colors as in the reference image.\n'
+      + 'POSE: ' + p[1] + '.\n'
+      + 'FRAMING: vertical 2:3 portrait, three-quarter to full-body shot, the person centered with some headroom.\n'
+      + 'BACKGROUND: ' + BGS[ST.bg][1] + '.\n'
+      + 'LIGHTING: soft professional studio lighting, natural skin texture, sharp focus on the face.\n'
+      + 'STYLE: photorealistic high-end corporate profile photo for lectures, business cards, blogs and video thumbnails. Natural, anatomically correct hands. No text, no letters, no watermark, no logo.'
+      + (ST.extra.trim() ? '\nEXTRA REQUEST from the user (in Korean, follow it if it does not change the identity): ' + ST.extra.trim() : '');
+  }
+  async function viaOpenAI(i){
+    var keys = keysOf('openai'); if(!keys.length) throw new Error('OpenAI 열쇠가 없습니다 — 위 01 칸에 넣어 주세요');
+    var s = settings(), models = [s.openaiImageModel || 'gpt-image-2'].concat(['gpt-image-1'].filter(function(m){ return m !== (s.openaiImageModel || 'gpt-image-2'); })), fid = true, last;
+    for(var mi = 0; mi < models.length; mi++){
+      for(var t = 0; t < 2; t++){
+        var fd = new FormData(); fd.append('model', models[mi]); fd.append('image', dataBlob(REF), 'reference.jpg'); fd.append('prompt', prompt(i));
+        fd.append('size', '1024x1536'); fd.append('quality', QUAL[ST.q][1]); fd.append('n', '1'); if(fid) fd.append('input_fidelity', 'high');
+        var r = await fetch('https://api.openai.com/v1/images/edits', { method:'POST', headers:{ authorization:'Bearer ' + keys[0] }, body:fd });
+        var d = await r.json().catch(function(){ return {}; });
+        if(r.ok && d.data && d.data[0]){ var b = d.data[0].b64_json; return toPortrait(b ? 'data:image/png;base64,' + b : d.data[0].url); }
+        var em = (d.error && d.error.message) || '';
+        if(fid && r.status === 400 && /input_fidelity/i.test(em)){ fid = false; continue; }   // 이 모델은 얼굴 유지 옵션을 안 받음 — 빼고 다시
+        last = new Error(r.status === 401 ? 'OpenAI 열쇠가 맞지 않습니다 (401)' : /verif/i.test(em) ? 'OpenAI 계정에서 「조직 인증(Verify Organization)」을 해야 GPT 이미지를 쓸 수 있습니다 — platform.openai.com → Settings → Organization' : /billing|quota|credit/i.test(em) ? 'OpenAI 크레딧(잔액)이 없습니다 — platform.openai.com 결제 확인' : /safety|moderation/i.test(em) ? 'OpenAI 안전 기준에 걸렸습니다 — 다른 사진이나 추가 요청을 바꿔 보세요' : 'OpenAI 오류 ' + r.status + ': ' + em.slice(0, 160));
+        break;
+      }
+      if(!(r.status === 404 || (/model/i.test(em) && !/verif/i.test(em)))) break;   // 모델이 없을 때만 다음 모델
+    }
+    throw last;
+  }
+  async function viaGemini(i){
+    var keys = keysOf('gemini'); if(!keys.length) throw new Error('제미나이 열쇠가 없습니다 — 위 01 칸에 넣어 주세요');
+    var model = settings().geminiImageModel || 'gemini-3.6-flash-image', m = /^data:([^;]+);base64,(.*)$/.exec(REF), last;
+    for(var k = 0; k < keys.length; k++){
+      for(var cfg = 0; cfg < 2; cfg++){
+        var body = { contents:[{ role:'user', parts:[{ inlineData:{ mimeType:m[1], data:m[2] } }, { text:prompt(i) }] }] };
+        if(cfg === 0) body.generationConfig = { responseModalities:['TEXT', 'IMAGE'], imageConfig:{ aspectRatio:'2:3' } };
+        var r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(model) + ':generateContent?key=' + encodeURIComponent(keys[k]), { method:'POST', headers:{ 'content-type':'application/json' }, body:JSON.stringify(body) });
+        var d = await r.json().catch(function(){ return {}; });
+        if(r.ok){
+          var parts = ((((d.candidates || [])[0] || {}).content || {}).parts) || [], im = parts.find(function(p){ return p.inlineData || p.inline_data; });
+          if(!im){ var why = ((d.candidates || [])[0] || {}).finishReason || ''; throw new Error(/SAFETY|PROHIBITED|IMAGE_SAFETY/i.test(why) ? '제미나이 안전 기준에 걸렸습니다 — 다른 사진으로 해 보세요' : '그림이 오지 않았습니다 — 「다시 생성」을 눌러 주세요'); }
+          var inl = im.inlineData || im.inline_data; return toPortrait('data:' + (inl.mimeType || inl.mime_type || 'image/png') + ';base64,' + inl.data);
+        }
+        var em = (d.error && d.error.message) || '';
+        if(cfg === 0 && r.status === 400 && /imageConfig|aspect|responseModalities|modalit/i.test(em)) continue;
+        last = new Error(r.status === 429 ? '제미나이 사용량이 잠시 꽉 찼습니다 — 조금 뒤 「다시 생성」' : r.status === 400 && /API key/i.test(em) ? '제미나이 열쇠가 맞지 않습니다' : '제미나이 오류 ' + r.status + ': ' + em.slice(0, 160));
+        break;
+      }
+      if(!/429|quota/i.test(last.message)) break;   // 열쇠가 여러 개면 막힌 열쇠 다음으로
+    }
+    throw last;
+  }
+  function one(i){
+    if(BUSY[i]) return Promise.resolve();
+    BUSY[i] = true; if(SHOTS[i] && SHOTS[i].err) SHOTS[i] = null; paintShot(i);
+    var e = eng();
+    return (e === 'openai' ? viaOpenAI(i) : viaGemini(i)).then(function(u){ SHOTS[i] = { url:u, at:Date.now(), eng:e }; return persist(); }, function(err){ SHOTS[i] = Object.assign({}, SHOTS[i] && SHOTS[i].url ? SHOTS[i] : {}, { err:err.message }); })
+      .then(function(){ delete BUSY[i]; paintShot(i); paintProg(); });
+  }
+  function canRun(){ return !!REF && ST.agree && keysOf(eng()).length > 0; }
+  async function runAll(only){
+    if(RUN) return;
+    if(!REF) return toast('기준 사진을 먼저 골라 주세요', true);
+    if(!ST.agree) return toast('사진 속 인물 동의 확인에 체크해 주세요', true);
+    if(!keysOf(eng()).length) return toast((eng() === 'openai' ? 'OpenAI' : '제미나이') + ' 열쇠를 먼저 넣어 주세요', true);
+    var list = (only || [0, 1, 2, 3, 4, 5, 6, 7]).filter(function(i){ return !BUSY[i]; });
+    if(!only && SHOTS.some(function(x){ return x && x.url; }) && !confirm('지금 있는 결과를 새로 만든 것으로 바꿀까요? (마음에 드는 사진은 먼저 저장해 두세요)')) return;
+    RUN = { stop:false, total:list.length, done:0 }; paint();
+    var q = list.slice(), W = eng() === 'openai' ? 2 : 3;   // 한꺼번에 너무 많이 보내면 막힌다
+    var worker = async function(){ while(q.length && !RUN.stop){ var i = q.shift(); await one(i); RUN.done++; paintProg(); } };
+    var ws = []; for(var w = 0; w < W; w++) ws.push(worker()); await Promise.all(ws);
+    var fails = list.filter(function(i){ return SHOTS[i] && SHOTS[i].err; }).length, stopped = RUN.stop; RUN = null; paint();
+    toast(stopped ? '멈췄습니다' : fails ? fails + '장은 만들지 못했습니다 — 그 칸의 「다시 생성」을 눌러 주세요' : '프로필 ' + list.length + '장을 만들었습니다', !!fails);
+  }
+  /* ── 저장 · ZIP (압축 없이 묶기 — JPEG 는 더 줄지 않는다) ── */
+  function fname(i){ return '프로필_' + String(i + 1).padStart(2, '0') + '_' + POSES[i][2] + '.jpg'; }
+  function saveBlob(b, name){ var u = URL.createObjectURL(b), a = document.createElement('a'); a.href = u; a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(function(){ URL.revokeObjectURL(u); }, 2000); }
+  var CRC = (function(){ var t = new Uint32Array(256); for(var n = 0; n < 256; n++){ var c = n; for(var k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+  function crc32(a){ var c = 0xFFFFFFFF; for(var i = 0; i < a.length; i++) c = CRC[(c ^ a[i]) & 255] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; }
+  function zip(files){
+    var enc = new TextEncoder(), parts = [], cen = [], off = 0, d = new Date(), dt = ((d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1)) & 0xFFFF, dd = (((d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate()) & 0xFFFF;
+    files.forEach(function(f){
+      var nm = enc.encode(f.name), data = f.data, crc = crc32(data), h = new DataView(new ArrayBuffer(30));
+      h.setUint32(0, 0x04034b50, true); h.setUint16(4, 20, true); h.setUint16(6, 0x0800, true); h.setUint16(8, 0, true); h.setUint16(10, dt, true); h.setUint16(12, dd, true);
+      h.setUint32(14, crc, true); h.setUint32(18, data.length, true); h.setUint32(22, data.length, true); h.setUint16(26, nm.length, true); h.setUint16(28, 0, true);
+      parts.push(h.buffer, nm, data);
+      var c = new DataView(new ArrayBuffer(46)); c.setUint32(0, 0x02014b50, true); c.setUint16(4, 20, true); c.setUint16(6, 20, true); c.setUint16(8, 0x0800, true); c.setUint16(10, 0, true); c.setUint16(12, dt, true); c.setUint16(14, dd, true);
+      c.setUint32(16, crc, true); c.setUint32(20, data.length, true); c.setUint32(24, data.length, true); c.setUint16(28, nm.length, true); c.setUint32(42, off, true);
+      cen.push(c.buffer, nm); off += 30 + nm.length + data.length;
+    });
+    var csz = cen.reduce(function(a, b){ return a + (b.byteLength != null ? b.byteLength : b.length); }, 0), e = new DataView(new ArrayBuffer(22));
+    e.setUint32(0, 0x06054b50, true); e.setUint16(8, files.length, true); e.setUint16(10, files.length, true); e.setUint32(12, csz, true); e.setUint32(16, off, true);
+    return new Blob(parts.concat(cen, [e.buffer]), { type:'application/zip' });
+  }
+  function zipAll(){
+    var fs = []; SHOTS.forEach(function(x, i){ if(x && x.url){ var b = atob(x.url.split(',')[1]), a = new Uint8Array(b.length); for(var k = 0; k < b.length; k++) a[k] = b.charCodeAt(k); fs.push({ name:fname(i), data:a }); } });
+    if(!fs.length) return toast('아직 만든 사진이 없습니다', true);
+    saveBlob(zip(fs), '송도제일_프로필_' + new Date().toISOString().slice(0, 10) + '.zip'); toast(fs.length + '장을 ZIP 으로 저장했습니다');
+  }
+  /* ── 화면 ── */
+  function shotHtml(i){
+    var x = SHOTS[i], busy = BUSY[i];
+    return '<div class="im">' + (busy ? '<div class="sp"></div>' : x && x.url ? '<img src="' + x.url + '" alt="' + esc(POSES[i][0]) + '" data-zoom="' + i + '">' + (x.err ? '' : '') : x && x.err ? '<div class="er">⚠ ' + esc(x.err) + '</div>' : '<div class="no">' + String(i + 1).padStart(2, '0') + '</div>') + '</div>'
+      + '<div class="ft"><small>Pose ' + String(i + 1).padStart(2, '0') + '</small><b>' + esc(POSES[i][0]) + '</b><div class="pp-row">'
+      + '<button class="pp-btn sm" data-save="' + i + '"' + (x && x.url && !busy ? '' : ' disabled') + '>⬇ 저장</button>'
+      + '<button class="pp-btn sm" data-re="' + i + '"' + (busy || !canRun() ? ' disabled' : '') + '>↻ 다시 생성</button></div>'
+      + (x && x.url && x.err ? '<div class="pp-note" style="color:#c92a2a">다시 만들기 실패: ' + esc(x.err) + '</div>' : '') + '</div>';
+  }
+  function paintShot(i){ var c = document.querySelector('.pp-shot[data-i="' + i + '"]'); if(!c) return; c.innerHTML = shotHtml(i); bindShot(c); }
+  function bindShot(c){
+    var s = c.querySelector('[data-save]'); if(s) s.onclick = function(){ var i = +s.dataset.save; saveBlob(dataBlob(SHOTS[i].url), fname(i)); };
+    var r = c.querySelector('[data-re]'); if(r) r.onclick = function(){ var i = +r.dataset.re; if(!canRun()) return runAll([i]); one(i).then(function(){ if(SHOTS[i] && SHOTS[i].err) toast(SHOTS[i].err, true); }); };
+    var z = c.querySelector('[data-zoom]'); if(z) z.onclick = function(){ var lb = document.createElement('div'); lb.className = 'pp-lb'; lb.innerHTML = '<img src="' + z.src + '">'; lb.onclick = function(){ lb.remove(); }; document.body.appendChild(lb); };
+  }
+  function paintProg(){ var p = $('pp-prog'); if(!p) return; if(!RUN){ p.innerHTML = ''; return; } p.innerHTML = '<span>⏳ ' + RUN.done + ' / ' + RUN.total + '장</span><div class="bar"><i style="width:' + Math.round(RUN.done / Math.max(1, RUN.total) * 100) + '%"></i></div><button class="pp-btn sm" id="pp-stop">멈추기</button>'; $('pp-stop').onclick = function(){ if(RUN) RUN.stop = true; this.disabled = true; this.textContent = '지금 그리는 것까지만…'; }; }
+  function keyBox(){
+    var e = eng(), sk = e === 'openai' ? 'openaiKeys' : 'geminiKeys', list = keysOf(e);
+    return (list.length > 1 ? '<div class="pp-row"><div class="pp-in" style="background:#f8f9fa;color:#495057">열쇠 ' + list.length + '개가 들어 있습니다</div></div>'
+      : '<div class="pp-row"><input class="pp-in" id="pp-key" type="' + (KEYSHOW ? 'text' : 'password') + '" autocomplete="off" spellcheck="false" placeholder="' + (e === 'openai' ? 'sk- 로 시작하는 본인 API 키' : 'AIza 로 시작하는 본인 API 키') + '" value="' + esc(list[0] || '') + '" style="font-family:ui-monospace,Consolas,monospace;font-size:12.5px"><button class="pp-btn" id="pp-eye">' + (KEYSHOW ? '가리기' : '보기') + '</button><button class="pp-btn pri" id="pp-keysave">적용</button></div>')
+      + '<div class="pp-note">' + (list.length ? '✓ 열쇠가 들어 있습니다. ' : '') + '블로그 스튜디오 [엔진 설정]·비디오 스튜디오와 같은 칸이라 한 번 넣으면 함께 씁니다. 열쇠는 이 브라우저에만 저장되고, 사진과 함께 ' + (e === 'openai' ? 'OpenAI' : '구글') + '로만 바로 보냅니다.</div>'
+      + (e === 'openai' ? '<div class="pp-tip"><b>OpenAI 키가 없다면</b> — <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener">platform.openai.com/api-keys</a> 에서 「Create new secret key」로 받으세요. 결제 수단 등록이 필요하고, GPT 이미지는 계정의 <b>조직 인증(Verify Organization)</b>이 필요할 수 있습니다. 요금은 본인 OpenAI 계정에서 나갑니다 (표준 화질 8장에 대략 0.5달러 안팎, 화질·모델에 따라 다름).</div>'
+        : '<div class="pp-tip"><b>제미나이 키가 없다면</b> — <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a> 에서 받으세요. 그림 모델은 블로그 [엔진 설정]의 그림 모델(' + esc(settings().geminiImageModel || 'gemini-3.6-flash-image') + ')을 씁니다. 얼굴을 더 똑같이 남기려면 OpenAI(GPT 이미지)가 나을 때가 많습니다.</div>');
+  }
+  function paint(){
+    var root = $('photo-root'); if(!root) return; DRAWN = true;
+    var e = eng(), done = SHOTS.filter(function(x){ return x && x.url; }).length, ok = canRun();
+    root.innerHTML = '<div class="pp-hero"><div class="k">AI PERSONAL PROFILE</div><h2>사진 한 장으로 완성하는<br><em>나만의 개인 프로필 8종</em></h2>'
+      + '<p>같은 얼굴과 옷차림은 그대로 두고, 강의·명함·블로그·유튜브 썸네일·네이버 중개사 소개에 바로 쓰는 전문 포즈를 8가지로 만듭니다. 본인 OpenAI 또는 제미나이 열쇠로 이 브라우저 안에서만 처리됩니다.</p>'
+      + '<div class="pp-chips"><span>인물 일관성</span><span>세로 고화질 1024×1536</span><span>8장 ZIP 저장</span><span>열쇠·사진은 내 브라우저에만</span></div><div class="big">8</div></div>'
+      + '<div class="pp-cols"><div class="pp-card">'
+      + '<div class="pp-step"><h3><i>01</i>AI 열쇠</h3><p class="pp-sub">그림을 그릴 곳을 고르고 본인 열쇠를 넣습니다.</p>'
+      + '<div class="pp-seg" id="pp-eng"><button data-v="openai"' + (e === 'openai' ? ' class="on"' : '') + '>OpenAI (GPT 이미지)' + (keysOf('openai').length ? ' ✓' : '') + '</button><button data-v="gemini"' + (e === 'gemini' ? ' class="on"' : '') + '>구글 제미나이' + (keysOf('gemini').length ? ' ✓' : '') + '</button></div>'
+      + '<div style="margin-top:10px">' + keyBox() + '</div></div>'
+      + '<div class="pp-step"><h3><i>02</i>기준 사진</h3><p class="pp-sub">얼굴과 상반신이 선명한 사진일수록 결과가 좋습니다.</p>'
+      + (REF ? '<div class="pp-ref"><img src="' + REF + '" alt="기준 사진"><div><div class="pp-note" style="margin-top:0">이 사진의 얼굴·옷차림을 그대로 두고 포즈만 바꿉니다.</div><div class="pp-row" style="margin-top:10px"><label class="pp-btn" style="cursor:pointer">📷 다른 사진<input type="file" id="pp-file" accept="image/jpeg,image/png,image/webp" hidden></label><button class="pp-btn" id="pp-clr">지우기</button></div></div></div>'
+        : '<label class="pp-drop" id="pp-drop"><div class="pl">＋</div><b>사진을 고르거나 끌어 놓으세요</b><small>JPG · PNG · WEBP · 10MB 이하 · 사진은 서버에 저장되지 않습니다</small><input type="file" id="pp-file" accept="image/jpeg,image/png,image/webp" hidden></label>')
+      + '<div class="pp-grid2">'
+      + (e === 'openai' ? '<div class="pp-f"><label>출력 품질</label><select class="pp-in" id="pp-q">' + Object.keys(QUAL).map(function(k){ return '<option value="' + k + '"' + (k === ST.q ? ' selected' : '') + '>' + QUAL[k][0] + '</option>'; }).join('') + '</select></div>'
+        : '<div class="pp-f"><label>출력 크기</label><div class="pp-in" style="background:#f8f9fa;color:#495057">세로 1024×1536 (2:3)</div></div>')
+      + '<div class="pp-f"><label>배경</label><select class="pp-in" id="pp-bg">' + Object.keys(BGS).map(function(k){ return '<option value="' + k + '"' + (k === ST.bg ? ' selected' : '') + '>' + BGS[k][0] + '</option>'; }).join('') + '</select></div>'
+      + '</div><div class="pp-f" style="margin-top:10px"><label>추가 요청 <span>선택</span></label><input class="pp-in" id="pp-extra" maxlength="120" placeholder="예: 배경을 조금 더 밝게, 넥타이는 남색으로" value="' + esc(ST.extra) + '"></div>'
+      + '<label class="pp-chk"><input type="checkbox" id="pp-agree"' + (ST.agree ? ' checked' : '') + '> 사진 속 인물(본인 포함)의 동의를 받았으며, 만든 사진은 본인 홍보 용도로만 쓰고 AI 요금은 내 계정에서 나간다는 것을 확인했습니다.</label>'
+      + '<button class="pp-btn pri big" id="pp-go" style="margin-top:14px"' + (ok && !RUN ? '' : ' disabled') + '>' + (RUN ? '⏳ 만드는 중…' : '✨ 8가지 포즈 생성하기') + '</button>'
+      + '<div id="pp-prog" class="pp-prog"></div>'
+      + '<div class="pp-note" style="text-align:center">' + (ok ? (e === 'openai' ? '한 장에 30초~1분, 두 장씩 동시에 그립니다.' : '한 장에 10~30초, 세 장씩 동시에 그립니다.') + ' 실패한 칸만 따로 「다시 생성」할 수 있습니다.' : !REF ? '기준 사진을 골라 주세요.' : !keysOf(e).length ? '열쇠를 넣어 주세요.' : '위 동의 확인에 체크해 주세요.') + '</div>'
+      + '</div></div>'
+      + '<div class="pp-guide"><div class="k">PHOTO GUIDE</div><h4>결과가 잘 나오는 사진</h4>'
+      + '<div class="it"><i>01</i><div><b>정면에 가까운 얼굴</b><span>안경과 헤어라인이 잘 보여야 합니다.</span></div></div>'
+      + '<div class="it"><i>02</i><div><b>밝고 고른 조명</b><span>강한 그림자나 역광은 피해 주세요.</span></div></div>'
+      + '<div class="it"><i>03</i><div><b>상반신까지 보이는 구도</b><span>입은 옷과 체형을 그대로 살립니다. 정장 차림이면 더 좋습니다.</span></div></div>'
+      + '<div class="it"><i>04</i><div><b>혼자 나온 사진</b><span>여러 명이 있으면 얼굴이 섞일 수 있습니다.</span></div></div>'
+      + '<div class="box"><b>열쇠·사진 보호</b><br>열쇠와 사진은 이 브라우저에만 저장되고, 고른 AI 회사로만 바로 보냅니다. 공용 PC 라면 쓰고 나서 결과 「모두 지우기」와 열쇠 지우기를 해 주세요.</div>'
+      + '<div class="box"><b>쓰는 곳</b><br>네이버 부동산 중개사 소개 · 블로그 작성자 사진 · 명함 · 강의 자료 · 유튜브 썸네일(비디오 스튜디오 「내 사진 사용」)</div></div></div>'
+      + '<div class="pp-res-h"><div style="flex:1"><span class="k">RESULTS</span><h3>프로필 결과</h3><div class="pp-note" style="margin-top:2px">' + (done ? done + '장 · 사진을 누르면 크게 보입니다. 이 브라우저에 남아 있어 다시 열어도 그대로입니다.' : '열쇠와 사진을 준비하면 만들 수 있습니다.') + '</div></div>'
+      + (done ? '<button class="pp-btn" id="pp-wipe">🗑 모두 지우기</button>' : '') + '<button class="pp-btn pri" id="pp-zip"' + (done ? '' : ' disabled') + '>⬇ ' + done + '장 ZIP 저장</button></div>'
+      + '<div class="pp-res">' + POSES.map(function(p, i){ return '<div class="pp-shot" data-i="' + i + '">' + shotHtml(i) + '</div>'; }).join('') + '</div>'
+      + '<div class="pp-note" style="margin-top:14px">AI 결과는 사진 상태에 따라 얼굴이 조금 달라질 수 있습니다. 공개하기 전에 본인과 같은지 꼭 확인하세요. 마음에 들지 않는 포즈는 그 칸만 다시 만들 수 있습니다.</div>';
+    bind(root); paintProg();
+  }
+  function bind(root){
+    Array.prototype.forEach.call(root.querySelectorAll('#pp-eng button'), function(b){ b.onclick = function(){ ST.eng = b.dataset.v; saveOpt(); paint(); }; });
+    var k = $('pp-key'), save = function(){ var s2 = settings(), sk = eng() === 'openai' ? 'openaiKeys' : 'geminiKeys'; s2[sk] = k.value.trim(); try{ localStorage.setItem('sdbs.settings', JSON.stringify(s2)); }catch(e){} toast(k.value.trim() ? '열쇠를 저장했습니다' : '열쇠를 지웠습니다'); paint(); };
+    if(k){ k.onkeydown = function(e){ if(e.key === 'Enter') save(); }; $('pp-keysave').onclick = save; $('pp-eye').onclick = function(){ KEYSHOW = !KEYSHOW; k.type = KEYSHOW ? 'text' : 'password'; this.textContent = KEYSHOW ? '가리기' : '보기'; }; }
+    var f = $('pp-file'), take = function(file){
+      if(!file) return;
+      if(!/^image\/(jpeg|png|webp)$/.test(file.type)) return toast('JPG · PNG · WEBP 사진만 됩니다', true);
+      if(file.size > 10 * 1048576) return toast('10MB 이하 사진으로 골라 주세요', true);
+      fileToRef(file).then(function(u){ REF = u; persist(); paint(); toast('기준 사진을 넣었습니다'); }, function(e){ toast(e.message, true); });
+    };
+    if(f) f.onchange = function(){ take(this.files && this.files[0]); this.value = ''; };
+    var d = $('pp-drop'); if(d){ d.ondragover = function(e){ e.preventDefault(); d.classList.add('ov'); }; d.ondragleave = function(){ d.classList.remove('ov'); }; d.ondrop = function(e){ e.preventDefault(); d.classList.remove('ov'); take(e.dataTransfer.files && e.dataTransfer.files[0]); }; }
+    var c = $('pp-clr'); if(c) c.onclick = function(){ REF = ''; persist(); paint(); };
+    var q = $('pp-q'); if(q) q.onchange = function(){ ST.q = this.value; saveOpt(); };
+    $('pp-bg').onchange = function(){ ST.bg = this.value; saveOpt(); };
+    $('pp-extra').oninput = function(){ ST.extra = this.value; saveOpt(); };
+    $('pp-agree').onchange = function(){ ST.agree = this.checked; paint(); };
+    $('pp-go').onclick = function(){ runAll(); };
+    $('pp-zip').onclick = zipAll;
+    var w = $('pp-wipe'); if(w) w.onclick = function(){ if(!confirm('만든 사진과 기준 사진을 이 브라우저에서 모두 지울까요?')) return; SHOTS = []; REF = ''; persist(); paint(); toast('모두 지웠습니다'); };
+    Array.prototype.forEach.call(root.querySelectorAll('.pp-shot'), bindShot);
+  }
+  var READY = restore();
+  window.sdPhoto = {
+    go:function(){ READY.then(paint); try{ window.scrollTo(0, 0); }catch(e){} },
+    // 시험용
+    _state:function(){ return { ref:REF, shots:SHOTS, st:ST, busy:BUSY, run:RUN }; }, _prompt:prompt, _zip:zip, _crc:crc32, POSES:POSES
   };
 })();
 </script>
