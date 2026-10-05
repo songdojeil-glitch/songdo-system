@@ -242,6 +242,7 @@ a.sjb-btn.on::after,span.sjb-btn.on::after{background:linear-gradient(100deg,rgb
       <button onclick="sw(7)" id="tn7" class="tnb">⚙️ AI 설정</button>
       <button onclick="sw(8)" id="tn8" class="tnb">🏢 중개업소 홍보</button>
       <button onclick="sw(9)" id="tn9" class="tnb">📍 플레이스AD</button>
+      <button onclick="sw(10)" id="tn10" class="tnb">📺 유튜브키워드</button>
 </div></div>
 <div class="wrap sjb-band">
 
@@ -266,7 +267,8 @@ a.sjb-btn.on::after,span.sjb-btn.on::after{background:linear-gradient(100deg,rgb
       <button onclick="sw(5)" style="padding:14px 8px;background:#fff;border:0.5px solid #e0e0e0;border-radius:12px;cursor:pointer;font-size:12px;color:#1a1a1a"><div style="font-size:20px;margin-bottom:4px">💳</div>명함</button>
       <button onclick="sw(6)" style="padding:14px 8px;background:#fff;border:0.5px solid #e0e0e0;border-radius:12px;cursor:pointer;font-size:12px;color:#1a1a1a"><div style="font-size:20px;margin-bottom:4px">📅</div>캘린더</button>
       <button onclick="sw(9)" style="padding:14px 8px;background:#fff;border:0.5px solid #e0e0e0;border-radius:12px;cursor:pointer;font-size:12px;color:#1a1a1a"><div style="font-size:20px;margin-bottom:4px">📍</div>플레이스AD</button>
-      <button onclick="sw(7)" style="padding:14px 8px;background:#fff;border:0.5px solid #e0e0e0;border-radius:12px;cursor:pointer;font-size:12px;color:#1a1a1a"><div style="font-size:20px;margin-bottom:4px">⚙️</div>AI 설정 <span id="hub-ai-model" style="font-size:10px;color:#7b1fa2;font-weight:600"></span></button>
+      <button onclick="sw(10)" style="padding:14px 8px;background:#fff;border:0.5px solid #e0e0e0;border-radius:12px;cursor:pointer;font-size:12px;color:#1a1a1a"><div style="font-size:20px;margin-bottom:4px">📺</div>유튜브키워드</button>
+      <button onclick="sw(7)" style="padding:14px 8px;background:#fff;border:0.5px solid #e0e0e0;border-radius:12px;cursor:pointer;font-size:12px;color:#1a1a1a;grid-column:1/-1"><div style="font-size:20px;margin-bottom:4px">⚙️</div>AI 설정 <span id="hub-ai-model" style="font-size:10px;color:#7b1fa2;font-weight:600"></span></button>
     </div>
   </div>
   <div class="card">
@@ -1342,7 +1344,7 @@ function clearBlogProp(){
 
 // ─ sw()
 function sw(n){
-  for(var i=0;i<=9;i++){
+  for(var i=0;i<=10;i++){
     var tc=document.getElementById('tc'+i),tn=document.getElementById('tn'+i);
     if(tc)tc.className='tc'+(i===n?' on':'');
     if(tn){tn.style.borderBottomColor=i===n?'#1a1a1a':'transparent';tn.style.color=i===n?'#1a1a1a':'#666';tn.style.fontWeight=i===n?'500':'400';}
@@ -1355,6 +1357,7 @@ function sw(n){
   if(n===7)applyAIConfigUI();
   if(n===8)initBrkPromo();
   if(n===9&&window.sdPlaceAd)sdPlaceAd.go();
+  if(n===10&&window.sdYtKw)sdYtKw.go();
 }
 
 function setTodayDate(){
@@ -4019,6 +4022,347 @@ textarea.pa-in{resize:vertical;line-height:1.6}
 })();
 </script>
 
+<!-- ═════════════════════════════════════════════════════════════════
+     📺 유튜브키워드 (sd_marketing.html 탭 10 · window.sdYtKw)  2026-10-05
+     · ko372.com 「MR.K 유튜브 키워드 찾기」를 따름 — 구독자는 적은데 조회수가 터진 부동산 영상 Top 10 → AI 가 떡상 이유 분석 → 내 영상·쇼츠·블로그로
+     · 자료: YouTube Data API v3 를 이 브라우저에서 바로 부른다 (MR.K 도 같은 방식 — 본인 API 키 · 하루 무료 10,000유닛).
+       PlayMCP 「YouTube Data 분석」 같은 MCP 는 Claude 대화 안에서만 쓰는 도구라 웹 화면에서는 부를 수 없다.
+       검색 1번 ≈ 102유닛 (search.list 100 + videos.list 1 + channels.list 1) · 분석할 때 댓글 1유닛
+     · 점수: 구독자 대비 조회수(조회수 ÷ 구독자) · 하루 조회수(조회수 ÷ 올린 지 며칠) · 반응률((좋아요+댓글×3) ÷ 조회수) · 종합 점수(순위 백분위 가중합)
+     · AI: 블로그·영상과 같은 열쇠(sdbs.settings — 제미나이·클로드·챗GPT, 블로그 [엔진 설정]의 엔진)
+     · 이어 쓰기: 🎬 비디오 스튜디오(IndexedDB sd_video 새 작업 · 쇼츠) · ✍️ 블로그 스튜디오(sd_blog.html?topic=…&keys=…)
+     · 저장: localStorage sd_ytkw (보관함·분석·오늘 사용량) — 유튜브 키는 sdbs.settings.youtubeKey
+     ═════════════════════════════════════════════════════════════════ -->
+<style>
+#tc10 .yk{max-width:1180px;margin:0 auto;padding:1.25rem 1rem 3rem;color:#1a1d2e}
+#tc10 .yk *{box-sizing:border-box}
+.yk-top{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+.yk-top b{font-size:15px}
+.yk-use{margin-left:auto;font-size:11.5px;color:#5c6378;text-align:right;line-height:1.5}
+.yk-use b{color:#3b5bdb;font-size:12px}
+.yk-hero{background:linear-gradient(135deg,#141a3a 0%,#1d2a6b 60%,#24357f 100%);color:#e9ecff;border-radius:18px;padding:24px 26px;margin-bottom:12px}
+.yk-hero .bd{display:inline-block;background:rgba(255,212,59,.14);color:#ffd43b;border:1px solid rgba(255,212,59,.35);border-radius:20px;padding:3px 12px;font-size:11px;font-weight:700}
+.yk-hero h2{margin:12px 0 8px;font-size:27px;line-height:1.35;font-weight:900}
+.yk-hero h2 em{font-style:normal;color:#91a7ff}.yk-hero h2 i{font-style:normal;color:#ffd43b}
+.yk-hero p{margin:0;color:#bac8ff;font-size:13px;line-height:1.75;max-width:720px}
+.yk-steps{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px;margin-top:16px}
+.yk-steps div{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:10px 11px;font-size:11px;color:#a5b4fc;line-height:1.5}
+.yk-steps div.on{background:rgba(76,110,245,.25);border-color:#748ffc}
+.yk-steps small{color:#ffd43b;font-weight:800;font-size:10px;letter-spacing:1px}
+.yk-steps b{display:block;color:#fff;font-size:12.5px;margin:3px 0}
+.yk-card{background:#fff;border:0.5px solid #dee2e6;border-radius:14px;padding:16px 18px;margin-bottom:12px}
+.yk-sr{display:flex;gap:8px}
+.yk-in{width:100%;padding:11px 13px;border:1px solid #ced4da;border-radius:10px;font-size:14px;font-family:inherit;background:#fff}
+.yk-in:focus{outline:2px solid #bac8ff;border-color:#4c6ef5}
+.yk-btn{border:1px solid #ced4da;background:#fff;border-radius:9px;padding:8px 14px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:inherit;color:#343a40;white-space:nowrap}
+.yk-btn:hover{border-color:#4c6ef5;color:#3b5bdb}
+.yk-btn.pri{background:#3b5bdb;border-color:#3b5bdb;color:#fff}
+.yk-btn.pri:hover{background:#2f4ac0;color:#fff}
+.yk-btn.big{padding:11px 20px;font-size:14px;border-radius:10px}
+.yk-btn.sm{padding:5px 10px;font-size:11.5px}
+.yk-btn:disabled{opacity:.45;cursor:not-allowed}
+.yk-grp{margin-top:10px}
+.yk-grp>small{display:block;font-size:11.5px;color:#3b5bdb;font-weight:700;margin-bottom:5px}
+.yk-chips{display:flex;gap:5px;flex-wrap:wrap}
+.yk-chips button{border:1px solid #dee2e6;background:#f8f9fa;border-radius:8px;padding:5px 10px;font-size:12px;cursor:pointer;font-family:inherit;color:#343a40}
+.yk-chips button:hover,.yk-chips button.on{border-color:#4c6ef5;background:#edf2ff;color:#3b5bdb}
+.yk-flt{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:12px;font-size:12px;color:#495057}
+.yk-flt select{padding:6px 8px;border:1px solid #ced4da;border-radius:8px;font-family:inherit;font-size:12px;background:#fff}
+.yk-tabs{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px;margin-bottom:12px}
+.yk-tabs button{text-align:left;border:1px solid #dee2e6;background:#fff;border-radius:12px;padding:10px 12px;cursor:pointer;font-family:inherit}
+.yk-tabs button b{display:block;font-size:12.5px;color:#1a1d2e}
+.yk-tabs button small{font-size:11px;color:#868e96;line-height:1.45;display:block;margin-top:2px}
+.yk-tabs button.on{border-color:#4c6ef5;background:#edf2ff;box-shadow:0 0 0 1px #4c6ef5 inset}
+.yk-list{display:flex;flex-direction:column;gap:8px}
+.yk-v{display:grid;grid-template-columns:34px 196px minmax(0,1fr) auto;gap:12px;align-items:center;border:1px solid #e9ecef;border-radius:12px;padding:10px;background:#fff}
+.yk-v .rk{font-size:18px;font-weight:900;color:#adb5bd;text-align:center}
+.yk-v .rk.t3{color:#f59f00}
+.yk-v .th{position:relative;width:196px;aspect-ratio:16/9;border-radius:9px;overflow:hidden;background:#e9ecef}
+.yk-v .th img{width:100%;height:100%;object-fit:cover;display:block}
+.yk-v .th span{position:absolute;right:5px;bottom:5px;background:rgba(0,0,0,.78);color:#fff;font-size:10.5px;border-radius:4px;padding:1px 5px}
+.yk-v .th .sh{left:5px;right:auto;background:#e03131}
+.yk-v h4{margin:0 0 4px;font-size:13.5px;line-height:1.45;font-weight:700}
+.yk-v h4 a{color:inherit;text-decoration:none}
+.yk-v h4 a:hover{text-decoration:underline}
+.yk-v .ch{font-size:11.5px;color:#868e96;margin-bottom:6px}
+.yk-v .st{display:flex;gap:6px;flex-wrap:wrap}
+.yk-v .st span{font-size:11px;background:#f1f3f5;border-radius:6px;padding:2px 7px;color:#495057}
+.yk-v .st .hot{background:#fff0f6;color:#c2255c;font-weight:800}
+.yk-v .st .up{background:#fff4e6;color:#d9480f;font-weight:700}
+.yk-v .bt{display:flex;flex-direction:column;gap:5px}
+.yk-v.sel{border-color:#4c6ef5;box-shadow:0 0 0 1px #4c6ef5}
+.yk-empty{text-align:center;color:#868e96;font-size:13px;padding:30px 10px;line-height:1.8}
+.yk-note{font-size:11.5px;color:#868e96;line-height:1.6;margin-top:6px}
+.yk-err{font-size:12.5px;color:#c92a2a;background:#fff5f5;border:1px solid #ffc9c9;border-radius:10px;padding:10px 12px;line-height:1.6;margin:8px 0;white-space:pre-wrap}
+.yk-an{border:1px solid #bac8ff;background:#f8f9ff;border-radius:14px;padding:16px 18px;margin-top:14px}
+.yk-an h3{margin:0 0 10px;font-size:15px}
+.yk-an h5{margin:14px 0 6px;font-size:13px;color:#3b5bdb}
+.yk-an ul{margin:0;padding-left:18px;font-size:13px;line-height:1.75}
+.yk-an .box{background:#fff;border:1px solid #e9ecef;border-radius:10px;padding:10px 12px;font-size:13px;line-height:1.75;white-space:pre-wrap}
+.yk-cat{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.yk-cat .c{border:1px solid #e9ecef;border-radius:12px;padding:10px 12px;background:#fff}
+.yk-cat .c h4{margin:0 0 6px;font-size:13px}
+.yk-cat .c a{display:flex;gap:8px;align-items:center;text-decoration:none;color:inherit;padding:4px 0;font-size:12px;line-height:1.4}
+.yk-cat .c span{min-width:0}.yk-cat .c span>b{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-size:12px}
+.yk-cat .c img{width:72px;aspect-ratio:16/9;object-fit:cover;border-radius:5px;flex:none}
+.yk-guide{font-size:12.5px;line-height:1.85;color:#343a40}
+.yk-guide ol{margin:6px 0 0 18px;padding:0}
+.yk-toast{position:fixed;bottom:26px;left:50%;transform:translateX(-50%);background:#212529;color:#fff;padding:9px 18px;border-radius:20px;font-size:13px;z-index:10060;max-width:90vw;text-align:center}
+.yk-toast.bad{background:#c92a2a}
+@media(max-width:1000px){.yk-steps{grid-template-columns:repeat(3,1fr)}.yk-tabs{grid-template-columns:repeat(3,1fr)}.yk-v{grid-template-columns:28px 130px minmax(0,1fr)}.yk-v .th{width:130px}.yk-v .bt{grid-column:2/-1;flex-direction:row;flex-wrap:wrap}.yk-cat{grid-template-columns:1fr}}
+@media(max-width:600px){.yk-steps,.yk-tabs{grid-template-columns:repeat(2,1fr)}.yk-sr{flex-direction:column}}
+</style>
+<div id="tc10" class="tc"><div class="yk sjb-band" id="yk-root"></div></div>
+<script>
+(function(){
+  'use strict';
+  var $ = function(id){ return document.getElementById(id); };
+  var esc = function(s){ return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); };
+  var API = 'https://www.googleapis.com/youtube/v3/';
+  var CHIPS = [
+    ['🏠 부동산 분야', ['아파트', '토지', '재개발/재건축', '상가', '오피스텔', '원룸', '단독주택', '주택조합', '경매', '공매', '부동산투자']],
+    ['🏙 송도·인천', ['송도', '송도 아파트', '인천 부동산', '청라', '검단', 'GTX-B', '송도 학군', '송도 상가', '전세사기 예방']],
+    ['📚 부동산 프리셋', ['부동산', '토지개발', '공인중개사', '공인중개사 시험준비', '중개업', '부동산공법', '건축법', '아파트 투자', '부동산 세금', '대출 규제']],
+    ['🤖 AI · 도구', ['AI 활용', '클로드', '제미나이', 'GPT', '노트북LM', '클로드 코드', '코덱스']]
+  ];
+  var CATS = ['아파트', '토지', '재개발 재건축', '상가', '오피스텔', '원룸', '단독주택', '지역주택조합', '경매', '공매', '부동산투자'];
+  var TABS = [['ratio', '🔥 구독자 대비 조회수', '작은 채널인데 터진 영상 — 일반 검색에선 안 보임'], ['views', '👀 조회수 높은 순', '이 키워드에서 가장 많이 본 영상'],
+    ['surge', '⚡ 요즘 급상승', '최근 7일 · 하루 조회수가 빠르게 오르는 영상'], ['steady', '🌱 꾸준한 조회', '6개월~3년 전 영상인데 계속 보는 스테디셀러'],
+    ['cat', '🏆 분야별 Top 3', '아파트·토지·재개발·상가·경매 등 11분야'], ['saved', '⭐ 보관함', '찜한 영상과 AI 분석']];
+  var PERIOD = [['7', '최근 1주'], ['30', '최근 1개월'], ['90', '최근 3개월'], ['365', '최근 1년'], ['0', '전체 기간']];
+  var SORT = [['score', '종합 점수'], ['ratio', '구독자 대비'], ['daily', '하루 조회수'], ['views', '조회수'], ['eng', '반응률(좋아요·댓글)'], ['subs', '구독자 적은 순'], ['new', '최신순']];
+  var LSK = 'sd_ytkw', D = { skip:false, saved:[], an:{}, use:{ d:'', u:0 }, last:null };
+  try{ Object.assign(D, JSON.parse(localStorage.getItem(LSK) || '{}')); }catch(e){}
+  var UI = { q:'', tab:'ratio', period:'30', region:'KR', type:'all', sort:'score', show:10, busy:false, err:'', sel:'', anBusy:false };
+  var CACHE = {}, LIST = D.last && D.last.list || [], CAT = D.cat && D.cat.day === ptDay0() ? D.cat.list : null;
+  function ptDay0(){ try{ return new Intl.DateTimeFormat('en-CA', { timeZone:'America/Los_Angeles' }).format(new Date()); }catch(e){ return new Date().toISOString().slice(0, 10); } }
+  function periodName(){ return { '7':'최근 7일', '30':'최근 30일', '90':'최근 3개월', '365':'최근 1년', '0':'전체 기간' }[UI.period] || '최근 30일'; }
+  if(D.last){ UI.q = D.last.q || ''; UI.tab = D.last.tab || 'ratio'; UI.period = D.last.period || '30'; UI.region = D.last.region || 'KR'; }
+  function save(){ try{ D.last = { q:UI.q, tab:UI.tab, period:UI.period, region:UI.region, list:LIST.slice(0, 50) }; localStorage.setItem(LSK, JSON.stringify(D)); }catch(e){} }
+  function toast(m, bad){ var t = document.createElement('div'); t.className = 'yk-toast' + (bad ? ' bad' : ''); t.textContent = m; document.body.appendChild(t); setTimeout(function(){ t.remove(); }, bad ? 5000 : 2400); }
+  function settings(){ try{ return JSON.parse(localStorage.getItem('sdbs.settings') || '{}') || {}; }catch(e){ return {}; } }
+  function ytKey(){ return String(settings().youtubeKey || '').trim(); }
+  /* 오늘 사용량 — 구글 할당량은 미국 태평양 시간 자정(한국 오후 4~5시)에 다시 찬다 */
+  function ptDay(){ try{ return new Intl.DateTimeFormat('en-CA', { timeZone:'America/Los_Angeles' }).format(new Date()); }catch(e){ return new Date().toISOString().slice(0, 10); } }
+  function used(){ if(D.use.d !== ptDay()) D.use = { d:ptDay(), u:0 }; return D.use.u; }
+  function spend(u){ used(); D.use.u += u; save(); paintUse(); }
+  function paintUse(){ var el = $('yk-use'); if(el){ var u = used(); el.innerHTML = '오늘 사용 <b>' + u.toLocaleString() + '</b> / 10,000유닛<br>검색 약 <b>' + Math.floor(u / 102) + '</b>/97회 · 한국 오후 4~5시에 다시 참'; } }
+  /* ── 유튜브 API ── */
+  async function yt(path, params, cost){
+    var k = ytKey(); if(!k) throw new Error('유튜브 API 키가 없습니다 — 위 「⚙ 유튜브 API 키」에서 넣어 주세요');
+    var u = API + path + '?' + Object.keys(params).filter(function(x){ return params[x] !== '' && params[x] != null; }).map(function(x){ return x + '=' + encodeURIComponent(params[x]); }).join('&') + '&key=' + encodeURIComponent(k);
+    var r = await fetch(u), d = await r.json().catch(function(){ return {}; });
+    spend(cost || 1);
+    if(!r.ok){
+      var e = d.error || {}, reason = ((e.errors || [])[0] || {}).reason || '', m = e.message || '';
+      throw new Error(/quotaExceeded|dailyLimitExceeded/i.test(reason) ? '오늘 유튜브 API 무료 사용량(10,000유닛)을 다 썼습니다. 한국 시간 오후 4~5시에 다시 찹니다.'
+        : /keyInvalid|API key not valid|API_KEY_INVALID/i.test(reason + m) ? '유튜브 API 키가 맞지 않습니다 — 키를 다시 확인해 주세요'
+        : /accessNotConfigured|SERVICE_DISABLED|has not been used/i.test(reason + m) ? '이 키의 구글 클라우드 프로젝트에서 「YouTube Data API v3」를 켜야 합니다 (키 받는 법 2번)'
+        : /referer|ipRefererBlocked|API_KEY_HTTP_REFERRER_BLOCKED/i.test(reason + m) ? '키의 「웹사이트 제한」에 이 주소(' + location.origin + ')가 없습니다'
+        : '유튜브 오류 ' + r.status + (reason ? ' · ' + reason : '') + ': ' + m.slice(0, 160));
+    }
+    return d;
+  }
+  function iso(days){ return new Date(Math.floor((Date.now() - days * 86400000) / 3600000) * 3600000).toISOString(); }   /* 시 단위로 맞춰 같은 검색은 다시 부르지 않는다 */
+  function dur(s){ var m = /P(?:(\d+)D)?T?(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/.exec(s || ''); return m ? (+m[1] || 0) * 86400 + (+m[2] || 0) * 3600 + (+m[3] || 0) * 60 + (+m[4] || 0) : 0; }
+  function fmtDur(s){ var h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = s % 60; return (h ? h + ':' + String(m).padStart(2, '0') : m) + ':' + String(x).padStart(2, '0'); }
+  function num(n){ n = +n || 0; return n >= 1e8 ? (n / 1e8).toFixed(1).replace(/\.0$/, '') + '억' : n >= 1e4 ? (n / 1e4).toFixed(n >= 1e5 ? 0 : 1).replace(/\.0$/, '') + '만' : n >= 1e3 ? (n / 1e3).toFixed(1).replace(/\.0$/, '') + '천' : String(n); }
+  function ago(d){ var x = (Date.now() - new Date(d)) / 86400000; return x < 1 ? '오늘' : x < 30 ? Math.floor(x) + '일 전' : x < 365 ? Math.floor(x / 30) + '개월 전' : (x / 365).toFixed(1).replace(/\.0$/, '') + '년 전'; }
+  /* 검색 1번 = search.list(100) + videos.list(1) + channels.list(1) */
+  async function fetchSet(q, mode){
+    var p = { part:'snippet', type:'video', maxResults:50, q:q, order:mode === 'ratio' ? 'relevance' : 'viewCount', safeSearch:'none' };
+    if(UI.region === 'KR'){ p.regionCode = 'KR'; p.relevanceLanguage = 'ko'; }
+    if(mode === 'surge') p.publishedAfter = iso(7);
+    else if(mode === 'steady'){ p.publishedAfter = iso(365 * 3); p.publishedBefore = iso(180); }
+    else if(+UI.period) p.publishedAfter = iso(+UI.period);
+    var key = JSON.stringify(p); if(CACHE[key]) return CACHE[key];
+    var s = await yt('search', p, 100), ids = (s.items || []).map(function(it){ return it.id && it.id.videoId; }).filter(Boolean);
+    if(!ids.length) return (CACHE[key] = []);
+    var v = await yt('videos', { part:'snippet,statistics,contentDetails', id:ids.join(','), maxResults:50 }, 1);
+    var chIds = Array.from(new Set((v.items || []).map(function(x){ return x.snippet.channelId; })));
+    var c = chIds.length ? await yt('channels', { part:'statistics,snippet', id:chIds.slice(0, 50).join(','), maxResults:50 }, 1) : { items:[] }, CH = {};
+    (c.items || []).forEach(function(x){ CH[x.id] = { subs:x.statistics.hiddenSubscriberCount ? null : +x.statistics.subscriberCount || 0, vids:+x.statistics.videoCount || 0, title:x.snippet.title }; });
+    var out = (v.items || []).map(function(x){
+      var st = x.statistics || {}, sn = x.snippet || {}, ch = CH[sn.channelId] || {}, views = +st.viewCount || 0, age = Math.max(1, (Date.now() - new Date(sn.publishedAt)) / 86400000), d = dur(x.contentDetails && x.contentDetails.duration);
+      return { id:x.id, title:sn.title, ch:sn.channelTitle, chId:sn.channelId, at:sn.publishedAt, thumb:((sn.thumbnails || {}).medium || (sn.thumbnails || {}).default || {}).url || '', desc:String(sn.description || '').slice(0, 600), tags:(sn.tags || []).slice(0, 15),
+        views:views, likes:+st.likeCount || 0, cmts:+st.commentCount || 0, subs:ch.subs, dur:d, short:d > 0 && d <= 180, daily:Math.round(views / age), ratio:ch.subs ? views / Math.max(ch.subs, 100) : null, eng:views ? ((+st.likeCount || 0) + (+st.commentCount || 0) * 3) / views : 0 };
+    });
+    return (CACHE[key] = out);
+  }
+  /* 종합 점수 — 구독자 대비·하루 조회수·조회수·반응률의 순위 백분위를 섞는다 */
+  function scoreAll(list){
+    var pr = function(k){ var a = list.map(function(x){ return x[k] == null ? -1 : x[k]; }).slice().sort(function(a, b){ return a - b; }); return function(v){ if(v == null) return 0; var i = a.indexOf(v); return a.length > 1 ? i / (a.length - 1) : 1; }; };
+    var R = pr('ratio'), Dd = pr('daily'), V = pr('views'), E = pr('eng');
+    list.forEach(function(x){ x.score = Math.round((R(x.ratio) * 0.4 + Dd(x.daily) * 0.25 + V(x.views) * 0.2 + E(x.eng) * 0.15) * 100); });
+    return list;
+  }
+  function view(){
+    var l = LIST.filter(function(x){ return UI.type === 'all' || (UI.type === 'short' ? x.short : !x.short); }), s = UI.sort;
+    if(UI.tab === 'ratio' && s === 'score') l = l.filter(function(x){ return x.ratio != null; });
+    var by = { score:function(x){ return x.score; }, ratio:function(x){ return x.ratio || 0; }, daily:function(x){ return x.daily; }, views:function(x){ return x.views; }, eng:function(x){ return x.eng; }, subs:function(x){ return x.subs == null ? -1e12 : -x.subs; }, new:function(x){ return +new Date(x.at); } }[s] || function(x){ return x.score; };
+    return l.slice().sort(function(a, b){ return by(b) - by(a); });
+  }
+  async function search(){
+    var q = UI.q.trim(); if(!q) return toast('찾고 싶은 부동산 주제를 넣어 주세요', true);
+    if(!ytKey()){ UI.err = ''; paint(); var g = $('yk-keyd'); if(g) g.open = true; return toast('유튜브 API 키를 먼저 넣어 주세요', true); }
+    var mode = UI.tab === 'cat' || UI.tab === 'saved' ? 'ratio' : UI.tab; if(mode !== UI.tab){ UI.tab = mode; }
+    UI.busy = true; UI.err = ''; UI.sel = ''; paint();
+    try{ LIST = scoreAll((await fetchSet(q, mode)).map(function(x){ return Object.assign({}, x); })); UI.sort = { ratio:'score', views:'views', surge:'daily', steady:'daily' }[mode] || 'score'; UI.show = 10; save(); }
+    catch(e){ UI.err = e.message; }
+    UI.busy = false; paint(); var r = $('yk-res'); if(r && r.scrollIntoView) r.scrollIntoView({ block:'start', behavior:'smooth' });
+  }
+  async function catTop(){
+    if(!ytKey()) return toast('유튜브 API 키를 먼저 넣어 주세요', true);
+    if(!confirm('분야 ' + CATS.length + '개를 차례로 찾습니다 (' + periodName() + ' 조회수가 가장 많은 3편씩).\n유튜브 무료 사용량 약 ' + (CATS.length * 102).toLocaleString() + '유닛을 씁니다 (하루 10,000 중). 오늘 안에는 다시 열어도 저장해 둔 결과를 보여 드립니다. 계속할까요?')) return;
+    UI.busy = true; UI.err = ''; var out = []; paint();
+    try{ for(var i = 0; i < CATS.length; i++){ var el = $('yk-catprog'); if(el) el.textContent = '⏳ ' + (i + 1) + ' / ' + CATS.length + ' — ' + CATS[i]; var l = (await fetchSet(CATS[i], 'views')).slice().sort(function(a, b){ return b.views - a.views; }).slice(0, 3).map(slim); out.push([CATS[i], l]); }
+      CAT = out; D.cat = { day:ptDay(), at:Date.now(), period:UI.period, region:UI.region, list:out }; save(); }
+    catch(e){ UI.err = e.message; if(out.length){ CAT = out; } }
+    UI.busy = false; paint();
+  }
+  /* ── AI (블로그·영상과 같은 열쇠) ── */
+  function aiKeys(e){ var s = settings(), raw = e === 'claude' ? s.claudeKeys : e === 'openai' ? s.openaiKeys : s.geminiKeys; return String(raw || '').split(/[\n,]/).map(function(x){ return x.trim(); }).filter(Boolean); }
+  function engine(){ var e = settings().engine; if(e && aiKeys(e).length) return e; return ['gemini', 'claude', 'openai'].find(function(x){ return aiKeys(x).length; }) || ''; }
+  async function ai(prompt){
+    var e = engine(), s = settings(); if(!e) throw new Error('AI 열쇠가 없습니다 — 블로그 스튜디오 [엔진 설정]에서 제미나이·클로드·챗GPT 열쇠를 넣어 주세요');
+    var k = aiKeys(e)[0], r, d;
+    if(e === 'claude'){ r = await fetch('https://api.anthropic.com/v1/messages', { method:'POST', headers:{ 'content-type':'application/json', 'x-api-key':k, 'anthropic-version':'2023-06-01', 'anthropic-dangerous-direct-browser-access':'true' }, body:JSON.stringify({ model:s.claudeModel || 'claude-sonnet-4-5', max_tokens:6000, messages:[{ role:'user', content:prompt }] }) }); d = await r.json().catch(function(){ return {}; }); if(!r.ok) throw new Error('클로드 오류 ' + r.status + ': ' + ((d.error || {}).message || '').slice(0, 140)); return (d.content || []).filter(function(b){ return b.type === 'text'; }).map(function(b){ return b.text; }).join(''); }
+    if(e === 'openai'){ r = await fetch('https://api.openai.com/v1/chat/completions', { method:'POST', headers:{ 'content-type':'application/json', authorization:'Bearer ' + k }, body:JSON.stringify({ model:s.openaiModel || 'gpt-4.1-mini', messages:[{ role:'user', content:prompt }], response_format:{ type:'json_object' } }) }); d = await r.json().catch(function(){ return {}; }); if(!r.ok) throw new Error('챗GPT 오류 ' + r.status + ': ' + ((d.error || {}).message || '').slice(0, 140)); return ((d.choices || [])[0] || {}).message.content; }
+    r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(s.geminiModel || 'gemini-3.6-flash') + ':generateContent?key=' + encodeURIComponent(k), { method:'POST', headers:{ 'content-type':'application/json' }, body:JSON.stringify({ contents:[{ role:'user', parts:[{ text:prompt }] }], generationConfig:{ responseMimeType:'application/json', maxOutputTokens:12000 } }) });
+    d = await r.json().catch(function(){ return {}; }); if(!r.ok) throw new Error('제미나이 오류 ' + r.status + ': ' + ((d.error || {}).message || '').slice(0, 140));
+    return ((((d.candidates || [])[0] || {}).content || {}).parts || []).map(function(p){ return p.text || ''; }).join('');
+  }
+  function parseJSON(t){ t = String(t || '').replace(/```json|```/g, '').trim(); var a = t.indexOf('{'), b = t.lastIndexOf('}'); if(a < 0 || b < a) throw new Error('AI 답을 읽지 못했습니다 — 다시 눌러 주세요'); return JSON.parse(t.slice(a, b + 1)); }
+  function author(){ var a = {}; try{ a = JSON.parse(localStorage.getItem('sdbs.author') || '{}') || {}; }catch(e){} return Object.assign({ name:'문형은', title:'공인중개사', office:'송도제일공인중개사사무소', area:'인천 송도국제도시', channel:'송도제일부동산TV' }, a); }
+  async function analyze(v){
+    if(UI.anBusy) return; UI.anBusy = true; UI.sel = v.id; paint();
+    try{
+      var cm = []; try{ var c = await yt('commentThreads', { part:'snippet', videoId:v.id, order:'relevance', maxResults:20, textFormat:'plainText' }, 1); cm = (c.items || []).map(function(x){ var s = x.snippet.topLevelComment.snippet; return '- ' + String(s.textDisplay || '').replace(/\s+/g, ' ').slice(0, 140) + ' (좋아요 ' + (s.likeCount || 0) + ')'; }); }catch(e){}
+      var a = author();
+      var p = '당신은 부동산 유튜브 채널 성장 전문가입니다. 아래 「떡상」한 유튜브 영상의 공개 지표·제목·설명·댓글을 보고 분석한 뒤, 내 채널에서 따라 만들 영상을 기획해 주세요.\n\n'
+        + '[영상]\n제목: ' + v.title + '\n채널: ' + v.ch + ' (구독자 ' + (v.subs == null ? '비공개' : v.subs.toLocaleString() + '명') + ')\n올린 날: ' + v.at.slice(0, 10) + ' (' + ago(v.at) + ')\n길이: ' + fmtDur(v.dur) + (v.short ? ' (쇼츠)' : '') + '\n조회수 ' + v.views.toLocaleString() + ' · 하루 조회수 ' + v.daily.toLocaleString() + (v.ratio != null ? ' · 구독자 대비 ' + v.ratio.toFixed(1) + '배' : '') + ' · 좋아요 ' + v.likes.toLocaleString() + ' · 댓글 ' + v.cmts.toLocaleString() + '\n'
+        + (v.tags.length ? '태그: ' + v.tags.join(', ') + '\n' : '') + '설명 앞부분: ' + v.desc.replace(/\s+/g, ' ').slice(0, 500) + '\n' + (cm.length ? '\n[인기 댓글]\n' + cm.join('\n') + '\n' : '')
+        + '\n[내 채널] ' + (a.channel || '') + ' — ' + a.area + ' ' + a.office + ' ' + a.title + ' ' + a.name + ' (송도·인천 지역 부동산 정보, 실제 중개 경험)\n\n'
+        + '조건: 공개 지표(조회수·좋아요·댓글·구독자)만 보고 추측한다는 점을 지킨다. 시청 지속률·클릭률은 알 수 없으니 단정하지 않는다. 숫자·법령·세율은 지어내지 말고, 확인이 필요한 것은 check 에 적는다. 남의 영상을 베끼지 말고 형식·각도만 참고한다.\n'
+        + '출력 JSON (이 구조 그대로, JSON 만):\n{"why":["떡상 이유 3~5개 — 제목 훅·주제 타이밍·대상 시청자·형식 등"],"audience":"누가 왜 봤을지 한두 문장","comments":"댓글에서 보이는 시청자 반응·궁금증 한두 문장(댓글 없으면 빈 문자열)","learn":["내가 따라 할 점 3개"],"avoid":["피할 점 2개"],'
+        + '"mine":{"topics":["송도·인천에 맞춘 내 영상 주제 3개"],"titles":["유튜브 제목 후보 5개 (40자 안팎, 낚시 금지)"],"hook":"첫 3초 말","outline":["영상 구성 5~7단계"]},'
+        + '"shorts":{"title":"1분 쇼츠 제목","thumb":"썸네일 큰 글 10자 안팎","script":[{"head":"화면 글 14자 이내","say":"읽을 말 1~2문장"}]},"blog":{"title":"네이버 블로그 글 제목","keys":["핵심 키워드 3~5개"]},"check":["사실 확인이 필요한 것"]}\n'
+        + 'shorts.script 는 6~8장면, 읽을 말 전체 280~380자(약 1분).';
+      var res = parseJSON(await ai(p)); res.at = Date.now(); res.v = slim(v); res.eng = engine();
+      D.an[v.id] = res; var ks = Object.keys(D.an); if(ks.length > 30) ks.sort(function(a, b){ return D.an[a].at - D.an[b].at; }).slice(0, ks.length - 30).forEach(function(k){ delete D.an[k]; }); save();
+    }catch(e){ toast(e.message, true); }
+    UI.anBusy = false; paint(); var el = $('yk-an'); if(el && el.scrollIntoView) el.scrollIntoView({ block:'start', behavior:'smooth' });
+  }
+  function slim(v){ return { id:v.id, title:v.title, ch:v.ch, at:v.at, thumb:v.thumb, views:v.views, subs:v.subs, daily:v.daily, ratio:v.ratio, dur:v.dur, short:v.short, likes:v.likes, cmts:v.cmts, eng:v.eng, score:v.score, desc:v.desc, tags:v.tags }; }
+  function shortsText(a){ return (a.shorts.script || []).map(function(s, i){ return (i + 1) + '. [' + (s.head || '') + '] ' + (s.say || ''); }).join('\n'); }
+  function toVideo(a){
+    var src = (a.shorts.script || []).map(function(s){ return s.say; }).join('\n') + '\n\n(참고: 「' + a.v.title + '」 영상의 형식을 참고해 내 채널 시각으로 다시 씀)';
+    var w = window.open('', '_blank'), id = 'v' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), now = Date.now();
+    var proj = { id:id, title:a.shorts.title || a.mine.titles[0] || '', src:src, fmt:'9:16', len:'short', scenes:[], step:'src', createdAt:now, updatedAt:now, from:'ytkw', fromTitle:a.v.title };
+    var fail = function(e){ if(w && !w.closed) w.close(); toast('비디오 스튜디오로 넘기지 못했습니다: ' + ((e && e.message) || e), true); }, rq;
+    try{ rq = indexedDB.open('sd_video', 1); }catch(e){ return fail(e); }
+    rq.onupgradeneeded = function(){ if(!rq.result.objectStoreNames.contains('projects')) rq.result.createObjectStore('projects', { keyPath:'id' }); };
+    rq.onerror = function(){ fail(rq.error); };
+    rq.onsuccess = function(){ try{ var tx = rq.result.transaction('projects', 'readwrite'); tx.objectStore('projects').put(proj); tx.oncomplete = function(){ rq.result.close(); try{ localStorage.setItem('sdv.cur', JSON.stringify(id)); }catch(e){} toast('🎬 비디오 스튜디오로 넘겼습니다 — 쇼츠 원고'); if(w && !w.closed) w.location.href = 'sd_video.html'; else location.href = 'sd_video.html'; }; tx.onerror = function(){ fail(tx.error); }; }catch(e){ fail(e); } };
+  }
+  function toBlog(a){ var u = 'sd_blog.html?topic=' + encodeURIComponent(a.blog.title || a.mine.titles[0] || '') + '&keys=' + encodeURIComponent((a.blog.keys || []).join(', ')); window.open(u, '_blank'); }
+  function copy(t, what){ var done = function(){ toast(what + ' 복사했습니다'); }; if(navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(t).then(done, function(){ window.prompt('아래 글을 복사하세요', t); }); else window.prompt('아래 글을 복사하세요', t); }
+  /* ── 화면 ── */
+  function vRow(v, i){
+    var isSaved = D.saved.some(function(x){ return x.id === v.id; }), hasAn = !!D.an[v.id];
+    return '<div class="yk-v' + (UI.sel === v.id ? ' sel' : '') + '"><div class="rk' + (i < 3 ? ' t3' : '') + '">' + (i + 1) + '</div>'
+      + '<a class="th" href="https://www.youtube.com/watch?v=' + esc(v.id) + '" target="_blank" rel="noopener"><img loading="lazy" src="' + esc(v.thumb) + '" alt="">' + (v.short ? '<span class="sh">쇼츠</span>' : '') + (v.dur ? '<span>' + fmtDur(v.dur) + '</span>' : '') + '</a>'
+      + '<div><h4><a href="https://www.youtube.com/watch?v=' + esc(v.id) + '" target="_blank" rel="noopener">' + esc(v.title) + '</a></h4><div class="ch">' + esc(v.ch) + ' · 구독자 ' + (v.subs == null ? '비공개' : num(v.subs)) + ' · ' + ago(v.at) + '</div>'
+      + '<div class="st">' + (v.ratio != null ? '<span class="hot">구독자의 ' + (v.ratio >= 10 ? Math.round(v.ratio) : v.ratio.toFixed(1)) + '배</span>' : '') + '<span>조회수 ' + num(v.views) + '</span><span class="up">하루 ' + num(v.daily) + '</span><span>👍 ' + num(v.likes) + ' · 💬 ' + num(v.cmts) + '</span>' + (v.score != null ? '<span>종합 ' + v.score + '점</span>' : '') + '</div></div>'
+      + '<div class="bt"><button class="yk-btn sm pri" data-an="' + esc(v.id) + '"' + (UI.anBusy ? ' disabled' : '') + '>' + (hasAn ? '📄 분석 보기' : '🔍 떡상 이유 분석') + '</button><button class="yk-btn sm" data-sv="' + esc(v.id) + '">' + (isSaved ? '★ 보관됨' : '☆ 보관') + '</button></div></div>';
+  }
+  function anHtml(a){
+    var L = function(x){ return '<ul>' + (x || []).map(function(s){ return '<li>' + esc(s) + '</li>'; }).join('') + '</ul>'; };
+    return '<div class="yk-an" id="yk-an"><h3>🔍 「' + esc(a.v.title) + '」 분석 <small style="font-weight:400;color:#868e96;font-size:11.5px">' + esc({ gemini:'제미나이', claude:'클로드', openai:'챗GPT' }[a.eng] || '') + ' · ' + new Date(a.at).toLocaleString('ko-KR') + '</small></h3>'
+      + '<h5>STEP 3 · AI 가 본 떡상 이유</h5>' + L(a.why) + (a.audience ? '<div class="yk-note" style="color:#495057">👥 ' + esc(a.audience) + '</div>' : '') + (a.comments ? '<div class="yk-note" style="color:#495057">💬 ' + esc(a.comments) + '</div>' : '')
+      + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px"><div><h5>따라 할 점</h5>' + L(a.learn) + '</div><div><h5>피할 점</h5>' + L(a.avoid) + '</div></div>'
+      + '<h5>STEP 4 · 내가 할 내용 정리</h5><div class="box"><b>주제</b>\n' + (a.mine.topics || []).map(function(s, i){ return (i + 1) + '. ' + s; }).join('\n') + '\n\n<b>제목 후보</b>\n' + (a.mine.titles || []).map(function(s){ return '· ' + s; }).join('\n') + '\n\n<b>첫 3초</b>\n' + esc(a.mine.hook || '') + '\n\n<b>구성</b>\n' + (a.mine.outline || []).map(function(s, i){ return (i + 1) + ') ' + s; }).join('\n') + '</div>'
+      + '<h5>STEP 5 · 1분 쇼츠 원고 <span style="font-weight:400;color:#868e96">— ' + esc(a.shorts.title || '') + ' · 썸네일 「' + esc(a.shorts.thumb || '') + '」</span></h5><div class="box">' + esc(shortsText(a)) + '</div>'
+      + ((a.check || []).length ? '<h5>⚠ 올리기 전에 확인할 것</h5>' + L(a.check) : '')
+      + '<h5>STEP 6 · 쇼츠 + 블로그로 이어 쓰기</h5><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="yk-btn pri" data-tov="' + esc(a.v.id) + '">🎬 비디오 스튜디오로 (쇼츠)</button><button class="yk-btn" data-tob="' + esc(a.v.id) + '">✍️ 블로그 스튜디오로 — 「' + esc(a.blog.title || '') + '」</button><button class="yk-btn" data-cpa="' + esc(a.v.id) + '">📋 분석 전체 복사</button><button class="yk-btn" data-rea="' + esc(a.v.id) + '">↻ 다시 분석</button></div>'
+      + '<div class="yk-note">남의 영상을 그대로 베끼지 말고 형식·각도만 참고해 내 경험과 송도 자료로 새로 만드세요.</div></div>';
+  }
+  function anText(a){ return '[떡상 이유]\n' + (a.why || []).join('\n') + '\n\n[내 영상 주제]\n' + (a.mine.topics || []).join('\n') + '\n\n[제목 후보]\n' + (a.mine.titles || []).join('\n') + '\n\n[첫 3초]\n' + (a.mine.hook || '') + '\n\n[구성]\n' + (a.mine.outline || []).join('\n') + '\n\n[1분 쇼츠 — ' + (a.shorts.title || '') + ']\n' + shortsText(a) + '\n\n[확인할 것]\n' + (a.check || []).join('\n') + '\n\n참고 영상: https://youtu.be/' + a.v.id; }
+  function paint(){
+    var root = $('yk-root'); if(!root) return; var k = ytKey();
+    var stepOn = LIST.length ? (UI.sel && D.an[UI.sel] ? 6 : 2) : 1;
+    var h = '<div class="yk-top"><b>📺 유튜브키워드</b><span style="font-size:11.5px;color:#868e96">부동산 떡상 영상 찾기 · YouTube Data API v3</span><div class="yk-use" id="yk-use"></div></div>';
+    if(!D.skip) h += '<div class="yk-hero"><span class="bd">● 유튜브 키워드 찾기</span><h2>유튜브 키워드 찾고 싶으세요? <em>부동산 떡상</em><br><i>영상</i>은 여기서 찾으세요</h2>'
+      + '<p>구독자는 적은데 조회수가 터진 영상은 일반 유튜브 검색으로는 안 보입니다. 여기서는 그런 부동산 영상만 골라 Top 10 으로 보여 주고, AI 가 왜 떡상했는지 분석해 내 쇼츠·블로그로 이어 줍니다.</p>'
+      + '<div class="yk-steps">' + [['⌨️', '키워드 넣기', '쓰고 싶은 주제 입력 · 아래 추천 키워드'], ['🔥', '숨은 떡상 Top 10', '구독자 대비 조회수 높은 순'], ['🤖', 'AI 떡상 이유 분석', '제목·주제·댓글로 왜 터졌는지'], ['📝', '내가 할 내용 정리', '송도에 맞춘 주제·제목·구성'], ['🎬', '1분 쇼츠 원고', '6~8장면 대본'], ['🚀', '쇼츠 + 블로그', '비디오·블로그 스튜디오로 바로']].map(function(s, i){ return '<div' + (i + 1 === stepOn || (stepOn === 6 && i > 1) ? ' class="on"' : '') + '><small>STEP ' + (i + 1) + '</small><b>' + s[0] + ' ' + s[1] + '</b>' + s[2] + '</div>'; }).join('') + '</div>'
+      + '<div style="display:flex;gap:8px;align-items:center;margin-top:14px;flex-wrap:wrap"><button class="yk-btn" id="yk-skip" style="background:transparent;color:#bac8ff;border-color:rgba(186,200,255,.4)">다음부터 이 안내 접기</button><span style="font-size:11.5px;color:#91a7ff">공개 자료(조회수·좋아요·댓글·구독자)로만 분석합니다. 시청 지속률·클릭률은 포함되지 않습니다.</span></div></div>';
+    h += '<details class="yk-card" id="yk-keyd"' + (k ? '' : ' open') + '><summary style="cursor:pointer;font-weight:700;font-size:13px">⚙ 유튜브 API 키 ' + (k ? '<span style="color:#2b8a3e;font-weight:600">✓ 들어 있음</span>' : '<span style="color:#c92a2a">— 처음 한 번 넣어 주세요</span>') + '</summary><div class="yk-guide" style="margin-top:10px">'
+      + '<div class="yk-sr"><input class="yk-in" id="yk-key" type="password" autocomplete="off" placeholder="AIza… 로 시작하는 유튜브 API 키" value="' + esc(k) + '" style="font-family:ui-monospace,Consolas,monospace;font-size:13px"><button class="yk-btn" id="yk-keyeye">보기</button><button class="yk-btn pri" id="yk-keysave">저장</button></div>'
+      + '<div class="yk-note">블로그·영상 스튜디오와 같은 저장소(sdbs.settings)에 둡니다. 키는 이 브라우저에만 있고 유튜브(구글)로만 보냅니다.</div><b>키 받는 법 (5분, 무료)</b><ol>'
+      + '<li><a href="https://console.cloud.google.com/projectcreate" target="_blank" rel="noopener">console.cloud.google.com</a> 에서 프로젝트를 고릅니다 (3차 유튜브 올리기에 만든 프로젝트를 써도 됩니다)</li>'
+      + '<li><a href="https://console.cloud.google.com/apis/library/youtube.googleapis.com" target="_blank" rel="noopener">API 라이브러리</a>에서 <b>YouTube Data API v3</b> 를 「사용」</li>'
+      + '<li><a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener">사용자 인증 정보</a> → <b>+ 사용자 인증 정보 만들기 → API 키</b></li>'
+      + '<li>(권장) 키 수정 → 웹사이트 제한에 <code>' + esc(location.origin) + '/*</code>, API 제한에 YouTube Data API v3 만</li><li>나온 키(AIza…)를 위 칸에 붙여 넣고 저장</li></ol>'
+      + '<div class="yk-note">무료 사용량: 하루 10,000유닛 — 검색 1번에 약 102유닛이라 하루 90번 넘게 찾을 수 있습니다. 분석할 때 댓글 읽기 1유닛.</div></div></details>';
+    h += '<div class="yk-card"><div class="yk-sr"><input class="yk-in" id="yk-q" placeholder="찾고 싶은 부동산 주제를 넣으세요 (예: 재건축 분담금, 상가 공실, 경매 명도, 송도 학군)" value="' + esc(UI.q) + '"><button class="yk-btn pri big" id="yk-go"' + (UI.busy ? ' disabled' : '') + '>' + (UI.busy ? '⏳ 찾는 중…' : '🔍 떡상 영상 찾기') + '</button></div>'
+      + '<div class="yk-note">💡 아이디어가 없으면 아래 키워드를 누르세요 — 누른 뒤 <b style="color:#f08c00">떡상 영상 찾기</b></div>'
+      + CHIPS.map(function(g){ return '<div class="yk-grp"><small>' + g[0] + '</small><div class="yk-chips">' + g[1].map(function(c){ return '<button data-chip="' + esc(c) + '"' + (UI.q === c ? ' class="on"' : '') + '>' + esc(c) + '</button>'; }).join('') + '</div></div>'; }).join('')
+      + '<div class="yk-flt">지역 <select id="yk-region"><option value="KR"' + (UI.region === 'KR' ? ' selected' : '') + '>한국</option><option value=""' + (UI.region === '' ? ' selected' : '') + '>전체</option></select>'
+      + '기간 <select id="yk-period">' + PERIOD.map(function(p){ return '<option value="' + p[0] + '"' + (p[0] === UI.period ? ' selected' : '') + '>' + p[1] + '</option>'; }).join('') + '</select>'
+      + '종류 <select id="yk-type"><option value="all"' + (UI.type === 'all' ? ' selected' : '') + '>전체</option><option value="short"' + (UI.type === 'short' ? ' selected' : '') + '>쇼츠만 (3분 이하)</option><option value="long"' + (UI.type === 'long' ? ' selected' : '') + '>일반 영상만</option></select>'
+      + '정렬 <select id="yk-sort">' + SORT.map(function(s){ return '<option value="' + s[0] + '"' + (s[0] === UI.sort ? ' selected' : '') + '>' + s[1] + '</option>'; }).join('') + '</select>'
+      + '<button class="yk-btn sm" id="yk-reset">↺ 초기화</button></div></div>';
+    h += '<div class="yk-tabs" id="yk-res">' + TABS.map(function(t){ return '<button data-tab="' + t[0] + '"' + (UI.tab === t[0] ? ' class="on"' : '') + '><b>' + t[1] + '</b><small>' + t[2] + '</small></button>'; }).join('') + '</div>';
+    if(UI.err) h += '<div class="yk-err">⚠ ' + esc(UI.err) + '</div>';
+    if(UI.tab === 'saved'){
+      h += '<div class="yk-card"><div style="font-weight:800;margin-bottom:8px">⭐ 보관함 <small style="font-weight:400;color:#868e96">' + D.saved.length + '개 · 분석 ' + Object.keys(D.an).length + '개 · 이 브라우저에 저장</small></div>'
+        + (D.saved.length ? '<div class="yk-list">' + D.saved.map(vRow).join('') + '</div>' : '<div class="yk-empty">찜한 영상이 없습니다. 검색 결과에서 「☆ 보관」을 눌러 모아 두세요.</div>') + '</div>';
+    } else if(UI.tab === 'cat'){
+      var cm = D.cat && CAT === D.cat.list ? D.cat : null;
+      h += '<div class="yk-card"><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><b>🏆 분야별 Top 3</b><span class="yk-note" style="margin:0">' + (cm ? ({ '7':'최근 7일', '30':'최근 30일', '90':'최근 3개월', '365':'최근 1년', '0':'전체 기간' }[cm.period] || '최근 30일') + ' 동안 올라온 영상 중 조회수가 가장 많은 3편 · ' + new Date(cm.at).toLocaleString('ko-KR') + ' 기준 · 하루 한 번 새로 찾습니다'
+          : CATS.length + '개 분야에서 ' + periodName() + ' 동안 조회수가 가장 많은 영상 3편씩 · 약 ' + (CATS.length * 102).toLocaleString() + '유닛 (오늘 하루 저장)') + '</span><span style="flex:1"></span><button class="yk-btn ' + (CAT && CAT.length ? '' : 'pri') + '" id="yk-cat"' + (UI.busy ? ' disabled' : '') + '>' + (CAT && CAT.length ? '↻ 지금 다시 찾기' : '분야별로 찾기') + '</button><span id="yk-catprog" class="yk-note" style="margin:0;color:#3b5bdb"></span></div>'
+        + (CAT && CAT.length ? '<div class="yk-cat" style="margin-top:12px">' + CAT.map(function(c){ return '<div class="c"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><h4 style="margin:0">' + esc(c[0]) + '</h4><button class="yk-btn sm" data-catq="' + esc(c[0]) + '">이 분야 더 찾기 →</button></div>' + (c[1].length ? c[1].map(function(v, i){ return '<a href="https://www.youtube.com/watch?v=' + esc(v.id) + '" target="_blank" rel="noopener"><b style="color:#f59f00;width:14px;flex:none">' + (i + 1) + '</b><img src="' + esc(v.thumb) + '" alt=""><span><b>' + esc(v.title) + '</b><br><small style="color:#868e96">' + esc(v.ch) + ' · 조회 ' + num(v.views) + ' · 구독 ' + (v.subs == null ? '비공개' : num(v.subs)) + '</small>' + (v.ratio != null ? ' <small style="color:#c2255c;font-weight:700">×' + (v.ratio >= 10 ? Math.round(v.ratio) : v.ratio.toFixed(1)) + '</small>' : '') + '</span></a>'; }).join('') : '<div class="yk-note">이 기간에 찾은 영상이 없습니다</div>') + '</div>'; }).join('') + '</div>' : '') + '</div>';
+    } else {
+      var l = view(), n = Math.min(UI.show, l.length);
+      h += '<div class="yk-card">' + (UI.busy ? '<div class="yk-empty">⏳ 유튜브에서 찾는 중… (검색 1번 ≈ 102유닛)</div>'
+        : !LIST.length ? '<div class="yk-empty">위에 주제를 넣고 <b>🔍 떡상 영상 찾기</b>를 누르세요.<br>「' + esc(TABS.find(function(t){ return t[0] === UI.tab; })[1]) + '」 기준으로 Top 10 을 보여 드립니다.</div>'
+        : '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:8px;flex-wrap:wrap"><b>「' + esc(D.last && D.last.q || UI.q) + '」 · ' + esc(TABS.find(function(t){ return t[0] === UI.tab; })[1]) + ' Top ' + n + '</b><span class="yk-note" style="margin:0">찾은 영상 ' + LIST.length + '개 중 · ' + esc(SORT.find(function(s){ return s[0] === UI.sort; })[1]) + ' 순</span></div>'
+          + (l.length ? '<div class="yk-list">' + l.slice(0, n).map(vRow).join('') + '</div>' + (l.length > n ? '<div style="text-align:center;margin-top:10px"><button class="yk-btn" id="yk-more">더 보기 (' + (l.length - n) + '개 더)</button></div>' : '') : '<div class="yk-empty">조건에 맞는 영상이 없습니다. 종류·기간을 바꿔 보세요.</div>'))
+        + (UI.anBusy ? '<div class="yk-an" id="yk-an">⏳ AI 가 떡상 이유를 분석하고 내 쇼츠 원고를 쓰는 중… (30초~1분)</div>' : UI.sel && D.an[UI.sel] ? anHtml(D.an[UI.sel]) : '') + '</div>';
+    }
+    if(UI.tab === 'saved' && UI.sel && D.an[UI.sel]) h += anHtml(D.an[UI.sel]);
+    h += '<div class="yk-note" style="text-align:center;margin-top:14px">공개 데이터(조회수·좋아요·댓글·구독자) 기반 분석 · 시청 지속률·클릭률 등 비공개 지표는 포함되지 않습니다 · YouTube Data API v3 · 무료 할당량 하루 10,000유닛</div>';
+    root.innerHTML = h; bind(root); paintUse();
+  }
+  function find(id){ return LIST.find(function(x){ return x.id === id; }) || D.saved.find(function(x){ return x.id === id; }) || (CAT || []).reduce(function(a, c){ return a || c[1].find(function(x){ return x.id === id; }); }, null) || (D.an[id] && D.an[id].v); }
+  function bind(root){
+    var q = function(s){ return Array.prototype.slice.call(root.querySelectorAll(s)); };
+    var sk = $('yk-skip'); if(sk) sk.onclick = function(){ D.skip = true; save(); paint(); };
+    var key = $('yk-key'); $('yk-keyeye').onclick = function(){ key.type = key.type === 'password' ? 'text' : 'password'; this.textContent = key.type === 'password' ? '보기' : '가리기'; };
+    $('yk-keysave').onclick = function(){ var s2 = settings(); s2.youtubeKey = key.value.trim(); try{ localStorage.setItem('sdbs.settings', JSON.stringify(s2)); }catch(e){} toast(s2.youtubeKey ? '유튜브 API 키를 저장했습니다' : '키를 지웠습니다'); paint(); };
+    var qi = $('yk-q'); qi.oninput = function(){ UI.q = this.value; }; qi.onkeydown = function(e){ if(e.key === 'Enter') search(); };
+    $('yk-go').onclick = search;
+    q('[data-chip]').forEach(function(b){ b.onclick = function(){ UI.q = b.dataset.chip; qi.value = UI.q; q('[data-chip]').forEach(function(x){ x.classList.toggle('on', x === b); }); qi.focus(); }; });
+    $('yk-region').onchange = function(){ UI.region = this.value; };
+    $('yk-period').onchange = function(){ UI.period = this.value; };
+    $('yk-type').onchange = function(){ UI.type = this.value; UI.show = 10; paint(); };
+    $('yk-sort').onchange = function(){ UI.sort = this.value; paint(); };
+    $('yk-reset').onclick = function(){ UI.q = ''; UI.period = '30'; UI.region = 'KR'; UI.type = 'all'; UI.sort = 'score'; LIST = []; UI.sel = ''; UI.err = ''; save(); paint(); };
+    q('[data-tab]').forEach(function(b){ b.onclick = function(){ var t = b.dataset.tab, prev = UI.tab; UI.tab = t; UI.err = ''; if(t !== 'saved' && t !== 'cat' && t !== prev && UI.q.trim() && ytKey()) return search(); if(t === 'surge' || t === 'steady') UI.sort = 'daily'; paint(); }; });
+    var m = $('yk-more'); if(m) m.onclick = function(){ UI.show += 10; paint(); };
+    var ct = $('yk-cat'); if(ct) ct.onclick = catTop;
+    q('[data-catq]').forEach(function(b){ b.onclick = function(){ UI.q = b.dataset.catq; UI.tab = 'ratio'; search(); }; });
+    q('[data-an]').forEach(function(b){ b.onclick = function(){ var v = find(b.dataset.an); if(!v) return; if(D.an[v.id] && UI.sel !== v.id){ UI.sel = v.id; paint(); var el = $('yk-an'); if(el && el.scrollIntoView) el.scrollIntoView({ block:'start', behavior:'smooth' }); return; } if(D.an[v.id]) return; analyze(v); }; });
+    q('[data-sv]').forEach(function(b){ b.onclick = function(){ var id = b.dataset.sv, i = D.saved.findIndex(function(x){ return x.id === id; }); if(i >= 0) D.saved.splice(i, 1); else { var v = find(id); if(v){ D.saved.unshift(slim(v)); if(D.saved.length > 200) D.saved.length = 200; } } save(); paint(); toast(i >= 0 ? '보관함에서 뺐습니다' : '보관함에 넣었습니다'); }; });
+    q('[data-tov]').forEach(function(b){ b.onclick = function(){ toVideo(D.an[b.dataset.tov]); }; });
+    q('[data-tob]').forEach(function(b){ b.onclick = function(){ toBlog(D.an[b.dataset.tob]); }; });
+    q('[data-cpa]').forEach(function(b){ b.onclick = function(){ copy(anText(D.an[b.dataset.cpa]), '분석을'); }; });
+    q('[data-rea]').forEach(function(b){ b.onclick = function(){ var v = find(b.dataset.rea); delete D.an[b.dataset.rea]; save(); if(v) analyze(v); }; });
+  }
+  window.sdYtKw = { go:function(){ paint(); }, _d:function(){ return D; }, _ui:UI, _list:function(){ return LIST; }, _score:scoreAll, _num:num, _dur:dur };
+})();
+</script>
+
 <script>
 /* SD Auth: sd_marketing */
 (function(){
@@ -4096,7 +4440,7 @@ function toggleZoom(){
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.10.05-1';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.10.05-2';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_marketing.html';      // 이 파일 이름
   var SD_NAME = '마케팅';      // 사람이 부르는 이름
 
