@@ -10,7 +10,7 @@
 <link rel="shortcut icon" href="favicon.ico">
 <link rel="apple-touch-icon" sizes="180x180" href="sjrws-180.png">
 <!-- ═════════════════════════════════════════════════════════════════
-     🧰 도구 (sd_tool.html)  v2026.10.05-2
+     🧰 도구 (sd_tool.html)  v2026.10.05-3
      · 데이터관리에 있던 다섯 가지를 따로 모은 화면
          🧰 전체 도구(20) · 🤝 직방 가격 제안(26) · 🔎 공시가격 조회(27) · 🏗️ 건축물대장(24) · 🔑 추출기 열쇠(25)
      · 이 도구들은 데이터관리의 실거래·매물 자료와 엔진(실거래 API·단지 사전·엑셀·로그인)을 함께 쓴다.
@@ -20,6 +20,7 @@
        sd_tool.html?tab=calc&c=acq|cgt|hold|fee|yield|loan|conv|etc
      · 📸 프로필 사진(tab=photo)도 이 파일 안에서 바로 그린다 (아래 sdPhoto 모듈) — 2026.10.05-1
      · 💳 전자명함(tab=card)도 이 파일 안에서 바로 그린다 (아래 sdCard 모듈) — 2026.10.05-2
+     · 🔳 QR코드(tab=qr)도 이 파일 안에서 바로 그린다 (아래 sdQr 모듈) — 2026.10.05-3
      · 주소: sd_tool.html?tab=26 처럼 바로 열 수 있다. 마지막에 본 도구는 이 컴퓨터가 기억한다.
      · 도구 안에서 데이터관리 화면(예: S실거래가)으로 가는 단추는 바깥 창을 데이터관리로 옮긴다.
      ═════════════════════════════════════════════════════════════════ -->
@@ -149,15 +150,17 @@ a.sjb-btn.on::after,span.sjb-btn.on::after{background:linear-gradient(100deg,rgb
 <div id="calc-wrap" class="sjb-zoom"><div id="calc-root"></div></div>
 <div id="photo-wrap" class="sjb-zoom"><div id="photo-root"></div></div>
 <div id="card-wrap" class="sjb-zoom"><div id="card-root"></div></div>
+<div id="qr-wrap" class="sjb-zoom"><div id="qr-root"></div></div>
 <script>
 (function(){
   'use strict';
-  var SD_VER = '2026.10.05-2';
+  var SD_VER = '2026.10.05-3';
   var TABS = [
     [20, '🧰 전체 도구'],
     ['calc', '🧮 부동산 계산기'],
     ['photo', '📸 프로필 사진'],
     ['card', '💳 전자명함'],
+    ['qr', '🔳 QR코드'],
     [26, '🤝 직방 가격 제안'],
     [27, '🔎 공시가격 조회'],
     [24, '🏗️ 건축물대장'],
@@ -174,7 +177,7 @@ a.sjb-btn.on::after,span.sjb-btn.on::after{background:linear-gradient(100deg,rgb
     if(me && se.name) me.innerHTML = '<b>' + String(se.name).replace(/[<>&"]/g, '') + '</b>' + (se.role ? '<span class="rl">' + (RL[se.role] || String(se.role).replace(/[<>&"]/g, '')) + '</span>' : '') + '<a href="sd_hub.html" style="color:#3b5bdb;text-decoration:none">허브</a>';
   }catch(e){}
   //  탭 열쇠: 숫자(데이터관리 도구 모드 탭) 또는 'calc'(이 파일 안의 부동산 계산기)
-  function key(n){ if(n === 'calc' || n === 'video' || n === 'photo' || n === 'card') return n; var k = parseInt(n, 10); return isNaN(k) ? null : k; }
+  function key(n){ if(n === 'calc' || n === 'video' || n === 'photo' || n === 'card' || n === 'qr') return n; var k = parseInt(n, 10); return isNaN(k) ? null : k; }
   function ok(n){ n = key(n); return TABS.some(function(t){ return t[0] === n; }); }
   function paint(){
     document.getElementById('tl-tabs').innerHTML = TABS.map(function(t){
@@ -185,6 +188,7 @@ a.sjb-btn.on::after,span.sjb-btn.on::after{background:linear-gradient(100deg,rgb
     document.body.classList.toggle('calc-on', CUR === 'calc');
     document.body.classList.toggle('photo-on', CUR === 'photo');
     document.body.classList.toggle('card-on', CUR === 'card');
+    document.body.classList.toggle('qr-on', CUR === 'qr');
   }
   //  도구 화면 안에서 탭이 바뀌면(전체 도구 카드를 누른 경우 등) 여기도 따라 바꾼다
   window.sdToolTab = function(n, extra){
@@ -205,6 +209,7 @@ a.sjb-btn.on::after,span.sjb-btn.on::after{background:linear-gradient(100deg,rgb
     }
     if(n === 'photo'){ window.sdToolTab('photo'); if(window.sdPhoto) window.sdPhoto.go(); return; }
     if(n === 'card'){ window.sdToolTab('card'); if(window.sdCard) window.sdCard.go(); return; }
+    if(n === 'qr'){ window.sdToolTab('qr'); if(window.sdQr) window.sdQr.go(); return; }
     if(n === 'video'){ location.href = 'sd_video.html'; return; }
     var w = null; try{ w = fr.contentWindow; }catch(e){}
     if(FRAME_N && w && typeof w.sw === 'function' && w.document && w.document.getElementById('tc' + n)){ window.sdToolTab(n); w.sw(n); try{ w.scrollTo(0, 0); }catch(e){} return; }
@@ -223,6 +228,7 @@ a.sjb-btn.on::after,span.sjb-btn.on::after{background:linear-gradient(100deg,rgb
   window.__sdToolStart = function(){
     if(q === 'photo'){ window.sdToolTab('photo'); window.sdPhoto && window.sdPhoto.go(); return; }
     if(q === 'card'){ window.sdToolTab('card'); window.sdCard && window.sdCard.go(); return; }
+    if(q === 'qr'){ window.sdToolTab('qr'); window.sdQr && window.sdQr.go(); return; }
     if(q === 'calc'){ var c = sp.get('c'); window.sdToolTab('calc', c ? '&c=' + encodeURIComponent(c) : ''); window.sdCalc && window.sdCalc.go(c || 'home', true); }
     else { window.sdToolTab(q); loadFrame(q); }
   };
@@ -1951,6 +1957,386 @@ textarea.ec-in{resize:vertical;min-height:84px;line-height:1.6}
     // 시험용
     _db:function(){ return DB; }, _vcard:vcard, _web:webHtml, _text:textCard, _draw:draw, _qr:qrCanvas, _onC:onC, STYLES:STYLES
   };
+})();
+</script>
+<!-- ═════════════════════════════════════════════════════════════════
+     🔳 QR코드 (sd_tool.html · window.sdQr)  2026-10-05
+     · ko372.com 「QR 스튜디오」를 따름 — 01 QR에 담을 내용 · 02 추천 스타일 · 03 내 취향으로 편집(코드 패턴·모서리 눈·컬러 단색/그라데이션·사진/로고·프레임)
+       PNG 웹용 800 / 고화질 1600 / 인쇄용 2400px · QR 내용 복사 · 스캔하기 좋은 색 대비 확인
+     · 더한 것: 연락처(vCard — 내 정보·전자명함에서) · 와이파이 · 지도(네이버 지도) · SVG(인쇄소용 벡터) · 실제로 읽어 보는 스캔 확인(jsQR) · 최근 만든 QR
+     · QR 은 qrcode-generator 1.4.4, 스캔 확인은 jsQR 1.4.0 — jsdelivr(안 되면 cdnjs·unpkg)에서 쓸 때만 불러온다
+     · 사진과 입력 내용은 서버로 보내지 않는다 (localStorage sd_qr — 마지막 설정과 최근 6개, 로고 사진은 저장 안 함)
+     · 주소로 열기: sd_tool.html?tab=qr
+     ═════════════════════════════════════════════════════════════════ -->
+<style>
+#qr-wrap{flex:1 1 auto;min-height:0;overflow:auto;display:none;scrollbar-gutter:stable both-edges;background:#fafaf8}
+body.qr-on .tl-wrap{display:none}
+body.qr-on #qr-wrap{display:block}
+#qr-root{max-width:1320px;margin:0 auto;padding:22px 20px 60px;color:#212529;font-size:13px}
+#qr-root *{box-sizing:border-box}
+.qx-hero{margin:0 auto 22px;max-width:1240px}
+.qx-hero h2{margin:0 0 10px;font-size:40px;line-height:1.18;font-weight:900;color:#c7c7c7;letter-spacing:-1px}
+.qx-hero p{margin:0;color:#8a8a8a;font-size:14px;line-height:1.7}
+.qx-shell{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(320px,1fr);max-width:1240px;margin:0 auto;border-radius:24px;overflow:hidden;border:1px solid #1f1f22;box-shadow:0 20px 50px rgba(0,0,0,.10)}
+.qx-L{background:#0b0b0c;color:#ececec;padding:30px 34px 34px}
+.qx-R{background:#ebe7df;color:#1d1d1f;padding:28px 30px 30px}
+.qx-step{padding-bottom:24px;margin-bottom:24px;border-bottom:1px solid #222226}
+.qx-step:last-child{border-bottom:0;margin-bottom:0;padding-bottom:0}
+.qx-h{display:flex;align-items:baseline;gap:14px;margin:0 0 4px;font-size:17px;font-weight:800;color:#fff}
+.qx-h i{font-style:italic;font-size:12px;color:#c9a46a;font-weight:500;width:18px}
+.qx-sub{font-size:11.5px;color:#7d7d84;margin:0 0 16px 32px}
+.qx-types{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-bottom:12px}
+.qx-types button{border:1px solid #2a2a2e;background:#101012;border-radius:10px;padding:11px 6px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;color:#d4d4d8;display:flex;gap:7px;align-items:center;justify-content:center}
+.qx-types button b{display:inline-flex;width:20px;height:20px;border-radius:6px;background:#1e1e22;align-items:center;justify-content:center;font-size:11px;color:#d4d4d8}
+.qx-types button.on{border-color:#c9a46a;background:#1c1914;color:#fff}
+.qx-types button.on b{background:#c9a46a;color:#1a1a1a}
+.qx-g2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.qx-f{margin-bottom:8px}
+.qx-f label{display:block;font-size:11.5px;font-weight:700;color:#a1a1aa;margin-bottom:5px}
+.qx-f label span{font-weight:400;color:#71717a;font-size:11px;margin-left:4px}
+.qx-in{width:100%;padding:12px 14px;border:1px solid #2a2a2e;border-radius:12px;font-size:13.5px;font-family:inherit;background:#0f0f11;color:#f4f4f5}
+.qx-in::placeholder{color:#5f5f66}
+.qx-in:focus{outline:none;border-color:#c9a46a}
+.qx-in:disabled{opacity:.4}
+select.qx-in{padding:9px 12px}
+textarea.qx-in{resize:vertical;min-height:84px;line-height:1.6}
+.qx-hint{font-size:11.5px;color:#7d7d84;margin-top:6px;line-height:1.6;word-break:break-all}
+.qx-hint.bad{color:#e8774f}
+.qx-btn{border:1px solid #2a2a2e;background:#121214;border-radius:10px;padding:8px 13px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;color:#d4d4d8;white-space:nowrap}
+.qx-btn:hover{border-color:#c9a46a;color:#fff}
+.qx-btn.sm{padding:6px 10px;font-size:11.5px}
+.qx-btn:disabled{opacity:.4;cursor:not-allowed}
+.qx-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.qx-note{font-size:11.5px;color:#71717a;line-height:1.6;margin-top:6px}
+.qx-themes{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.qx-th{border:1px solid #2a2a2e;border-radius:12px;padding:9px 10px;background:#101012;cursor:pointer;text-align:left;font-family:inherit;display:flex;gap:10px;align-items:center;color:#e4e4e7}
+.qx-th canvas{width:40px;height:40px;flex:0 0 40px;display:block;border-radius:8px}
+.qx-th b{display:block;font-size:12.5px;color:#fff}
+.qx-th small{display:block;font-size:10.5px;color:#7d7d84;margin-top:2px}
+.qx-th.on{border-color:#c9a46a;background:#1c1914;box-shadow:0 0 0 1px #c9a46a inset}
+.qx-etabs{display:grid;grid-template-columns:repeat(4,1fr);background:#141417;border-radius:12px;padding:4px;gap:4px;margin-bottom:16px}
+.qx-etabs button{border:0;background:none;padding:10px 4px;border-radius:9px;font-size:12.5px;font-weight:700;color:#a1a1aa;cursor:pointer;font-family:inherit}
+.qx-etabs button.on{background:#0b0b0c;color:#fff;box-shadow:0 1px 0 #2a2a2e inset}
+.qx-lab{display:block;font-size:12px;font-weight:700;color:#c4c4cc;margin:0 0 8px}
+.qx-gap{height:16px}
+.qx-shape{display:flex;gap:6px;flex-wrap:wrap}
+.qx-shape button{border:1px solid #2a2a2e;background:#101012;border-radius:10px;padding:7px 11px 7px 8px;cursor:pointer;font-family:inherit;font-size:12px;font-weight:600;color:#c4c4cc;display:flex;gap:7px;align-items:center}
+.qx-shape button canvas{width:24px;height:24px;display:block}
+.qx-shape button.on{border-color:#c9a46a;background:#1c1914;color:#fff}
+.qx-seg{display:inline-flex;background:#141417;border-radius:10px;padding:3px;gap:2px;flex-wrap:wrap}
+.qx-seg button{border:0;background:none;padding:7px 14px;border-radius:8px;font-size:12px;font-weight:700;color:#a1a1aa;cursor:pointer;font-family:inherit}
+.qx-seg button.on{background:#c9a46a;color:#151515}
+.qx-col{display:flex;gap:14px;flex-wrap:wrap;align-items:center;margin-top:12px}
+.qx-col label{display:flex;gap:7px;align-items:center;font-size:12px;color:#c4c4cc}
+.qx-col input[type=color]{width:36px;height:30px;border:1px solid #3a3a40;border-radius:8px;padding:0;background:#101012;cursor:pointer}
+.qx-con{font-size:12px;margin-top:12px;font-weight:700}
+.qx-range{display:flex;gap:10px;align-items:center;font-size:12px;color:#c4c4cc}
+.qx-range input{width:170px;accent-color:#c9a46a}
+.qx-R .top{display:flex;justify-content:space-between;align-items:center;font-size:10.5px;letter-spacing:2px;font-weight:800;color:#555}
+.qx-R .top span{letter-spacing:0;font-weight:500;color:#555;font-size:11px;display:flex;align-items:center;gap:5px}
+.qx-R .top span:before{content:'';width:7px;height:7px;border-radius:50%;background:#51cf66;box-shadow:0 0 0 3px rgba(81,207,102,.2)}
+.qx-R h3{margin:8px 0 18px;font-size:17px;font-weight:800}
+.qx-stage{display:flex;justify-content:center;align-items:center;min-height:300px;padding:6px 0 4px}
+.qx-stage canvas{max-width:100%;max-height:430px;height:auto;filter:drop-shadow(0 14px 22px rgba(0,0,0,.18))}
+.qx-stc{display:flex;gap:12px;align-items:center;background:#e2ded5;border:1px solid #d3cec3;border-radius:14px;padding:13px 15px;margin:16px 0 14px}
+.qx-stc i{flex:0 0 28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-style:normal;font-weight:900;font-size:13px;background:#d0ccc3;color:#666}
+.qx-stc b{display:block;font-size:13px}
+.qx-stc small{display:block;font-size:11.5px;color:#6b6b6b;margin-top:2px;line-height:1.5}
+.qx-stc.ok i{background:#d3f0d9;color:#2b8a3e}
+.qx-stc.bad i{background:#f8d9cc;color:#d9480f}
+.qx-dl{display:flex;justify-content:space-between;align-items:center;font-size:12px;color:#555;margin-bottom:10px}
+.qx-dl select{padding:8px 10px;border:1px solid #c9c4b8;border-radius:9px;background:#d9d5cc;font-family:inherit;font-size:12px;font-weight:600;color:#222}
+.qx-gold{width:100%;display:flex;justify-content:space-between;align-items:center;border:0;border-radius:12px;padding:15px 18px;background:#c9a46a;color:#1a1a1a;font-weight:800;font-size:13.5px;cursor:pointer;font-family:inherit}
+.qx-gold:hover{background:#bf9858}
+.qx-gold:disabled{background:#dccdb0;color:#9a917f;cursor:not-allowed}
+.qx-ghost{border:1px solid #d3cec3;background:#efebe4;border-radius:12px;padding:12px;font-weight:700;font-size:12.5px;cursor:pointer;font-family:inherit;color:#333}
+.qx-ghost:hover{background:#f5f2ec}
+.qx-ghost:disabled{color:#b0aa9e;cursor:not-allowed}
+.qx-recent{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:8px}
+.qx-recent button{border:1px solid #d3cec3;background:#f3f0ea;border-radius:10px;padding:6px;cursor:pointer;text-align:left;font-family:inherit;font-size:10.5px;color:#555;overflow:hidden}
+.qx-recent canvas{width:100%;aspect-ratio:1/1;display:block;margin-bottom:3px}
+.qx-recent span{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.qx-lock{font-size:11px;color:#8a857b;text-align:center;line-height:1.6;margin-top:12px}
+.qx-toast{position:fixed;bottom:26px;left:50%;transform:translateX(-50%);background:#212529;color:#fff;padding:9px 18px;border-radius:20px;font-size:13px;z-index:10060;max-width:90vw;text-align:center}
+.qx-toast.bad{background:#c92a2a}
+@media(max-width:980px){.qx-shell{grid-template-columns:1fr}.qx-hero h2{font-size:30px}}
+@media(max-width:620px){.qx-L,.qx-R{padding:22px 16px}.qx-hero h2{font-size:26px}.qx-hero p{font-size:13px}.qx-types{grid-template-columns:repeat(2,1fr)}.qx-themes{grid-template-columns:1fr}.qx-g2{grid-template-columns:1fr}.qx-sub{margin-left:0}.qx-etabs button{font-size:12px;padding:9px 2px}}
+.qx-hero h2,.qx-hero p,.qx-th b,.qx-th small{word-break:keep-all}
+</style>
+<script>
+(function(){
+  'use strict';
+  var $ = function(id){ return document.getElementById(id); };
+  var esc = function(s){ return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); };
+  var FONT = "'Noto Sans KR','Apple SD Gothic Neo','Malgun Gothic',sans-serif";
+  var TYPES = [['url', '↗', '웹 링크'], ['tel', '☎', '전화'], ['sms', '✉', '문자'], ['email', '@', '이메일'], ['text', 'T', '텍스트'], ['vcard', '👤', '연락처'], ['wifi', '📶', '와이파이'], ['map', '📍', '지도']];
+  var DOTS = [['square', '기본'], ['rounded', '둥근'], ['dots', '도트'], ['classy', '클래시'], ['bold', '볼드'], ['diamond', '마름모'], ['bars', '세로 이음']];
+  var EYES = [['square', '각진 눈'], ['rounded', '둥근 눈'], ['bold', '볼드 눈'], ['circle', '원형 눈'], ['leaf', '잎 눈']];
+  var FRAMES = [['none', '없음'], ['card', '카드'], ['below', '아래 글씨'], ['bubble', '말풍선']];
+  var THEMES = [
+    { n:'송도제일 시그니처', d:'차콜 & 골드', dot:'rounded', eye:'rounded', mode:'grad', c1:'#171717', c2:'#9C6B2F', bg:'#FFFDF8', dir:'diag', eyeC:'', frame:'none' },
+    { n:'클래식', d:'가장 안정적인 기본형', dot:'square', eye:'square', mode:'solid', c1:'#111111', c2:'#111111', bg:'#ffffff', eyeC:'', frame:'none' },
+    { n:'소프트 그린', d:'친근한 둥근 모양', dot:'rounded', eye:'rounded', mode:'solid', c1:'#2f5d46', c2:'#2f5d46', bg:'#f3f8f1', eyeC:'', frame:'none' },
+    { n:'오션 도트', d:'산뜻한 점 패턴', dot:'dots', eye:'circle', mode:'grad', c1:'#0f4c5c', c2:'#1f8a8a', bg:'#ffffff', dir:'vert', eyeC:'', frame:'none' },
+    { n:'플럼 에디션', d:'감각적인 부드러운 결', dot:'classy', eye:'leaf', mode:'grad', c1:'#4a1942', c2:'#8a3a6f', bg:'#fff8fb', dir:'diag', eyeC:'', frame:'none' },
+    { n:'미드나이트', d:'행사·포스터용', dot:'bold', eye:'bold', mode:'solid', c1:'#161a33', c2:'#161a33', bg:'#ffffff', eyeC:'', frame:'card', capC:'#161a33', cap:'SCAN & DISCOVER' }
+  ];
+  var DEF = { type:'url', f:{}, theme:0, dot:'rounded', eye:'rounded', mode:'grad', c1:'#171717', c2:'#9C6B2F', bg:'#FFFDF8', dir:'diag', eyeC:'', logo:'', logoPct:22, logoBg:true, frame:'none', cap:'스캔하세요', capC:'#171717', margin:3, px:1600, etab:'pat' };
+  var S = JSON.parse(JSON.stringify(DEF)), RECENT = [], LIB = null, JSQR = null, TOK = 0, CHECK = { s:'', t:'' };
+  try{ var o = JSON.parse(localStorage.getItem('sd_qr') || '{}'); if(o.s) S = Object.assign(S, o.s, { logo:'' }); RECENT = o.recent || []; }catch(e){}
+  function persist(){ try{ var s = Object.assign({}, S); delete s.logo; localStorage.setItem('sd_qr', JSON.stringify({ s:s, recent:RECENT.slice(0, 6) })); }catch(e){} }
+  function toast(m, bad){ var t = document.createElement('div'); t.className = 'qx-toast' + (bad ? ' bad' : ''); t.textContent = m; document.body.appendChild(t); setTimeout(function(){ t.remove(); }, bad ? 4600 : 2200); }
+  function author(){ var a = {}; try{ a = JSON.parse(localStorage.getItem('sdbs.author') || '{}') || {}; }catch(e){} return Object.assign({ name:'문형은', title:'대표 공인중개사', office:'송도제일공인중개사사무소', phone:'032-851-6688', addr:'인천 연수구 해돋이로 168, 혜인프라자 1층 103호' }, a); }
+  function load(srcs, test){ return new Promise(function(res, rej){ var i = 0; (function next(){ if(test()) return res(test()); if(i >= srcs.length) return rej(new Error('필요한 도구를 불러오지 못했습니다 (인터넷 연결 확인)')); var s = document.createElement('script'); s.src = srcs[i++]; s.onload = function(){ test() ? res(test()) : next(); }; s.onerror = next; document.head.appendChild(s); })(); }); }
+  function qrLib(){ if(!LIB) LIB = load(['https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js', 'https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js', 'https://unpkg.com/qrcode-generator@1.4.4/qrcode.js'], function(){ return window.qrcode; }).catch(function(e){ LIB = null; throw e; }); return LIB; }
+  function jsqr(){ if(!JSQR) JSQR = load(['https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js', 'https://unpkg.com/jsqr@1.4.0/dist/jsQR.js'], function(){ return window.jsQR; }).catch(function(e){ JSQR = null; throw e; }); return JSQR; }
+  /* ── 담을 내용 ── */
+  function digits(s){ return String(s || '').replace(/[^\d+]/g, ''); }
+  function we(s){ return String(s || '').replace(/([\;,:"])/g, '\\$1'); }
+  function ve(s){ return String(s || '').replace(/\\/g, '\\\\').replace(/\n/g, '\\n').replace(/,/g, '\\,').replace(/;/g, '\;'); }
+  function payload(){
+    var f = S.f, t = S.type;
+    if(problem()) return '';
+    if(t === 'url'){ var u = String(f.url || '').trim(); if(!u) return ''; return /^[a-z][a-z0-9+.-]*:/i.test(u) ? u : 'https://' + u; }
+    if(t === 'tel') return digits(f.tel) ? 'tel:' + digits(f.tel) : '';
+    if(t === 'sms') return digits(f.smsTo) ? 'SMSTO:' + digits(f.smsTo) + ':' + String(f.smsMsg || '') : '';
+    if(t === 'email'){ var e = String(f.mail || '').trim(); if(!e) return ''; var q = []; if(f.subj) q.push('subject=' + encodeURIComponent(f.subj)); if(f.body) q.push('body=' + encodeURIComponent(f.body)); return 'mailto:' + e + (q.length ? '?' + q.join('&') : ''); }
+    if(t === 'text') return String(f.text || '');
+    if(t === 'wifi') return f.ssid ? 'WIFI:T:' + (f.sec || 'WPA') + ';S:' + we(f.ssid) + ';' + (f.sec === 'nopass' ? '' : 'P:' + we(f.pw) + ';') + (f.hidden ? 'H:true;' : '') + ';' : '';
+    if(t === 'map'){ if(f.place && /^https?:/i.test(f.place.trim())) return f.place.trim(); return f.addr ? 'https://map.naver.com/p/search/' + encodeURIComponent(f.addr.trim()) : ''; }
+    if(t === 'vcard'){
+      var n = String(f.vn || '').trim(); if(!n && !f.vo) return '';
+      var fam = /^[가-힣]{2,4}$/.test(n) ? n.slice(0, 1) : '', giv = fam ? n.slice(1) : n, L = ['BEGIN:VCARD', 'VERSION:3.0', 'N;CHARSET=UTF-8:' + ve(fam) + ';' + ve(giv) + ';;;', 'FN;CHARSET=UTF-8:' + ve(n || f.vo)];
+      if(f.vo) L.push('ORG;CHARSET=UTF-8:' + ve(f.vo)); if(f.vt) L.push('TITLE;CHARSET=UTF-8:' + ve(f.vt));
+      if(f.vm) L.push('TEL;TYPE=CELL:' + digits(f.vm)); if(f.vp) L.push('TEL;TYPE=WORK,VOICE:' + digits(f.vp));
+      if(f.ve) L.push('EMAIL;TYPE=INTERNET:' + f.ve.trim()); if(f.vw) L.push('URL:' + (/^https?:/.test(f.vw) ? f.vw : 'https://' + f.vw)); if(f.va) L.push('ADR;TYPE=WORK;CHARSET=UTF-8:;;' + ve(f.va) + ';;;;');
+      L.push('END:VCARD'); return L.join('\r\n');
+    }
+    return '';
+  }
+  /* 입력 확인 — 빈 칸·형식이 틀리면 안내문(빨강), 맞으면 찍었을 때 무엇이 열리는지(회색) */
+  function problem(){
+    var f = S.f, t = S.type, d = function(v){ return String(v || '').replace(/\D/g, ''); };
+    if(t === 'url'){ var u = String(f.url || '').trim(); if(!u) return '연결할 웹 주소를 입력해 주세요.'; if(!/^[a-z][a-z0-9+.-]*:/i.test(u) && !/^[^\s.]+\.[^\s]{2,}/.test(u)) return '웹 주소 형식을 확인해 주세요. (예: songdojeil.com)'; if(/\s/.test(u)) return '웹 주소에 띄어쓰기가 있습니다.'; }
+    if(t === 'tel'){ if(!d(f.tel)) return '연결할 전화번호를 입력해 주세요.'; if(d(f.tel).length < 7) return '전화번호를 끝까지 입력해 주세요.'; }
+    if(t === 'sms'){ if(!d(f.smsTo)) return '문자를 받을 전화번호를 입력해 주세요.'; if(d(f.smsTo).length < 7) return '전화번호를 끝까지 입력해 주세요.'; }
+    if(t === 'email'){ var e = String(f.mail || '').trim(); if(!e) return '받는 사람의 이메일 주소를 입력해 주세요.'; if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) return '이메일 주소 형식을 확인해 주세요.'; }
+    if(t === 'text' && !String(f.text || '').trim()) return 'QR 코드에 담을 글을 입력해 주세요.';
+    if(t === 'vcard' && !String(f.vn || '').trim() && !String(f.vo || '').trim()) return '이름이나 회사 중 하나는 입력해 주세요.';
+    if(t === 'wifi'){ if(!String(f.ssid || '').trim()) return '와이파이 이름을 입력해 주세요.'; if(f.sec !== 'nopass' && !f.pw) return '와이파이 비밀번호를 입력해 주세요. (없으면 「비밀번호 없음」)'; }
+    if(t === 'map' && !String(f.addr || '').trim() && !/^https?:/i.test(String(f.place || '').trim())) return '주소나 네이버 플레이스 주소를 입력해 주세요.';
+    return '';
+  }
+  function hint(){ var p = payload(), t = S.type, f = S.f; return ({ url:'스캔하면 ' + p + ' 주소가 열려요.', tel:'스캔하면 ' + f.tel + ' 로 바로 전화를 걸 수 있어요.', sms:'스캔하면 ' + f.smsTo + ' 에게 보낼 문자 창이 열려요.', email:'스캔하면 ' + f.mail + ' 로 보낼 메일 창이 열려요.', text:'스캔하면 글이 그대로 보여요. (' + String(f.text || '').length + '자)', vcard:'스캔하면 「' + (f.vn || f.vo) + '」 연락처를 휴대폰에 저장할 수 있어요.', wifi:'스캔하면 「' + f.ssid + '」 와이파이에 비밀번호 없이 연결돼요.', map:'스캔하면 네이버 지도에서 ' + (f.place && /^https?:/i.test(f.place) ? '플레이스가' : '「' + f.addr + '」 위치가') + ' 열려요.' })[t] || ''; }
+  function label(){ var f = S.f; return ({ url:f.url, tel:f.tel, sms:f.smsTo, email:f.mail, text:String(f.text || '').slice(0, 30), vcard:f.vn || f.vo, wifi:f.ssid, map:f.addr || f.place })[S.type] || ''; }
+  /* ── 그리기 ── */
+  function rr(x, X, Y, W, H, r){ r = Math.min(r, W / 2, H / 2); x.beginPath(); x.moveTo(X + r, Y); x.arcTo(X + W, Y, X + W, Y + H, r); x.arcTo(X + W, Y + H, X, Y + H, r); x.arcTo(X, Y + H, X, Y, r); x.arcTo(X, Y, X + W, Y, r); x.closePath(); }
+  function rrPath(p, X, Y, W, H, r){ r = Math.min(r, W / 2, H / 2); p.moveTo(X + r, Y); p.arcTo(X + W, Y, X + W, Y + H, r); p.arcTo(X + W, Y + H, X, Y + H, r); p.arcTo(X, Y + H, X, Y, r); p.arcTo(X, Y, X + W, Y, r); p.closePath(); }
+  function leafPath(p, X, Y, W, r){ p.moveTo(X + r, Y); p.lineTo(X + W, Y); p.lineTo(X + W, Y + W - r); p.arcTo(X + W, Y + W, X + W - r, Y + W, r); p.lineTo(X, Y + W); p.lineTo(X, Y + r); p.arcTo(X, Y, X + r, Y, r); p.closePath(); }
+  function lum(h){ var n = parseInt(String(h).replace('#', '').replace(/^(.)(.)(.)$/, '$1$1$2$2$3$3'), 16) || 0; return [n >> 16 & 255, n >> 8 & 255, n & 255].map(function(v){ v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }).reduce(function(a, v, i){ return a + v * [0.2126, 0.7152, 0.0722][i]; }, 0); }
+  function contrast(){ var bg = lum(S.bg), cs = [S.c1].concat(S.mode === 'grad' ? [S.c2] : []).concat(S.eyeC ? [S.eyeC] : []), worst = Math.min.apply(null, cs.map(function(c){ var a = lum(c); return (Math.max(a, bg) + 0.05) / (Math.min(a, bg) + 0.05); })), inv = cs.some(function(c){ return lum(c) > bg; }); return { r:worst, inv:inv, ok:worst >= 4 && !inv }; }
+  function matrix(text, ecl){ return qrLib().then(function(q){ q.stringToBytes = (q.stringToBytesFuncs && q.stringToBytesFuncs['UTF-8']) || q.stringToBytes; var o; try{ o = q(0, ecl); o.addData(text, 'Byte'); o.make(); }catch(e){ throw new Error('담을 내용이 너무 깁니다 — 줄여 주세요'); } var n = o.getModuleCount(), m = []; for(var r = 0; r < n; r++){ m.push([]); for(var c = 0; c < n; c++) m[r].push(o.isDark(r, c)); } return m; }); }
+  function inEye(r, c, n){ return (r < 7 && c < 7) || (r < 7 && c >= n - 7) || (r >= n - 7 && c < 7); }
+  function img(src){ return new Promise(function(res){ if(!src) return res(null); var i = new Image(); i.onload = function(){ res(i); }; i.onerror = function(){ res(null); }; i.src = src; }); }
+  /* QR 한 장을 캔버스에 — 프레임까지 포함한 크기는 layout 이 정한다 */
+  function layout(W, st){ var M = st.margin, cap = st.frame !== 'none' && String(st.cap || '').trim(), q = W, top = 0, H = W, fs = 0, pad = 0;
+    if(st.frame === 'below' && cap){ fs = W * 0.07; H = W + fs * 1.9; }
+    if(st.frame === 'card'){ pad = W * 0.06; fs = cap ? W * 0.058 : 0; q = W - pad * 2; H = W + (cap ? fs * 2.2 : 0); top = pad; }
+    if(st.frame === 'bubble' && cap){ fs = W * 0.07; top = fs * 2.5; H = W + top; }
+    return { W:W, H:H, q:q, qx:(W - q) / 2, qy:top, fs:fs, pad:pad, cap:cap, M:M }; }
+  function render(m, st, W, logoImg){
+    var L = layout(W, st), cv = document.createElement('canvas'); cv.width = Math.round(L.W); cv.height = Math.round(L.H); var x = cv.getContext('2d'), n = m.length, u = L.q / (n + L.M * 2), ox = L.qx + L.M * u, oy = L.qy + L.M * u;
+    if(st.frame === 'card'){ x.fillStyle = st.capC; rr(x, 0, 0, L.W, L.H, L.W * 0.07); x.fill(); } else { x.fillStyle = st.bg; x.fillRect(0, 0, L.W, L.H); }
+    if(st.frame === 'card'){ x.fillStyle = st.bg; rr(x, L.pad * 0.55, L.pad * 0.55, L.W - L.pad * 1.1, L.q + L.pad * 0.9, L.W * 0.04); x.fill(); }
+    var fill = st.c1; if(st.mode === 'grad'){ var g = st.dir === 'radial' ? x.createRadialGradient(ox + n * u / 2, oy + n * u / 2, 0, ox + n * u / 2, oy + n * u / 2, n * u * 0.72) : st.dir === 'vert' ? x.createLinearGradient(0, oy, 0, oy + n * u) : st.dir === 'horz' ? x.createLinearGradient(ox, 0, ox + n * u, 0) : x.createLinearGradient(ox, oy, ox + n * u, oy + n * u); g.addColorStop(0, st.c1); g.addColorStop(1, st.c2); fill = g; }
+    var lr = st.logo ? Math.floor(n * st.logoPct / 100 / 2) + 1 : 0, mid = (n - 1) / 2;
+    var hole = function(r, c){ return lr && Math.abs(r - mid) <= lr && Math.abs(c - mid) <= lr; };
+    var p = new Path2D(), s = u * 1.02;
+    for(var r = 0; r < n; r++) for(var c = 0; c < n; c++){
+      if(!m[r][c] || inEye(r, c, n) || hole(r, c)) continue;
+      var X = ox + c * u, Y = oy + r * u;
+      if(st.dot === 'dots'){ p.moveTo(X + u * 0.92, Y + u / 2); p.arc(X + u / 2, Y + u / 2, u * 0.42, 0, Math.PI * 2); }
+      else if(st.dot === 'rounded') rrPath(p, X + u * 0.06, Y + u * 0.06, u * 0.88, u * 0.88, u * 0.32);
+      else if(st.dot === 'classy') leafPath(p, X + u * 0.04, Y + u * 0.04, u * 0.92, u * 0.46);
+      else if(st.dot === 'bold'){ var on = function(rr2, cc){ return rr2 < n && cc < n && m[rr2][cc] && !inEye(rr2, cc, n) && !hole(rr2, cc); }; p.moveTo(X + u, Y + u / 2); p.arc(X + u / 2, Y + u / 2, u / 2, 0, Math.PI * 2); if(on(r, c + 1)) p.rect(X + u / 2, Y, u, u); if(on(r + 1, c)) p.rect(X, Y + u / 2, u, u); }
+      else if(st.dot === 'diamond'){ p.moveTo(X + u / 2, Y); p.lineTo(X + u, Y + u / 2); p.lineTo(X + u / 2, Y + u); p.lineTo(X, Y + u / 2); p.closePath(); }
+      else if(st.dot === 'bars'){ var dn = r + 1 < n && m[r + 1][c] && !inEye(r + 1, c, n) && !hole(r + 1, c), up = r > 0 && m[r - 1][c] && !inEye(r - 1, c, n) && !hole(r - 1, c); rrPath(p, X + u * 0.12, Y + (up ? 0 : u * 0.1), u * 0.76, u * (1 - (up ? 0 : 0.1) - (dn ? 0 : 0.1)) + (dn ? 0.5 : 0), u * 0.38); }
+      else p.rect(X, Y, s, s);
+    }
+    x.fillStyle = fill; x.fill(p);
+    /* 모서리 눈 — 바깥 고리 7칸 · 속 3칸 */
+    [[0, 0], [0, n - 7], [n - 7, 0]].forEach(function(e){
+      var X = ox + e[1] * u, Y = oy + e[0] * u, A = 7 * u, B = 3 * u, ip = new Path2D(), op = new Path2D();
+      if(st.eye === 'circle'){ op.arc(X + A / 2, Y + A / 2, A / 2, 0, Math.PI * 2); op.arc(X + A / 2, Y + A / 2, A / 2 - u, 0, Math.PI * 2, true); ip.arc(X + A / 2, Y + A / 2, B / 2 + u * 0.05, 0, Math.PI * 2); }
+      else if(st.eye === 'rounded'){ rrPath(op, X, Y, A, A, u * 2.1); rrPath(op, X + u, Y + u, A - 2 * u, A - 2 * u, u * 1.3); rrPath(ip, X + 2 * u, Y + 2 * u, B, B, u * 0.9); }
+      else if(st.eye === 'bold'){ rrPath(op, X, Y, A, A, u * 2.6); rrPath(op, X + u * 1.15, Y + u * 1.15, A - 2.3 * u, A - 2.3 * u, u * 1.5); ip.moveTo(X + A / 2 + B / 2 + u * 0.15, Y + A / 2); ip.arc(X + A / 2, Y + A / 2, B / 2 + u * 0.15, 0, Math.PI * 2); }
+      else if(st.eye === 'leaf'){ leafPath(op, X, Y, A, u * 2.6); leafPath(op, X + u, Y + u, A - 2 * u, u * 1.7); leafPath(ip, X + 2 * u, Y + 2 * u, B, u * 1.1); }
+      else { op.rect(X, Y, A, A); op.rect(X + u, Y + u, A - 2 * u, A - 2 * u); ip.rect(X + 2 * u, Y + 2 * u, B, B); }
+      x.fillStyle = st.eyeC || fill; x.fill(op, 'evenodd'); x.fill(ip);
+    });
+    if(logoImg && lr){ var ls = (lr * 2 + 1) * u, lx = ox + (mid - lr) * u, ly = oy + (mid - lr) * u; if(st.logoBg){ x.fillStyle = st.bg; rr(x, lx, ly, ls, ls, ls * 0.18); x.fill(); }
+      var inner = ls * (st.logoBg ? 0.84 : 1), k = Math.max(inner / logoImg.naturalWidth, inner / logoImg.naturalHeight); x.save(); rr(x, lx + (ls - inner) / 2, ly + (ls - inner) / 2, inner, inner, inner * 0.16); x.clip(); x.drawImage(logoImg, lx + ls / 2 - logoImg.naturalWidth * k / 2, ly + ls / 2 - logoImg.naturalHeight * k / 2, logoImg.naturalWidth * k, logoImg.naturalHeight * k); x.restore(); }
+    if(L.cap){
+      x.font = '800 ' + L.fs + 'px ' + FONT; x.textAlign = 'center'; x.textBaseline = 'middle'; var tw = Math.min(x.measureText(L.cap).width, L.W * 0.86), t = L.cap; while(t.length > 1 && x.measureText(t).width > L.W * 0.86) t = t.slice(0, -1);
+      if(st.frame === 'below'){ x.fillStyle = st.capC; x.fillText(t, L.W / 2, L.W + L.fs * 0.75); }
+      if(st.frame === 'card'){ x.fillStyle = lum(st.capC) > 0.5 ? '#171717' : '#ffffff'; x.fillText(t, L.W / 2, L.q + L.pad * 1.45 + L.fs * 0.9); }
+      if(st.frame === 'bubble'){ var bw = tw + L.fs * 1.8, bh = L.fs * 1.7, bx = (L.W - bw) / 2, by = L.fs * 0.3; x.fillStyle = st.capC; rr(x, bx, by, bw, bh, bh / 2); x.fill(); x.beginPath(); x.moveTo(L.W / 2 - L.fs * 0.4, by + bh - 1); x.lineTo(L.W / 2 + L.fs * 0.4, by + bh - 1); x.lineTo(L.W / 2, by + bh + L.fs * 0.45); x.closePath(); x.fill(); x.fillStyle = lum(st.capC) > 0.5 ? '#171717' : '#ffffff'; x.fillText(t, L.W / 2, by + bh / 2 + 1); }
+    }
+    cv._u = u;
+    return cv;
+  }
+  /* SVG (인쇄소용 — 확대해도 깨지지 않음) */
+  function svg(m, st, W){
+    var L = layout(W, st), n = m.length, u = L.q / (n + L.M * 2), ox = L.qx + L.M * u, oy = L.qy + L.M * u, d = [], f = function(v){ return Math.round(v * 100) / 100; };
+    var lr = st.logo ? Math.floor(n * st.logoPct / 100 / 2) + 1 : 0, mid = (n - 1) / 2, hole = function(r, c){ return lr && Math.abs(r - mid) <= lr && Math.abs(c - mid) <= lr; };
+    for(var r = 0; r < n; r++) for(var c = 0; c < n; c++){ if(!m[r][c] || inEye(r, c, n) || hole(r, c)) continue; var X = ox + c * u, Y = oy + r * u;
+      if(st.dot === 'dots') d.push('<circle cx="' + f(X + u / 2) + '" cy="' + f(Y + u / 2) + '" r="' + f(u * 0.42) + '"/>');
+      else if(st.dot === 'diamond') d.push('<path d="M' + f(X + u / 2) + ' ' + f(Y) + 'L' + f(X + u) + ' ' + f(Y + u / 2) + 'L' + f(X + u / 2) + ' ' + f(Y + u) + 'L' + f(X) + ' ' + f(Y + u / 2) + 'Z"/>');
+      else if(st.dot === 'classy') d.push('<path d="M' + f(X + u * 0.5) + ' ' + f(Y + u * 0.04) + 'H' + f(X + u * 0.96) + 'V' + f(Y + u * 0.5) + 'A' + f(u * 0.46) + ' ' + f(u * 0.46) + ' 0 0 1 ' + f(X + u * 0.5) + ' ' + f(Y + u * 0.96) + 'H' + f(X + u * 0.04) + 'V' + f(Y + u * 0.5) + 'A' + f(u * 0.46) + ' ' + f(u * 0.46) + ' 0 0 1 ' + f(X + u * 0.5) + ' ' + f(Y + u * 0.04) + 'Z"/>');
+      else if(st.dot === 'bold'){ var on = function(rr2, cc){ return rr2 < n && cc < n && m[rr2][cc] && !inEye(rr2, cc, n) && !hole(rr2, cc); }; d.push('<circle cx="' + f(X + u / 2) + '" cy="' + f(Y + u / 2) + '" r="' + f(u / 2) + '"/>'); if(on(r, c + 1)) d.push('<rect x="' + f(X + u / 2) + '" y="' + f(Y) + '" width="' + f(u * 1.01) + '" height="' + f(u) + '"/>'); if(on(r + 1, c)) d.push('<rect x="' + f(X) + '" y="' + f(Y + u / 2) + '" width="' + f(u) + '" height="' + f(u * 1.01) + '"/>'); }
+      else if(st.dot === 'rounded' || st.dot === 'bars') d.push('<rect x="' + f(X + u * 0.08) + '" y="' + f(Y + u * 0.08) + '" width="' + f(u * 0.84) + '" height="' + f(u * 0.84) + '" rx="' + f(u * 0.3) + '"/>');
+      else d.push('<rect x="' + f(X) + '" y="' + f(Y) + '" width="' + f(u * 1.01) + '" height="' + f(u * 1.01) + '"/>'); }
+    var eyes = [[0, 0], [0, n - 7], [n - 7, 0]].map(function(e){ var X = ox + e[1] * u, Y = oy + e[0] * u, A = 7 * u, rx = st.eye === 'square' ? 0 : st.eye === 'circle' ? A / 2 : st.eye === 'bold' ? u * 2.6 : u * 2.1, ri = st.eye === 'square' ? 0 : st.eye === 'circle' || st.eye === 'bold' ? 1.5 * u : u * 0.9;
+      return '<rect x="' + f(X + u / 2) + '" y="' + f(Y + u / 2) + '" width="' + f(A - u) + '" height="' + f(A - u) + '" rx="' + f(Math.max(0, rx - u / 2)) + '" fill="none" stroke="' + (st.eyeC || 'url(#g)') + '" stroke-width="' + f(u) + '"/><rect x="' + f(X + 2 * u) + '" y="' + f(Y + 2 * u) + '" width="' + f(3 * u) + '" height="' + f(3 * u) + '" rx="' + f(ri) + '" fill="' + (st.eyeC || 'url(#g)') + '"/>'; }).join('');
+    var gd = st.mode === 'grad' ? (st.dir === 'radial' ? '<radialGradient id="g" cx="50%" cy="50%" r="72%"><stop offset="0" stop-color="' + st.c1 + '"/><stop offset="1" stop-color="' + st.c2 + '"/></radialGradient>' : '<linearGradient id="g" x1="0" y1="0" x2="' + (st.dir === 'vert' ? 0 : 1) + '" y2="' + (st.dir === 'horz' ? 0 : 1) + '"><stop offset="0" stop-color="' + st.c1 + '"/><stop offset="1" stop-color="' + st.c2 + '"/></linearGradient>') : '<linearGradient id="g"><stop offset="0" stop-color="' + st.c1 + '"/><stop offset="1" stop-color="' + st.c1 + '"/></linearGradient>';
+    var logo = ''; if(st.logo && lr){ var ls = (lr * 2 + 1) * u, lx = ox + (mid - lr) * u, ly = oy + (mid - lr) * u, inner = ls * (st.logoBg ? 0.84 : 1); logo = (st.logoBg ? '<rect x="' + f(lx) + '" y="' + f(ly) + '" width="' + f(ls) + '" height="' + f(ls) + '" rx="' + f(ls * 0.18) + '" fill="' + st.bg + '"/>' : '') + '<image href="' + st.logo + '" x="' + f(lx + (ls - inner) / 2) + '" y="' + f(ly + (ls - inner) / 2) + '" width="' + f(inner) + '" height="' + f(inner) + '" preserveAspectRatio="xMidYMid slice"/>'; }
+    var cap = ''; if(L.cap){ var tc = st.frame === 'below' ? st.capC : lum(st.capC) > 0.5 ? '#171717' : '#ffffff', ty = st.frame === 'below' ? L.W + L.fs * 0.75 : st.frame === 'card' ? L.q + L.pad * 1.45 + L.fs * 0.9 : L.fs * 1.15 + 1;
+      if(st.frame === 'bubble') cap += '<rect x="' + f(L.W * 0.2) + '" y="' + f(L.fs * 0.3) + '" width="' + f(L.W * 0.6) + '" height="' + f(L.fs * 1.7) + '" rx="' + f(L.fs * 0.85) + '" fill="' + st.capC + '"/>';
+      cap += '<text x="' + f(L.W / 2) + '" y="' + f(ty) + '" text-anchor="middle" dominant-baseline="middle" font-family="Noto Sans KR,Malgun Gothic,sans-serif" font-weight="800" font-size="' + f(L.fs) + '" fill="' + tc + '">' + esc(L.cap) + '</text>'; }
+    var bg = st.frame === 'card' ? '<rect width="100%" height="100%" rx="' + f(L.W * 0.07) + '" fill="' + st.capC + '"/><rect x="' + f(L.pad * 0.55) + '" y="' + f(L.pad * 0.55) + '" width="' + f(L.W - L.pad * 1.1) + '" height="' + f(L.q + L.pad * 0.9) + '" rx="' + f(L.W * 0.04) + '" fill="' + st.bg + '"/>' : '<rect width="100%" height="100%" fill="' + st.bg + '"/>';
+    return '<svg xmlns="http://www.w3.org/2000/svg" width="' + f(L.W) + '" height="' + f(L.H) + '" viewBox="0 0 ' + f(L.W) + ' ' + f(L.H) + '"><defs>' + gd + '</defs>' + bg + '<g fill="url(#g)">' + d.join('') + '</g>' + eyes + logo + cap + '</svg>';
+  }
+  function ecl(){ return S.logo ? 'H' : 'Q'; }
+  function build(W, st){ st = st || S; var t = payload(); if(!t) return Promise.resolve(null); return Promise.all([matrix(t, st.logo ? 'H' : 'Q'), img(st.logo)]).then(function(a){ return render(a[0], st, W, a[1]); }); }
+  /* 휴대폰 카메라는 QR 한 칸을 몇 픽셀로 보고 살짝 흐리게 읽는다 — 그 조건을 몇 가지로 바꿔 가며 읽어 본다
+     (점·마름모처럼 칸 사이가 떨어진 모양은 원본 크기 그대로는 jsQR 이 못 읽어도 실제 휴대폰은 읽는다) */
+  function scanTry(J, cv, text){
+    var u = cv._u || 8, tries = [[0, 0]];
+    [5, 4, 6.5, 10, 3.5].forEach(function(p){ [0, 0.18, 0.3].forEach(function(b){ tries.push([p, b]); }); });
+    for(var i = 0; i < tries.length; i++){
+      var p = tries[i][0], k = p ? p / u : Math.min(1, 900 / cv.width), c2 = document.createElement('canvas'); c2.width = Math.max(40, Math.round(cv.width * k)); c2.height = Math.max(40, Math.round(cv.height * k));
+      var x = c2.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, c2.width, c2.height); if(tries[i][1]) x.filter = 'blur(' + (tries[i][1] * p).toFixed(2) + 'px)'; x.drawImage(cv, 0, 0, c2.width, c2.height);
+      var d = x.getImageData(0, 0, c2.width, c2.height), r = J(d.data, d.width, d.height, { inversionAttempts:'attemptBoth' });
+      if(r && r.data === text) return true; if(r && r.data !== text) return false;
+    }
+    return false;
+  }
+  function verify(cv, text){ var tok = ++TOK; CHECK = { s:'wait', t:'스캔 확인 중…', d:'만든 QR 을 직접 읽어 보고 있어요.' }; paintStatus();
+    jsqr().then(function(J){ var good = scanTry(J, cv, text); if(tok !== TOK) return;
+      CHECK = good ? { s:'ok', t:'스캔 준비 완료', d:'실제로 읽어 보니 내용이 맞아요. 디자인을 바꾸면 바로 반영돼요.' } : { s:'bad', t:'이대로는 읽히지 않아요', d:'로고를 줄이거나, 코드 색을 더 진하게, 여백을 넓혀 주세요.' }; paintStatus(); },
+    function(){ if(tok !== TOK) return; CHECK = { s:'', t:'스캔 확인 도구를 못 불렀어요', d:'저장하기 전에 휴대폰 카메라로 한 번 찍어 보세요.' }; paintStatus(); }); }
+  function paintStatus(){
+    var el = $('qx-stc'); if(!el) return; var p = problem(), c = contrast(), st = CHECK.s, t = CHECK.t, d = CHECK.d;
+    if(p){ st = 'bad'; t = '입력 내용을 확인해 주세요'; d = p; }
+    else if(!c.ok && st !== 'bad'){ st = 'bad'; t = '색 대비를 확인해 주세요'; d = c.inv ? '배경이 코드보다 어두우면 못 읽는 휴대폰이 있어요.' : '코드와 배경의 대비가 낮아요 (' + c.r.toFixed(1) + ':1) — 4:1 이상 권장.'; }
+    el.className = 'qx-stc ' + (st === 'ok' ? 'ok' : st === 'bad' ? 'bad' : '');
+    el.innerHTML = '<i>' + (st === 'ok' ? '✓' : st === 'bad' ? '!' : '…') + '</i><div><b>' + esc(t || '스캔 확인 중…') + '</b><small>' + esc(d || '') + '</small></div>';
+    ['qx-png', 'qx-svg', 'qx-copy'].forEach(function(id){ var b = $(id); if(b) b.disabled = !!p; });
+  }
+  function paintHint(){ var h = $('qx-hint'); if(!h) return; var p = problem(); h.className = 'qx-hint' + (p ? ' bad' : ''); h.textContent = p || hint(); }
+  function sample(){ return { url:'https://songdojeil.com', tel:'tel:0328516688', sms:'SMSTO:01012345678:', email:'mailto:hello@example.com', text:'송도제일공인중개사사무소', vcard:'BEGIN:VCARD\r\nVERSION:3.0\r\nFN:송도제일\r\nEND:VCARD', wifi:'WIFI:T:WPA;S:SONGDOJEIL;P:00000000;;', map:'https://map.naver.com/p/search/' }[S.type] || 'https://songdojeil.com'; }
+  var PT = 0;
+  function preview(){ clearTimeout(PT); paintHint(); ++TOK; CHECK = problem() ? { s:'', t:'', d:'' } : { s:'wait', t:'스캔 확인 중…', d:'만든 QR 을 직접 읽어 보고 있어요.' }; paintStatus(); PT = setTimeout(function(){ var cv = $('qx-pv'); if(!cv) return; var t = payload(), cn = $('qx-con'), c = contrast();
+    if(cn){ cn.style.color = c.ok ? '#69db7c' : '#ff8a65'; cn.textContent = c.ok ? '✓ 스캔하기 좋은 색 대비 (' + c.r.toFixed(1) + ':1)' : c.inv ? '⚠ 배경이 코드보다 어둡습니다 — 못 읽는 휴대폰이 있어요' : '⚠ 대비가 낮아요 (' + c.r.toFixed(1) + ':1) — 4:1 이상 권장'; }
+    persist();
+    /* 내용이 아직 없거나 틀리면 — 예시 QR 을 흐리게 보여 주고 저장은 막는다 */
+    var real = !!t, txt = t || sample(), st = Object.assign({}, S);
+    Promise.all([matrix(txt, st.logo ? 'H' : 'Q'), img(st.logo)]).then(function(a){ var c2 = render(a[0], st, 800, a[1]); cv.width = c2.width; cv.height = c2.height; var x = cv.getContext('2d'); x.clearRect(0, 0, cv.width, cv.height); x.globalAlpha = real ? 1 : 0.38; x.drawImage(c2, 0, 0); x.globalAlpha = 1; cv.dataset.real = real ? '1' : '0'; if(real) verify(c2, t); else { ++TOK; CHECK = { s:'', t:'', d:'' }; paintStatus(); } }, function(e){ CHECK = { s:'bad', t:'QR 을 만들 수 없어요', d:e.message }; paintStatus(); });
+  }, 120); }
+  function mini(cv, st, txt, size){ matrix(txt, 'L').then(function(m){ var c = render(m, st, size, null); cv.width = c.width; cv.height = c.height; cv.getContext('2d').drawImage(c, 0, 0); }).catch(function(){}); }
+  function thumbs(){
+    THEMES.forEach(function(th, i){ var cv = document.querySelector('canvas[data-tht="' + i + '"]'); if(cv) mini(cv, Object.assign({}, S, th, { logo:'', frame:'none', margin:1, dot:th.dot === 'bold' ? 'rounded' : th.dot }), 'SJ', 80); });
+    var base = Object.assign({}, S, { logo:'', frame:'none', margin:0, mode:'solid', eyeC:'', bg:'rgba(0,0,0,0)' });
+    /* 패턴 단추 — QR 전체가 아니라 가운데 3×3 칸만 크게 보여 준다 */
+    var M = []; for(var r = 0; r < 21; r++){ M.push([]); for(var c = 0; c < 21; c++) M[r].push(false); } [[9, 9], [9, 10], [10, 9], [10, 11], [11, 10], [11, 11]].forEach(function(p){ M[p[0]][p[1]] = true; });
+    DOTS.forEach(function(s){ var cv = document.querySelector('canvas[data-dot="' + s[0] + '"]'); if(!cv) return; var r = render(M, Object.assign({}, base, { dot:s[0], c1:'#d4d4d8' }), 21 * 16, null); cv.width = cv.height = 48; var x = cv.getContext('2d'); x.clearRect(0, 0, 48, 48); x.drawImage(r, 9 * 16 - 2, 9 * 16 - 2, 52, 52, 0, 0, 48, 48); });
+    EYES.forEach(function(s){ var cv = document.querySelector('canvas[data-eye="' + s[0] + '"]'); if(!cv) return; var c = document.createElement('canvas'); matrix('SJ', 'L').then(function(m){ var r = render(m, Object.assign({}, base, { eye:s[0], c1:'#d4d4d8' }), 147, null); cv.width = cv.height = 48; cv.getContext('2d').drawImage(r, 0, 0, 49, 49, 0, 0, 48, 48); }).catch(function(){}); });
+  }
+  function fieldsHtml(){
+    var f = S.f, I = function(k, lab, ph, extra){ return '<div class="qx-f">' + (lab ? '<label>' + lab + '</label>' : '') + '<input class="qx-in" data-f="' + k + '" value="' + esc(f[k] || '') + '" placeholder="' + esc(ph || '') + '"' + (extra || '') + '></div>'; }, T = S.type;
+    if(T === 'url') return I('url', '', '↗  https://songdojeil.com · 매물·블로그·플레이스 주소', ' inputmode="url"');
+    if(T === 'tel') return I('tel', '', '☎  예: 010-1234-5678', ' inputmode="tel"');
+    if(T === 'sms') return I('smsTo', '', '☎  받는 번호 · 010-1234-5678', ' inputmode="tel"') + '<div class="qx-f"><textarea class="qx-in" data-f="smsMsg" placeholder="문자 내용을 입력하세요. (선택 — 예: 매물 문의드립니다)">' + esc(f.smsMsg || '') + '</textarea></div>';
+    if(T === 'email') return I('mail', '', '@  받는 사람 · hello@example.com', ' type="email"') + I('subj', '', '이메일 제목 (선택)') + '<div class="qx-f"><textarea class="qx-in" data-f="body" placeholder="본문 (선택)" style="min-height:60px">' + esc(f.body || '') + '</textarea></div>';
+    if(T === 'text') return '<div class="qx-f"><textarea class="qx-in" data-f="text" placeholder="메모, 안내 문구, 쿠폰 번호 등을 입력하세요.">' + esc(f.text || '') + '</textarea></div>';
+    if(T === 'wifi') return '<div class="qx-g2">' + I('ssid', '와이파이 이름(SSID)', '예: SONGDOJEIL') + I('pw', '비밀번호', '', f.sec === 'nopass' ? ' disabled' : '') + '</div><div class="qx-row"><select class="qx-in" data-f="sec" style="width:auto"><option value="WPA"' + (f.sec !== 'WEP' && f.sec !== 'nopass' ? ' selected' : '') + '>WPA/WPA2/WPA3</option><option value="WEP"' + (f.sec === 'WEP' ? ' selected' : '') + '>WEP</option><option value="nopass"' + (f.sec === 'nopass' ? ' selected' : '') + '>비밀번호 없음</option></select><label style="font-size:12px;display:flex;gap:6px;align-items:center;color:#c4c4cc"><input type="checkbox" data-fc="hidden"' + (f.hidden ? ' checked' : '') + '> 숨긴 와이파이</label></div>';
+    if(T === 'map') return I('addr', '주소', '인천 연수구 해돋이로 168') + I('place', '네이버 플레이스 주소 <span>선택 — 있으면 이것으로</span>', 'https://naver.me/…') + '<div class="qx-row"><button class="qx-btn sm" id="qx-mine-map">📍 우리 사무소 주소로</button></div>';
+    if(T === 'vcard') return '<div class="qx-g2">' + I('vn', '이름', '문형은') + I('vo', '회사', '송도제일공인중개사사무소') + I('vt', '직책', '대표 공인중개사') + I('vm', '휴대전화', '010-1234-5678', ' inputmode="tel"') + I('vp', '사무실 전화', '032-851-6688', ' inputmode="tel"') + I('ve', '이메일', '') + I('vw', '홈페이지', '') + I('va', '주소', '') + '</div><div class="qx-row"><button class="qx-btn sm" id="qx-mine">👤 내 정보로 채우기</button><button class="qx-btn sm" id="qx-ecard">💳 전자명함에서 가져오기</button></div><div class="qx-note">칸이 많을수록 QR 이 촘촘해지니 꼭 필요한 것만 넣으세요.</div>';
+    return '';
+  }
+  function seg(id, list, cur){ return '<div class="qx-seg" id="' + id + '">' + list.map(function(s){ return '<button data-v="' + s[0] + '"' + (String(cur) === String(s[0]) ? ' class="on"' : '') + '>' + s[1] + '</button>'; }).join('') + '</div>'; }
+  function editHtml(){
+    var E = S.etab;
+    if(E === 'color') return '<span class="qx-lab">색 방식</span>' + seg('qx-mode', [['solid', '단색'], ['grad', '그라데이션']], S.mode)
+      + '<div class="qx-col"><label><input type="color" id="qx-c1" value="' + esc(S.c1) + '"> ' + (S.mode === 'grad' ? '시작 색' : '코드 색') + '</label>' + (S.mode === 'grad' ? '<label><input type="color" id="qx-c2" value="' + esc(S.c2) + '"> 끝 색</label><select class="qx-in" id="qx-dir" style="width:auto"><option value="diag"' + (S.dir === 'diag' ? ' selected' : '') + '>대각선</option><option value="vert"' + (S.dir === 'vert' ? ' selected' : '') + '>위→아래</option><option value="horz"' + (S.dir === 'horz' ? ' selected' : '') + '>왼→오른</option><option value="radial"' + (S.dir === 'radial' ? ' selected' : '') + '>가운데부터</option></select>' : '') + '</div>'
+      + '<div class="qx-col"><label><input type="color" id="qx-bg" value="' + esc(S.bg) + '"> 배경</label><label><input type="checkbox" id="qx-eyeon"' + (S.eyeC ? ' checked' : '') + '> 모서리 눈 색 따로</label>' + (S.eyeC ? '<input type="color" id="qx-eyec" value="' + esc(S.eyeC) + '">' : '') + '</div><div class="qx-con" id="qx-con"></div>';
+    if(E === 'logo') return '<span class="qx-lab">가운데 사진/로고 <span style="font-weight:400;color:#71717a">정사각으로 자동 맞춤 · 10MB 이하</span></span><div class="qx-row">'
+      + (S.logo ? '<img src="' + S.logo + '" alt="" style="width:52px;height:52px;border-radius:10px;object-fit:cover;border:1px solid #3a3a40">' : '')
+      + '<label class="qx-btn" style="cursor:pointer">📷 사진 선택<input type="file" id="qx-logo" accept="image/*" hidden></label>' + (S.logo ? '<button class="qx-btn" id="qx-logox">사진 제거</button>' : '') + '</div>'
+      + (S.logo ? '<div class="qx-gap"></div><div class="qx-range">가운데 크기 <input type="range" id="qx-lpct" min="12" max="30" value="' + S.logoPct + '"> <b id="qx-lpctn">' + S.logoPct + '%</b><label style="display:flex;gap:6px;align-items:center;margin-left:6px"><input type="checkbox" id="qx-lbg"' + (S.logoBg ? ' checked' : '') + '> 바탕 깔기</label></div>' : '')
+      + '<div class="qx-note">사진을 넣으면 오류 복원을 가장 높게(H · 약 30%) 바꿔 가운데를 가려도 읽히게 합니다. 사무소 로고·대표 얼굴 사진을 많이 씁니다.</div>';
+    if(E === 'frame') return '<span class="qx-lab">프레임</span>' + seg('qx-frame', FRAMES, S.frame) + (S.frame !== 'none' ? '<div class="qx-gap"></div><div class="qx-row"><input class="qx-in" id="qx-cap" maxlength="24" value="' + esc(S.cap) + '" placeholder="예: SCAN & DISCOVER · 매물 보기 · 와이파이 연결" style="flex:1;min-width:180px"><label style="display:flex;gap:7px;align-items:center;font-size:12px;color:#c4c4cc"><input type="color" id="qx-capc" value="' + esc(S.capC) + '" style="width:36px;height:30px;border:1px solid #3a3a40;border-radius:8px;padding:0;background:#101012"> 프레임 색</label></div><div class="qx-row" style="margin-top:8px">' + ['스캔하세요', 'SCAN & DISCOVER', '매물 보러 가기', '상담 전화', '와이파이 연결', '블로그 보기'].map(function(c){ return '<button class="qx-btn sm" data-cap="' + esc(c) + '">' + esc(c) + '</button>'; }).join('') + '</div>' : '<div class="qx-note">카드 · 아래 글씨 · 말풍선 중에 고르면 「스캔하세요」 같은 안내 글을 붙일 수 있어요.</div>');
+    return '<span class="qx-lab">코드 패턴</span><div class="qx-shape" id="qx-dot">' + DOTS.map(function(d){ return '<button data-v="' + d[0] + '"' + (S.dot === d[0] ? ' class="on"' : '') + '><canvas data-dot="' + d[0] + '" width="48" height="48"></canvas>' + d[1] + '</button>'; }).join('') + '</div>'
+      + '<div class="qx-gap"></div><span class="qx-lab">모서리 눈</span><div class="qx-shape" id="qx-eye">' + EYES.map(function(d){ return '<button data-v="' + d[0] + '"' + (S.eye === d[0] ? ' class="on"' : '') + '><canvas data-eye="' + d[0] + '" width="48" height="48"></canvas>' + d[1] + '</button>'; }).join('') + '</div>'
+      + '<div class="qx-gap"></div><span class="qx-lab">여백</span><div class="qx-range"><input type="range" id="qx-margin" min="1" max="6" value="' + S.margin + '"> <b id="qx-marginn">' + S.margin + '칸</b><span style="color:#71717a">인쇄할 땐 3~4칸이 잘 읽혀요</span></div>';
+  }
+  function paint(){
+    var root = $('qr-root'); if(!root) return;
+    root.innerHTML = '<div class="qx-hero"><h2>나만의 QR코드,<br>여기서 바로 만드세요.</h2><p>링크·전화·문자·이메일·텍스트에 연락처·와이파이·지도까지 QR 하나에 담고, 색상·패턴·로고까지 꾸며 고화질로 저장하세요.<br>매물 광고지·명함·현수막·사무실 안내문에 그대로 붙이면 됩니다. 가입 없이, 이 브라우저 안에서만 처리됩니다.</p></div>'
+      + '<div class="qx-shell"><div class="qx-L">'
+      + '<div class="qx-step"><div class="qx-h"><i>01</i>QR에 담을 내용</div><div class="qx-sub">스캔했을 때 실행할 기능을 먼저 골라 주세요.</div><div class="qx-types">' + TYPES.map(function(t){ return '<button data-type="' + t[0] + '"' + (S.type === t[0] ? ' class="on"' : '') + '><b>' + t[1] + '</b>' + t[2] + '</button>'; }).join('') + '</div><div id="qx-fields">' + fieldsHtml() + '</div><div class="qx-hint" id="qx-hint"></div></div>'
+      + '<div class="qx-step"><div class="qx-h"><i>02</i>추천 스타일</div><div class="qx-sub">많이 쓰이는 꾸미기 조합을 골라 담았어요.</div><div class="qx-themes">' + THEMES.map(function(t, i){ return '<button class="qx-th' + (S.theme === i ? ' on' : '') + '" data-theme="' + i + '"><canvas data-tht="' + i + '" width="80" height="80"></canvas><span><b>' + t.n + '</b><small>' + t.d + '</small></span></button>'; }).join('') + '</div></div>'
+      + '<div class="qx-step"><div class="qx-h"><i>03</i>내 취향으로 편집</div><div class="qx-sub">바꾸는 즉시 오른쪽 미리보기에 반영돼요.</div><div class="qx-etabs">' + [['pat', '패턴'], ['color', '컬러'], ['logo', '사진/로고'], ['frame', '프레임']].map(function(e){ return '<button data-et="' + e[0] + '"' + (S.etab === e[0] ? ' class="on"' : '') + '>' + e[1] + '</button>'; }).join('') + '</div><div id="qx-edit">' + editHtml() + '</div><div class="qx-gap"></div><button class="qx-btn sm" id="qx-reset">↺ 처음 스타일로</button></div>'
+      + '</div><div class="qx-R"><div class="top">LIVE PREVIEW<span>실시간</span></div><h3>송도제일 QR코드 생성기</h3><div class="qx-stage"><canvas id="qx-pv" width="300" height="300"></canvas></div>'
+      + '<div class="qx-stc" id="qx-stc"><i>…</i><div><b>스캔 확인 중…</b></div></div>'
+      + '<div class="qx-dl">저장 화질<select id="qx-px">' + [[800, '웹용 · 800px'], [1600, '고화질 · 1600px'], [2400, '인쇄용 · 2400px']].map(function(o){ return '<option value="' + o[0] + '"' + (S.px === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select></div>'
+      + '<button class="qx-gold" id="qx-png"><span>고화질 PNG 다운로드</span><span>↓</span></button>'
+      + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px"><button class="qx-ghost" id="qx-svg">SVG (인쇄소용)</button><button class="qx-ghost" id="qx-copy">QR 내용 복사</button></div>'
+      + (RECENT.length ? '<div style="font-size:12px;font-weight:700;margin-top:18px;color:#444">최근 만든 QR</div><div class="qx-recent">' + RECENT.map(function(r, i){ return '<button data-rc="' + i + '"><canvas data-rcv="' + i + '" width="120" height="120"></canvas><span>' + esc(r.lab || r.type) + '</span></button>'; }).join('') + '</div>' : '')
+      + '<div class="qx-lock">사진과 입력 내용은 업로드되지 않으며 이 브라우저 안에서만 처리됩니다.</div></div></div>';
+    bind(root); preview(); thumbs(); recentThumbs();
+  }
+  function recentThumbs(){ RECENT.forEach(function(r, i){ var cv = document.querySelector('canvas[data-rcv="' + i + '"]'); if(!cv) return; matrix(r.text, 'Q').then(function(m){ var c = render(m, Object.assign({}, S, r.s, { logo:'', frame:'none', margin:2 }), 120, null); cv.getContext('2d').drawImage(c, 0, 0, 120, 120); }).catch(function(){}); }); }
+  function remember(){ var t = payload(); if(!t) return; var s = Object.assign({}, S); delete s.logo; delete s.f; RECENT = [{ type:S.type, f:JSON.parse(JSON.stringify(S.f)), s:s, text:t, lab:label(), at:Date.now() }].concat(RECENT.filter(function(r){ return r.text !== t; })).slice(0, 6); persist(); }
+  function fname(ext){ return 'QR_' + ({ url:'링크', tel:'전화', sms:'문자', email:'이메일', text:'텍스트', vcard:'연락처', wifi:'와이파이', map:'지도' }[S.type]) + '_' + String(label() || '').replace(/^https?:\/\//, '').replace(/[\\/:*?"<>|\s]+/g, '_').slice(0, 30) + '.' + ext; }
+  function saveBlob(b, name){ var u = URL.createObjectURL(b), a = document.createElement('a'); a.href = u; a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(function(){ URL.revokeObjectURL(u); }, 2000); }
+  function bind(root){
+    var q = function(s){ return Array.prototype.slice.call(root.querySelectorAll(s)); };
+    var set = function(k, v){ S[k] = v; S.theme = -1; q('.qx-th').forEach(function(b){ b.classList.remove('on'); }); preview(); };
+    q('[data-type]').forEach(function(b){ b.onclick = function(){ S.type = b.dataset.type; paint(); }; });
+    q('#qx-fields [data-f]').forEach(function(i){ i.oninput = i.onchange = function(){ S.f[i.dataset.f] = i.value; if(i.dataset.f === 'sec'){ var pw = root.querySelector('[data-f="pw"]'); if(pw) pw.disabled = i.value === 'nopass'; } preview(); }; });
+    q('#qx-fields [data-fc]').forEach(function(i){ i.onchange = function(){ S.f[i.dataset.fc] = i.checked; preview(); }; });
+    var mine = $('qx-mine'); if(mine) mine.onclick = function(){ var a = author(); Object.assign(S.f, { vn:a.name, vo:a.office, vt:a.title, vp:a.phone, va:a.addr }); paint(); toast('내 정보로 채웠습니다'); };
+    var ec = $('qx-ecard'); if(ec) ec.onclick = function(){ var d = null; try{ d = JSON.parse(localStorage.getItem('sd_ecard') || 'null'); }catch(e){} var c = d && (d.cards || []).find(function(x){ return x.id === d.cur; }) || (d && d.cards && d.cards[0]); if(!c) return toast('전자명함이 아직 없습니다 — 「💳 전자명함」 탭에서 먼저 만들어 주세요', true);
+      var tel = [c.tel1, c.tel2].filter(function(t){ return t && t.v; }), mob = tel.find(function(t){ return /휴대/.test(t.k); }), off = tel.find(function(t){ return !/휴대|팩스/.test(t.k); });
+      Object.assign(S.f, { vn:c.name, vo:c.company, vt:c.position, vm:mob ? mob.v : '', vp:off ? off.v : '', ve:c.email, vw:c.web, va:c.addr }); paint(); toast('전자명함에서 가져왔습니다'); };
+    var mm = $('qx-mine-map'); if(mm) mm.onclick = function(){ S.f.addr = author().addr; paint(); };
+    q('[data-theme]').forEach(function(b){ b.onclick = function(){ var th = THEMES[+b.dataset.theme]; Object.assign(S, { dot:th.dot, eye:th.eye, mode:th.mode, c1:th.c1, c2:th.c2, bg:th.bg, dir:th.dir || 'diag', eyeC:th.eyeC || '', frame:th.frame || 'none', theme:+b.dataset.theme }); if(th.cap){ S.cap = th.cap; S.capC = th.capC; } paint(); }; });
+    q('[data-et]').forEach(function(b){ b.onclick = function(){ S.etab = b.dataset.et; paint(); }; });
+    q('#qx-dot button').forEach(function(b){ b.onclick = function(){ q('#qx-dot button').forEach(function(x){ x.classList.toggle('on', x === b); }); set('dot', b.dataset.v); }; });
+    q('#qx-eye button').forEach(function(b){ b.onclick = function(){ q('#qx-eye button').forEach(function(x){ x.classList.toggle('on', x === b); }); set('eye', b.dataset.v); }; });
+    q('#qx-mode button').forEach(function(b){ b.onclick = function(){ S.mode = b.dataset.v; S.theme = -1; paint(); }; });
+    q('#qx-frame button').forEach(function(b){ b.onclick = function(){ S.frame = b.dataset.v; S.theme = -1; paint(); }; });
+    q('[data-cap]').forEach(function(b){ b.onclick = function(){ S.cap = b.dataset.cap; $('qx-cap').value = S.cap; preview(); }; });
+    $('qx-px').onchange = function(){ S.px = +this.value; persist(); };
+    [['qx-c1', 'c1'], ['qx-c2', 'c2'], ['qx-bg', 'bg'], ['qx-eyec', 'eyeC'], ['qx-capc', 'capC']].forEach(function(p){ var e = $(p[0]); if(e) e.oninput = function(){ set(p[1], this.value); }; });
+    var dir = $('qx-dir'); if(dir) dir.onchange = function(){ set('dir', this.value); };
+    var eo = $('qx-eyeon'); if(eo) eo.onchange = function(){ S.eyeC = this.checked ? (S.eyeC || '#9C6B2F') : ''; S.theme = -1; paint(); };
+    var cap = $('qx-cap'); if(cap) cap.oninput = function(){ S.cap = this.value; preview(); };
+    var mg = $('qx-margin'); if(mg) mg.oninput = function(){ S.margin = +this.value; $('qx-marginn').textContent = this.value + '칸'; preview(); };
+    var lf = $('qx-logo'); if(lf) lf.onchange = function(){ var f = this.files && this.files[0]; this.value = ''; if(!f) return; if(!/^image\//.test(f.type)) return toast('사진 파일을 골라 주세요', true); if(f.size > 10 * 1048576) return toast('10MB 이하 사진으로 골라 주세요', true);
+      var u = URL.createObjectURL(f), im = new Image(); im.onload = function(){ var s = Math.min(im.naturalWidth, im.naturalHeight), c = document.createElement('canvas'), z = Math.min(600, s); c.width = c.height = z; c.getContext('2d').drawImage(im, (im.naturalWidth - s) / 2, (im.naturalHeight - s) / 2, s, s, 0, 0, z, z); URL.revokeObjectURL(u); S.logo = c.toDataURL('image/png'); paint(); }; im.onerror = function(){ URL.revokeObjectURL(u); toast('사진을 읽지 못했습니다', true); }; im.src = u; };
+    var lx = $('qx-logox'); if(lx) lx.onclick = function(){ S.logo = ''; paint(); };
+    var lp = $('qx-lpct'); if(lp) lp.oninput = function(){ S.logoPct = +this.value; $('qx-lpctn').textContent = this.value + '%'; preview(); };
+    var lb = $('qx-lbg'); if(lb) lb.onchange = function(){ S.logoBg = this.checked; preview(); };
+    $('qx-reset').onclick = function(){ var keep = { type:S.type, f:S.f, logo:S.logo, px:S.px, etab:S.etab }; S = Object.assign(JSON.parse(JSON.stringify(DEF)), keep); paint(); };
+    $('qx-png').onclick = function(){ if(problem()) return toast(problem(), true); var b = this; b.disabled = true; build(S.px).then(function(c){ return new Promise(function(r){ c.toBlob(r, 'image/png'); }); }).then(function(bl){ saveBlob(bl, fname('png')); remember(); toast(S.px + 'px PNG 를 저장했습니다' + (CHECK.s === 'bad' ? ' — ⚠ 읽히지 않는 상태입니다' : '')); paintRecentLater(); }, function(e){ toast(e.message, true); }).then(function(){ b.disabled = false; }); };
+    $('qx-svg').onclick = function(){ if(problem()) return toast(problem(), true); matrix(payload(), ecl()).then(function(m){ saveBlob(new Blob([svg(m, S, 1000)], { type:'image/svg+xml' }), fname('svg')); remember(); toast('SVG 를 저장했습니다 — 인쇄소에 그대로 보내면 됩니다'); paintRecentLater(); }, function(e){ toast(e.message, true); }); };
+    $('qx-copy').onclick = function(){ var t = payload(); if(!t) return toast(problem() || '담을 내용이 없습니다', true); var done = function(){ toast('QR 내용을 복사했습니다'); }; if(navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(t).then(done, function(){ window.prompt('아래 내용을 복사하세요', t); }); else window.prompt('아래 내용을 복사하세요', t); };
+    q('[data-rc]').forEach(function(b){ b.onclick = function(){ var r = RECENT[+b.dataset.rc]; S = Object.assign(S, r.s, { type:r.type, f:JSON.parse(JSON.stringify(r.f)) }); paint(); toast('최근 QR 을 불러왔습니다'); }; });
+  }
+  var RPT = 0; function paintRecentLater(){ clearTimeout(RPT); RPT = setTimeout(paint, 400); }
+  window.sdQr = { go:function(){ paint(); }, _s:function(){ return S; }, _payload:payload, _build:build, _svg:function(){ return matrix(payload(), ecl()).then(function(m){ return svg(m, S, 1000); }); }, _check:function(){ return CHECK; }, _problem:problem, _scan:function(cv, t){ return jsqr().then(function(J){ return scanTry(J, cv, t); }); }, THEMES:THEMES };
 })();
 </script>
 <script>window.__sdToolStart && window.__sdToolStart();</script>
