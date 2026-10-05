@@ -321,7 +321,7 @@ html.sv-embed body{background:#f7f8fa}
    ═════════════════════════════════════════════════════════════════ */
 (function(){
 'use strict';
-var SD_VER = '2026.10.04-10';
+var SD_VER = '2026.10.05-1';
 window.SD_VERSION = SD_VER;
 var EMBED = /[?&]embed=1\b/.test(location.search);
 if(EMBED) document.documentElement.classList.add('sv-embed');
@@ -779,10 +779,33 @@ function fileToJpeg(f, max){
 function shrinkData(u, max){
   return new Promise(function(res){ var im = new Image(); im.onload = function(){ var k = Math.min(1, max / Math.max(im.width, im.height)), c = document.createElement('canvas'); c.width = Math.round(im.width * k); c.height = Math.round(im.height * k); c.getContext('2d').drawImage(im, 0, 0, c.width, c.height); res(c.toDataURL('image/jpeg', 0.88)); }; im.onerror = function(){ res(u); }; im.src = u; });
 }
+/* 제미나이 그림 모델 자동 찾기 (2026-10-05) — 설정한 그림 모델 이름을 구글이 모른다(404 not found)고 하면
+   그 열쇠로 「쓸 수 있는 모델 목록」(ListModels)을 받아 그림 모델(이름에 image)을 골라 다시 그린다.
+   고른 이름은 공통 설정(localStorage sdbs.settings.geminiImageModel)에 저장 — 블로그·비디오·마케팅·도구가 함께 쓴다 */
+window.sdGemImg = window.sdGemImg || (function(){
+  var P = {};
+  function rank(id){ var v = /gemini-(\d+)(?:\.(\d+))?/i.exec(id), ver = v ? (+v[1]) * 100 + (+(v[2] || 0)) : 0; return ver * 10 + (/flash/i.test(id) ? 4 : 0) + (/preview|exp/i.test(id) ? 0 : 2); }
+  function find(key){
+    if(P[key]) return P[key];
+    P[key] = fetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=200&key=' + encodeURIComponent(key)).then(function(r){ return r.json().catch(function(){ return {}; }).then(function(d){
+      if(!r.ok) throw new Error('쓸 수 있는 모델 목록을 받지 못했습니다 ' + r.status + ': ' + String((d.error && d.error.message) || '').slice(0, 120));
+      var ids = (d.models || []).filter(function(m){ return (m.supportedGenerationMethods || []).indexOf('generateContent') >= 0; }).map(function(m){ return String(m.name || '').replace(/^models\//, ''); })
+        .filter(function(id){ return /gemini/i.test(id) && /image/i.test(id) && !/tts|embedding/i.test(id); });
+      if(!ids.length) throw new Error('이 제미나이 열쇠로 쓸 수 있는 그림 모델이 없습니다 — Google AI Studio 에서 결제·사용 가능 모델을 확인해 주세요');
+      ids.sort(function(a, b){ return rank(b) - rank(a); }); return ids[0];
+    }); });
+    P[key].catch(function(){ delete P[key]; });
+    return P[key];
+  }
+  function missing(status, msg){ return status === 404 || /is not found|not supported for generateContent|no longer available|does not exist/i.test(msg || ''); }
+  /* 저장 — 바뀌었으면 true */
+  function remember(id){ try{ var s = JSON.parse(localStorage.getItem('sdbs.settings') || '{}') || {}; if(s.geminiImageModel === id) return false; s.geminiImageModel = id; localStorage.setItem('sdbs.settings', JSON.stringify(s)); return true; }catch(e){ return false; } }
+  return { find:find, missing:missing, remember:remember, rank:rank };
+})();
 async function genImage(prompt, aspect, o){
   aspect = aspect || P.fmt; o = o || {};
   var keys = keysOf('gemini'); if(!keys.length) throw new Error('AI 그림은 제미나이 열쇠가 필요합니다 (왼쪽 🔑 열쇠).');
-  var model = settings().geminiImageModel || 'gemini-3.6-flash-image', last;
+  var model = settings().geminiImageModel || 'gemini-3.6-flash-image', last, swapped = false;
   var comp = aspect === '16:9' ? 'wide 16:9 composition' : aspect === '1:1' ? 'square 1:1 composition' : 'tall vertical 9:16 composition';
   /* raw — 썸네일처럼 설명을 그대로 쓰는 경우 (글자 금지·그림 스타일을 붙이지 않음) */
   var full = o.raw ? prompt + '\n\n(' + comp + ')' : prompt + ', ' + IMG_STY[OPT.imgStyle].p + ', no text, no letters, no watermark, no logos, no people faces, ' + comp;
@@ -798,6 +821,8 @@ async function genImage(prompt, aspect, o){
         if(!r.ok){
           var em = (d.error && d.error.message) || '';
           if(tryCfg === 0 && r.status === 400 && /imageConfig|aspect|responseModalities|modalit/i.test(em)) continue;   // 화면비 지정을 못 받는 모델 — 빼고 다시
+          /* 그림 모델 이름을 구글이 모름 → 이 열쇠로 쓸 수 있는 그림 모델을 찾아 다시 (찾은 이름은 공통 설정에 저장) */
+          if(!swapped && window.sdGemImg.missing(r.status, em)){ swapped = true; var nm = await window.sdGemImg.find(keys[i]); if(nm && nm !== model){ model = nm; window.sdGemImg.remember(nm); tryCfg = -1; continue; } }
           throw new Error('그림 오류 ' + r.status + ': ' + em.slice(0, 160) + hint(r.status, em));
         }
         var parts = ((((d.candidates || [])[0] || {}).content || {}).parts) || [];
@@ -2387,7 +2412,7 @@ refreshList().then(function(){
   render(); paintList();
 }, function(e){ P = newProject(); render(); toast('작업 저장소를 열지 못했습니다 (개인 정보 보호 창이면 저장되지 않습니다): ' + e.message, true); });
 
-window.sdVideo = { composeDesc:function(){ return composeDesc(ytOf()); }, chapterLines:function(){ return chapterLines(ytOf()); }, tagsText:function(){ return tagsText(ytOf()); }, thumbBlob:thumbBlob, collageBlob:collageBlob, thBundle:thBundle, ytMeta:function(){ return ytMeta(upOf()); }, u8len:u8len, u8cut:u8cut, ytTagList:ytTagList, yt:YT, extPrompt:extPrompt, get project(){ return P; }, timeline:timeline, cuesFor:cuesFor, srt:srt, drawFrame:drawFrame, encode:encode, go:go, opt:function(){ return OPT; }, out:function(){ return OUT; } };
+window.sdVideo = { genImage:genImage, composeDesc:function(){ return composeDesc(ytOf()); }, chapterLines:function(){ return chapterLines(ytOf()); }, tagsText:function(){ return tagsText(ytOf()); }, thumbBlob:thumbBlob, collageBlob:collageBlob, thBundle:thBundle, ytMeta:function(){ return ytMeta(upOf()); }, u8len:u8len, u8cut:u8cut, ytTagList:ytTagList, yt:YT, extPrompt:extPrompt, get project(){ return P; }, timeline:timeline, cuesFor:cuesFor, srt:srt, drawFrame:drawFrame, encode:encode, go:go, opt:function(){ return OPT; }, out:function(){ return OUT; } };
 })();
 </script>
 

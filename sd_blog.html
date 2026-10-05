@@ -624,6 +624,31 @@ const CATS = [
 </script>
 
 <script>
+/* 제미나이 그림 모델 자동 찾기 (2026-10-05) — 설정한 그림 모델 이름을 구글이 모른다(404 not found)고 하면
+   그 열쇠로 「쓸 수 있는 모델 목록」(ListModels)을 받아 그림 모델(이름에 image)을 골라 다시 그린다.
+   고른 이름은 공통 설정(localStorage sdbs.settings.geminiImageModel)에 저장 — 블로그·비디오·마케팅·도구가 함께 쓴다 */
+window.sdGemImg = window.sdGemImg || (function(){
+  var P = {};
+  function rank(id){ var v = /gemini-(\d+)(?:\.(\d+))?/i.exec(id), ver = v ? (+v[1]) * 100 + (+(v[2] || 0)) : 0; return ver * 10 + (/flash/i.test(id) ? 4 : 0) + (/preview|exp/i.test(id) ? 0 : 2); }
+  function find(key){
+    if(P[key]) return P[key];
+    P[key] = fetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=200&key=' + encodeURIComponent(key)).then(function(r){ return r.json().catch(function(){ return {}; }).then(function(d){
+      if(!r.ok) throw new Error('쓸 수 있는 모델 목록을 받지 못했습니다 ' + r.status + ': ' + String((d.error && d.error.message) || '').slice(0, 120));
+      var ids = (d.models || []).filter(function(m){ return (m.supportedGenerationMethods || []).indexOf('generateContent') >= 0; }).map(function(m){ return String(m.name || '').replace(/^models\//, ''); })
+        .filter(function(id){ return /gemini/i.test(id) && /image/i.test(id) && !/tts|embedding/i.test(id); });
+      if(!ids.length) throw new Error('이 제미나이 열쇠로 쓸 수 있는 그림 모델이 없습니다 — Google AI Studio 에서 결제·사용 가능 모델을 확인해 주세요');
+      ids.sort(function(a, b){ return rank(b) - rank(a); }); return ids[0];
+    }); });
+    P[key].catch(function(){ delete P[key]; });
+    return P[key];
+  }
+  function missing(status, msg){ return status === 404 || /is not found|not supported for generateContent|no longer available|does not exist/i.test(msg || ''); }
+  /* 저장 — 바뀌었으면 true */
+  function remember(id){ try{ var s = JSON.parse(localStorage.getItem('sdbs.settings') || '{}') || {}; if(s.geminiImageModel === id) return false; s.geminiImageModel = id; localStorage.setItem('sdbs.settings', JSON.stringify(s)); return true; }catch(e){ return false; } }
+  return { find:find, missing:missing, remember:remember, rank:rank };
+})();
+</script>
+<script>
 "use strict";
 /* ============================================================
    송도제일 블로그 스튜디오
@@ -698,7 +723,6 @@ const RETIRED_GEMINI = {
   'gemini-2.0-flash':'gemini-3.6-flash',
   'gemini-1.5-flash':'gemini-3.6-flash',
   'gemini-1.5-pro':'gemini-3.6-flash',
-  'gemini-2.5-flash-image':'gemini-3.6-flash-image',
   'gemini-2.0-flash-image':'gemini-3.6-flash-image',
 };
 function migrateModels(st){
@@ -1058,7 +1082,7 @@ function repairCutJSON(s){
 async function genImage(prompt){
   const keys = keysOf('gemini');
   if(!keys.length) throw new Error('AI 사진은 제미나이 키가 필요합니다. [엔진 설정]에서 제미나이 키를 넣어 주세요.');
-  const model = state.settings.geminiImageModel || DEF_SETTINGS.geminiImageModel;
+  let model = state.settings.geminiImageModel || DEF_SETTINGS.geminiImageModel, swapped = false;
   const full = prompt + ', photorealistic, natural daylight, clean composition, korean urban residential context, no text, no watermark, no people faces';
   let lastErr;
   for(const key of keys){
@@ -1069,6 +1093,12 @@ async function genImage(prompt){
       const d = await r.json().catch(()=>({}));
       if(!r.ok){
         const em = (d.error && d.error.message) || '';
+        /* 그림 모델 이름을 구글이 모름 → 이 열쇠로 쓸 수 있는 그림 모델을 찾아 저장하고 한 번 더 */
+        if(!swapped && window.sdGemImg.missing(r.status, em)){
+          swapped = true;
+          const nm = await window.sdGemImg.find(key);
+          if(nm && nm !== model){ model = nm; window.sdGemImg.remember(nm); state.settings.geminiImageModel = nm; LS.set('settings', state.settings); toast('사진 모델을 「' + nm + '」(으)로 바꿨습니다'); return genImage(prompt); }
+        }
         throw new Error('이미지 오류 ' + r.status + ': ' + em.slice(0,180) + geminiModelHint(r.status, em) + geminiBillHint(r.status, em));
       }
       const parts = (((d.candidates||[])[0]||{}).content||{}).parts || [];
@@ -3392,7 +3422,7 @@ function vdPaintLen(){ var e=document.getElementById('vdLen'); if(e) e.textConte
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.10.05-1';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.10.05-2';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_blog.html';      // 이 파일 이름
   var SD_NAME = '블로그 스튜디오';      // 사람이 부르는 이름
 

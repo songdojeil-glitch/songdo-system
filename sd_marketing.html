@@ -3745,6 +3745,31 @@ textarea.pa-in{resize:vertical;line-height:1.6}
 </style>
 <div id="tc9" class="tc"><div class="pa sjb-band" id="pa-root"></div></div>
 <script>
+/* 제미나이 그림 모델 자동 찾기 (2026-10-05) — 설정한 그림 모델 이름을 구글이 모른다(404 not found)고 하면
+   그 열쇠로 「쓸 수 있는 모델 목록」(ListModels)을 받아 그림 모델(이름에 image)을 골라 다시 그린다.
+   고른 이름은 공통 설정(localStorage sdbs.settings.geminiImageModel)에 저장 — 블로그·비디오·마케팅·도구가 함께 쓴다 */
+window.sdGemImg = window.sdGemImg || (function(){
+  var P = {};
+  function rank(id){ var v = /gemini-(\d+)(?:\.(\d+))?/i.exec(id), ver = v ? (+v[1]) * 100 + (+(v[2] || 0)) : 0; return ver * 10 + (/flash/i.test(id) ? 4 : 0) + (/preview|exp/i.test(id) ? 0 : 2); }
+  function find(key){
+    if(P[key]) return P[key];
+    P[key] = fetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=200&key=' + encodeURIComponent(key)).then(function(r){ return r.json().catch(function(){ return {}; }).then(function(d){
+      if(!r.ok) throw new Error('쓸 수 있는 모델 목록을 받지 못했습니다 ' + r.status + ': ' + String((d.error && d.error.message) || '').slice(0, 120));
+      var ids = (d.models || []).filter(function(m){ return (m.supportedGenerationMethods || []).indexOf('generateContent') >= 0; }).map(function(m){ return String(m.name || '').replace(/^models\//, ''); })
+        .filter(function(id){ return /gemini/i.test(id) && /image/i.test(id) && !/tts|embedding/i.test(id); });
+      if(!ids.length) throw new Error('이 제미나이 열쇠로 쓸 수 있는 그림 모델이 없습니다 — Google AI Studio 에서 결제·사용 가능 모델을 확인해 주세요');
+      ids.sort(function(a, b){ return rank(b) - rank(a); }); return ids[0];
+    }); });
+    P[key].catch(function(){ delete P[key]; });
+    return P[key];
+  }
+  function missing(status, msg){ return status === 404 || /is not found|not supported for generateContent|no longer available|does not exist/i.test(msg || ''); }
+  /* 저장 — 바뀌었으면 true */
+  function remember(id){ try{ var s = JSON.parse(localStorage.getItem('sdbs.settings') || '{}') || {}; if(s.geminiImageModel === id) return false; s.geminiImageModel = id; localStorage.setItem('sdbs.settings', JSON.stringify(s)); return true; }catch(e){ return false; } }
+  return { find:find, missing:missing, remember:remember, rank:rank };
+})();
+</script>
+<script>
 (function(){
   'use strict';
   var $ = function(id){ return document.getElementById(id); };
@@ -3856,17 +3881,19 @@ textarea.pa-in{resize:vertical;line-height:1.6}
     + 'Photorealistic, natural light, no text, no logo, no watermark. Square 1:1 framing that keeps the main subject.';
   async function fix(i){
     var s = ST.slots[i], k = keys(); if(!k.length) throw new Error('제미나이 열쇠가 없습니다 — 위 1번에 넣어 주세요 (또는 AI 사용을 끄면 사진 그대로 만듭니다)');
-    var m = /^data:([^;]+);base64,(.*)$/.exec(s.photo), last;
+    var m = /^data:([^;]+);base64,(.*)$/.exec(s.photo), last, mdl = model(), swapped = false;
     for(var j = 0; j < k.length; j++){
       for(var cfg = 0; cfg < 2; cfg++){
         var body = { contents:[{ role:'user', parts:[{ inlineData:{ mimeType:m[1], data:m[2] } }, { text:FIX_PROMPT }] }] };
         if(cfg === 0) body.generationConfig = { responseModalities:['TEXT', 'IMAGE'], imageConfig:{ aspectRatio:'1:1' } };
-        var r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(model()) + ':generateContent?key=' + encodeURIComponent(k[j]), { method:'POST', headers:{ 'content-type':'application/json' }, body:JSON.stringify(body) });
+        var r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(mdl) + ':generateContent?key=' + encodeURIComponent(k[j]), { method:'POST', headers:{ 'content-type':'application/json' }, body:JSON.stringify(body) });
         var d = await r.json().catch(function(){ return {}; });
         if(r.ok){ var p = ((((d.candidates || [])[0] || {}).content || {}).parts || []).find(function(x){ return x.inlineData || x.inline_data; }); if(!p) throw new Error((i + 1) + '번 사진 보정 결과가 오지 않았습니다 — 다시 해 보세요'); var inl = p.inlineData || p.inline_data; s.fixed = 'data:' + (inl.mimeType || inl.mime_type || 'image/png') + ';base64,' + inl.data; s.fixedOf = s.photo.length + ':' + s.photo.slice(-40); return; }
         var em = (d.error && d.error.message) || '';
         if(cfg === 0 && r.status === 400 && /imageConfig|aspect|responseModalities|modalit/i.test(em)) continue;
-        last = new Error((i + 1) + '번 사진 보정 오류 ' + r.status + (r.status === 429 ? ' — 잠시 뒤 다시' : r.status === 404 ? ' — 이미지 모델 이름을 확인해 주세요 (' + model() + ')' : ': ' + em.slice(0, 120)));
+        /* 그림 모델 이름을 구글이 모름 → 이 열쇠로 쓸 수 있는 그림 모델을 찾아 다시 */
+        if(!swapped && window.sdGemImg.missing(r.status, em)){ swapped = true; try{ var nm = await window.sdGemImg.find(k[j]); if(nm && nm !== mdl){ mdl = nm; window.sdGemImg.remember(nm); if(ST.model){ ST.model = nm; save(); } var mi = document.getElementById('pa-model'); if(mi) mi.value = nm; cfg = -1; continue; } }catch(e2){ last = e2; break; } }
+        last = new Error((i + 1) + '번 사진 보정 오류 ' + r.status + (r.status === 429 ? ' — 잠시 뒤 다시' : r.status === 404 ? ' — 이미지 모델 이름을 확인해 주세요 (' + mdl + ')' : ': ' + em.slice(0, 120)));
         break;
       }
       if(!/429/.test(last.message)) break;
@@ -4018,7 +4045,7 @@ textarea.pa-in{resize:vertical;line-height:1.6}
     }catch(e){ BUSY = false; go.disabled = false; pg.textContent = ''; toast(e.message, true); }
   }
   var BOOT = restore().then(function(){ READY = true; });
-  window.sdPlaceAd = { go:function(){ BOOT.then(paint); }, _st:function(){ return ST; }, _prompt:prompt, _compose:compose, _outs:function(){ return OUTS; }, _fix:FIX_PROMPT, BIZ:BIZ };
+  window.sdPlaceAd = { go:function(){ BOOT.then(paint); }, _st:function(){ return ST; }, _prompt:prompt, _compose:compose, _outs:function(){ return OUTS; }, _fix:FIX_PROMPT, _fixOne:fix, BIZ:BIZ };
 })();
 </script>
 
@@ -4440,7 +4467,7 @@ function toggleZoom(){
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.10.05-2';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.10.05-3';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_marketing.html';      // 이 파일 이름
   var SD_NAME = '마케팅';      // 사람이 부르는 이름
 

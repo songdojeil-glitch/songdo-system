@@ -10,7 +10,7 @@
 <link rel="shortcut icon" href="favicon.ico">
 <link rel="apple-touch-icon" sizes="180x180" href="sjrws-180.png">
 <!-- ═════════════════════════════════════════════════════════════════
-     🧰 도구 (sd_tool.html)  v2026.10.05-4
+     🧰 도구 (sd_tool.html)  v2026.10.05-5
      · 데이터관리에 있던 다섯 가지를 따로 모은 화면
          🧰 전체 도구(20) · 🤝 직방 가격 제안(26) · 🔎 공시가격 조회(27) · 🏗️ 건축물대장(24) · 🔑 추출기 열쇠(25)
      · 이 도구들은 데이터관리의 실거래·매물 자료와 엔진(실거래 API·단지 사전·엑셀·로그인)을 함께 쓴다.
@@ -154,7 +154,7 @@ a.sjb-btn.on::after,span.sjb-btn.on::after{background:linear-gradient(100deg,rgb
 <script>
 (function(){
   'use strict';
-  var SD_VER = '2026.10.05-4';
+  var SD_VER = '2026.10.05-5';
   var TABS = [
     [20, '🧰 전체 도구'],
     ['calc', '🧮 부동산 계산기'],
@@ -1333,6 +1333,31 @@ body.photo-on #photo-wrap{display:block}
 @media(max-width:560px){.pp-xin{flex-direction:column}.pp-xin .pp-btn{padding:11px}.pp-mode button{font-size:13.5px;padding:10px 12px}}
 </style>
 <script>
+/* 제미나이 그림 모델 자동 찾기 (2026-10-05) — 설정한 그림 모델 이름을 구글이 모른다(404 not found)고 하면
+   그 열쇠로 「쓸 수 있는 모델 목록」(ListModels)을 받아 그림 모델(이름에 image)을 골라 다시 그린다.
+   고른 이름은 공통 설정(localStorage sdbs.settings.geminiImageModel)에 저장 — 블로그·비디오·마케팅·도구가 함께 쓴다 */
+window.sdGemImg = window.sdGemImg || (function(){
+  var P = {};
+  function rank(id){ var v = /gemini-(\d+)(?:\.(\d+))?/i.exec(id), ver = v ? (+v[1]) * 100 + (+(v[2] || 0)) : 0; return ver * 10 + (/flash/i.test(id) ? 4 : 0) + (/preview|exp/i.test(id) ? 0 : 2); }
+  function find(key){
+    if(P[key]) return P[key];
+    P[key] = fetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=200&key=' + encodeURIComponent(key)).then(function(r){ return r.json().catch(function(){ return {}; }).then(function(d){
+      if(!r.ok) throw new Error('쓸 수 있는 모델 목록을 받지 못했습니다 ' + r.status + ': ' + String((d.error && d.error.message) || '').slice(0, 120));
+      var ids = (d.models || []).filter(function(m){ return (m.supportedGenerationMethods || []).indexOf('generateContent') >= 0; }).map(function(m){ return String(m.name || '').replace(/^models\//, ''); })
+        .filter(function(id){ return /gemini/i.test(id) && /image/i.test(id) && !/tts|embedding/i.test(id); });
+      if(!ids.length) throw new Error('이 제미나이 열쇠로 쓸 수 있는 그림 모델이 없습니다 — Google AI Studio 에서 결제·사용 가능 모델을 확인해 주세요');
+      ids.sort(function(a, b){ return rank(b) - rank(a); }); return ids[0];
+    }); });
+    P[key].catch(function(){ delete P[key]; });
+    return P[key];
+  }
+  function missing(status, msg){ return status === 404 || /is not found|not supported for generateContent|no longer available|does not exist/i.test(msg || ''); }
+  /* 저장 — 바뀌었으면 true */
+  function remember(id){ try{ var s = JSON.parse(localStorage.getItem('sdbs.settings') || '{}') || {}; if(s.geminiImageModel === id) return false; s.geminiImageModel = id; localStorage.setItem('sdbs.settings', JSON.stringify(s)); return true; }catch(e){ return false; } }
+  return { find:find, missing:missing, remember:remember, rank:rank };
+})();
+</script>
+<script>
 (function(){
   'use strict';
   var $ = function(id){ return document.getElementById(id); };
@@ -1473,7 +1498,7 @@ body.photo-on #photo-wrap{display:block}
   }
   async function viaGemini(p, ref){
     var keys = keysOf('gemini'); if(!keys.length) throw new Error('제미나이 열쇠가 없습니다 — 위 01 칸에 넣어 주세요');
-    var model = settings().geminiImageModel || 'gemini-3.6-flash-image', m = /^data:([^;]+);base64,(.*)$/.exec(ref), last;
+    var model = settings().geminiImageModel || 'gemini-3.6-flash-image', m = /^data:([^;]+);base64,(.*)$/.exec(ref), last, swapped = false;
     for(var k = 0; k < keys.length; k++){
       for(var cfg = 0; cfg < 2; cfg++){
         var body = { contents:[{ role:'user', parts:[{ inlineData:{ mimeType:m[1], data:m[2] } }, { text:p }] }] };
@@ -1487,7 +1512,9 @@ body.photo-on #photo-wrap{display:block}
         }
         var em = (d.error && d.error.message) || '';
         if(cfg === 0 && r.status === 400 && /imageConfig|aspect|responseModalities|modalit/i.test(em)) continue;
-        last = new Error(r.status === 429 ? '제미나이 사용량이 잠시 꽉 찼습니다 — 조금 뒤 「다시 생성」' : r.status === 400 && /API key/i.test(em) ? '제미나이 열쇠가 맞지 않습니다' : '제미나이 오류 ' + r.status + ': ' + em.slice(0, 160));
+        /* 그림 모델 이름을 구글이 모름 → 이 열쇠로 쓸 수 있는 그림 모델을 찾아 다시 */
+        if(!swapped && window.sdGemImg.missing(r.status, em)){ swapped = true; try{ var nm = await window.sdGemImg.find(keys[k]); if(nm && nm !== model){ model = nm; if(window.sdGemImg.remember(nm)) toast('그림 모델 「' + nm + '」을(를) 찾아 바꿨습니다 — 블로그·비디오도 이 모델을 씁니다'); cfg = -1; continue; } }catch(e2){ last = e2; break; } }
+        last = new Error(r.status === 429 ? '제미나이 사용량이 잠시 꽉 찼습니다 — 조금 뒤 「다시 생성」' : r.status === 400 && /API key/i.test(em) ? '제미나이 열쇠가 맞지 않습니다' : window.sdGemImg.missing(r.status, em) ? '그림 모델 「' + model + '」을 구글이 모릅니다 — 블로그 [엔진 설정]의 「사용 가능한 모델 불러오기」로 그림 모델을 골라 주세요' : '제미나이 오류 ' + r.status + ': ' + em.slice(0, 160));
         break;
       }
       if(!/429|quota/i.test(last.message)) break;   // 열쇠가 여러 개면 막힌 열쇠 다음으로
