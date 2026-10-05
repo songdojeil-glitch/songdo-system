@@ -19687,7 +19687,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.10.05-4';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.10.05-5';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_data.html';      // 이 파일 이름
   var SD_NAME = '실거래가';      // 사람이 부르는 이름
 
@@ -38533,6 +38533,403 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
         if(typeof showToast === 'function') showToast(ok ? '✅ 부동산원 최신 자료로 바꿨습니다' : '⚠️ 자동 연결 자료가 없습니다 (rebSetup 확인)'); return ok; }); },
     state:function(){ return R; }
   };
+})();
+</script>
+<!-- ═════════════════════════════════════════════════════════════════
+     🛒 매물 장바구니 · 📋 매물 브리핑 보고서 / 🚗 매물 현장방문 일정표 (sd_data.html · window.sdBrief)  2026-10-05
+     · 매물관리(sd_props.html)와 같은 모듈 — 장바구니·작성자·발행 기록을 같은 저장 칸으로 함께 쓴다 (어느 화면에서 담아도 한 장바구니)
+     · 데이터관리 판: OP·상가 구분은 _ndCurrentData.type, 월세는 splitPrice() 로 보증금/월세를 나눠 읽는다
+     · 네이버 매물(APT · OP생숙 · 상가사무실) 상세창의 「🛒 장바구니 담기」 → 중복등록 중개업소 중 1곳을 눌러 고른 뒤 담는다
+       (업소 연락처는 고객관리 「중개업소」 목록 storage/sd_brokers 에서 업소명으로 찾아 대표번호·핸드폰을 붙인다)
+     · 오른쪽 아래 🛒 단추 → ① 담은 매물(넣을 것 고르기 · 순서 ▲▼/끌어 놓기) ② 고객(storage/sd_custs)·문서 종류·브리핑일/현장방문일
+       ③ 초안 검토 — 모든 글을 고칠 수 있고 고객용/임직원용 미리보기 → 발행 → 고객용·임직원용 각각 인쇄(PDF 저장)·파일 저장(.html)
+     · 고객용에는 중개업소 정보가 없다. 임직원용에만 상호·대표번호·핸드폰 + 고객 연락처. 둘 다 송도제일공인중개사사무소 정보가 들어간다
+     · 현장방문 일정표는 매물마다 방문 시간이 맨 앞에 나온다 (첫 시간·간격으로 자동 채우기)
+     · ✍️ 작성자(성함·직책·휴대폰)가 두 문서 모두에 들어간다 — 사용자별로 기억 (storage/sd_brief_author_<사용자> + localStorage sd_brief_author)
+       대표 계정 기본값: 문형은 · 대표 공인중개사 · 010-6401-9345 (매물 사진 워터마크의 휴대폰 번호)
+     · 저장: 장바구니 storage/sd_brief_cart_<사용자>(+ 이 브라우저 localStorage) · 발행 기록 storage/sd_brief_reports (최근 100건)
+     ═════════════════════════════════════════════════════════════════ -->
+<style id="bf-style">
+#bf-fab{position:fixed;right:22px;bottom:68px;z-index:2900;display:none;align-items:center;gap:8px;background:#1a237e;color:#fff;border:none;border-radius:28px;padding:12px 18px;font-size:14px;font-weight:800;cursor:pointer;box-shadow:0 6px 20px rgba(26,35,126,.35);font-family:inherit}
+#bf-fab.on{display:flex}
+#bf-fab b{background:#ffca28;color:#1a237e;border-radius:12px;min-width:22px;padding:1px 7px;font-size:12.5px;text-align:center}
+#bf-fab:hover{background:#283593}
+.bf-ov{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9850;display:flex;align-items:center;justify-content:center;padding:16px}
+.bf-box{background:#fff;border-radius:16px;box-shadow:0 12px 50px rgba(0,0,0,.35);width:560px;max-width:100%;max-height:92vh;max-height:calc(92vh / var(--ui-scale, 1.15));overflow:auto;padding:22px 24px;color:#1a1a2e;font-size:13px}
+.bf-box h3{margin:0 0 4px;font-size:17px}
+.bf-sub{color:#6b7280;font-size:12px;margin:0 0 14px;line-height:1.6}
+.bf-ag{display:flex;align-items:center;gap:10px;width:100%;text-align:left;border:1px solid #e0e3eb;background:#fff;border-radius:11px;padding:11px 13px;margin-bottom:7px;cursor:pointer;font-family:inherit;font-size:13px}
+.bf-ag:hover{border-color:#3949ab;background:#f3f5ff}
+.bf-ag .nm{font-weight:800;color:#1a1a2e;flex:1;min-width:0}
+.bf-ag .nm small{display:block;font-weight:400;color:#6b7280;font-size:11.5px;margin-top:2px}
+.bf-ag .tg{font-size:10.5px;padding:2px 8px;border-radius:10px;background:#e8eaf6;color:#3949ab;font-weight:700;white-space:nowrap}
+.bf-ag .tg.no{background:#f1f3f5;color:#868e96}
+.bf-ag .tg.me{background:#fff3e0;color:#e65100}
+.bf-btn{border:1px solid #d0d5e0;background:#fff;border-radius:9px;padding:8px 14px;font-size:12.5px;font-weight:700;cursor:pointer;font-family:inherit;color:#343a40;white-space:nowrap}
+.bf-btn:hover{border-color:#3949ab;color:#283593}
+.bf-btn.pri{background:#1a237e;border-color:#1a237e;color:#fff}
+.bf-btn.pri:hover{background:#283593;color:#fff}
+.bf-btn.org{background:#e65100;border-color:#e65100;color:#fff}
+.bf-btn:disabled{opacity:.45;cursor:not-allowed}
+.bf-btn.sm{padding:5px 9px;font-size:11.5px}
+.bf-big{width:min(1500px,100%);max-height:94vh;max-height:calc(94vh / var(--ui-scale, 1.15));display:flex;flex-direction:column;padding:0;overflow:hidden;overflow:clip}
+.bf-hd{display:flex;align-items:center;gap:12px;padding:16px 22px;border-bottom:1px solid #e9ecef;flex-wrap:wrap}
+.bf-hd h3{margin:0;font-size:18px;flex:1;min-width:200px}
+.bf-steps{display:flex;gap:4px;background:#f1f3f5;border-radius:11px;padding:4px;flex-wrap:wrap}
+.bf-steps button{border:0;background:none;border-radius:8px;padding:7px 13px;font-size:12.5px;font-weight:700;color:#6b7280;cursor:pointer;font-family:inherit}
+.bf-steps button.on{background:#fff;color:#1a237e;box-shadow:0 1px 3px rgba(0,0,0,.12)}
+.bf-steps button:disabled{opacity:.4;cursor:not-allowed}
+.bf-body{flex:1;overflow:auto;padding:18px 22px}
+.bf-ft{display:flex;gap:8px;align-items:center;justify-content:flex-end;padding:12px 22px;border-top:1px solid #e9ecef;background:#fafbfc;flex-wrap:wrap}
+.bf-ft .msg{margin-right:auto;font-size:12px;color:#6b7280}
+.bf-list{display:flex;flex-direction:column;gap:7px}
+.bf-it{display:grid;grid-template-columns:28px 34px minmax(0,1fr) auto;gap:10px;align-items:center;border:1px solid #e0e3eb;border-radius:11px;padding:10px 12px;background:#fff}
+.bf-it.off{opacity:.5;background:#fafafa}
+.bf-it.drag{border-style:dashed;border-color:#3949ab;background:#f3f5ff}
+.bf-it .no{width:28px;height:28px;border-radius:50%;background:#1a237e;color:#fff;font-weight:800;display:flex;align-items:center;justify-content:center;font-size:12.5px}
+.bf-it.off .no{background:#adb5bd}
+.bf-it .hd{cursor:grab;color:#adb5bd;font-size:16px;text-align:center;user-select:none}
+.bf-it .t{font-weight:800;font-size:13.5px}
+.bf-it .t .k{font-size:10.5px;font-weight:700;padding:1px 7px;border-radius:9px;background:#e8eaf6;color:#3949ab;margin-right:5px;vertical-align:1px}
+.bf-it .d{font-size:12px;color:#495057;margin-top:3px;line-height:1.55}
+.bf-it .d .ag{color:#e65100;font-weight:600}
+.bf-it .act{display:flex;gap:4px;align-items:center}
+.bf-chk{display:flex;align-items:center;gap:5px;font-size:12px;font-weight:700;color:#343a40;cursor:pointer}
+.bf-empty{text-align:center;color:#868e96;padding:40px 10px;line-height:1.8}
+.bf-g2{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:18px;align-items:start}
+.bf-card{border:1px solid #e0e3eb;border-radius:13px;padding:16px;background:#fff}
+.bf-card h4{margin:0 0 10px;font-size:14px}
+.bf-in{width:100%;padding:8px 10px;border:1px solid #d0d5e0;border-radius:8px;font-size:13px;font-family:inherit;background:#fff;color:#1a1a2e;box-sizing:border-box}
+.bf-in:focus{outline:2px solid #c5cae9;border-color:#3949ab}
+textarea.bf-in{resize:vertical;line-height:1.6}
+.bf-f{margin-bottom:10px}
+.bf-f label{display:block;font-size:11.5px;font-weight:700;color:#495057;margin-bottom:4px}
+.bf-f label span{font-weight:400;color:#868e96}
+.bf-custs{max-height:330px;overflow:auto;border:1px solid #e9ecef;border-radius:10px;margin-top:8px}
+.bf-cu{display:flex;gap:10px;align-items:center;padding:9px 12px;border-bottom:1px solid #f1f3f5;cursor:pointer}
+.bf-cu:hover{background:#f3f5ff}
+.bf-cu.on{background:#e8eaf6;box-shadow:inset 3px 0 0 #1a237e}
+.bf-cu b{font-size:13px}
+.bf-cu small{color:#6b7280;font-size:11.5px}
+.bf-cu .tg{margin-left:auto;font-size:10.5px;color:#6b7280;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:45%}
+.bf-type{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.bf-type button{border:2px solid #e0e3eb;background:#fff;border-radius:12px;padding:14px;text-align:left;cursor:pointer;font-family:inherit}
+.bf-type button b{display:block;font-size:14.5px;color:#1a1a2e}
+.bf-type button small{display:block;font-size:11.5px;color:#6b7280;margin-top:4px;line-height:1.5}
+.bf-type button.on{border-color:#1a237e;background:#f3f5ff}
+.bf-type button[data-t="visit"].on{border-color:#e65100;background:#fff8f1}
+.bf-ed{display:grid;grid-template-columns:minmax(0,520px) minmax(0,1fr);gap:18px;align-items:start}
+.bf-eit{border:1px solid #e0e3eb;border-radius:11px;padding:11px 12px;margin-bottom:8px;background:#fff}
+.bf-eit .h{display:flex;gap:8px;align-items:center;margin-bottom:8px;font-weight:800;font-size:13px}
+.bf-eit .h .no{width:24px;height:24px;border-radius:50%;background:#1a237e;color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px}
+.bf-eg{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:6px}
+.bf-eg .w2{grid-column:span 2}.bf-eg .w3{grid-column:span 3}.bf-eg .w4{grid-column:span 4}.bf-eg .w6{grid-column:span 6}
+.bf-eg label{display:block;font-size:10.5px;color:#6b7280;margin-bottom:2px;font-weight:600}
+.bf-eg .bf-in{padding:6px 8px;font-size:12.5px}
+.bf-staff{background:#fff8f1;border:1px dashed #ffb74d;border-radius:8px;padding:7px 8px;margin-top:6px}
+.bf-staff .lb{font-size:10.5px;color:#e65100;font-weight:800;margin-bottom:4px}
+.bf-pv{position:sticky;top:0}
+.bf-pvh{display:flex;gap:6px;align-items:center;margin-bottom:8px;flex-wrap:wrap}
+.bf-pvframe{width:100%;height:calc(94vh / var(--ui-scale, 1.15) - 230px);min-height:480px;border:1px solid #d0d5e0;border-radius:10px;background:#f1f3f5}
+.bf-pub{background:#e8f5e9;border:1px solid #a5d6a7;border-radius:12px;padding:12px 14px;margin-bottom:12px;font-size:12.5px;line-height:1.7}
+.bf-pub b{color:#1b5e20}
+.bf-pub .row{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.bf-hist{display:flex;flex-direction:column;gap:6px}
+.bf-hi{display:flex;gap:10px;align-items:center;border:1px solid #e0e3eb;border-radius:10px;padding:10px 12px}
+.bf-hi .k{font-size:10.5px;font-weight:800;padding:2px 8px;border-radius:9px;background:#e8eaf6;color:#3949ab;white-space:nowrap}
+.bf-hi .k.v{background:#fff3e0;color:#e65100}
+.bf-hi .m{flex:1;min-width:0;font-size:12.5px}
+.bf-hi .m small{display:block;color:#6b7280;font-size:11.5px}
+.bf-toast{position:fixed;bottom:84px;left:50%;transform:translateX(-50%);background:#212529;color:#fff;padding:9px 18px;border-radius:20px;font-size:13px;z-index:9950;max-width:90vw;text-align:center}
+.bf-toast.bad{background:#c62828}
+@media(max-width:1100px){.bf-ed{grid-template-columns:1fr}.bf-pv{position:static}.bf-g2{grid-template-columns:1fr}}
+@media(max-width:600px){.bf-eg{grid-template-columns:repeat(2,minmax(0,1fr))}.bf-eg .w3,.bf-eg .w4,.bf-eg .w6{grid-column:span 2}.bf-type{grid-template-columns:1fr}.bf-it{grid-template-columns:24px minmax(0,1fr);}.bf-it .hd{display:none}.bf-it .act{grid-column:1/-1;justify-content:flex-end}}
+@media print{#bf-fab{display:none!important}}
+</style>
+<button id="bf-fab" type="button" title="매물 장바구니 — 브리핑 보고서·현장방문 일정표 만들기">🛒 장바구니 <b id="bf-fab-n">0</b></button>
+<script>
+(function(){
+  'use strict';
+  var $ = function(id){ return document.getElementById(id); };
+  var esc = function(s){ return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); };
+  var KIND = { apt:'APT', op:'OP·생숙', sangga:'상가·사무실' };
+  var WD = ['일', '월', '화', '수', '목', '금', '토'];
+  var CART = [], CUSTS = null, BRK = null, HIST = null, STEP = 1, D = null, PV = 'cust', PUB = null;
+  var OPT = { type:'brief', custId:'', custName:'', custTel:'', briefDate:'', visitDate:'', t0:'10:00', gap:30, q:'' };
+  try{ Object.assign(OPT, JSON.parse(localStorage.getItem('sd_brief_opt') || '{}')); }catch(e){}
+  function saveOpt(){ try{ localStorage.setItem('sd_brief_opt', JSON.stringify(OPT)); }catch(e){} }
+  /* ✍️ 작성자 — 성함·직책·휴대폰 (사용자마다 기억) */
+  var AU = null;
+  function auDefault(){ var s = sess(), boss = s.role === 'master' || /문형은/.test(s.name || '');
+    return boss ? { name:'문형은', title:'대표 공인중개사', mobile:'010-6401-9345' } : { name:s.name || '', title:'', mobile:'' }; }
+  function author(){ if(AU) return AU; try{ AU = JSON.parse(localStorage.getItem('sd_brief_author') || 'null'); }catch(e){} if(!AU || !AU.name) AU = auDefault(); return AU; }
+  function saveAuthor(){ var j = JSON.stringify(AU); try{ localStorage.setItem('sd_brief_author', j); }catch(e){} return sset('sd_brief_author_' + uid(), j); }
+  function toast(m, bad){ var t = document.createElement('div'); t.className = 'bf-toast' + (bad ? ' bad' : ''); t.textContent = m; document.body.appendChild(t); setTimeout(function(){ t.remove(); }, bad ? 4200 : 2400); }
+  function sess(){ try{ return JSON.parse(localStorage.getItem('sd_auth_session') || '{}') || {}; }catch(e){ return {}; } }
+  function uid(){ var s = sess(); return String(s.uid || s.email || s.name || 'me').replace(/[.#$\[\]\/]/g, '_'); }
+  /* 송도제일 정보 — 블로그·영상과 같은 작성자 정보(sdbs.author) */
+  function office(){ var a = {}; try{ a = JSON.parse(localStorage.getItem('sdbs.author') || '{}') || {}; }catch(e){}
+    return { name:a.office || '송도제일공인중개사사무소', ceo:'문형은', title:'대표 공인중개사', tel:a.phone || '032-851-6688', addr:a.addr || '인천 연수구 해돋이로 168, 혜인프라자 1층 103호', regno:a.regno || '' }; }
+  /* ── 저장소 (파이어베이스 storage/… · 없으면 이 브라우저) ── */
+  function sget(k){ try{ if(window.storage && window.storage.get) return Promise.resolve(window.storage.get(k)).then(function(r){ return r && r.value != null ? r.value : null; }, function(){ return null; }); }catch(e){} return Promise.resolve(null); }
+  function sset(k, v){ try{ if(window.storage && window.storage.set) return Promise.resolve(window.storage.set(k, v)).catch(function(){}); }catch(e){} return Promise.resolve(); }
+  function parse(v, d){ if(v == null) return d; if(typeof v !== 'string') return v; try{ return JSON.parse(v); }catch(e){ return d; } }
+  function cartKey(){ return 'sd_brief_cart_' + uid(); }
+  function saveCart(){ var j = JSON.stringify(CART); try{ localStorage.setItem('sd_brief_cart', j); }catch(e){} paintFab(); return sset(cartKey(), j); }
+  function loadCart(){ try{ CART = JSON.parse(localStorage.getItem('sd_brief_cart') || '[]') || []; }catch(e){ CART = []; } paintFab();
+    return sget(cartKey()).then(function(v){ var c = parse(v, null); if(Array.isArray(c)){ CART = c; try{ localStorage.setItem('sd_brief_cart', JSON.stringify(c)); }catch(e){} paintFab(); } }); }
+  function brokers(){ if(BRK) return Promise.resolve(BRK); return sget('sd_brokers').then(function(v){ var b = parse(v, []); if(b && !Array.isArray(b)) b = Object.keys(b).map(function(k){ return b[k]; }); BRK = (b || []).filter(function(x){ return x && x.name && !x.closed; }); return BRK; }); }
+  function loadAuthor(){ return sget('sd_brief_author_' + uid()).then(function(v){ var a = parse(v, null); if(a && a.name){ AU = a; try{ localStorage.setItem('sd_brief_author', JSON.stringify(a)); }catch(e){} } }); }
+  function custs(force){ if(CUSTS && !force) return Promise.resolve(CUSTS); return sget('sd_custs').then(function(v){ var c = parse(v, null); if(!Array.isArray(c)){ try{ c = JSON.parse(localStorage.getItem('sd_sd_custs') || '[]'); }catch(e){ c = []; } } CUSTS = (c || []).filter(function(x){ return x && x.name; }); return CUSTS; }); }
+  function hist(){ if(HIST) return Promise.resolve(HIST); return sget('sd_brief_reports').then(function(v){ HIST = parse(v, []) || []; return HIST; }); }
+  /* ── 업소명 맞추기 (데이터관리 「중개업소 연락처」와 같은 방식) ── */
+  function brkNorm(s){ return String(s || '').replace(/\(주\)|㈜|주식회사|\(유\)|유한회사/g, '').replace(/공인\s*중개사\s*사무소|공인\s*중개사|중개\s*법인|부동산\s*중개|중개\s*사무소|부동산|사무소|공인|중개/g, '').replace(/[\s·.,\-_()\[\]]/g, '').toUpperCase(); }
+  function findBrk(list, nm){ var k = brkNorm(nm); if(!k) return null; var eq = list.filter(function(b){ return brkNorm(b.name) === k; }); if(eq.length) return eq[0]; if(k.length < 2) return null;
+    var part = list.filter(function(b){ var n = brkNorm(b.name); return n.length >= 2 && (n.indexOf(k) >= 0 || k.indexOf(n) >= 0); }); return part.length === 1 ? part[0] : null; }
+  /* ── 가격 · 날짜 ── */
+  function won(v){ v = Math.round(parseFloat(v) || 0); if(!v) return ''; var e = Math.floor(v / 10000), m = v % 10000; return (e ? e + '억' : '') + (m ? (e ? ' ' : '') + m.toLocaleString() + '만' : '') + '원'; }
+  function priceText(it){ var d = it.deal || ''; if(d === '월세') return '월세 ' + (won(it.price) || '보증금 -') + ' / ' + (it.rent ? Math.round(it.rent).toLocaleString() + '만원' : '-'); return (d ? d + ' ' : '') + (won(it.price) || '-'); }
+  function dText(s){ if(!s) return ''; var d = new Date(s + 'T00:00:00'); if(isNaN(d)) return s; return d.getFullYear() + '. ' + (d.getMonth() + 1) + '. ' + d.getDate() + '. (' + WD[d.getDay()] + ')'; }
+  function today(off){ var d = new Date(Date.now() + (off || 0) * 864e5); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
+  function addMin(t, m){ var p = /^(\d{1,2}):(\d{2})$/.exec(t || ''); if(!p) return ''; var x = (+p[1]) * 60 + (+p[2]) + m; x = ((x % 1440) + 1440) % 1440; return String(Math.floor(x / 60)).padStart(2, '0') + ':' + String(x % 60).padStart(2, '0'); }
+  function sqm(v){ var n = parseFloat(v); return n ? (Math.round(n * 100) / 100) + '' : ''; }
+  /* ── 상세창의 지금 매물 ── */
+  function current(){ var G = window.G; if(!G) return null; var i = window._ndIdx;
+    if(i >= 0 && G.naverData) return { r:G.naverData[i], tab:'apt' };
+    var c = window._ndCurrentData; if(i === -99 && c && c.r) return { r:c.r, tab:(c.tab || c.type) === 'sangga' ? 'sangga' : 'op' }; return null; }
+  function pyeongOf(r){ if(parseFloat(r.분양평형)) return String(r.분양평형); var G = window.G || {}, m = G._naverPyeongMap;
+    if(!m && G.saleData && G.saleData.length){ m = {}; G.saleData.forEach(function(sr){ var py = parseInt(sr['분양평형'] || 0); if(!py) return; var k = (sr['단지명'] || '') + '_' + Math.floor(parseFloat(sr['전용(㎡)'] || sr['전용'] || 0)); if(!m[k]) m[k] = py; }); G._naverPyeongMap = m; }
+    var v = m ? m[(r.단지명 || '') + '_' + Math.floor(parseFloat(r.전용) || 0)] : 0; return v ? String(v) : ''; }
+  function keyOf(r){ return typeof window._naverKey === 'function' ? window._naverKey(r) : [r.단지명, r.거래유형, r.전용, r.호가, r.층, r.입력일].join('|'); }
+  function agencyNames(r){ var out = [], seen = {}; [r.중개사].concat(String(r.중복업소명 || '').split(/[,，\n]/)).forEach(function(n){ n = String(n || '').replace(/NaN/gi, '').trim(); var k = brkNorm(n) || n; if(n && n !== '-' && !seen[k]){ seen[k] = 1; out.push(n); } }); return out; }
+  /* ── 1) 장바구니 담기 — 중개업소 1곳 고르기 ── */
+  function addFromDetail(){
+    var c = current(); if(!c || !c.r) return toast('매물을 찾지 못했습니다 — 상세창을 다시 열어 주세요', true);
+    var r = c.r, key = keyOf(r), names = agencyNames(r), had = CART.find(function(x){ return x.key === key; });
+    var sp = typeof window.splitPrice === 'function' ? window.splitPrice(r) : null, dep = sp && sp.isWol ? sp.dep : (r.호가 || 0), wol = sp && sp.isWol ? sp.wol : (r.월세 || 0);
+    brokers().then(function(list){
+      var ov = document.createElement('div'); ov.className = 'bf-ov'; ov.id = 'bf-agpick';
+      var rows = names.map(function(n, i){ var b = findBrk(list, n), me = /송도제일/.test(n);
+        return '<button class="bf-ag" data-i="' + i + '"><span class="nm">' + esc(n) + '<small>' + (b ? esc(['대표번호 ' + (b.tel || '-'), '핸드폰 ' + (b.mobile || '-')].join(' · ')) : '연락처 없음 — 고객관리 「중개업소」에 등록하면 자동으로 붙습니다') + '</small></span>'
+          + (me ? '<span class="tg me">우리 사무소</span>' : b ? '<span class="tg">연락처 ✓</span>' : '<span class="tg no">연락처 없음</span>') + '</button>'; });
+      ov.innerHTML = '<div class="bf-box"><h3>🛒 장바구니 담기 — 중개업소 고르기</h3><p class="bf-sub"><b>' + esc(r.단지명 || '') + '</b> · ' + esc(KIND[c.tab]) + ' · ' + esc(priceText({ deal:r.거래유형, price:dep, rent:wol })) + '<br>이 매물을 등록한 중개업소 ' + names.length + '곳 중 연락할 1곳을 누르세요. 임직원용 보고서에만 들어갑니다.' + (had ? '<br><b style="color:#e65100">이미 담긴 매물입니다 — 고르면 중개업소만 바뀝니다.</b>' : '') + '</p>'
+        + (rows.length ? rows.join('') : '<div class="bf-empty" style="padding:16px">등록 중개업소 정보가 없습니다.</div>')
+        + '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px"><button class="bf-btn" data-x="none">업소 없이 담기</button><button class="bf-btn" data-x="close">취소</button></div></div>';
+      document.body.appendChild(ov);
+      var done = function(name){ var b = name ? findBrk(list, name) : null;
+        var ag = { name:name || '', tel:b ? (b.tel || '') : '', mobile:b ? (b.mobile || '') : '', rep:b ? (b.rep || '') : '' };
+        if(had){ had.ag = ag; } else CART.push({ key:key, tab:c.tab, cx:r.단지명 || '', deal:r.거래유형 || '', sqm:sqm(r.전용), py:pyeongOf(r), price:dep, rent:wol, type:r.타입 || r.매물구분 || '', dong:r.동 || '', floor:r.층 || '', ho:r.호수 || '', dir:r.방향 || '', memo:r.특이사항 || '', ag:ag, on:true, at:Date.now() });
+        saveCart(); ov.remove(); toast(had ? '중개업소를 「' + (name || '없음') + '」(으)로 바꿨습니다' : '장바구니에 담았습니다 (' + CART.length + '건)' + (name ? ' — ' + name : '')); };
+      Array.prototype.forEach.call(ov.querySelectorAll('[data-i]'), function(b){ b.onclick = function(){ done(names[+b.dataset.i]); }; });
+      ov.querySelector('[data-x="none"]').onclick = function(){ done(''); };
+      ov.querySelector('[data-x="close"]').onclick = function(){ ov.remove(); };
+      ov.onclick = function(e){ if(e.target === ov) ov.remove(); };
+    });
+  }
+  function paintFab(){ var f = $('bf-fab'); if(!f) return; $('bf-fab-n').textContent = CART.length; f.classList.toggle('on', CART.length > 0); }
+  /* ── 2) 장바구니 창 ── */
+  function open(step){
+    if(!$('bf-cart')){ var ov = document.createElement('div'); ov.className = 'bf-ov'; ov.id = 'bf-cart'; ov.innerHTML = '<div class="bf-box bf-big" id="bf-cartbox"></div>'; document.body.appendChild(ov); ov.addEventListener('click', function(e){ if(e.target === ov) close(); }); }
+    STEP = step || (STEP === 3 && D ? 3 : 1); paint();
+    custs().then(function(){ if(STEP === 2) paint(); });
+    hist();
+  }
+  function close(){ var o = $('bf-cart'); if(o) o.remove(); }
+  function sel(){ return CART.filter(function(x){ return x.on; }); }
+  function paint(){
+    var box = $('bf-cartbox'); if(!box) return;
+    var n = sel().length;
+    box.innerHTML = '<div class="bf-hd"><h3>🛒 매물 장바구니 <span style="font-size:12.5px;color:#6b7280;font-weight:500">' + CART.length + '건 담김 · ' + n + '건 선택</span></h3>'
+      + '<div class="bf-steps"><button data-s="1"' + (STEP === 1 ? ' class="on"' : '') + '>① 담은 매물·순서</button><button data-s="2"' + (STEP === 2 ? ' class="on"' : '') + (n ? '' : ' disabled') + '>② 고객·문서 종류</button><button data-s="3"' + (STEP === 3 ? ' class="on"' : '') + (D ? '' : ' disabled') + '>③ 초안 검토·발행</button><button data-s="4"' + (STEP === 4 ? ' class="on"' : '') + '>📁 발행 기록</button></div>'
+      + '<button class="bf-btn" data-x="close" title="닫기 (Esc)">✕</button></div>'
+      + '<div class="bf-body" id="bf-body">' + (STEP === 1 ? step1() : STEP === 2 ? step2() : STEP === 3 ? step3() : step4()) + '</div>'
+      + '<div class="bf-ft">' + foot() + '</div>';
+    bind(box);
+    if(STEP === 3) preview();
+  }
+  function step1(){
+    if(!CART.length) return '<div class="bf-empty">장바구니가 비었습니다.<br>매물(APT · OP생숙 · 상가사무실) 상세창에서 「🛒 장바구니 담기」를 눌러 담으세요.</div>';
+    var no = 0;
+    return '<p class="bf-sub">보고서에 넣을 매물을 체크하고, ▲▼ 단추나 왼쪽 ⠿ 를 끌어서 순서를 정하세요. 이 순서대로 보고서·방문 일정이 만들어집니다.</p>'
+      + '<div class="bf-row" style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap"><button class="bf-btn sm" data-all="1">모두 선택</button><button class="bf-btn sm" data-all="0">모두 빼기</button><button class="bf-btn sm" data-clear="1" style="margin-left:auto">🗑 장바구니 비우기</button></div>'
+      + '<div class="bf-list" id="bf-list">' + CART.map(function(x, i){ if(x.on) no++;
+        return '<div class="bf-it' + (x.on ? '' : ' off') + '" draggable="true" data-i="' + i + '"><div class="hd" title="끌어서 순서 바꾸기">⠿</div><div class="no">' + (x.on ? no : '–') + '</div>'
+          + '<div><div class="t"><span class="k">' + esc(KIND[x.tab] || '') + '</span>' + esc(x.cx) + '</div><div class="d">' + esc(priceText(x)) + ' · 전용 ' + esc(x.sqm || '-') + '㎡' + (x.py ? ' · ' + esc(x.py) + '평' : '') + (x.floor ? ' · ' + esc(x.floor) + '층' : '') + (x.dir ? ' · ' + esc(x.dir) : '')
+          + '<br>🏢 <span class="ag">' + (x.ag && x.ag.name ? esc(x.ag.name) + (x.ag.tel || x.ag.mobile ? ' (' + esc([x.ag.tel, x.ag.mobile].filter(Boolean).join(' / ')) + ')' : ' (연락처 없음)') : '중개업소 미선택') + '</span>' + (x.memo ? '<br>📝 ' + esc(String(x.memo).slice(0, 80)) : '') + '</div></div>'
+          + '<div class="act"><label class="bf-chk"><input type="checkbox" data-on="' + i + '"' + (x.on ? ' checked' : '') + '> 넣기</label><button class="bf-btn sm" data-up="' + i + '"' + (i ? '' : ' disabled') + ' title="위로">▲</button><button class="bf-btn sm" data-dn="' + i + '"' + (i < CART.length - 1 ? '' : ' disabled') + ' title="아래로">▼</button><button class="bf-btn sm" data-del="' + i + '" title="장바구니에서 빼기">✕</button></div></div>'; }).join('') + '</div>';
+  }
+  function step2(){
+    var C = CUSTS, q = OPT.q.trim().toLowerCase(), list = [];
+    if(C){ list = C.filter(function(c){ return !q || [c.name, c.tel1, c.tel2, (c.tags || []).join(' '), c.memo, c.propCx].join(' ').toLowerCase().indexOf(q) >= 0 || String(c.tel1 || '').replace(/\D/g, '').indexOf(q.replace(/\D/g, '') || '§') >= 0; });
+      list.sort(function(a, b){ return String(b.lastdate || b.rdate || '').localeCompare(String(a.lastdate || a.rdate || '')); }); }
+    var T = OPT.type;
+    return '<div class="bf-g2"><div class="bf-card"><h4>👥 고객 선택 <span style="font-weight:400;color:#6b7280;font-size:12px">고객관리 목록</span></h4>'
+      + '<input class="bf-in" id="bf-q" placeholder="이름 · 전화번호 · 태그로 찾기" value="' + esc(OPT.q) + '">'
+      + '<div class="bf-custs" id="bf-custs">' + (!C ? '<div class="bf-empty">고객 목록을 불러오는 중…</div>' : list.length ? list.slice(0, 80).map(function(c){ return '<div class="bf-cu' + (String(c.id) === String(OPT.custId) ? ' on' : '') + '" data-c="' + esc(c.id) + '"><div><b>' + esc(c.name) + '</b><br><small>' + esc(c.tel1 || '') + '</small></div><span class="tg">' + esc((c.tags || []).join(' · ')) + '</span></div>'; }).join('') + (list.length > 80 ? '<div class="bf-empty" style="padding:10px">' + list.length + '명 중 80명만 보입니다 — 검색으로 좁혀 주세요</div>' : '') : '<div class="bf-empty">찾는 고객이 없습니다.</div>') + '</div>'
+      + '<div class="bf-f" style="margin-top:10px"><label>선택한 고객 <span>목록에 없으면 직접 적어도 됩니다</span></label><div style="display:flex;gap:6px"><input class="bf-in" id="bf-cname" placeholder="고객 이름" value="' + esc(OPT.custName) + '"><input class="bf-in" id="bf-ctel" placeholder="연락처 (임직원용에만)" value="' + esc(OPT.custTel) + '"></div></div></div>'
+      + '<div class="bf-card"><h4>📄 만들 문서</h4><div class="bf-type"><button data-t="brief"' + (T === 'brief' ? ' class="on"' : '') + '><b>📋 매물 브리핑 보고서</b><small>매물 정보를 정리해 고객에게 설명·전달</small></button><button data-t="visit"' + (T === 'visit' ? ' class="on"' : '') + '><b>🚗 매물 현장방문 일정표</b><small>방문 시간 순서대로 매물을 안내</small></button></div>'
+      + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px"><div class="bf-f"><label>브리핑일' + (T === 'brief' ? ' <span>필수</span>' : ' <span>선택</span>') + '</label><input type="date" class="bf-in" id="bf-bd" value="' + esc(OPT.briefDate) + '"></div><div class="bf-f"><label>현장방문일' + (T === 'visit' ? ' <span>필수</span>' : ' <span>선택 · 예정일</span>') + '</label><input type="date" class="bf-in" id="bf-vd" value="' + esc(OPT.visitDate) + '"></div></div>'
+      + (T === 'visit' ? '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><div class="bf-f"><label>첫 방문 시간</label><input type="time" class="bf-in" id="bf-t0" value="' + esc(OPT.t0) + '"></div><div class="bf-f"><label>매물 사이 간격</label><select class="bf-in" id="bf-gap">' + [15, 20, 30, 40, 60].map(function(m){ return '<option value="' + m + '"' + (+OPT.gap === m ? ' selected' : '') + '>' + m + '분</option>'; }).join('') + '</select></div></div><div class="bf-sub" style="margin:0">방문 시간은 다음 단계 초안에서 매물마다 고칠 수 있습니다.</div>' : '')
+      + '<div class="bf-sub" style="margin:12px 0 0">선택한 매물 <b>' + sel().length + '건</b> — 순서는 ①에서 정한 대로 들어갑니다.</div>'
+      + '<h4 style="margin:18px 0 8px">✍️ 작성자 <span style="font-weight:400;color:#6b7280;font-size:12px">고객용·임직원용 모두 들어갑니다 · 다음에도 기억</span></h4>'
+      + '<div style="display:grid;grid-template-columns:1fr 1fr 1.2fr;gap:8px"><div class="bf-f"><label>성함 <span>필수</span></label><input class="bf-in" id="bf-au-name" value="' + esc(author().name) + '" placeholder="예: 문형은"></div><div class="bf-f"><label>직책</label><input class="bf-in" id="bf-au-title" value="' + esc(author().title) + '" placeholder="예: 대표 공인중개사"></div><div class="bf-f"><label>휴대폰 <span>필수</span></label><input class="bf-in" id="bf-au-mobile" value="' + esc(author().mobile) + '" placeholder="010-0000-0000" inputmode="tel"></div></div></div></div>';
+  }
+  /* 초안 만들기 */
+  function makeDraft(){
+    var T = OPT.type, of = office(), s = sess(), items = sel();
+    var t = OPT.t0 || '10:00', gap = +OPT.gap || 30;
+    D = { type:T, title:T === 'visit' ? '매물 현장방문 일정표' : '매물 브리핑 보고서', custId:OPT.custId, cust:OPT.custName.trim(), custTel:OPT.custTel.trim(), briefDate:OPT.briefDate, visitDate:OPT.visitDate,
+      intro:T === 'visit' ? (OPT.custName.trim() || '고객') + ' 님, 요청하신 매물의 현장 방문 일정을 안내해 드립니다. 방문 시간은 현장 사정에 따라 조금 달라질 수 있으며, 변경 시 미리 연락드리겠습니다.'
+        : (OPT.custName.trim() || '고객') + ' 님께서 찾으시는 조건에 맞춰 현재 거래 가능한 매물을 정리해 드립니다. 궁금하신 점은 언제든 편하게 문의해 주세요.',
+      note:'', meet:T === 'visit' ? of.name + ' (' + of.addr + ')' : '', auName:author().name, auTitle:author().title, auMobile:author().mobile, office:of,
+      items:items.map(function(x, i){ return { cx:x.cx, kind:KIND[x.tab] || '', area:x.sqm, py:x.py, price:priceText(x), floor:[x.dong, x.floor ? x.floor + '층' : '', x.dir].filter(Boolean).join(' · '), memo:x.memo || '', time:T === 'visit' ? addMin(t, gap * i) : '', agName:x.ag ? x.ag.name : '', agTel:x.ag ? x.ag.tel : '', agMobile:x.ag ? x.ag.mobile : '' }; }) };
+    PUB = null; PV = 'cust';
+  }
+  function step3(){
+    if(!D) return '<div class="bf-empty">②에서 고객과 문서 종류를 정하고 「초안 만들기」를 누르세요.</div>';
+    var V = D.type === 'visit';
+    var inp = function(k, v, ph, w){ return '<div class="' + (w || 'w2') + '"><label>' + ph + '</label><input class="bf-in" data-k="' + k + '" value="' + esc(v) + '"></div>'; };
+    return (PUB ? '<div class="bf-pub"><b>✅ 발행했습니다</b> — ' + esc(PUB.label) + ' · 발행 기록에 저장됨<div class="row"><button class="bf-btn pri" data-out="cust:print">🖨 고객용 인쇄·PDF</button><button class="bf-btn" data-out="cust:save">💾 고객용 파일 저장</button><button class="bf-btn org" data-out="staff:print">🖨 임직원용 인쇄·PDF</button><button class="bf-btn" data-out="staff:save">💾 임직원용 파일 저장</button></div></div>' : '')
+      + '<div class="bf-ed"><div>'
+      + '<div class="bf-card" style="margin-bottom:10px"><h4>✏️ 문서 정보 <span style="font-weight:400;color:#6b7280;font-size:12px">모든 칸을 고칠 수 있습니다 — 오른쪽 미리보기에 바로 반영</span></h4><div class="bf-eg">'
+      + inp('title', D.title, '제목', 'w6') + inp('cust', D.cust, '고객 이름', 'w3') + inp('custTel', D.custTel, '고객 연락처 (임직원용에만)', 'w3')
+      + '<div class="w3"><label>브리핑일</label><input type="date" class="bf-in" data-k="briefDate" value="' + esc(D.briefDate) + '"></div><div class="w3"><label>현장방문일</label><input type="date" class="bf-in" data-k="visitDate" value="' + esc(D.visitDate) + '"></div>'
+      + (V ? inp('meet', D.meet, '만나는 곳', 'w6') : '')
+      + inp('auName', D.auName, '✍️ 작성자 성함', 'w2') + inp('auTitle', D.auTitle, '직책', 'w2') + inp('auMobile', D.auMobile, '휴대폰', 'w2')
+      + '<div class="w6"><label>인사말</label><textarea class="bf-in" rows="2" data-k="intro">' + esc(D.intro) + '</textarea></div>'
+      + '<div class="w6"><label>종합 특이사항 · 안내 <span style="font-weight:400">(예: 대출·입주 시기·주차 안내)</span></label><textarea class="bf-in" rows="2" data-k="note" placeholder="고객에게 함께 전할 내용">' + esc(D.note) + '</textarea></div></div></div>'
+      + (V ? '<div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;flex-wrap:wrap;font-size:12px">🕘 방문 시간 다시 채우기: <input type="time" class="bf-in" id="bf-rt0" value="' + esc(D.items[0] && D.items[0].time || OPT.t0) + '" style="width:120px"> 부터 <select class="bf-in" id="bf-rgap" style="width:90px">' + [15, 20, 30, 40, 60].map(function(m){ return '<option' + (+OPT.gap === m ? ' selected' : '') + '>' + m + '</option>'; }).join('') + '</select>분 간격 <button class="bf-btn sm" id="bf-refill">채우기</button></div>' : '')
+      + D.items.map(function(it, i){ var f = function(k, lab, w, type){ return '<div class="' + w + '"><label>' + lab + '</label><input class="bf-in"' + (type ? ' type="' + type + '"' : '') + ' data-i="' + i + '" data-f="' + k + '" value="' + esc(it[k]) + '"></div>'; };
+        return '<div class="bf-eit"><div class="h"><span class="no">' + (i + 1) + '</span>' + esc(it.kind) + (V && it.time ? ' · 🕘 ' + esc(it.time) : '') + '</div><div class="bf-eg">'
+          + (V ? f('time', '방문 시간', 'w2', 'time') + f('cx', '단지명', 'w4') : f('cx', '단지명', 'w6'))
+          + f('area', '전용(㎡)', 'w2') + f('py', '분양평수(평)', 'w2') + f('floor', '동·층·향', 'w2') + f('price', '가격', 'w6')
+          + '<div class="w6"><label>특이사항</label><textarea class="bf-in" rows="2" data-i="' + i + '" data-f="memo">' + esc(it.memo) + '</textarea></div></div>'
+          + '<div class="bf-staff"><div class="lb">🔒 중개업소 — 임직원용에만 나옵니다</div><div class="bf-eg">' + f('agName', '상호', 'w2') + f('agTel', '대표번호', 'w2') + f('agMobile', '핸드폰', 'w2') + '</div></div></div>'; }).join('')
+      + '</div><div class="bf-pv"><div class="bf-pvh"><div class="bf-steps"><button data-pv="cust"' + (PV === 'cust' ? ' class="on"' : '') + '>👤 고객용 미리보기</button><button data-pv="staff"' + (PV === 'staff' ? ' class="on"' : '') + '>🔒 임직원용 미리보기</button></div><span style="font-size:11.5px;color:#6b7280">A4 세로로 인쇄됩니다</span></div><iframe class="bf-pvframe" id="bf-pv" title="미리보기"></iframe></div></div>';
+  }
+  function step4(){
+    var H = HIST;
+    if(!H) return '<div class="bf-empty">발행 기록을 불러오는 중…</div>';
+    if(!H.length) return '<div class="bf-empty">아직 발행한 문서가 없습니다.</div>';
+    return '<p class="bf-sub">발행한 문서는 여기 남습니다 (최근 100건). 다시 열어 고친 뒤 새로 발행하거나 고객용·임직원용을 다시 인쇄할 수 있습니다.</p><div class="bf-hist">' + H.map(function(h, i){ var d = h.doc || {};
+      return '<div class="bf-hi"><span class="k' + (d.type === 'visit' ? ' v' : '') + '">' + (d.type === 'visit' ? '🚗 현장방문' : '📋 브리핑') + '</span><div class="m"><b>' + esc(d.cust || '(고객 없음)') + '</b> · ' + esc(d.title || '') + ' · 매물 ' + (d.items || []).length + '건<small>' + esc(dText(d.type === 'visit' ? d.visitDate : d.briefDate) || '날짜 없음') + ' · 발행 ' + esc(new Date(h.at).toLocaleString('ko-KR')) + ' · ' + esc(h.by || '') + '</small></div>'
+        + '<button class="bf-btn sm" data-ho="' + i + '">열기</button><button class="bf-btn sm" data-hp="' + i + ':cust">고객용 🖨</button><button class="bf-btn sm" data-hp="' + i + ':staff">임직원용 🖨</button><button class="bf-btn sm" data-hd="' + i + '" title="기록 지우기">🗑</button></div>'; }).join('') + '</div>';
+  }
+  function foot(){
+    if(STEP === 1) return '<span class="msg">' + (sel().length ? '선택한 ' + sel().length + '건으로 보고서를 만듭니다' : '보고서에 넣을 매물을 체크하세요') + '</span><button class="bf-btn pri" data-go="2"' + (sel().length ? '' : ' disabled') + '>다음: 고객·문서 종류 →</button>';
+    if(STEP === 2) return '<span class="msg" id="bf-need">' + need2() + '</span><button class="bf-btn" data-go="1">← 매물 순서</button><button class="bf-btn pri" id="bf-make"' + (need2() ? ' disabled' : '') + '>✨ 초안 만들기</button>';
+    if(STEP === 3) return '<span class="msg">발행하면 고객용·임직원용 두 가지가 함께 저장되고 바로 인쇄·파일 저장할 수 있습니다.</span><button class="bf-btn" data-go="2">← 고객·문서 종류</button><button class="bf-btn pri" id="bf-pub">' + (PUB ? '🔁 고친 내용으로 다시 발행' : '📤 발행하기 (고객용 + 임직원용)') + '</button>';
+    return '<button class="bf-btn" data-go="1">← 장바구니</button>';
+  }
+  function need2(){ if(!sel().length) return '①에서 매물을 하나 이상 체크하세요'; if(!OPT.custName.trim()) return '고객을 고르거나 이름을 적어 주세요'; if(OPT.type === 'brief' && !OPT.briefDate) return '브리핑일을 넣어 주세요'; if(OPT.type === 'visit' && !OPT.visitDate) return '현장방문일을 넣어 주세요'; if(!String(author().name || '').trim()) return '작성자 성함을 넣어 주세요'; if(!String(author().mobile || '').replace(/\D/g, '')) return '작성자 휴대폰 번호를 넣어 주세요'; return ''; }
+  function refreshNeed(){ var m = $('bf-need'), b = $('bf-make'); if(m) m.textContent = need2(); if(b) b.disabled = !!need2(); }
+  /* ── 문서(고객용 / 임직원용) ── */
+  function docHtml(d, staff){
+    var V = d.type === 'visit', of = d.office || office(), date = V ? d.visitDate : d.briefDate;
+    var th = (V ? '<th style="width:74px;white-space:nowrap">방문 시간</th>' : '') + '<th style="width:30px">No</th><th>단지명</th><th style="width:62px">전용(㎡)</th><th style="width:62px">분양평수</th><th style="width:118px">가격</th><th>특이사항</th>' + (staff ? '<th style="width:150px" class="ag">중개업소</th>' : '');
+    var rows = (d.items || []).map(function(it, i){ return '<tr>' + (V ? '<td class="tm">' + esc(it.time || '-') + '</td>' : '') + '<td class="c">' + (i + 1) + '</td><td><b>' + esc(it.cx) + '</b>' + (it.kind || it.floor ? '<div class="s">' + esc([it.kind, it.floor].filter(Boolean).join(' · ')) + '</div>' : '') + '</td>'
+      + '<td class="c">' + esc(it.area || '-') + '</td><td class="c">' + esc(it.py ? (/평/.test(it.py) ? it.py : it.py + '평') : '-') + '</td><td class="p">' + esc(it.price || '-') + '</td><td class="m">' + esc(it.memo || '').replace(/\n/g, '<br>') + '</td>'
+      + (staff ? '<td class="ag">' + (it.agName ? '<b>' + esc(it.agName) + '</b>' + (it.agTel || it.agMobile ? (it.agTel ? '<div>☎ ' + esc(it.agTel) + '</div>' : '') + (it.agMobile ? '<div>📱 ' + esc(it.agMobile) + '</div>' : '') : '<div class="s">연락처 미등록</div>') : '<span class="s">미선택</span>') + '</td>' : '') + '</tr>'; }).join('');
+    var info = [['고객', esc(d.cust || '-') + ' 님' + (staff && d.custTel ? ' <span class="s">(' + esc(d.custTel) + ')</span>' : '')], [V ? '현장방문일' : '브리핑일', esc(dText(date) || '-')]];
+    if(V && d.briefDate) info.push(['브리핑일', esc(dText(d.briefDate))]); if(!V && d.visitDate) info.push(['현장방문 예정일', esc(dText(d.visitDate))]);
+    if(V && d.meet) info.push(['만나는 곳', esc(d.meet)]);
+    info.push(['작성자', '<b>' + esc(d.auName || of.ceo) + '</b>' + (d.auTitle ? ' ' + esc(d.auTitle) : '') + (d.auMobile ? ' · 📱 ' + esc(d.auMobile) : '')]);
+    return '<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>' + esc(d.title) + ' — ' + esc(d.cust || '') + (staff ? ' (임직원용)' : ' (고객용)') + '</title><style>'
+      + '@page{size:A4 portrait;margin:14mm 12mm}*{box-sizing:border-box}body{margin:0;background:#eef0f4;font-family:"Noto Sans KR","Malgun Gothic","Apple SD Gothic Neo",sans-serif;color:#1a1a2e;font-size:12.5px;line-height:1.55;-webkit-print-color-adjust:exact;print-color-adjust:exact}'
+      + '.pg{max-width:820px;margin:18px auto;background:#fff;padding:30px 34px;box-shadow:0 4px 18px rgba(0,0,0,.08)}@media print{body{background:#fff}.pg{margin:0;max-width:none;box-shadow:none;padding:0}}'
+      + '.top{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #1a237e;padding-bottom:10px}.brand b{display:block;font-size:17px;color:#1a237e;letter-spacing:-.3px}.brand small{font-size:10px;letter-spacing:2px;color:#7986cb;font-weight:700}'
+      + '.badge{font-size:11px;font-weight:800;padding:4px 11px;border-radius:14px;background:#e8eaf6;color:#1a237e;white-space:nowrap}.badge.st{background:#fff3e0;color:#e65100;border:1px solid #ffb74d}'
+      + 'h1{font-size:24px;margin:18px 0 12px;letter-spacing:-.6px}h1 span{font-size:13px;color:#6b7280;font-weight:500;margin-left:8px}'
+      + '.info{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));border:1px solid #d6d9e3;border-radius:8px;overflow:hidden;margin-bottom:14px}.info div{display:flex;border-bottom:1px solid #eceef3}.info div:nth-child(odd){border-right:1px solid #eceef3}.info dt{width:92px;background:#f5f6fa;color:#5c6378;font-weight:700;padding:7px 10px;flex:0 0 92px}.info dd{margin:0;padding:7px 10px;flex:1}'
+      + '.intro{background:#f8f9fd;border-left:4px solid #3949ab;padding:10px 14px;border-radius:0 8px 8px 0;margin:0 0 14px;white-space:pre-wrap}'
+      + 'table{width:100%;border-collapse:collapse;font-size:12px}th{background:#1a237e;color:#fff;padding:7px 6px;font-weight:700;font-size:11.5px;border:1px solid #1a237e}th.ag{background:#e65100;border-color:#e65100}td{border:1px solid #d6d9e3;padding:7px 6px;vertical-align:top}tr{page-break-inside:avoid}tbody tr:nth-child(even) td{background:#fafbfd}'
+      + 'td.c{text-align:center}td.p{font-weight:800;color:#1a237e}td.tm{text-align:center;font-weight:900;font-size:14px;color:#e65100;background:#fff8f1!important}td.m{white-space:normal;color:#343a40}td.ag{font-size:11px;background:#fffaf4!important}td.ag div{white-space:nowrap}.s{font-size:10.5px;color:#6b7280;font-weight:400}'
+      + '.note{margin-top:14px;border:1px solid #ffe08a;background:#fffbea;border-radius:8px;padding:10px 14px;white-space:pre-wrap}.note b{display:block;color:#8a6100;margin-bottom:3px}'
+      + '.foot{margin-top:22px;border-top:2px solid #1a237e;padding-top:10px;display:flex;justify-content:space-between;gap:14px;font-size:11.5px;color:#343a40}.foot b{font-size:13.5px;color:#1a237e}.foot .r{text-align:right}'
+      + '.dis{margin-top:10px;font-size:10px;color:#868e96;line-height:1.6}.conf{margin-top:8px;font-size:10.5px;color:#c62828;font-weight:700}'
+      + '</style></head><body><div class="pg">'
+      + '<div class="top"><div class="brand"><small>SONGDO JEIL REAL ESTATE</small><b>' + esc(of.name) + '</b></div><span class="badge' + (staff ? ' st' : '') + '">' + (staff ? '🔒 임직원용 · 대외비' : '고객용') + '</span></div>'
+      + '<h1>' + esc(d.title) + '<span>' + (V ? '방문 ' : '') + (d.items || []).length + '건</span></h1>'
+      + '<dl class="info">' + info.map(function(x){ return '<div><dt>' + x[0] + '</dt><dd>' + x[1] + '</dd></div>'; }).join('') + (info.length % 2 ? '<div><dt></dt><dd></dd></div>' : '') + '</dl>'
+      + (d.intro ? '<p class="intro">' + esc(d.intro) + '</p>' : '')
+      + '<table><thead><tr>' + th + '</tr></thead><tbody>' + rows + '</tbody></table>'
+      + (d.note ? '<div class="note"><b>📌 종합 특이사항 · 안내</b>' + esc(d.note) + '</div>' : '')
+      + '<div class="foot"><div><b>' + esc(of.name) + '</b><br>' + esc(of.title) + ' ' + esc(of.ceo) + (of.regno ? ' · 등록번호 ' + esc(of.regno) : '') + '<br>' + esc(of.addr) + '</div><div class="r">대표전화 <b>' + esc(of.tel) + '</b><br>작성 <b style="font-size:12px">' + esc(d.auName || of.ceo) + '</b>' + (d.auTitle ? ' ' + esc(d.auTitle) : '') + (d.auMobile ? '<br>휴대폰 <b style="font-size:12px">' + esc(d.auMobile) + '</b>' : '') + '<br>발행 ' + esc(dText(today())) + '</div></div>'
+      + '<div class="dis">※ 본 자료는 ' + esc(d.cust || '고객') + ' 님의 매물 검토를 돕기 위해 ' + esc(of.name) + '에서 작성했습니다. 가격·조건은 소유자 사정으로 바뀌거나 거래가 끝날 수 있으니 계약 전 다시 확인해 주세요.</div>'
+      + (staff ? '<div class="conf">🔒 임직원용 — 중개업소 정보와 고객 연락처가 들어 있습니다. 고객에게 전달하지 마세요.</div>' : '')
+      + '</div></body></html>';
+  }
+  var PVT = 0;
+  function preview(){ clearTimeout(PVT); PVT = setTimeout(function(){ var f = $('bf-pv'); if(f && D) f.srcdoc = docHtml(D, PV === 'staff'); }, 120); }
+  function fileName(d, staff){ var dt = String((d.type === 'visit' ? d.visitDate : d.briefDate) || today()).replace(/-/g, ''); return (d.type === 'visit' ? '매물현장방문일정표' : '매물브리핑보고서') + '_' + (staff ? '임직원용' : '고객용') + '_' + String(d.cust || '고객').replace(/[\\/:*?"<>|\s]+/g, '') + '_' + dt + '.html'; }
+  function saveFile(d, staff){ var b = new Blob([docHtml(d, staff)], { type:'text/html;charset=utf-8' }), u = URL.createObjectURL(b), a = document.createElement('a'); a.href = u; a.download = fileName(d, staff); document.body.appendChild(a); a.click(); a.remove(); setTimeout(function(){ URL.revokeObjectURL(u); }, 3000); toast((staff ? '임직원용' : '고객용') + ' 파일을 저장했습니다'); }
+  function printDoc(d, staff){ var f = document.createElement('iframe'); f.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0'; document.body.appendChild(f); f.onload = function(){ try{ f.contentWindow.focus(); f.contentWindow.print(); }catch(e){ toast('인쇄 창을 열지 못했습니다 — 「파일 저장」 후 열어서 인쇄해 주세요', true); } setTimeout(function(){ f.remove(); }, 60000); }; f.srcdoc = docHtml(d, staff); window.__bfLastPrint = { staff:staff, html:f.srcdoc }; }
+  function publish(){
+    if(!D) return; var s = sess();
+    var rec = { id:Date.now().toString(36), at:Date.now(), by:s.name || '', doc:JSON.parse(JSON.stringify(D)) };
+    hist().then(function(H){ H.unshift(rec); HIST = H.slice(0, 100); return sset('sd_brief_reports', JSON.stringify(HIST)); }).then(function(){
+      PUB = { id:rec.id, label:(D.type === 'visit' ? '매물 현장방문 일정표' : '매물 브리핑 보고서') + ' · ' + (D.cust || '') + ' 님' };
+      paint(); toast('발행했습니다 — 고객용·임직원용을 인쇄하거나 저장하세요');
+    });
+  }
+  function bind(box){
+    var Q = function(s){ return Array.prototype.slice.call(box.querySelectorAll(s)); };
+    Q('[data-x="close"]').forEach(function(b){ b.onclick = close; });
+    Q('[data-s]').forEach(function(b){ b.onclick = function(){ STEP = +b.dataset.s; if(STEP === 4) hist().then(paint); paint(); }; });
+    Q('[data-go]').forEach(function(b){ b.onclick = function(){ STEP = +b.dataset.go; paint(); }; });
+    /* ① */
+    Q('[data-on]').forEach(function(c){ c.onchange = function(){ CART[+c.dataset.on].on = c.checked; saveCart(); paint(); }; });
+    Q('[data-up]').forEach(function(b){ b.onclick = function(){ var i = +b.dataset.up; CART.splice(i - 1, 0, CART.splice(i, 1)[0]); saveCart(); paint(); }; });
+    Q('[data-dn]').forEach(function(b){ b.onclick = function(){ var i = +b.dataset.dn; CART.splice(i + 1, 0, CART.splice(i, 1)[0]); saveCart(); paint(); }; });
+    Q('[data-del]').forEach(function(b){ b.onclick = function(){ CART.splice(+b.dataset.del, 1); saveCart(); paint(); }; });
+    Q('[data-all]').forEach(function(b){ b.onclick = function(){ CART.forEach(function(x){ x.on = b.dataset.all === '1'; }); saveCart(); paint(); }; });
+    Q('[data-clear]').forEach(function(b){ b.onclick = function(){ if(!confirm('장바구니를 모두 비울까요?')) return; CART = []; saveCart(); paint(); }; });
+    var from = -1;
+    Q('.bf-it[draggable]').forEach(function(el){
+      el.ondragstart = function(e){ from = +el.dataset.i; try{ e.dataTransfer.setData('text/plain', String(from)); e.dataTransfer.effectAllowed = 'move'; }catch(x){} };
+      el.ondragover = function(e){ e.preventDefault(); el.classList.add('drag'); };
+      el.ondragleave = function(){ el.classList.remove('drag'); };
+      el.ondrop = function(e){ e.preventDefault(); el.classList.remove('drag'); var to = +el.dataset.i; if(from < 0 || from === to) return; CART.splice(to, 0, CART.splice(from, 1)[0]); from = -1; saveCart(); paint(); };
+    });
+    /* ② */
+    var q = $('bf-q'); if(q) q.oninput = function(){ OPT.q = q.value; saveOpt(); var pos = q.selectionStart; paint(); var q2 = $('bf-q'); if(q2){ q2.focus(); try{ q2.setSelectionRange(pos, pos); }catch(e){} } };
+    Q('[data-c]').forEach(function(el){ el.onclick = function(){ var c = (CUSTS || []).find(function(x){ return String(x.id) === el.dataset.c; }); if(!c) return; OPT.custId = String(c.id); OPT.custName = c.name || ''; OPT.custTel = c.tel1 || ''; saveOpt(); paint(); }; });
+    var cn = $('bf-cname'); if(cn) cn.oninput = function(){ OPT.custName = cn.value; OPT.custId = ''; saveOpt(); refreshNeed(); Q('.bf-cu.on').forEach(function(x){ x.classList.remove('on'); }); };
+    var ct = $('bf-ctel'); if(ct) ct.oninput = function(){ OPT.custTel = ct.value; saveOpt(); };
+    Q('[data-t]').forEach(function(b){ b.onclick = function(){ OPT.type = b.dataset.t; if(OPT.type === 'brief' && !OPT.briefDate) OPT.briefDate = today(); saveOpt(); paint(); }; });
+    var bd = $('bf-bd'); if(bd) bd.onchange = bd.oninput = function(){ OPT.briefDate = bd.value; saveOpt(); refreshNeed(); };
+    var vd = $('bf-vd'); if(vd) vd.onchange = vd.oninput = function(){ OPT.visitDate = vd.value; saveOpt(); refreshNeed(); };
+    [['bf-au-name', 'name'], ['bf-au-title', 'title'], ['bf-au-mobile', 'mobile']].forEach(function(p){ var el = $(p[0]); if(el) el.oninput = function(){ author()[p[1]] = el.value; saveAuthor(); refreshNeed(); }; });
+    var t0 = $('bf-t0'); if(t0) t0.onchange = function(){ OPT.t0 = t0.value; saveOpt(); };
+    var gp = $('bf-gap'); if(gp) gp.onchange = function(){ OPT.gap = +gp.value; saveOpt(); };
+    var mk = $('bf-make'); if(mk) mk.onclick = function(){ if(need2()) return toast(need2(), true); if(D && !confirm('지금 고치던 초안을 버리고 새로 만들까요?')) return; makeDraft(); STEP = 3; paint(); };
+    /* ③ */
+    Q('[data-k]').forEach(function(el){ el.oninput = el.onchange = function(){ D[el.dataset.k] = el.value; preview(); }; });
+    Q('[data-f]').forEach(function(el){ el.oninput = el.onchange = function(){ D.items[+el.dataset.i][el.dataset.f] = el.value; preview(); }; });
+    Q('[data-pv]').forEach(function(b){ b.onclick = function(){ PV = b.dataset.pv; Q('[data-pv]').forEach(function(x){ x.classList.toggle('on', x === b); }); preview(); }; });
+    var rf = $('bf-refill'); if(rf) rf.onclick = function(){ var s0 = $('bf-rt0').value || '10:00', g = +$('bf-rgap').value || 30; OPT.gap = g; saveOpt(); D.items.forEach(function(it, i){ it.time = addMin(s0, g * i); }); paint(); toast('방문 시간을 ' + s0 + ' 부터 ' + g + '분 간격으로 채웠습니다'); };
+    var pb = $('bf-pub'); if(pb) pb.onclick = publish;
+    Q('[data-out]').forEach(function(b){ b.onclick = function(){ var p = b.dataset.out.split(':'), st = p[0] === 'staff'; if(p[1] === 'print') printDoc(D, st); else saveFile(D, st); }; });
+    /* 기록 */
+    Q('[data-ho]').forEach(function(b){ b.onclick = function(){ var h = HIST[+b.dataset.ho]; if(!h) return; if(D && STEP !== 4 && !confirm('지금 초안 대신 이 기록을 열까요?')) return; D = JSON.parse(JSON.stringify(h.doc)); PUB = null; PV = 'cust'; STEP = 3; paint(); }; });
+    Q('[data-hp]').forEach(function(b){ b.onclick = function(){ var p = b.dataset.hp.split(':'), h = HIST[+p[0]]; if(h) printDoc(h.doc, p[1] === 'staff'); }; });
+    Q('[data-hd]').forEach(function(b){ b.onclick = function(){ if(!confirm('이 발행 기록을 지울까요?')) return; HIST.splice(+b.dataset.hd, 1); sset('sd_brief_reports', JSON.stringify(HIST)); paint(); }; });
+  }
+  /* ── 붙이기 ── (화면 배율 --ui-scale 로 body 가 확대돼 있어 창 높이는 배율로 나눠 맞춘다) */
+  function mount(){
+    var f = $('bf-fab'); if(f) f.onclick = function(){ open(); };
+    var ft = document.querySelector('#naver-detail-box button[onclick="ndSave()"]');
+    if(ft && !$('bf-add')){ var b = document.createElement('button'); b.id = 'bf-add'; b.type = 'button'; b.textContent = '🛒 장바구니 담기'; b.title = '이 매물을 장바구니에 담아 브리핑 보고서·현장방문 일정표로 만들기';
+      b.style.cssText = 'padding:9px 16px;background:#fff8e1;color:#e65100;border:1px solid #ffb74d;border-radius:8px;font-size:13px;font-weight:800;cursor:pointer;margin-right:auto'; b.onclick = addFromDetail; ft.parentNode.insertBefore(b, ft.parentNode.firstChild); }
+    document.addEventListener('keydown', function(e){ if(e.key !== 'Escape') return; var p = $('bf-agpick'); if(p){ p.remove(); e.stopPropagation(); return; } if($('bf-cart')){ close(); e.stopPropagation(); } }, true);
+    loadCart();
+    /* 파이어베이스가 늦게 붙으면 한 번 더 */
+    var n = 0; (function wait(){ if(window.storage && window._fbDb){ loadCart(); loadAuthor(); return; } if(n++ < 40) setTimeout(wait, 500); })();
+  }
+  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mount); else mount();
+  window.sdBrief = { add:addFromDetail, open:open, close:close,
+    // 시험용
+    _cart:function(){ return CART; }, _draft:function(){ return D; }, _doc:docHtml, _won:won, _opt:function(){ return OPT; }, _hist:function(){ return HIST; }, _author:function(){ return author(); }, _reset:function(){ CUSTS = null; BRK = null; HIST = null; } };
 })();
 </script>
 </body>
