@@ -2160,6 +2160,7 @@ window.addEventListener('load', function() {
       <button onclick="dtlAction('edit')" style="flex:1;padding:9px 0;border:0.5px solid #ddd;border-radius:10px;background:#fff;color:#1a1a1a;font-size:12px;font-weight:600;cursor:pointer">✏️ 수정</button>
       <button onclick="dtlAction('complete')" style="flex:1;padding:9px 0;border:0.5px solid #a5d6a7;border-radius:10px;background:#f0faf0;color:#2e7d32;font-size:12px;font-weight:600;cursor:pointer">✓ 완료</button>
       <button onclick="dtlAction('hold')" style="flex:1;padding:9px 0;border:0.5px solid #ffe082;border-radius:10px;background:#fff8e1;color:#f57f17;font-size:12px;font-weight:600;cursor:pointer">⏸ 보류</button>
+      <button onclick="dtlAction('video')" title="이 매물의 사진·정보로 매물 영상(쇼츠) 만들기 — 비디오 스튜디오 「사진에서 영상 만들기」" style="flex:1;padding:9px 0;border:0.5px solid #fcc2d7;border-radius:10px;background:#fff0f6;color:#a61e4d;font-size:12px;font-weight:600;cursor:pointer">🎬 영상</button>
       <button onclick="dtlAction('del')" style="padding:9px 16px;border:0.5px solid #ffaaaa;border-radius:10px;background:#fff5f5;color:#cc3333;font-size:12px;font-weight:600;cursor:pointer">🗑️ 삭제</button>
     </div>
   </div>
@@ -3146,12 +3147,30 @@ function updateCheckToday(){
 function dtlAction(type){
   if(!detailPropId)return;
   var id=detailPropId;
+  if(type==='video'){propToVideo(id);return;}
   closeDetail();
   if(type==='edit')editP(id);
   else if(type==='complete')openComplete(id);
   else if(type==='hold')openHold(id);
   else if(type==='del')delP(id);
   else if(type==='expire')openExpire(id);
+}
+/* 🎬 매물 → 비디오 스튜디오 「사진에서 영상 만들기」 (2026-10-06)
+   비디오 스튜디오의 작업 저장소(IndexedDB sd_video/projects)에 사진 영상 작업을 넣고 sdv.cur 로 연다.
+   소유자·연락처·메모는 넘기지 않는다 — 광고에 쓰는 칸과 사진 주소만. 칸 채우기·사진 받기는 영상 화면이 한다(pendingProp). */
+function propToVideo(id){
+  var p=props.find(function(x){return String(x.id)===String(id);});if(!p)return;
+  var w=window.open('','_blank');
+  var vid='v'+Date.now().toString(36)+Math.random().toString(36).slice(2,6),now=Date.now();
+  var keep={};['id','propertyType','complexName','unitInfo','areaInfo','floorInfo','direction','moveIn','pm','ps','gw','bun','pre','opt','tot','vat'].forEach(function(k){if(p[k]!=null&&p[k]!=='')keep[k]=p[k];});
+  keep.photos=(p.photos||[]).filter(function(x){return x&&x.url;}).map(function(x){return {url:x.url,star:!!x.star,name:x.name||''};});
+  var proj={id:vid,kind:'photo',title:'',src:'',fmt:'9:16',len:'short',vtype:'explain',both:false,sfx:true,info:null,photos:[],scenes:[],step:'pinfo',createdAt:now,updatedAt:now,from:'props',propId:String(p.id),pendingProp:keep,autoTitle:true};
+  var go=function(){try{localStorage.setItem('sdv.cur',JSON.stringify(vid));localStorage.setItem('sdv.sector',JSON.stringify('photo'));}catch(e){} if(w&&!w.closed)w.location.href='sd_video.html';else location.href='sd_video.html';};
+  var fail=function(e){if(w&&!w.closed)w.close();alert('비디오 스튜디오로 넘기지 못했습니다: '+((e&&e.message)||e));};
+  var rq;try{rq=indexedDB.open('sd_video',1);}catch(e){return fail(e);}
+  rq.onupgradeneeded=function(){if(!rq.result.objectStoreNames.contains('projects'))rq.result.createObjectStore('projects',{keyPath:'id'});};
+  rq.onerror=function(){fail(rq.error);};
+  rq.onsuccess=function(){try{var tx=rq.result.transaction('projects','readwrite');tx.objectStore('projects').put(proj);tx.oncomplete=function(){rq.result.close();go();};tx.onerror=function(){fail(tx.error);};}catch(e){fail(e);}};
 }
 function toggleMenu(e, id){
   e.stopPropagation();
@@ -8648,7 +8667,7 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.10.05-4';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.10.06-1';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_props.html';      // 이 파일 이름
   var SD_NAME = '매물관리';      // 사람이 부르는 이름
 
