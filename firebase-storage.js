@@ -48,8 +48,13 @@ window.storage = (function() {
     return firebase.database();
   }
 
+  /* 저장 경로 통일 (2026-10-07) — 고객(sd_custs)·계약(sd_contracts)·중개업소(sd_brokers)는
+     고객관리·계약관리 화면이 처음부터 storage/ 아래에 써 와서 그쪽이 원본이다. 이 세 가지만 storage/ 로 보내
+     매물·일정·허브·현장·마케팅·데이터 화면이 고객관리와 같은 고객 목록을 보게 한다. 나머지는 그대로 sd/ */
+  var LIVE_IN_STORAGE = { sd_custs:1, sd_contracts:1, sd_brokers:1 };
+  window.sdPath = function(key) { return (LIVE_IN_STORAGE[key] ? 'storage' : ROOT) + '/' + key; };
   function ref(key) {
-    return getDb().ref(ROOT + '/' + key);
+    return getDb().ref(window.sdPath(key));
   }
 
   return {

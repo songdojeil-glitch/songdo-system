@@ -90,6 +90,9 @@ body.zoom-mode .zoomable:hover{box-shadow:none !important;}
 </style>
   <script>
   // ── window.storage 어댑터 (Firebase 초기화는 DOMContentLoaded 후)
+  /* 저장 경로 통일 (2026-10-07) — 고객·계약·중개업소는 고객관리·계약관리가 storage/ 아래에 쓰던 것이 원본,
+     나머지(매물·할일·일정 등)는 다른 화면들과 같은 sd/ 아래. firebase-storage.js 의 sdPath 와 같은 규칙 */
+  window.sdPath = window.sdPath || function(key){ return ({ sd_custs:1, sd_contracts:1, sd_brokers:1 }[key] ? 'storage/' : 'sd/') + key; };
   var _fbDb = null;
 
   // localStorage fallback 기반 즉시 사용 가능한 storage
@@ -97,7 +100,7 @@ body.zoom-mode .zoomable:hover{box-shadow:none !important;}
     get: function(key) {
       return new Promise(function(resolve) {
         if (_fbDb) {
-          _fbDb.ref('storage/' + key).once('value')
+          _fbDb.ref(window.sdPath(key)).once('value')
             .then(function(snap) {
               var v = snap.val();
               resolve(v ? { key: key, value: v } : null);
@@ -115,7 +118,7 @@ body.zoom-mode .zoomable:hover{box-shadow:none !important;}
         // localStorage에 항상 저장 (빠른 응답)
         try { localStorage.setItem('sd_'+key, value); } catch(e){}
         if (_fbDb) {
-          _fbDb.ref('storage/' + key).set(value)
+          _fbDb.ref(window.sdPath(key)).set(value)
             .then(function() { resolve({ key: key, value: value }); })
             .catch(function(e) { console.error('Firebase set 오류:', e); resolve({ key: key, value: value }); });
         } else {
@@ -127,7 +130,7 @@ body.zoom-mode .zoomable:hover{box-shadow:none !important;}
       return new Promise(function(resolve) {
         try { localStorage.removeItem('sd_'+key); } catch(e){}
         if (_fbDb) {
-          _fbDb.ref('storage/' + key).remove()
+          _fbDb.ref(window.sdPath(key)).remove()
             .then(function() { resolve({ key: key, deleted: true }); })
             .catch(function() { resolve({ key: key, deleted: true }); });
         } else { resolve({ key: key, deleted: true }); }
@@ -184,7 +187,7 @@ body.zoom-mode .zoomable:hover{box-shadow:none !important;}
     // window.storage 어댑터 - Firebase Realtime DB 기반으로 교체
     window.storage = {
       get: function(key) {
-        return get(ref(db, 'storage/' + key)).then(function(snap) {
+        return get(ref(db, window.sdPath(key))).then(function(snap) {
           var v = snap.val();
           if (v) { try { localStorage.setItem('sd_' + key, v); } catch(e){} }
           return v ? { key: key, value: v } : null;
@@ -194,13 +197,13 @@ body.zoom-mode .zoomable:hover{box-shadow:none !important;}
       },
       set: function(key, value) {
         try { localStorage.setItem('sd_' + key, value); } catch(e){}
-        return set(ref(db, 'storage/' + key), value)
+        return set(ref(db, window.sdPath(key)), value)
           .then(function() { return { key: key, value: value }; })
           .catch(function(e) { console.error('Firebase set 오류:', e); return { key: key, value: value }; });
       },
       delete: function(key) {
         try { localStorage.removeItem('sd_' + key); } catch(e){}
-        return remove(ref(db, 'storage/' + key))
+        return remove(ref(db, window.sdPath(key)))
           .then(function() { return { key: key, deleted: true }; })
           .catch(function() { return { key: key, deleted: true }; });
       }
@@ -3917,7 +3920,7 @@ function renderCT(){
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.10.07-1';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.10.07-2';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_contracts.html';      // 이 파일 이름
   var SD_NAME = '계약관리';      // 사람이 부르는 이름
 

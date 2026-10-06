@@ -115,6 +115,9 @@ body.zoom-mode .zoomable:hover{box-shadow:none !important;}
   <!-- ═══ Firebase Storage 어댑터 (window.storage 호환) ═══ -->
 <script>
   // ── window.storage 어댑터 (Firebase 초기화는 DOMContentLoaded 후)
+  /* 저장 경로 통일 (2026-10-07) — 고객·계약·중개업소는 고객관리·계약관리가 storage/ 아래에 쓰던 것이 원본,
+     나머지(매물·할일·일정 등)는 다른 화면들과 같은 sd/ 아래. firebase-storage.js 의 sdPath 와 같은 규칙 */
+  window.sdPath = window.sdPath || function(key){ return ({ sd_custs:1, sd_contracts:1, sd_brokers:1 }[key] ? 'storage/' : 'sd/') + key; };
   var _fbDb = null;
   window._fbReady = false;  // Firebase 연결 완료 플래그
 
@@ -123,7 +126,7 @@ body.zoom-mode .zoomable:hover{box-shadow:none !important;}
     get: function(key) {
       return new Promise(function(resolve) {
         if (_fbDb) {
-          _fbDb.ref('storage/' + key).once('value')
+          _fbDb.ref(window.sdPath(key)).once('value')
             .then(function(snap) {
               var v = snap.val();
               resolve(v ? { key: key, value: v } : null);
@@ -141,7 +144,7 @@ body.zoom-mode .zoomable:hover{box-shadow:none !important;}
         // localStorage에 항상 저장 (빠른 응답)
         try { localStorage.setItem('sd_'+key, value); } catch(e){}
         if (_fbDb) {
-          _fbDb.ref('storage/' + key).set(value)
+          _fbDb.ref(window.sdPath(key)).set(value)
             .then(function() { resolve({ key: key, value: value }); })
             .catch(function(e) { console.error('Firebase set 오류:', e); resolve({ key: key, value: value }); });
         } else {
@@ -153,7 +156,7 @@ body.zoom-mode .zoomable:hover{box-shadow:none !important;}
       return new Promise(function(resolve) {
         try { localStorage.removeItem('sd_'+key); } catch(e){}
         if (_fbDb) {
-          _fbDb.ref('storage/' + key).remove()
+          _fbDb.ref(window.sdPath(key)).remove()
             .then(function() { resolve({ key: key, deleted: true }); })
             .catch(function() { resolve({ key: key, deleted: true }); });
         } else { resolve({ key: key, deleted: true }); }
@@ -208,7 +211,7 @@ body.zoom-mode .zoomable:hover{box-shadow:none !important;}
     // window.storage 어댑터 - Firebase Realtime DB 기반으로 교체
     window.storage = {
       get: function(key) {
-        return get(ref(db, 'storage/' + key)).then(function(snap) {
+        return get(ref(db, window.sdPath(key))).then(function(snap) {
           var v = snap.val();
           if (v) { try { localStorage.setItem('sd_' + key, v); } catch(e){} }
           return v ? { key: key, value: v } : null;
@@ -218,13 +221,13 @@ body.zoom-mode .zoomable:hover{box-shadow:none !important;}
       },
       set: function(key, value) {
         try { localStorage.setItem('sd_' + key, value); } catch(e){}
-        return set(ref(db, 'storage/' + key), value)
+        return set(ref(db, window.sdPath(key)), value)
           .then(function() { return { key: key, value: value }; })
           .catch(function(e) { console.error('Firebase set 오류:', e); return { key: key, value: value }; });
       },
       delete: function(key) {
         try { localStorage.removeItem('sd_' + key); } catch(e){}
-        return remove(ref(db, 'storage/' + key))
+        return remove(ref(db, window.sdPath(key)))
           .then(function() { return { key: key, deleted: true }; })
           .catch(function() { return { key: key, deleted: true }; });
       }
@@ -232,10 +235,49 @@ body.zoom-mode .zoomable:hover{box-shadow:none !important;}
 
     window._fbReady = true;
     console.log('✅ Firebase 연결됨 (DB + Storage)');
+    /* ── 한 번만: 나뉘어 있던 고객 목록 합치기 (2026-10-07) ──
+       매물관리가 「물건고객」을 sd/sd_custs 에, 고객관리는 storage/sd_custs 에 따로 쓰고 있었다.
+       sd/sd_custs 의 고객을 storage/sd_custs(원본)로 옮긴다 — 같은 id 는 건너뛰고, 같은 전화번호면 태그·물건 정보만 보탠다.
+       계약관리가 storage/ 에 써 둔 공용 할일(sd_todos_public)도 sd/ 로 합친다. 합치기 전 원본은 sd/_backup/split_20261007 에 */
+    async function sdMergeSplit(){
+      var FLAG = 'sd/_migrate/split_20261007';
+      if((await get(ref(db, FLAG))).exists()) return null;
+      await set(ref(db, FLAG), { at:Date.now(), state:'running' });
+      var arr = function(v){ if(v == null) return []; try{ var j = typeof v === 'string' ? JSON.parse(v) : v; return Array.isArray(j) ? j : []; }catch(e){ return []; } };
+      var tel = function(c){ return String(c.tel1 || c.tel || '').replace(/\D/g, ''); };
+      var liveRaw = (await get(ref(db, 'storage/sd_custs'))).val(), oldRaw = (await get(ref(db, 'sd/sd_custs'))).val();
+      var live = arr(liveRaw), old = arr(oldRaw), added = 0, merged = 0;
+      await set(ref(db, 'sd/_backup/split_20261007/storage_sd_custs'), liveRaw == null ? '' : (typeof liveRaw === 'string' ? liveRaw : JSON.stringify(liveRaw)));
+      await set(ref(db, 'sd/_backup/split_20261007/sd_sd_custs'), oldRaw == null ? '' : (typeof oldRaw === 'string' ? oldRaw : JSON.stringify(oldRaw)));
+      var byId = {}, byTel = {};
+      live.forEach(function(c){ byId[String(c.id)] = c; var t = tel(c); if(t.length >= 9 && !byTel[t]) byTel[t] = c; });
+      old.forEach(function(c){
+        if(!c || byId[String(c.id)]) return;
+        var t = tel(c), hit = t.length >= 9 ? byTel[t] : null;
+        if(hit){
+          hit.tags = hit.tags && hit.tags.length ? hit.tags : ['기존고객'];
+          (c.tags || []).forEach(function(g){ if(hit.tags.indexOf(g) < 0) hit.tags.push(g); });
+          Object.keys(c).forEach(function(k){ if(/^prop/.test(k) && c[k] && !hit[k]) hit[k] = c[k]; });
+          merged++;
+        } else { live.push(c); byId[String(c.id)] = c; if(t.length >= 9) byTel[t] = c; added++; }
+      });
+      if(added || merged){ var js = JSON.stringify(live); await set(ref(db, 'storage/sd_custs'), js); try{ localStorage.setItem('sd_sd_custs', js); }catch(e){} }
+      var tOld = arr((await get(ref(db, 'storage/sd_todos_public'))).val()), tLiveRaw = (await get(ref(db, 'sd/sd_todos_public'))).val(), tLive = arr(tLiveRaw), tAdd = 0;
+      if(tOld.length){
+        var tid = {}; tLive.forEach(function(x){ tid[String(x.id)] = 1; });
+        tOld.forEach(function(x){ if(x && !tid[String(x.id)]){ tLive.push(x); tAdd++; } });
+        if(tAdd) await set(ref(db, 'sd/sd_todos_public'), JSON.stringify(tLive));
+      }
+      var res = { at:Date.now(), state:'done', custsAdded:added, custsMerged:merged, todosAdded:tAdd, total:live.length };
+      await set(ref(db, FLAG), res);
+      return res;
+    }
     // 2차 로드: Firebase 준비 완료 후 재로드 (localStorage보다 최신 데이터)
     setTimeout(function(){
+      sdMergeSplit().then(function(r){ if(r && (r.custsAdded || r.custsMerged)){ showToast('매물관리 쪽 고객 ' + r.custsAdded + '명을 고객 목록에 합쳤습니다' + (r.custsMerged ? ' (전화번호가 같은 ' + r.custsMerged + '명은 정보만 보탬)' : '') + ' — 이제 매물·일정에서도 같은 고객이 보입니다'); } }, function(e){ console.warn('[SD] 고객 목록 합치기 실패', e); }).then(function(){
       fromStore().then(function(ok){
         if(ok){ sw(0); refreshHub(); rtbl && rtbl(); }
+      });
       });
       fromStoreBrk && fromStoreBrk();
       fromStoreTodo && fromStoreTodo();
@@ -3543,7 +3585,7 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.10.04-1';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.10.07-1';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_custs.html';      // 이 파일 이름
   var SD_NAME = '고객관리';      // 사람이 부르는 이름
 
