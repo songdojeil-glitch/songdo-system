@@ -3297,7 +3297,7 @@ var VD_STY = {
   dark: {n:'다크 시네마', bg:'#0c0c0e', fg:'#f4f4f2', ac:'#d8b04a', sub:'#a9a9a4', band:'rgba(0,0,0,.62)'},
   white:{n:'화이트 클린', bg:'#ffffff', fg:'#15181c', ac:'#1565c0', sub:'#6b7280', band:'rgba(255,255,255,.88)'}
 };
-var VD_VOICE = { none:'음성 없음 (자막만)', gemini:'제미나이 목소리 (키 그대로)', eleven:'일레븐랩스 (내 목소리)', file:'내 음성 파일 (녹음)' };
+var VD_VOICE = { none:'음성 없음 (자막만)', gemini:'제미나이 목소리 (키 그대로)', eleven:'일레븐랩스 (내 목소리)', fish:'Fish Audio (내 목소리)', file:'내 음성 파일 (녹음)' };
 var VD_GV = [['Kore','여 · 단단하고 또렷함'],['Aoede','여 · 산뜻하고 부드러움'],['Leda','여 · 젊고 밝음'],['Despina','여 · 매끄럽고 차분함'],['Charon','남 · 차분한 설명'],['Orus','남 · 단단하고 믿음직함'],['Iapetus','남 · 맑고 또렷함'],['Algieba','남 · 부드럽고 따뜻함']];
 var VD_POS = { off:'넣지 않음', top:'글 앞 (대표사진 아래)', middle:'글 중간', end:'글 끝 (서명 위)' };
 var VD_TTS_MODELS = ['gemini-3.1-flash-tts-preview', 'gemini-2.5-flash-preview-tts', 'gemini-2.5-pro-preview-tts'];
@@ -3359,7 +3359,8 @@ function vdAudio(input){
 }
 /* ---------- 목소리 (장면마다 따로 만들어 길이를 맞춘다) ---------- */
 function vdElOpt(){ try{ return JSON.parse(localStorage.getItem('sdv.opt') || '{}') || {}; }catch(e){ return {}; } }
-function vdVoiceKey(){ return VD.voice === 'gemini' ? 'g:' + VD.gVoice + ':' + VD.speed : VD.voice === 'eleven' ? 'e:' + (vdElOpt().elVoice || '') + ':' + VD.speed : ''; }
+function vdVoiceKey(){ return VD.voice === 'gemini' ? 'g:' + VD.gVoice + ':' + VD.speed : VD.voice === 'eleven' ? 'e:' + (vdElOpt().elVoice || '') + ':' + VD.speed : VD.voice === 'fish' ? 'f:' + (vdElOpt().fishRef || '') + ':' + (vdElOpt().fishModel || '') + ':' + VD.speed : ''; }
+function vdTtsOn(){ return VD.voice === 'gemini' || VD.voice === 'eleven' || VD.voice === 'fish'; }
 function vdHasAu(s){ return !!(s.au && s.au.text === s.n && s.au.key === vdVoiceKey()); }
 async function vdPcmToBuf(b64, rate){
   var bin = atob(b64), n = bin.length >> 1, f = new Float32Array(n);
@@ -3398,9 +3399,21 @@ async function vdTtsEleven(text){
   var ab = await r.arrayBuffer(), c = new OfflineAudioContext(1, 1, 44100);
   return await c.decodeAudioData(ab);
 }
-async function vdTts(text){ return VD.voice === 'eleven' ? vdTtsEleven(text) : vdTtsGemini(text); }
+/* Fish Audio — 브라우저에서 바로 못 불러서 키워드 검색량과 같은 앱스 스크립트 웹 앱(sd_kw_volume.gs v2026.10.04-2 이상)이 중계. 목소리(모델 ID)는 비디오 스튜디오 설정을 같이 쓴다 */
+async function vdTtsFish(text){
+  var url = String(state.settings.kwUrl || '').trim(), k = String(state.settings.kwToken || ''), o = vdElOpt();
+  if(!url || !k) throw new Error('Fish Audio 는 앱스 스크립트 중계가 필요합니다 — [엔진 설정]의 「키워드 검색량」 웹 앱 주소·토큰을 그대로 씁니다. 그 칸이 비어 있습니다.');
+  if(!o.fishRef) throw new Error('Fish 목소리(모델 ID)를 비디오 스튜디오 「음성」 단계에서 먼저 골라 주세요 (같은 설정을 씁니다).');
+  var send = async function(model){ var r = await fetch(url, { method:'POST', body:JSON.stringify({ k:k, fish:{ text:text, ref:o.fishRef, model:model, speed:Math.max(0.5, Math.min(2, VD.speed)) } }) }), t = await r.text(); try{ return JSON.parse(t); }catch(e){ throw new Error('중계 응답을 읽지 못했습니다 — 앱스 스크립트를 새 버전(2026.10.04-2, Fish 중계 포함)으로 다시 배포했는지 확인해 주세요.'); } };
+  var model = o.fishModel || 's2.1-pro', d = await send(model);
+  if(!d.ok && model !== 's1' && /Fish 오류 (400|404|422)|model/i.test(d.error || '')){ var d2 = await send('s1'); if(d2.ok) d = d2; }
+  if(!d.ok) throw new Error(d.error || 'Fish 목소리를 받지 못했습니다');
+  var bin = atob(d.b64), u = new Uint8Array(bin.length); for(var i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+  return await new OfflineAudioContext(1, 1, 44100).decodeAudioData(u.buffer);
+}
+async function vdTts(text){ return VD.voice === 'eleven' ? vdTtsEleven(text) : VD.voice === 'fish' ? vdTtsFish(text) : vdTtsGemini(text); }
 async function vdVoices(report){
-  if(VD.voice !== 'gemini' && VD.voice !== 'eleven') return;
+  if(!vdTtsOn()) return;
   var need = VD.scenes.filter(function(s){ return s.n && !vdHasAu(s); });
   for(var i = 0; i < need.length; i++){
     if(VD.stop) throw new Error('멈췄습니다');
@@ -3423,7 +3436,7 @@ function vdTimeline(){
   VD.scenes.forEach(function(s){
     var d;
     if(VD.voice === 'file' && VD.audioDur > 0) d = VD.audioDur / n;
-    else if((VD.voice === 'gemini' || VD.voice === 'eleven') && vdHasAu(s)) d = Math.max(2.5, s.au.dur + VD_LEAD + VD_PAD);
+    else if(vdTtsOn() && vdHasAu(s)) d = Math.max(2.5, s.au.dur + VD_LEAD + VD_PAD);
     else d = VD.per;
     out.push({ s:s, t0:t, d:d }); t += d;
   });
@@ -3537,7 +3550,7 @@ async function vdPreview(){
 async function vdMix(tl){
   var SR = 48000, len = Math.ceil(tl.total * SR) + SR / 10, ctx = new OfflineAudioContext(2, len, SR), any = false;
   if(VD.voice === 'file' && VD.audio){ var s0 = ctx.createBufferSource(); s0.buffer = VD.audio; s0.connect(ctx.destination); s0.start(0); any = true; }
-  else if(VD.voice === 'gemini' || VD.voice === 'eleven'){
+  else if(vdTtsOn()){
     tl.segs.forEach(function(g){ if(!vdHasAu(g.s)) return; var src = ctx.createBufferSource(); src.buffer = g.s.au.buf; src.connect(ctx.destination); src.start(g.t0 + VD_LEAD); any = true; });
   }
   return any ? await ctx.startRendering() : null;
@@ -3561,7 +3574,7 @@ async function vdMake(btn){
   var bar = document.getElementById('vdBar'), st = document.getElementById('vdStat');
   var say = function(t, p){ if(st) st.innerHTML = t + ' <button class="btn sm" onclick="VD.stop=true">멈추기</button>'; if(bar && p != null) bar.style.width = Math.round(p * 100) + '%'; };
   try{
-    if(VD.voice === 'gemini' || VD.voice === 'eleven') await vdVoices(function(t){ say(t, 0.02); });
+    if(vdTtsOn()) await vdVoices(function(t){ say(t, 0.02); });
     await vdPreloadImgs();
     if(document.fonts && document.fonts.load){ try{ await Promise.all(['800','700','600','500'].map(function(w){ return document.fonts.load(w + ' 40px "Noto Sans KR"'); })); }catch(e){} }
     var F = VD_FMT[VD.fmt], tl = vdTimeline();
@@ -3697,7 +3710,7 @@ function vdPaint(){
     return '<select id="'+id+'" class="fi" style="width:100%;padding:8px 10px;border:1px solid #e4e6e1;border-radius:8px;font-size:13px" onchange="'+on+'">'
       + opts.map(function(o){ return '<option value="'+o[0]+'"'+(String(cur)===String(o[0])?' selected':'')+'>'+o[1]+'</option>'; }).join('') + '</select>';
   };
-  var tl = vdTimeline(), tts = VD.voice === 'gemini' || VD.voice === 'eleven', have = VD.scenes.filter(vdHasAu).length;
+  var tl = vdTimeline(), tts = vdTtsOn(), have = VD.scenes.filter(vdHasAu).length;
   host.innerHTML =
    (state.post
       ? '<div style="font-size:12.5px;color:#7b858f;margin-bottom:12px">「'+esc(state.post.title||'')+'」</div>'
@@ -3711,6 +3724,7 @@ function vdPaint(){
    +'<div class="vd-row">'
    +(VD.voice === 'gemini' ? '<label>목소리 <select onchange="vdSave1(\'gVoice\',this.value);vdDirty();vdPaint()" style="padding:4px 7px;border:1px solid #e4e6e1;border-radius:6px">'+VD_GV.map(function(v){ return '<option value="'+v[0]+'"'+(VD.gVoice===v[0]?' selected':'')+'>'+v[0]+' · '+v[1]+'</option>'; }).join('')+'</select></label>' : '')
    +(VD.voice === 'eleven' ? '<span>목소리: <b>'+esc(vdElOpt().elVoiceName || vdElOpt().elVoice || '(비디오 스튜디오에서 고르기)')+'</b></span>' : '')
+   +(VD.voice === 'fish' ? '<span>목소리: <b>'+esc(vdElOpt().fishName || vdElOpt().fishRef || '(비디오 스튜디오에서 고르기)')+'</b> · 앱스 스크립트 중계</span>' : '')
    +(tts ? '<label>말 속도 <input type="range" min="0.8" max="1.2" step="0.05" value="'+VD.speed+'" oninput="this.nextElementSibling.textContent=(+this.value).toFixed(2)+\'×\'" onchange="vdSave1(\'speed\',+this.value);vdDirty();vdPaint()" style="vertical-align:middle"><b>'+VD.speed.toFixed(2)+'×</b></label>'
           +'<button class="btn sm" id="vdTry">▶ 목소리 미리듣기</button>' : '')
    +(VD.voice === 'file' ? '<label class="btn sm" style="cursor:pointer">🎤 내 음성 파일 넣기<input type="file" accept="audio/*" onchange="vdAudio(this)" style="display:none"></label>'
@@ -3772,7 +3786,7 @@ function vdPaintLen(){ var e=document.getElementById('vdLen'); if(e) e.textConte
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.10.06-1';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.10.06-2';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_blog.html';      // 이 파일 이름
   var SD_NAME = '블로그 스튜디오';      // 사람이 부르는 이름
 
