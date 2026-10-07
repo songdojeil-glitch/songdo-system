@@ -154,7 +154,7 @@ a.sjb-btn.on::after,span.sjb-btn.on::after{background:linear-gradient(100deg,rgb
 <script>
 (function(){
   'use strict';
-  var SD_VER = '2026.10.07-1';
+  var SD_VER = '2026.10.07-2';
   var TABS = [
     [20, '🧰 전체 도구'],
     ['calc', '🧮 부동산 계산기'],
@@ -1439,8 +1439,27 @@ window.sdGemImg = window.sdGemImg || (function(){
   var DBP = null;
   function db(){ if(DBP) return DBP; DBP = new Promise(function(res, rej){ var q = indexedDB.open('sd_photo', 1); q.onupgradeneeded = function(){ q.result.createObjectStore('kv'); }; q.onsuccess = function(){ res(q.result); }; q.onerror = function(){ rej(q.error); }; }); return DBP; }
   function dbDo(mode, fn){ return db().then(function(d){ return new Promise(function(res, rej){ var tx = d.transaction('kv', mode), r = fn(tx.objectStore('kv')); tx.oncomplete = function(){ res(r && r.result); }; tx.onerror = function(){ rej(tx.error); }; }); }); }
-  var keep = function(x){ return x && x.url ? { url:x.url, at:x.at, eng:x.eng } : null; };
-  var keepX = function(x){ return x.url ? { id:x.id, text:x.text, url:x.url, at:x.at, eng:x.eng } : null; };
+  var keep = function(x){ return x && x.url ? { url:x.url, at:x.at, eng:x.eng, seq:x.seq } : null; };
+  var keepX = function(x){ return x.url ? { id:x.id, text:x.text, url:x.url, at:x.at, eng:x.eng, seq:x.seq } : null; };
+  /* ── 내려받기 파일 이름 (2026-10-07) — 「20261007_프로필_S01_자신감있는팔짱포즈」 · 「20261007_캐릭터_S01_반갑게인사」
+     · 「20261007_캐릭터_기준_2D애니메이션」 · 「20261007_프로필_직접」. 날짜는 만든 날, 같은 날 같은 이름을 또 만들면 _2, _3 … ── */
+  function ymd8(t){ var d = t ? new Date(t) : new Date(); return d.getFullYear() + String(d.getMonth() + 1).padStart(2, '0') + String(d.getDate()).padStart(2, '0'); }
+  function clean(t){ return String(t || '').replace(/[\s\\/:*?"<>|·()]+/g, ''); }
+  function baseOf(key){
+    var m = /^(p|c|u)(\d+)$/.exec(key);
+    if(m){ var i = +m[2], nn = String(i + 1).padStart(2, '0'); return m[1] === 'p' ? '프로필_S' + nn + '_' + clean(POSES[i][0]) : '캐릭터_S' + nn + '_' + clean(CSIT[i][0]) + (m[1] === 'u' ? '_상반신' : ''); }
+    if(key.indexOf('k:') === 0) return '캐릭터_기준_' + clean(sty(key.slice(2))[1]);
+    return key.indexOf('xp:') === 0 ? '프로필_직접' : '캐릭터_직접';
+  }
+  function nextSeq(key, at){
+    var k = ymd8(at) + '|' + baseOf(key), m = {}, lim = ymd8(Date.now() - 14 * 864e5);
+    try{ m = JSON.parse(localStorage.getItem('sd_photo_seq') || '{}') || {}; }catch(e){}
+    Object.keys(m).forEach(function(x){ if(x.slice(0, 8) < lim) delete m[x]; });
+    m[k] = (m[k] || 0) + 1; try{ localStorage.setItem('sd_photo_seq', JSON.stringify(m)); }catch(e){}
+    return m[k];
+  }
+  function fileOf(key){ var x = slot(key) || {}; return ymd8(x.at) + '_' + baseOf(key) + (x.seq > 1 ? '_' + x.seq : '') + '.jpg'; }
+  function crefFile(){ if(CREFFROM.indexOf('k:') === 0){ var c = CANDS[CREFFROM.slice(2)]; if(c && c.url === CREF) return fileOf(CREFFROM); return ymd8() + '_' + baseOf(CREFFROM) + '.jpg'; } return ymd8() + '_캐릭터_기준_올린그림.jpg'; }
   function persist(){ var cands = {}; Object.keys(CANDS).forEach(function(k){ if(CANDS[k] && CANDS[k].url) cands[k] = keep(CANDS[k]); });
     return dbDo('readwrite', function(s){ return s.put({ ref:REF, shots:SHOTS.map(keep), cands:cands, cref:CREF, creffrom:CREFFROM, cshots:CSHOTS.map(keep), ushots:USHOTS.map(keep), xp:XP.map(keepX).filter(Boolean), xc:XC.map(keepX).filter(Boolean) }, 'last'); })
       .catch(function(e){ toast('결과를 이 브라우저에 저장하지 못했습니다: ' + e.message, true); }); }
@@ -1575,7 +1594,7 @@ window.sdGemImg = window.sdGemImg || (function(){
     var sp = spec(key); if(!sp.ref) return Promise.resolve(toast(sp.need === 'char' ? '기준 캐릭터를 먼저 정해 주세요' : '기준 사진을 먼저 골라 주세요', true));
     BUSY[key] = true; var cur = slot(key); if(cur && cur.err && !cur.url){ if(/^x/.test(key)) delete cur.err; else setSlot(key, null); } paintCard(key);
     var e = eng();
-    return (e === 'openai' ? viaOpenAI(sp.prompt, sp.ref) : e === 'grok' ? viaGrok(sp.prompt, sp.ref) : viaGemini(sp.prompt, sp.ref)).then(function(u){ setSlot(key, { url:u, at:Date.now(), eng:e }); return persist(); }, function(err){ var c2 = slot(key); setSlot(key, Object.assign({}, c2 && c2.url ? c2 : {}, { err:err.message })); })
+    return (e === 'openai' ? viaOpenAI(sp.prompt, sp.ref) : e === 'grok' ? viaGrok(sp.prompt, sp.ref) : viaGemini(sp.prompt, sp.ref)).then(function(u){ var at = Date.now(); setSlot(key, { url:u, at:at, eng:e, seq:nextSeq(key, at) }); return persist(); }, function(err){ var c2 = slot(key); setSlot(key, Object.assign({}, c2 && c2.url ? c2 : {}, { err:err.message })); })
       .then(function(){ delete BUSY[key]; paintCard(key); paintProg(); paintBits(); });
   }
   function ready(need){ return !!(need === 'char' ? CREF : REF) && ST.agree && keysOf(eng()).length > 0; }
@@ -1632,10 +1651,11 @@ window.sdGemImg = window.sdGemImg || (function(){
   function bytes(u){ var b = atob(u.split(',')[1]), a = new Uint8Array(b.length); for(var k = 0; k < b.length; k++) a[k] = b.charCodeAt(k); return a; }
   function zipSet(kind){
     var fs = [];
-    if(kind === 'p'){ SHOTS.forEach(function(x, i){ if(x && x.url) fs.push({ name:fname(i), data:bytes(x.url) }); }); XP.slice().reverse().forEach(function(x, i){ if(x.url) fs.push({ name:'프로필_직접_' + String(i + 1).padStart(2, '0') + '.jpg', data:bytes(x.url) }); }); }
-    else { if(CREF) fs.push({ name:'캐릭터_00_기준.jpg', data:bytes(CREF) }); CSHOTS.forEach(function(x, i){ if(x && x.url) fs.push({ name:spec('c' + i).file, data:bytes(x.url) }); }); USHOTS.forEach(function(x, i){ if(x && x.url) fs.push({ name:spec('u' + i).file, data:bytes(x.url) }); }); XC.slice().reverse().forEach(function(x, i){ if(x.url) fs.push({ name:'캐릭터_직접_' + String(i + 1).padStart(2, '0') + '.jpg', data:bytes(x.url) }); }); }
+    if(kind === 'p'){ SHOTS.forEach(function(x, i){ if(x && x.url) fs.push({ name:fileOf('p' + i), data:bytes(x.url) }); }); XP.slice().reverse().forEach(function(x, i){ if(x.url) fs.push({ name:fileOf('xp:' + x.id), data:bytes(x.url) }); }); }
+    else { if(CREF) fs.push({ name:crefFile(), data:bytes(CREF) }); CSHOTS.forEach(function(x, i){ if(x && x.url) fs.push({ name:fileOf('c' + i), data:bytes(x.url) }); }); USHOTS.forEach(function(x, i){ if(x && x.url) fs.push({ name:fileOf('u' + i), data:bytes(x.url) }); }); XC.slice().reverse().forEach(function(x, i){ if(x.url) fs.push({ name:fileOf('xc:' + x.id), data:bytes(x.url) }); }); }
     if(!fs.length) return toast('아직 만든 그림이 없습니다', true);
-    saveBlob(zip(fs), '송도제일_' + (kind === 'p' ? '프로필' : '캐릭터') + '_' + new Date().toISOString().slice(0, 10) + '.zip'); toast(fs.length + '장을 ZIP 으로 저장했습니다');
+    var seen = {}; fs.forEach(function(f){ var b = f.name.replace(/\.jpg$/, ''), n = b, k = 1; while(seen[n]){ k++; n = b + '_' + k; } seen[n] = 1; f.name = n + '.jpg'; });
+    saveBlob(zip(fs), ymd8() + '_' + (kind === 'p' ? '프로필' : '캐릭터') + '_모음.zip'); toast(fs.length + '장을 ZIP 으로 저장했습니다');
   }
   function zipAll(){ zipSet('p'); }
   /* ── 화면 ── */
@@ -1655,7 +1675,7 @@ window.sdGemImg = window.sdGemImg || (function(){
   function zoom(src){ var lb = document.createElement('div'); lb.className = 'pp-lb'; lb.innerHTML = '<img src="' + src + '">'; lb.onclick = function(){ lb.remove(); }; document.body.appendChild(lb); }
   function bindCard(c){
     var key = c.dataset.k;
-    var s = c.querySelector('[data-save]'); if(s) s.onclick = function(){ var x = slot(key); if(x && x.url) saveBlob(dataBlob(x.url), spec(key).file); };
+    var s = c.querySelector('[data-save]'); if(s) s.onclick = function(){ var x = slot(key); if(x && x.url) saveBlob(dataBlob(x.url), fileOf(key)); };
     var r = c.querySelector('[data-re]'); if(r) r.onclick = function(){ var b = block(spec(key).need); if(b) return toast(b, true); one(key).then(function(){ var x = slot(key); if(x && x.err) toast(x.err, true); }); };
     var z = c.querySelector('[data-zoom]'); if(z) z.onclick = function(){ zoom(z.src); };
     var p = c.querySelector('[data-pick]'); if(p) p.onclick = function(){ var x = slot(key); if(!x || !x.url) return; CREF = x.url; CREFFROM = key; persist(); paint(); toast('「' + spec(key).title + '」 캐릭터를 기준으로 정했습니다 — 아래 2단계에서 8컷을 만들 수 있어요'); };
@@ -1828,7 +1848,7 @@ window.sdGemImg = window.sdGemImg || (function(){
     var takeC = function(file){ pickFile(file, function(u){ CREF = u; CREFFROM = 'upload'; persist(); paint(); toast('기준 캐릭터를 올렸습니다 — 2단계에서 상황별 컷을 만들 수 있어요'); }); };
     var cf = $('pp-cref-file'); if(cf) cf.onchange = function(){ takeC(this.files && this.files[0]); this.value = ''; };
     dropOn($('pp-cref-drop'), takeC);
-    var cs = $('pp-cref-save'); if(cs) cs.onclick = function(){ saveBlob(dataBlob(CREF), '캐릭터_기준.jpg'); };
+    var cs = $('pp-cref-save'); if(cs) cs.onclick = function(){ saveBlob(dataBlob(CREF), crefFile()); };
     var cc = $('pp-cref-clr'); if(cc) cc.onclick = function(){ if(!confirm('기준 캐릭터를 지울까요? (먼저 내려받아 두세요)')) return; CREF = ''; CREFFROM = ''; persist(); paint(); };
     var czm = root.querySelector('[data-czoom]'); if(czm) czm.onclick = function(){ zoom(czm.src); };
     var cw = $('pp-cwipe'); if(cw) cw.onclick = function(){ if(!confirm('후보·기준 캐릭터·상황별 컷(전신·상반신)·직접 만든 캐릭터를 모두 지울까요? (사진은 그대로)')) return; CANDS = {}; CREF = ''; CREFFROM = ''; CSHOTS = []; USHOTS = []; XC = []; persist(); paint(); toast('캐릭터를 모두 지웠습니다'); };
