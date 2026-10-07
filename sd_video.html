@@ -13,6 +13,8 @@
 <link rel="apple-touch-icon" sizes="180x180" href="sjrws-180.png">
 <!-- ═════════════════════════════════════════════════════════════════
      🎬 영상 (video) · 비디오 스튜디오 (sd_video.html)  v2026.10.04-3
+     · 2026.10.07-6: 자막 — 크기 4단계·위치(아래/조금 위/가운데/위)·모양 6가지(흰 상자·검은 상자·띠·테두리 글씨·노란 테두리·색 알약)·
+       🎤 가라오케(목소리에 맞춰 글자 색이 차오름, 색 4가지) — 세 갈래 모두. 프로필·캐릭터 크기 따로 조절(50~250%)
      · 2026.10.07-4: 🎤 직접 녹음 — 목소리에 「직접 녹음」 추가(세 갈래 모두). 줄마다 ● 녹음 / 이어서 녹음(스페이스바로 저장·다음 줄, 프롬프터),
        앞뒤 빈 소리 자르기·소리 크기 맞추기, 녹음은 s.rec 에 따로(엔진을 바꿔도 남음), 녹음 안 한 줄은 AI 목소리로 채우기 선택
      · 2026.10.07-3: 📸 사진에서 영상 만들기도 🏠 매물 사진 / 🎬 일반 사진 으로 나눔 — 영상 갈래의 일반 영상과 같은 규칙
@@ -380,12 +382,17 @@ html.sv-embed body{background:#f7f8fa}
 @media(max-width:700px){.sv-cer{grid-template-columns:1fr}}
 .sv-cmode{margin:-4px 0 14px}
 .sv-cmode button.on{box-shadow:0 2px 10px rgba(214,51,108,.14)}
-.sv-ava{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:6px}
+.sv-subopt{border:1px solid var(--sv-line);border-radius:12px;padding:10px 12px 4px;margin:4px 0 10px;background:#fafbfc}
+.sv-subopt .sv-seg{flex-wrap:wrap}
+.sv-avsz{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--sv-ink2);margin-top:4px}
+.sv-avsz input{flex:1;accent-color:#d6336c;min-width:0;width:100%}
+.sv-avsz b{min-width:38px;text-align:right}
+.sv-ava{display:grid;grid-template-columns:minmax(0,1fr);gap:8px;margin-bottom:6px}
 @media(max-width:700px){.sv-ava{grid-template-columns:1fr}}
 .sv-avi{display:flex;gap:10px;border:1px solid var(--sv-line);border-radius:10px;padding:8px;background:#fafbfc}
 .sv-avi .pv{width:64px;height:86px;border-radius:8px;background:#fff;border:1px solid var(--sv-line);display:flex;align-items:center;justify-content:center;font-size:26px;overflow:hidden;flex:none}
 .sv-avi .pv img{width:100%;height:100%;object-fit:contain}
-.sv-avi .bd{display:flex;flex-direction:column;gap:4px;min-width:0;font-size:12px}
+.sv-avi .bd{display:flex;flex-direction:column;gap:4px;min-width:0;flex:1;font-size:12px}
 .sv-avi .bd small{color:var(--sv-ink3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .sv-avi .bt{display:flex;gap:4px}
 .sv-avg{display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:8px;max-height:58vh;overflow:auto}
@@ -456,7 +463,7 @@ html.sv-embed body{background:#f7f8fa}
    ═════════════════════════════════════════════════════════════════ */
 (function(){
 'use strict';
-var SD_VER = '2026.10.07-5';
+var SD_VER = '2026.10.07-6';
 window.SD_VERSION = SD_VER;
 var EMBED = /[?&]embed=1\b/.test(location.search);
 if(EMBED) document.documentElement.classList.add('sv-embed');
@@ -491,7 +498,7 @@ var ENG_N = { gemini:'제미나이', claude:'클로드', openai:'챗GPT' };
 function engModel(e){ var s = settings(); return e === 'claude' ? (s.claudeModel || 'claude-sonnet-4-5') : e === 'openai' ? (s.openaiModel || 'gpt-4.1-mini') : (s.geminiModel || 'gemini-3.6-flash'); }
 
 /* 영상 설정 — 이 브라우저에 */
-var OPT_DEF = { micFill:'', micDev:'', scriptEngine:'', ttsEngine:'google', elVoice:'', elVoiceName:'', elModel:'eleven_multilingual_v2', elStab:0.5, elSpeed:1, fishRef:'', fishName:'', fishModel:'s2.1-pro', fishSpeed:1, voice:'Kore', ttsModel:'gemini-3.1-flash-tts-preview', speed:'normal', tone:'calm', style:'clean', imgStyle:'photo', sub:true, subSize:'m', motion:true, intro:true, outro:true, bgmVol:0.12 };
+var OPT_DEF = { subPos:'bottom', subStyle:'box', kara:false, karaColor:'yellow', micFill:'', micDev:'', scriptEngine:'', ttsEngine:'google', elVoice:'', elVoiceName:'', elModel:'eleven_multilingual_v2', elStab:0.5, elSpeed:1, fishRef:'', fishName:'', fishModel:'s2.1-pro', fishSpeed:1, voice:'Kore', ttsModel:'gemini-3.1-flash-tts-preview', speed:'normal', tone:'calm', style:'clean', imgStyle:'photo', sub:true, subSize:'m', motion:true, intro:true, outro:true, bgmVol:0.12 };
 var OPT = Object.assign({}, OPT_DEF, LSX.get('sdv.opt', {}) || {});
 function saveOpt(){ LSX.set('sdv.opt', OPT); }
 
@@ -1727,19 +1734,7 @@ function drawScene(ctx, g, local, W, H, sty){
       ctx.fillStyle = sty.ac; ctx.fillRect(W / 2 - u * 0.06, cy - cs * 1.05, u * 0.12, Math.max(5, u * 0.008));
     }
   }
-  if(OPT.sub){
-    var lt = local - LEAD, cue = null, cs2 = cuesFor(s);
-    for(var k = 0; k < cs2.length; k++){ if(lt >= cs2[k].t0 - 0.05 && lt < cs2[k].t1){ cue = cs2[k]; break; } }
-    if(!cue && cs2.length && lt < 0) cue = cs2[0];
-    if(cue){
-      var ss = u * ({ s:0.046, m:0.054, l:0.064 }[OPT.subSize] || 0.054) * (V ? 1 : 0.95); ctx.font = '700 ' + ss + 'px ' + FONT;
-      var sl = wrap(ctx, cue.text, W * (V ? 0.84 : 0.8), 2), lh = ss * 1.32, bw = 0;
-      sl.forEach(function(l){ bw = Math.max(bw, ctx.measureText(l).width); });
-      var bh = sl.length * lh + ss * 0.7, by = H * (V ? 0.79 : 0.86) - bh / 2;
-      ctx.fillStyle = sty.sb; rr(ctx, W / 2 - bw / 2 - ss * 0.7, by, bw + ss * 1.4, bh, ss * 0.45); ctx.fill();
-      sl.forEach(function(l, i){ txt(ctx, l, W / 2, by + ss * 0.35 + lh * (i + 0.5), ss, 700, sty.sf, 'center', false); });
-    }
-  }
+  drawSubs(ctx, s, local, W, H, sty, V ? 0.79 : 0.86);
 }
 function drawIntro(ctx, local, W, H, sty){
   var s0 = P.scenes[0], im = s0 && imgOf(s0), V = H > W, u = V ? W : H;
@@ -1796,8 +1791,13 @@ function pVideo(el){
     + '<div class="sv-vid"><div><div class="sv-pv ' + (P.fmt === '16:9' ? 'h' : 'v') + '"><canvas id="svCv" width="' + D.W / 2 + '" height="' + D.H / 2 + '"></canvas></div>'
     + '<div class="sv-ctl"><button class="sv-btn sm" id="svPlay">▶ 재생</button><input type="range" id="svSeek" min="0" max="' + tl.total.toFixed(2) + '" step="0.05" value="' + Math.min(PV.t, tl.total) + '"><small id="svTm">' + fmtT(PV.t) + ' / ' + fmtT(tl.total) + '</small></div></div>'
     + '<div><div class="sv-f"><label>화면 스타일</label>' + seg('style', Object.keys(STY).map(function(k){ return [k, STY[k].n]; }), OPT.style) + '</div>'
-    + '<div class="sv-f"><label>자막 크기</label>' + seg('subSize', [['s', '작게'], ['m', '보통'], ['l', '크게']], OPT.subSize) + '</div>'
     + '<label class="sv-tg"><input type="checkbox" data-o="sub"' + (OPT.sub ? ' checked' : '') + '> 자막 넣기</label>'
+    + (OPT.sub ? '<div class="sv-subopt"><div class="sv-f"><label>자막 크기</label>' + seg('subSize', [['s', '작게'], ['m', '보통'], ['l', '크게'], ['xl', '아주 크게']], OPT.subSize) + '</div>'
+      + '<div class="sv-f"><label>자막 위치</label>' + seg('subPos', SUB_POS, OPT.subPos || 'bottom') + '</div>'
+      + '<div class="sv-f"><label>자막 모양</label>' + seg('subStyle', SUB_STY, OPT.subStyle || 'box') + '</div>'
+      + '<label class="sv-tg"><input type="checkbox" data-o="kara"' + (OPT.kara ? ' checked' : '') + '> 🎤 가라오케 — 목소리에 맞춰 글자 색이 왼쪽부터 차오르기</label>'
+      + (OPT.kara ? '<div class="sv-f"><label>가라오케 색</label>' + seg('karaColor', Object.keys(KARA_C).map(function(k){ return [k, KARA_C[k][0]]; }), OPT.karaColor || 'yellow') + '</div>' : '')
+      + '<div class="sv-note">정보 카드·사무소 장면은 글을 가리지 않게 아래 자리를 지킵니다. 「위」는 큰 제목과 겹치지 않게 제목 아래에 놓입니다.</div></div>' : '')
     + (P.kind === 'clip' ? '' : '<label class="sv-tg"><input type="checkbox" data-o="motion"' + (OPT.motion ? ' checked' : '') + '> 그림 천천히 움직이기 (확대·이동)</label>')
     + (isPK() ? '' : '<label class="sv-tg"><input type="checkbox" data-o="intro"' + (OPT.intro ? ' checked' : '') + '> 처음에 제목 화면 (' + INTRO + '초)</label>'
     + '<label class="sv-tg"><input type="checkbox" data-o="outro"' + (OPT.outro ? ' checked' : '') + '> 끝에 사무소 연락처 화면 (' + OUTRO + '초)</label>')
@@ -1810,6 +1810,9 @@ function pVideo(el){
     + foot(P.kind === 'clip' ? 'cedit' : P.kind === 'photo' ? 'pscript' : 'voice', 'desc', '다음: 유튜브 설명글 →') + '</div>';
   bindSeg(el, 'style', function(v){ OPT.style = v; saveOpt(); OUT = null; drawAt(PV.t); });
   bindSeg(el, 'subSize', function(v){ OPT.subSize = v; saveOpt(); OUT = null; drawAt(PV.t); });
+  bindSeg(el, 'subPos', function(v){ OPT.subPos = v; saveOpt(); OUT = null; drawAt(PV.t); });
+  bindSeg(el, 'subStyle', function(v){ OPT.subStyle = v; saveOpt(); OUT = null; drawAt(PV.t); });
+  bindSeg(el, 'karaColor', function(v){ OPT.karaColor = v; saveOpt(); OUT = null; drawAt(PV.t); });
   $$('[data-o]', el).forEach(function(c){ c.onchange = function(){ OPT[c.dataset.o] = c.checked; saveOpt(); OUT = null; stopPreview(); render(); }; });
   var bf = $('#svBgm', el); if(bf) bf.onchange = function(){
     var f = this.files[0]; if(!f) return; if(f.size > 15e6) return toast('음악 파일은 15MB 이하로 넣어 주세요', true);
@@ -3096,18 +3099,53 @@ function pill(ctx, text, x, y, size, bg, fg, align){
   txt(ctx, text, px + pw / 2, y + size * 0.04, size, 800, fg, 'center', false);
   return pw;
 }
+/* 자막 (2026-10-07) — 크기·위치·모양 고르기 + 가라오케(목소리 진행에 맞춰 글자 색이 왼쪽부터 차오름) */
+var SUB_STY = [['box', '흰 상자'], ['dark', '검은 상자'], ['band', '띠'], ['outline', '테두리 글씨'], ['yellow', '노란 테두리'], ['pill', '색 알약']];
+var SUB_POS = [['bottom', '아래'], ['low', '조금 위'], ['mid', '가운데'], ['top', '위']];
+var KARA_C = { yellow:['노랑', '#ffd43b', '#e8590c'], mint:['민트', '#38d9a9', '#0ca678'], pink:['분홍', '#ff6fae', '#d6336c'], sky:['하늘', '#4dabf7', '#1971c2'] };
+function subLine(ctx, t, x, y, size, wt, col, stroke){
+  ctx.font = wt + ' ' + size + 'px ' + FONT; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  if(stroke){ ctx.lineJoin = 'round'; ctx.lineWidth = size * 0.2; ctx.strokeStyle = stroke; ctx.strokeText(t, x, y); }
+  ctx.fillStyle = col; ctx.fillText(t, x, y);
+}
 function drawSubs(ctx, s, local, W, H, sty, yk){
   if(!OPT.sub) return;
   var V = H > W, u = V ? W : H, lt = local - LEAD, cue = null, cs2 = cuesFor(s);
   for(var k = 0; k < cs2.length; k++){ if(lt >= cs2[k].t0 - 0.05 && lt < cs2[k].t1){ cue = cs2[k]; break; } }
   if(!cue && cs2.length && lt < 0) cue = cs2[0];
   if(!cue) return;
-  var ss = u * ({ s:0.046, m:0.054, l:0.064 }[OPT.subSize] || 0.054) * (V ? 1 : 0.95); ctx.font = '700 ' + ss + 'px ' + FONT;
+  var st = OPT.subStyle || 'box', out = st === 'outline' || st === 'yellow', wt = out ? 900 : 700;
+  var ss = u * ({ s:0.046, m:0.054, l:0.064, xl:0.076 }[OPT.subSize] || 0.054) * (V ? 1 : 0.95); ctx.font = wt + ' ' + ss + 'px ' + FONT;
   var sl = wrap(ctx, cue.text, W * (V ? 0.86 : 0.8), 3), lh = ss * 1.32, bw = 0;
   sl.forEach(function(l){ bw = Math.max(bw, ctx.measureText(l).width); });
-  var bh = sl.length * lh + ss * 0.7, by = Math.min(H * (yk || (V ? 0.82 : 0.86)) - bh / 2, H - bh - u * 0.035);
-  ctx.fillStyle = sty.sb; rr(ctx, W / 2 - bw / 2 - ss * 0.7, by, bw + ss * 1.4, bh, ss * 0.45); ctx.fill();
-  sl.forEach(function(l, i){ txt(ctx, l, W / 2, by + ss * 0.35 + lh * (i + 0.5), ss, 700, sty.sf, 'center', false); });
+  var bh = sl.length * lh + ss * 0.7, pos = OPT.subPos || 'bottom';
+  /* 정보 카드처럼 아래 자리를 정해 둔 장면(yk)은 그 자리를 지킨다 */
+  var cyk = yk && pos !== 'top' ? yk : { bottom:V ? 0.82 : 0.86, low:V ? 0.7 : 0.74, mid:0.55, top:V ? 0.26 : 0.25 }[pos] || (V ? 0.82 : 0.86);
+  var by = Math.max(u * 0.03, Math.min(H * cyk - bh / 2, H - bh - u * 0.035));
+  var col = '#fff', stroke = null, light = false;
+  if(st === 'box'){ ctx.fillStyle = sty.sb; rr(ctx, W / 2 - bw / 2 - ss * 0.7, by, bw + ss * 1.4, bh, ss * 0.45); ctx.fill(); col = sty.sf; light = /255,255,255|#fff/i.test(sty.sb); }
+  else if(st === 'dark'){ ctx.fillStyle = 'rgba(0,0,0,.72)'; rr(ctx, W / 2 - bw / 2 - ss * 0.7, by, bw + ss * 1.4, bh, ss * 0.35); ctx.fill(); }
+  else if(st === 'band'){ ctx.fillStyle = 'rgba(0,0,0,.62)'; ctx.fillRect(0, by - ss * 0.15, W, bh + ss * 0.3); ctx.fillStyle = sty.ac; ctx.fillRect(0, by - ss * 0.15, W, Math.max(3, ss * 0.08)); }
+  else if(st === 'outline'){ stroke = '#111'; }
+  else if(st === 'yellow'){ col = '#ffe066'; stroke = '#111'; }
+  else if(st === 'pill'){ ctx.fillStyle = sty.ac; rr(ctx, W / 2 - bw / 2 - ss * 0.9, by, bw + ss * 1.8, bh, bh / 2); ctx.fill(); col = '#111'; light = true; }
+  var kc = KARA_C[OPT.karaColor] || KARA_C.yellow, hi = light ? kc[2] : kc[1];
+  if(st === 'yellow' && OPT.karaColor === 'yellow') hi = '#ff8787';
+  var prog = 1;
+  if(OPT.kara){ var dd = Math.max(0.3, cue.t1 - cue.t0 - 0.3); prog = clamp((lt - cue.t0) / dd, 0, 1); }
+  var total = sl.reduce(function(a, l){ return a + l.length; }, 0), done = prog * total, before = 0;
+  sl.forEach(function(l, i){
+    var y = by + ss * 0.35 + lh * (i + 0.5);
+    if(!OPT.kara){ subLine(ctx, l, W / 2, y, ss, wt, col, stroke); before += l.length; return; }
+    /* 아직 안 읽은 글자는 원래 색, 읽은 글자는 가라오케 색 */
+    subLine(ctx, l, W / 2, y, ss, wt, col, stroke);
+    var n = clamp(done - before, 0, l.length); before += l.length;
+    if(n <= 0) return;
+    ctx.font = wt + ' ' + ss + 'px ' + FONT;
+    var fw = ctx.measureText(l).width, x0 = W / 2 - fw / 2, ni = Math.floor(n), pw = n >= l.length ? fw + ss : ctx.measureText(l.slice(0, ni)).width + (n - ni) * ctx.measureText(l.charAt(ni) || ' ').width;
+    ctx.save(); ctx.beginPath(); ctx.rect(x0 - ss * 0.4, y - lh, pw + ss * 0.4, lh * 2); ctx.clip();
+    subLine(ctx, l, W / 2, y, ss, wt, hi, stroke); ctx.restore();
+  });
 }
 var RED = '#ff2d2d';
 function drawMark(ctx, R, mark, local, u, W, H){
@@ -3914,15 +3952,16 @@ function profCircle(im){
   x.drawImage(im, cx - side / 2, cy - side / 2, side, side, 0, 0, 420, 420);
   PROF_C[k] = c; return c;
 }
+function avaSz(A, k){ var v = k === 'prof' ? A.profSz : A.charSz; return v ? v / 100 : ({ s:0.8, m:1, l:1.25 }[A.size] || 1); }
 function drawAva(ctx, t, W, H, tg){
   var A = P.ava; if(!A || (!A.prof && !A.char)) return;
   var s = tg.s, local = t - tg.t0, ends = A.show === 'ends';
   if(ends && !(s.type === 'hook' || s.type === 'office' || s.type === 'end')) return;
-  var V = H > W, u = V ? W : H, sz = { s:0.8, m:1, l:1.25 }[A.size] || 1, amp = speakAmp(s, local);
+  var V = H > W, u = V ? W : H, szC = avaSz(A, 'char'), szP = avaSz(A, 'prof'), amp = speakAmp(s, local);
   /* 정보 카드·가격·사무소(명시사항) 장면은 글을 가리지 않게 — 세로는 맨 위 띠로 작게 옮기고, 가로는 빼 둔다 */
   var card = /^(info|move|price|office|end)$/.test(s.type);
   if(card && !V) return;
-  if(card) sz *= 0.72;
+  if(card){ szC *= 0.72; szP *= 0.72; }
   var pop = ends ? clamp(local / 0.45, 0, 1) : clamp(t / 0.6, 0, 1);
   var top = card ? H * 0.062 : H * (V ? 0.2 : 0.18), bot = H * (V ? 0.745 : 0.77), mx = u * 0.04;
   var place = function(pos, w, h){ return { x:pos.charAt(0) === 'l' ? mx : W - mx - w, y:card || pos.charAt(1) === 't' ? top : bot - h }; };
@@ -3930,8 +3969,8 @@ function drawAva(ctx, t, W, H, tg){
   if(A.char){
     var c = avaImg(A.char, A.char.cut !== false);
     if(c){
-      var cw0 = c.width || c.naturalWidth, chh0 = c.height || c.naturalHeight, ch = Math.min(u * 0.32 * sz, card ? H * 0.15 : 1e9), cw = ch * cw0 / chh0;
-      if(cw > u * 0.38 * sz){ cw = u * 0.38 * sz; ch = cw * chh0 / cw0; }
+      var cw0 = c.width || c.naturalWidth, chh0 = c.height || c.naturalHeight, ch = Math.min(u * 0.32 * szC, card ? H * 0.15 : H * 0.62), cw = ch * cw0 / chh0;
+      if(cw > u * 0.38 * szC){ cw = u * 0.38 * szC; ch = cw * chh0 / cw0; }
       var q = place(A.charPos || 'rb', cw, ch), bob = Math.sin(t * 2.4) * u * 0.006 - amp * u * 0.014, sc = (0.6 + 0.4 * ease(pop)) * (1 + amp * 0.035);
       ctx.save(); ctx.globalAlpha = ease(pop); ctx.translate(q.x + cw / 2, q.y + ch + bob); ctx.scale(sc, sc);
       ctx.shadowColor = 'rgba(0,0,0,.35)'; ctx.shadowBlur = u * 0.025; ctx.shadowOffsetY = u * 0.006;
@@ -3942,7 +3981,7 @@ function drawAva(ctx, t, W, H, tg){
   if(A.prof){
     var im = avaImg(A.prof, false);
     if(im){
-      var pc = profCircle(im), d = u * 0.2 * sz, a = author(), tag = [a.title, a.name].filter(Boolean).join(' '), fs = u * 0.028 * Math.min(1.15, sz), th = tag ? fs * 1.9 : 0;
+      var pc = profCircle(im), d = Math.min(u * 0.2 * szP, u * 0.55), a = author(), tag = [a.title, a.name].filter(Boolean).join(' '), fs = u * 0.028 * clamp(szP, 0.8, 1.6), th = tag ? fs * 1.9 : 0;
       var q2 = place(A.profPos || 'lb', d, d + th * 0.8);
       if(chBox && (card ? chBox.pos.charAt(0) === (A.profPos || 'lb').charAt(0) : chBox.pos === (A.profPos || 'lb'))){ if(card) q2.x += (q2.x < W / 2 ? 1 : -1) * (d + u * 0.03); else q2.y += (q2.y < H / 2 ? 1 : -1) * (chBox.h + u * 0.03); }
       var sc2 = (0.6 + 0.4 * ease(pop)), cx2 = q2.x + d / 2, cy2 = q2.y + d / 2, sty = STY[OPT.style] || STY.clean;
@@ -3992,12 +4031,12 @@ function avaPanel(el){
     return '<div class="sv-avi"><div class="pv">' + (o ? '<img src="' + o.src + '" alt="">' : '<span>' + (k === 'prof' ? '🧑‍💼' : '🐻') + '</span>') + '</div><div class="bd"><b>' + name + '</b><small>' + (o ? esc(o.label || '고른 그림') : '넣지 않음') + '</small>'
       + '<div class="bt"><button class="sv-btn sm" data-avp="' + k + '">' + (o ? '바꾸기' : '고르기') + '</button>' + (o ? '<button class="sv-btn sm" data-avx="' + k + '">빼기</button>' : '') + '</div>'
       + (o ? '<select class="sv-sel sm" data-avpos="' + k + '">' + AVA_POS.map(function(p){ return '<option value="' + p[0] + '"' + (pos === p[0] ? ' selected' : '') + '>' + p[1] + '</option>'; }).join('') + '</select>' : '')
+      + (o ? '<label class="sv-avsz">크기 <input type="range" min="50" max="250" step="10" data-avsz="' + k + '" value="' + Math.round(avaSz(A, k) * 100) + '"><b>' + Math.round(avaSz(A, k) * 100) + '%</b></label>' : '')
       + (o && k === 'char' ? '<label class="sv-tg" style="margin:4px 0 0;font-size:11.5px"><input type="checkbox" id="svAvCut"' + (o.cut !== false ? ' checked' : '') + '> 흰 배경 지우기</label>' : '') + '</div></div>';
   };
   box.innerHTML = '<div class="sv-grp"><div class="gh"><span>🧑‍💼 프로필 사진 · 🐻 캐릭터 합성</span><small>도구 → 프로필 사진&캐릭터에서 만든 그림</small></div>'
     + '<div class="sv-ava">' + item('prof', '프로필 사진 (원형 + 이름)') + item('char', '캐릭터') + '</div>'
-    + (A.prof || A.char ? '<div class="sv-f" style="margin-top:8px"><label>크기</label>' + seg('avsz', [['s', '작게'], ['m', '보통'], ['l', '크게']], A.size || 'm') + '</div>'
-      + '<div class="sv-f"><label>나오는 때</label>' + seg('avshow', [['all', '처음부터 끝까지'], ['ends', '첫 장면·사무소 장면만']], A.show || 'all') + '</div>'
+    + (A.prof || A.char ? '<div class="sv-f" style="margin-top:8px"><label>나오는 때</label>' + seg('avshow', [['all', '처음부터 끝까지'], ['ends', '첫 장면·사무소 장면만']], A.show || 'all') + '</div>'
       + '<div class="sv-note">멘트가 나올 때 프로필 테두리가 빛나고 캐릭터가 살짝 움직입니다. 정보 카드·가격·사무소(명시사항) 장면에서는 글을 가리지 않게 위로 작게 옮깁니다 (가로 영상은 그 장면에서 뺍니다).</div>' : '') + '</div>';
   var host = $('#svEnc', el); host = host ? host.parentNode : null;
   if(host) host.parentNode.insertBefore(box, host); else el.appendChild(box);
@@ -4006,7 +4045,7 @@ function avaPanel(el){
   $$('[data-avx]', box).forEach(function(b){ b.onclick = function(){ A[b.dataset.avx] = null; OUT = null; touch(); render(); }; });
   $$('[data-avpos]', box).forEach(function(s){ s.onchange = function(){ if(s.dataset.avpos === 'prof') A.profPos = s.value; else A.charPos = s.value; chg(); }; });
   var cut = $('#svAvCut', box); if(cut) cut.onchange = function(){ A.char.cut = this.checked; loadAva().then(chg); };
-  bindSeg(box, 'avsz', function(v){ A.size = v; chg(); });
+  $$('[data-avsz]', box).forEach(function(r){ r.oninput = function(){ r.nextElementSibling.textContent = r.value + '%'; if(r.dataset.avsz === 'prof') A.profSz = +r.value; else A.charSz = +r.value; drawAt(PV.t); }; r.onchange = function(){ chg(); }; });
   bindSeg(box, 'avshow', function(v){ A.show = v; chg(); });
   loadAva().then(function(){ drawAt(PV.t); });
 }
