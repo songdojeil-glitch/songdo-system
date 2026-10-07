@@ -13,6 +13,7 @@
 <link rel="apple-touch-icon" sizes="180x180" href="sjrws-180.png">
 <!-- ═════════════════════════════════════════════════════════════════
      🎬 영상 (video) · 비디오 스튜디오 (sd_video.html)  v2026.10.04-3
+     · 2026.10.07-9: ☁ 내 출연진을 Firebase(sd_media/cast_idx · cast_img)에도 저장 → 다른 PC 에서 불러오기. Firebase 로그인(구글/익명) 붙임
      · 2026.10.07-8: 🎭 출연진 — 프로필 P01~06 · 캐릭터 C01~06 을 미리 넣고 ★기본·입 픽스/무브·👄 입 준비(AI 한꺼번에)는 출연진에서만.
        장면 칸은 출연진에서 고르기·자리·크기·빼기. 출연진은 「내 출연진」(이 PC)에 저장돼 다음 영상에서 불러 씀
      · 2026.10.07-7: 👄 프로필·캐릭터 입모양 「픽스/무브」(말할 때 떨림 없앰 · AI 입모양 3장 또는 그려 넣기) ·
@@ -411,6 +412,8 @@ html.sv-embed body{background:#f7f8fa}
 .sv-cdef{display:flex;flex-direction:column;gap:4px;font-size:11.5px;border-top:1px dashed var(--sv-line);padding-top:6px}
 .sv-cdef span{color:var(--sv-ink3)}
 .sv-avs .w{font-size:10.5px;color:#e8590c;font-weight:700}
+.sv-cst{font-size:11px;color:var(--sv-ink3);align-self:center}.sv-cst .bad,.sv-clst .bad{color:#e03131;font-weight:700}
+.sv-clst{font-size:11.5px;color:#2b8a3e;font-weight:700;margin-bottom:6px}
 .sv-clh{font-size:13px;font-weight:800;margin:6px 0}.sv-clh small{font-weight:400;color:var(--sv-ink3)}
 .sv-clg{display:grid;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));gap:8px;margin-bottom:8px}
 .sv-clc{border:1px solid var(--sv-line);border-radius:10px;padding:6px;display:flex;flex-direction:column;gap:4px;align-items:stretch;font-size:11px}
@@ -519,7 +522,7 @@ html.sv-embed body{background:#f7f8fa}
    ═════════════════════════════════════════════════════════════════ */
 (function(){
 'use strict';
-var SD_VER = '2026.10.07-8';
+var SD_VER = '2026.10.07-9';
 window.SD_VERSION = SD_VER;
 var EMBED = /[?&]embed=1\b/.test(location.search);
 if(EMBED) document.documentElement.classList.add('sv-embed');
@@ -3003,14 +3006,27 @@ function tplAll(){ syncScenes(); P.scenes.forEach(function(s){ var t = tplScene(
 /* ── SJRWS 매물·단지 자료 ── */
 function loadJs(u){ return new Promise(function(res, rej){ var s = document.createElement('script'); s.src = u; s.onload = res; s.onerror = function(){ rej(new Error('불러오지 못했습니다: ' + u)); }; document.head.appendChild(s); }); }
 var FB_P = null;
+/* Firebase 로그인 — 허브에서 한 구글 로그인이 살아 있으면 그대로, 없으면 익명으로 (다른 화면들과 같은 방식) */
+async function fbAuth(){
+  try{
+    if(!firebase.auth) await loadJs('https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js');
+    var auth = firebase.auth();
+    await new Promise(function(res){
+      var done = false, fin = function(){ if(!done){ done = true; res(); } };
+      var un = auth.onAuthStateChanged(function(u){ if(done) return; try{ un(); }catch(e){} if(u) return fin(); auth.signInAnonymously().then(fin, fin); });
+      setTimeout(fin, 8000);
+    });
+  }catch(e){ console.warn('[영상] Firebase 로그인 실패', e); }
+}
 function sdStore(){
-  if(window.storage && window.storage.get) return Promise.resolve(window.storage);
   if(FB_P) return FB_P;
+  if(window.storage && window.storage.get && window.firebase){ FB_P = fbAuth().then(function(){ return window.storage; }); return FB_P; }
   FB_P = (async function(){
     if(!window.firebase) await loadJs('https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js');
     if(!window.firebase.database) await loadJs('https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js');
     await loadJs('firebase-storage.js');
     if(!window.storage) throw new Error('SJRWS 자료 창고에 연결하지 못했습니다');
+    await fbAuth();
     return window.storage;
   })();
   FB_P.catch(function(){ FB_P = null; });
@@ -4016,29 +4032,94 @@ function castDb(mode, fn){
     }catch(e){ res(null); }
   });
 }
-function castLibAll(){ return castDb('readonly', function(st){ return st.getAll(); }).then(function(a){ return (a || []).sort(function(x, y){ return (y.at || 0) - (x.at || 0); }); }); }
-function castSave(k, o){ if(!o || !o.src) return Promise.resolve(); return castDb('readwrite', function(st){ st.put({ id:o.id, kind:k, src:o.src, label:o.label || '', cut:o.cut, mo:o.mo || 'fix', mouth:o.mouth || null, mouthSet:!!o.mouthSet, lips:o.lips || null, at:Date.now() }); }); }
-function castLibDel(id){ return castDb('readwrite', function(st){ st.delete(id); }); }
-function castImport(r){
+/* ☁ 내 출연진 — Firebase 에도 저장해 다른 PC 에서도 불러 쓴다 (2026-10-07)
+   sd_media/cast_idx/{id} = 목록(이름·입 상태·작은 그림)  ·  sd_media/cast_img/{id} = { src, lips[3] } (넣을 때만 받는다)
+   sd/ 아래가 아니라 따로 둔다 — sd/ 전체를 읽는 화면이 있어 큰 그림이 섞이면 그 화면들이 느려진다. 이 PC 저장(IndexedDB)은 빠른 임시 저장 */
+var CLOUD = { st:'', err:'' };
+var CAST_RULE = '"sd_media": { ".read": "auth != null", ".write": "auth != null" }';
+function fbDb(){ return sdStore().then(function(){ return firebase.database(); }); }
+function cloudSt(t, err){ CLOUD.st = t; CLOUD.err = err ? String(err) : ''; var e = $('#svCloudSt'); if(e) e.innerHTML = cloudStHtml(); }
+function cloudStHtml(){ if(CLOUD.err) return '<span class="bad">⚠ Firebase 저장 안 됨 — ' + esc(/PERMISSION|permission/i.test(CLOUD.err) ? '쓰기 권한이 막혀 있습니다 (아래 안내)' : CLOUD.err.slice(0, 80)) + '</span>'; return CLOUD.st ? '<span>' + esc(CLOUD.st) + '</span>' : ''; }
+function cloudHelp(){ return /PERMISSION|permission/i.test(CLOUD.err) ? '<div class="sv-err" style="margin-top:8px">Firebase 쓰기 권한이 막혀 있어 이 PC 에만 저장했습니다. Firebase 콘솔 → Realtime Database → <b>규칙</b> 맨 위 "rules" 안에 아래 한 줄을 넣고 게시해 주세요.<pre style="white-space:pre-wrap;margin:6px 0 0;font-size:11.5px">' + esc(CAST_RULE) + '</pre></div>' : ''; }
+function toJpeg(src, max, q){
+  return new Promise(function(res){ var im = new Image(); im.onload = function(){ var k = Math.min(1, max / Math.max(im.width, im.height)), c = document.createElement('canvas'); c.width = Math.round(im.width * k); c.height = Math.round(im.height * k); var x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height); x.drawImage(im, 0, 0, c.width, c.height); res(c.toDataURL('image/jpeg', q)); }; im.onerror = function(){ res(src); }; im.src = src; });
+}
+function castSig(o){ return o.src.length + ':' + o.src.slice(-16) + '|' + (o.lips || []).map(function(u){ return u.length; }).join(','); }
+/* 큰 그림은 바뀌었을 때만(o.upSig) 올리고, 이름·입 자리 같은 작은 것은 매번 */
+async function castCloudPut(k, o){
+  var db = await fbDb(), up = o.upSig !== castSig(o);
+  var idx = { kind:k, label:o.label || '', mo:o.mo || 'fix', cut:k === 'char' ? o.cut !== false : false, mouth:o.mouth || null, mouthSet:!!o.mouthSet, lipsN:(o.lips || []).length, at:Date.now(), by:author().name || '' };
+  if(up){
+    cloudSt('☁ ' + (o.label || '출연진') + ' 올리는 중…');
+    var img = { src:await toJpeg(o.src, 900, 0.88), lips:o.lips && o.lips.length ? await Promise.all(o.lips.map(function(u){ return toJpeg(u, 900, 0.85); })) : null };
+    idx.thumb = await toJpeg(o.src, 160, 0.8);
+    await db.ref('sd_media/cast_img/' + o.id).set(img);
+    await db.ref('sd_media/cast_idx/' + o.id).set(idx);
+    o.upSig = castSig(o);
+  } else await db.ref('sd_media/cast_idx/' + o.id).update(idx);
+  cloudSt('☁ Firebase 에 저장됨');
+}
+function castLocalPut(k, o){ return castDb('readwrite', function(st){ st.put({ id:o.id, kind:k, src:o.src, label:o.label || '', cut:o.cut, mo:o.mo || 'fix', mouth:o.mouth || null, mouthSet:!!o.mouthSet, lips:o.lips || null, upSig:o.upSig || '', at:Date.now() }); }); }
+function castSave(k, o){
+  if(!o || !o.src) return Promise.resolve();
+  return castLocalPut(k, o).then(function(){
+    return castCloudPut(k, o).then(function(){ return castLocalPut(k, o); }, function(e){ cloudSt('', (e && e.message) || e); });
+  });
+}
+/* 이 PC 것 + Firebase 것을 합친 목록 */
+function castLibAll(){
+  var loc = castDb('readonly', function(st){ return st.getAll(); }).then(function(a){ return a || []; });
+  var cl = fbDb().then(function(db){ return db.ref('sd_media/cast_idx').once('value'); }).then(function(s){ return s.val() || {}; }, function(e){ cloudSt('', (e && e.message) || e); return null; });
+  return Promise.all([loc, cl]).then(function(v){
+    var map = {};
+    v[0].forEach(function(r){ map[r.id] = Object.assign({}, r, { local:true }); });
+    if(v[1]) Object.keys(v[1]).forEach(function(id){ var c = v[1][id] || {}; map[id] = Object.assign({ id:id, kind:c.kind, label:c.label, mo:c.mo, cut:c.cut, mouth:c.mouth, mouthSet:c.mouthSet, lipsN:c.lipsN, at:c.at }, map[id] || {}, { cloud:true, thumb:c.thumb, by:c.by }); });
+    return { list:Object.keys(map).map(function(id){ return map[id]; }).filter(function(r){ return r.kind === 'prof' || r.kind === 'char'; }).sort(function(x, y){ return (y.at || 0) - (x.at || 0); }), cloudOk:!!v[1] };
+  });
+}
+function castLibDel(id){
+  return castDb('readwrite', function(st){ st.delete(id); }).then(function(){
+    return fbDb().then(function(db){ return Promise.all([db.ref('sd_media/cast_idx/' + id).remove(), db.ref('sd_media/cast_img/' + id).remove()]); }).catch(function(e){ cloudSt('', (e && e.message) || e); });
+  });
+}
+async function castImport(r){
   var k = r.kind, L = castOf(k); if(castById(k, r.id)) return 'have';
   if(L.length >= CAST_MAX) return 'full';
-  var o = { id:r.id, src:r.src, label:r.label || '', cut:r.cut, mo:r.mo || 'fix' }; if(r.mouth) o.mouth = r.mouth; if(r.mouthSet) o.mouthSet = true; if(r.lips) o.lips = r.lips;
-  L.push(o); if(!avaOf().def[k]) avaOf().def[k] = o.id; return 'ok';
+  var src = r.src, lips = r.lips;
+  if(!src){
+    var db = await fbDb(), img = (await db.ref('sd_media/cast_img/' + r.id).once('value')).val();
+    if(!img || !img.src) throw new Error('Firebase 에서 그림을 받지 못했습니다');
+    src = img.src; lips = img.lips || null;
+  }
+  var o = { id:r.id, src:src, label:r.label || '', cut:k === 'char' ? r.cut !== false : undefined, mo:r.mo || 'fix' };
+  if(r.mouth) o.mouth = r.mouth; if(r.mouthSet) o.mouthSet = true; if(lips && lips.length) o.lips = lips;
+  o.upSig = r.src ? (r.upSig || '') : castSig(o);
+  L.push(o); if(!avaOf().def[k]) avaOf().def[k] = o.id;
+  await castLocalPut(k, o);
+  return 'ok';
 }
 function castLibModal(){
-  var m = modal('📥 내 출연진 — 이 PC 에 저장해 둔 프로필·캐릭터', '<div class="sv-note" style="margin-bottom:8px">출연진에 넣은 그림과 입모양(AI 그림·입 자리)은 여기에 자동으로 저장됩니다. 넣으면 입모양 준비까지 된 채로 이 작업에 들어옵니다.</div><div id="svCl"><div class="sv-empty">불러오는 중…</div></div>');
+  var m = modal('📥 내 출연진 — Firebase · 이 PC', '<div class="sv-note" style="margin-bottom:8px">출연진에 넣은 그림과 입모양(AI 그림·입 자리)은 Firebase 와 이 PC 에 자동으로 저장됩니다. 다른 PC 에서도 여기서 넣으면 입모양 준비까지 된 채로 들어옵니다.</div><div id="svCl"><div class="sv-empty">불러오는 중…</div></div>');
   var paint = function(){
-    castLibAll().then(function(all){
-      var L = $('#svCl', m); if(!L) return;
-      if(!all.length){ L.innerHTML = '<div class="sv-empty">아직 저장된 출연진이 없습니다.<br>출연진에 프로필·캐릭터를 넣으면 여기에 쌓입니다.</div>'; return; }
+    castLibAll().then(function(res){
+      var L = $('#svCl', m); if(!L) return; var all = res.list;
+      /* 이 PC 에만 있는 것(예전에 만든 것)은 Firebase 로 올려 둔다 */
+      if(res.cloudOk) all.filter(function(r){ return r.local && !r.cloud; }).forEach(function(r){ castCloudPut(r.kind, r).then(function(){ castLocalPut(r.kind, r); }, function(e){ cloudSt('', (e && e.message) || e); }); });
+      var head = '<div class="sv-clst">' + (res.cloudOk ? '☁ Firebase 연결됨' : '<span class="bad">⚠ Firebase 에 연결하지 못해 이 PC 것만 보입니다</span>') + '</div>' + cloudHelp();
+      if(!all.length){ L.innerHTML = head + '<div class="sv-empty">아직 저장된 출연진이 없습니다.<br>출연진에 프로필·캐릭터를 넣으면 여기에 쌓입니다.</div>'; return; }
       var card = function(r){
-        var have = !!castById(r.kind, r.id), mo = r.mo === 'move' ? (r.lips ? '👄 AI 입모양' : r.mouthSet ? '👄 그려 넣기' : '👄 준비 필요') : '픽스';
-        return '<div class="sv-clc"><img src="' + r.src + '" alt=""><small>' + esc(r.label || '그림') + '</small><span class="mo">' + mo + '</span>'
+        var have = !!castById(r.kind, r.id), n = r.lips ? r.lips.length : r.lipsN, mo = r.mo === 'move' ? (n ? '👄 AI 입모양' : r.mouthSet ? '👄 그려 넣기' : '👄 준비 필요') : '픽스';
+        return '<div class="sv-clc"><img src="' + (r.src || r.thumb || '') + '" alt=""><small>' + esc(r.label || '그림') + '</small><span class="mo">' + mo + ' · ' + (r.cloud ? '☁' : '') + (r.local ? '💻' : '') + '</span>'
           + (have ? '<button class="sv-btn sm" disabled>이 작업에 있음</button>' : '<button class="sv-btn sm pri" data-cl-in="' + esc(r.id) + '">넣기</button>') + '<button class="sv-btn sm" data-cl-del="' + esc(r.id) + '">지우기</button></div>';
       };
-      L.innerHTML = [['prof', '🧑‍💼 프로필'], ['char', '🐻 캐릭터']].map(function(g){ var a = all.filter(function(r){ return r.kind === g[0]; }); return a.length ? '<div class="sv-clh">' + g[1] + ' <small>' + a.length + '개 · 이 작업 ' + castOf(g[0]).length + '/' + CAST_MAX + '</small></div><div class="sv-clg">' + a.map(card).join('') + '</div>' : ''; }).join('');
-      $$('[data-cl-in]', L).forEach(function(b){ b.onclick = function(){ var r = all.find(function(x){ return x.id === b.dataset.clIn; }), w = castImport(r); if(w === 'full') return toast(CAST_MAX + '명까지 넣을 수 있습니다 — 출연진에서 하나를 빼고 넣어 주세요', true); OUT = null; touch(true); loadAva(); render(); paint(); }; });
-      $$('[data-cl-del]', L).forEach(function(b){ b.onclick = function(){ if(!confirm('내 출연진에서 지울까요? (이 작업에 이미 넣은 것은 그대로 남습니다)')) return; castLibDel(b.dataset.clDel).then(paint); }; });
+      L.innerHTML = head + [['prof', '🧑‍💼 프로필'], ['char', '🐻 캐릭터']].map(function(g){ var a = all.filter(function(r){ return r.kind === g[0]; }); return a.length ? '<div class="sv-clh">' + g[1] + ' <small>' + a.length + '개 · 이 작업 ' + castOf(g[0]).length + '/' + CAST_MAX + '</small></div><div class="sv-clg">' + a.map(card).join('') + '</div>' : ''; }).join('')
+        + '<div class="sv-note">☁ Firebase · 💻 이 PC</div>';
+      $$('[data-cl-in]', L).forEach(function(b){ b.onclick = function(){
+        var r = all.find(function(x){ return x.id === b.dataset.clIn; }); b.disabled = true; b.textContent = '받는 중…';
+        castImport(r).then(function(w){ if(w === 'full'){ toast(CAST_MAX + '명까지 넣을 수 있습니다 — 출연진에서 하나를 빼고 넣어 주세요', true); b.disabled = false; b.textContent = '넣기'; return; } OUT = null; touch(true); loadAva(); render(); paint(); },
+          function(e){ toast(e.message || String(e), true); b.disabled = false; b.textContent = '넣기'; });
+      }; });
+      $$('[data-cl-del]', L).forEach(function(b){ b.onclick = function(){ if(!confirm('내 출연진에서 지울까요? Firebase 와 이 PC 모두에서 지워집니다.\n(이 작업에 이미 넣은 것은 그대로 남습니다)')) return; castLibDel(b.dataset.clDel).then(paint); }; });
     });
   };
   paint();
@@ -4387,11 +4468,11 @@ function avaPanel(el, at){
   };
   var has = castOf('prof').length || castOf('char').length;
   box.innerHTML = '<div class="sv-grp"><div class="gh"><span>🎭 출연진 — 프로필 사진 · 캐릭터</span><small>각 ' + CAST_MAX + '명까지 · 입모양은 여기서 한 번 준비</small></div>'
-    + '<div class="sv-cbar"><button class="sv-btn sm" data-cm-lib>📥 내 출연진 불러오기</button>'
-    + '<button class="sv-btn sm pri" data-cm-ai' + (need ? '' : ' disabled') + '>✨ 입모양 AI 한꺼번에 만들기' + (need ? ' (' + need + ')' : '') + '</button></div><div id="svCastOut"></div>'
+    + '<div class="sv-cbar"><button class="sv-btn sm" data-cm-lib>📥 내 출연진 불러오기 (☁ Firebase)</button>'
+    + '<button class="sv-btn sm pri" data-cm-ai' + (need ? '' : ' disabled') + '>✨ 입모양 AI 한꺼번에 만들기' + (need ? ' (' + need + ')' : '') + '</button><span class="sv-cst" id="svCloudSt">' + cloudStHtml() + '</span></div><div id="svCastOut"></div>' + cloudHelp() + ''
     + '<div class="sv-cast">' + group('prof', '🧑‍💼 프로필 사진', '원형 + 이름') + group('char', '🐻 캐릭터', '도구에서 만든 16컷 등') + '</div>'
     + (has ? '<div class="sv-f" style="margin-top:8px"><label>나오는 때</label>' + seg('avshow', [['all', '처음부터 끝까지'], ['ends', '첫 장면·사무소 장면만']], A.show || 'all') + '</div>'
-      + '<div class="sv-note">입 「픽스」는 그림 그대로, 「무브」는 목소리에 맞춰 입이 말하듯 움직입니다 — 무브는 👄 에서 입 자리를 누르거나 AI 입모양(제미나이 3장)을 만들어 두세요. 출연진은 「내 출연진」에 자동 저장돼 다음 영상에서 불러 쓸 수 있습니다. '
+      + '<div class="sv-note">입 「픽스」는 그림 그대로, 「무브」는 목소리에 맞춰 입이 말하듯 움직입니다 — 무브는 👄 에서 입 자리를 누르거나 AI 입모양(제미나이 3장)을 만들어 두세요. 출연진은 「내 출연진」(Firebase · 이 PC)에 자동 저장돼 다른 PC·다음 영상에서도 불러 쓸 수 있습니다. '
       + (at ? '아래 장면마다 오른쪽 칸에서 출연진 고르기·자리·크기·빼기를 합니다.' : '장면마다 다르게 하려면 3단계 「편집표 · 목소리」 오른쪽 칸에서 고르세요.') + ' 정보 카드·가격·사무소(명시사항) 장면에서는 글을 가리지 않게 위로 작게 옮깁니다.</div>' : '') + '</div>';
   if(at) at.appendChild(box);
   else { var host = $('#svEnc', el); host = host ? host.parentNode : null; if(host) host.parentNode.insertBefore(box, host); else el.appendChild(box); }
