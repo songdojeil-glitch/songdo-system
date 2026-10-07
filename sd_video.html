@@ -13,6 +13,8 @@
 <link rel="apple-touch-icon" sizes="180x180" href="sjrws-180.png">
 <!-- ═════════════════════════════════════════════════════════════════
      🎬 영상 (video) · 비디오 스튜디오 (sd_video.html)  v2026.10.04-3
+     · 2026.10.07-3: 📸 사진에서 영상 만들기도 🏠 매물 사진 / 🎬 일반 사진 으로 나눔 — 영상 갈래의 일반 영상과 같은 규칙
+       (제목·소개 내용만, 명시사항·사무소 정보 없이 채널명·서명, 끝 장면은 채널 카드, AI 사진 정리·대본도 주제 영상용)
      · 2026.10.07-2: 🎥 영상에서 영상 만들기 안을 🏠 매물 영상 / 🎬 일반 영상 으로 나눔. 일반 영상(모델하우스 유니트·단지 소개·분양·부동산 정보)은
        광고가 아니라 매물 정보·표시광고 명시사항·사무소 등록번호/주소 없이 제목·소개 내용만, 화면에는 채널명(송도제일부동산TV)과
        「BY 송도제일공인중개사 851-6688」만. 끝 장면은 채널 카드(구독 안내). AI 분석·멘트도 주제 영상에 맞게
@@ -436,7 +438,7 @@ html.sv-embed body{background:#f7f8fa}
    ═════════════════════════════════════════════════════════════════ */
 (function(){
 'use strict';
-var SD_VER = '2026.10.07-2';
+var SD_VER = '2026.10.07-3';
 window.SD_VERSION = SD_VER;
 var EMBED = /[?&]embed=1\b/.test(location.search);
 if(EMBED) document.documentElement.classList.add('sv-embed');
@@ -508,7 +510,7 @@ function paintList(){
   if(!LIST.length){ el.innerHTML = '<div class="sv-empty">아직 저장된 작업이 없습니다.<br>제목을 적으면 여기에 남습니다.</div>'; return; }
   el.innerHTML = LIST.map(function(p){
     var d = new Date(p.updatedAt || 0);
-    return '<div class="sv-pi' + (P && P.id === p.id ? ' on' : '') + '" data-open="' + esc(p.id) + '"><div class="t"><b>' + (p.kind === 'photo' ? '📸 ' : p.kind === 'clip' ? (p.cmode === 'gen' ? '🎬 ' : '🎥 ') : '') + esc(p.title || '제목 없음') + '</b><small>' + (d.getMonth() + 1) + '/' + d.getDate() + ' ' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0') + ' · ' + (p.fmt === '16:9' ? '가로' : '세로') + ' · ' + (p.kind === 'photo' ? '사진 ' + ((p.photos || []).length) : p.kind === 'clip' ? '영상 ' + ((p.clips || []).length) : '장면 ' + ((p.scenes || []).length)) + '</small></div><button class="x" title="지우기" data-del="' + esc(p.id) + '">🗑</button></div>';
+    return '<div class="sv-pi' + (P && P.id === p.id ? ' on' : '') + '" data-open="' + esc(p.id) + '"><div class="t"><b>' + (p.kind === 'photo' ? (p.cmode === 'gen' ? '🖼 ' : '📸 ') : p.kind === 'clip' ? (p.cmode === 'gen' ? '🎬 ' : '🎥 ') : '') + esc(p.title || '제목 없음') + '</b><small>' + (d.getMonth() + 1) + '/' + d.getDate() + ' ' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0') + ' · ' + (p.fmt === '16:9' ? '가로' : '세로') + ' · ' + (p.kind === 'photo' ? '사진 ' + ((p.photos || []).length) : p.kind === 'clip' ? '영상 ' + ((p.clips || []).length) : '장면 ' + ((p.scenes || []).length)) + '</small></div><button class="x" title="지우기" data-del="' + esc(p.id) + '">🗑</button></div>';
   }).join('');
   $$('[data-open]', el).forEach(function(n){ n.onclick = function(e){ if(e.target.closest('[data-del]')) return; openProject(n.dataset.open); }; });
   $$('[data-del]', el).forEach(function(b){ b.onclick = function(){
@@ -525,9 +527,10 @@ function openProject(id){
 }
 
 /* ───────── 단계 ───────── */
+var PSTEPS_G = [['pinfo', '영상 정보'], ['ppics', '사진 넣기'], ['pscript', '대본·목소리'], ['video', '영상'], ['desc', '설명글'], ['thumb', '썸네일'], ['upload', '올리기']];
 var PSTEPS = [['pinfo', '매물 정보'], ['ppics', '매물 사진'], ['pscript', '대본·목소리'], ['video', '영상'], ['desc', '설명글'], ['thumb', '썸네일'], ['upload', '올리기']];
 var CSTEPS = [['pinfo', '매물 정보'], ['cclips', '매물 영상'], ['cedit', '편집표·목소리'], ['video', '영상'], ['desc', '설명글'], ['thumb', '썸네일'], ['upload', '올리기']];
-function stepsOf(){ return P && P.kind === 'photo' ? PSTEPS : P && P.kind === 'clip' ? (isGen() ? CSTEPS.map(function(x){ return x[0] === 'pinfo' ? ['pinfo', '영상 정보'] : x[0] === 'cclips' ? ['cclips', '영상 넣기'] : x; }) : CSTEPS) : STEPS; }
+function stepsOf(){ return P && P.kind === 'photo' ? (isGen() ? PSTEPS_G : PSTEPS) : P && P.kind === 'clip' ? (isGen() ? CSTEPS.map(function(x){ return x[0] === 'pinfo' ? ['pinfo', '영상 정보'] : x[0] === 'cclips' ? ['cclips', '영상 넣기'] : x; }) : CSTEPS) : STEPS; }
 var STEPS = [['src', '원고'], ['script', '대본'], ['pics', '화면'], ['voice', '음성'], ['video', '영상'], ['desc', '설명글'], ['thumb', '썸네일'], ['upload', '올리기']];
 function stepDone(k){
   if(!P) return false;
@@ -2539,7 +2542,7 @@ var INFO_F = [
 function reqKeys(){ return ['addr', 'deal', 'price', 'ex', 'floor', 'tfloor', 'use', 'dir', 'rooms', 'baths', 'movein', 'park', 'fee']; }
 var REQ_N = { addr:'소재지', deal:'거래 형태', price:'가격', ex:'전용면적', floor:'해당 층', tfloor:'총 층수', use:'사용승인일', dir:'방향', rooms:'방 개수', baths:'욕실 개수', movein:'입주가능일', park:'주차대수', fee:'관리비' };
 function emptyInfo(){ return { ptype:'아파트', deal:'매매', cx:'', addr:'', dongFloor:'', price:'', ex:'', sup:'', floor:'', tfloor:'', use:'', dir:'', rooms:'', baths:'', movein:'', park:'', fee:'', feeInc:'', feats:'', viol:false, hook:'' }; }
-function newPhotoProject(){ return { id:'v' + uid(), kind:'photo', title:'', src:'', fmt:'9:16', len:'short', vtype:'explain', both:false, sfx:true, info:emptyInfo(), photos:[], scenes:[], step:'pinfo', createdAt:Date.now(), updatedAt:Date.now() }; }
+function newPhotoProject(){ return { id:'v' + uid(), kind:'photo', cmode:LSX.get('sdv.pmode', 'prop') === 'gen' ? 'gen' : 'prop', gen:{ kind:'모델하우스 유니트', title:'', topic:'' }, title:'', src:'', fmt:'9:16', len:'short', vtype:'explain', both:false, sfx:true, info:emptyInfo(), photos:[], scenes:[], step:'pinfo', createdAt:Date.now(), updatedAt:Date.now() }; }
 function PI(){ if(!P.info) P.info = emptyInfo(); return P.info; }
 function missingReq(){ if(isGen()) return []; var I = PI(); return reqKeys().filter(function(k){ return !String(I[k] || '').trim(); }); }
 function nv(s){ return String(s == null ? '' : s).trim(); }
@@ -2593,7 +2596,8 @@ function syncScenes(){
   var old = {}; (P.scenes || []).forEach(function(s){ if(s.key) old[s.key] = s; });
   var keys = ['hook'];
   (P.photos || []).forEach(function(ph){ if(!ph.off) keys.push('ph:' + ph.id); });
-  keys.push('info'); if(P.vtype === 'explain' || nv(PI().movein) || nv(PI().park)) keys.push('move'); keys.push('price', 'office');
+  if(isGen()) keys.push('end');
+  else { keys.push('info'); if(P.vtype === 'explain' || nv(PI().movein) || nv(PI().park)) keys.push('move'); keys.push('price', 'office'); }
   var cv = cover();
   P.scenes = keys.map(function(k){
     var s = old[k] || { id:uid(), key:k, head:'', say:'', audio:null };
@@ -2661,14 +2665,16 @@ function infoBrief(){ var I = PI(); return [I.ptype, I.cx, I.addr, I.deal + ' ' 
 async function aiPhotos(){
   var list = (P.photos || []); if(!list.length) throw new Error('사진을 먼저 넣어 주세요');
   var small = []; for(var i = 0; i < list.length; i++) small.push(await shrinkData(list[i].src, 640));
-  var d = parseJSON(await aiVision('당신은 부동산 매물 영상 편집자입니다. 위 사진 ' + list.length + '장(0번부터 차례로)은 한 매물의 사진입니다.\n[매물] ' + infoBrief() + '\n\n'
+  var gen = isGen(), G = gen ? GI() : null;
+  var d = parseJSON(await aiVision((gen ? '당신은 부동산 유튜브 채널 「' + genBrand().channel + '」의 영상 편집자입니다. 위 사진 ' + list.length + '장(0번부터 차례로)은 「' + G.kind + '」 영상에 쓸 사진입니다.\n[제목] ' + (G.title || '') + '\n' + (G.topic ? '[소개할 내용] ' + G.topic.replace(/\n+/g, ' / ') + '\n' : '') + '\n'
+        : '당신은 부동산 매물 영상 편집자입니다. 위 사진 ' + list.length + '장(0번부터 차례로)은 한 매물의 사진입니다.\n[매물] ' + infoBrief() + '\n\n')
     + '사진마다 다음을 정해 주세요.\n'
-    + '- room: ' + ROOMS.join('/') + ' 가운데 하나\n'
-    + '- head: 화면에 크게 넣을 짧은 말 (10자 이내, 사진에 실제로 보이는 장점. 예: 탁 트인 거실, 넓은 드레스룸)\n'
+    + '- room: ' + (gen ? GEN_ROOMS.join('/') + ' 가운데 하나 (맞는 것이 없으면 8자 이내 짧은 이름)' : ROOMS.join('/') + ' 가운데 하나') + '\n'
+    + '- head: 화면에 크게 넣을 짧은 말 (10자 이내, 사진에 실제로 보이는 ' + (gen ? '특징. 예: 4베이 판상형, 넓은 팬트리' : '장점. 예: 탁 트인 거실, 넓은 드레스룸') + ')\n'
     + '- cap: 사진 설명 한 문장 (30자 이내, 보이는 것만. 과장·지어낸 사실 금지)\n'
     + '- point: 시청자에게 동그라미로 짚어 줄 한 곳 {"x":0~1,"y":0~1,"r":0.06~0.2,"what":"8자 이내"} — x·y 는 사진 왼쪽 위에서의 비율, r 은 사진 짧은 변에 대한 반지름 비율. 짚을 곳이 없으면 null\n'
     + '- warn: 사람 얼굴·자동차 번호판·우편물 이름 같은 개인정보가 보이면 그 이유, 없으면 ""\n'
-    + '그리고 order: 집을 둘러보는 순서(외관·단지 → 현관 → 거실 → 주방 → 방 → 욕실 → 발코니·조망)대로 사진 번호를 늘어놓은 배열.\n\n'
+    + '그리고 order: ' + (gen ? '보는 사람이 이해하기 좋은 순서(전체 → 부분, 입구 → 안쪽)' : '집을 둘러보는 순서(외관·단지 → 현관 → 거실 → 주방 → 방 → 욕실 → 발코니·조망)') + '대로 사진 번호를 늘어놓은 배열.\n\n'
     + '출력 JSON (이 구조 그대로):\n{"order":[0,1],"photos":[{"i":0,"room":"거실","head":"…","cap":"…","point":{"x":0.5,"y":0.4,"r":0.12,"what":"…"},"warn":""}]}', small));
   (d.photos || []).forEach(function(x){
     var ph = list[+x.i]; if(!ph) return;
@@ -2690,6 +2696,17 @@ async function aiPhotos(){
 /* ── AI — 대본 (어느 AI 든) ── */
 function photoScriptPrompt(){
   var I = PI(), o = office(), promo = P.vtype === 'promo', vis = (P.photos || []).filter(function(x){ return !x.off; });
+  if(isGen()){
+    var G = GI();
+    return '당신은 부동산 유튜브 채널 「' + genBrand().channel + '」의 쇼츠 대본 작가입니다. 아래 사진으로 ' + (promo ? '30~40초 홍보형' : '45~60초 설명형') + ' 「' + G.kind + '」 영상 대본을 쓰세요.\n\n'
+      + '[제목] ' + (G.title || '') + '\n' + (G.topic ? '[소개할 내용]\n' + G.topic + '\n' : '') + '\n'
+      + '[사진 — 영상에 나오는 순서]\n' + vis.map(function(ph, i){ return i + '. ' + (ph.room || '사진') + (ph.cap ? ' — ' + ph.cap : '') + (ph.mark && ph.mark.what ? ' (짚는 곳: ' + ph.mark.what + ')' : ''); }).join('\n') + '\n\n'
+      + '조건:\n'
+      + '- hook: 첫 장면. head(화면 큰 글 14자 이내 — 제목을 줄이거나 그대로), say(시청자가 멈춰 볼 한두 문장 — 무엇을 보여 주는 영상인지).\n'
+      + '- photos: 사진마다 head(10자 이내) · say(' + (promo ? '한 문장 15~30자, 짧고 힘 있게' : '1~2문장 30~60자, 사진에서 보이는 특징을 설명하고 짚는 곳이 있으면 그곳을 말로 가리킨다') + '). 사진 순서·개수 그대로 ' + vis.length + '개.\n'
+      + clipRules() + '\n'
+      + '출력 JSON (이 구조 그대로, JSON 만):\n{"title":"…","hook":{"head":"…","say":"…"},"photos":[{"head":"…","say":"…"}],"end":{"say":"…"}}';
+  }
   return '당신은 공인중개사의 매물 소개 쇼츠 대본 작가입니다. 아래 매물로 ' + (promo ? '30~40초 홍보형' : '45~60초 설명형') + ' 영상 대본을 쓰세요.\n\n'
     + '[중개사무소] ' + o.name + ' (대표 ' + o.ceo + ', ' + o.tel + ')\n'
     + '[매물 정보]\n' + listingText().split('[매물]')[1] + '\n\n'
@@ -2711,8 +2728,8 @@ async function aiPhotoScript(){
   var d = parseJSON(await aiText(photoScriptPrompt())), vis = (P.photos || []).filter(function(x){ return !x.off; });
   var put = function(key, x){ var s = P.scenes.find(function(y){ return y.key === key; }); if(!s || !x) return; if(x.say){ s.say = String(x.say).trim(); s.tpl = false; } if(x.head){ s.head = String(x.head).trim().slice(0, 20); s.headEd = true; } };
   put('hook', d.hook); (d.photos || []).forEach(function(x, i){ if(vis[i]) put('ph:' + vis[i].id, x); });
-  put('info', d.info); put('move', d.move); put('price', d.price); put('office', d.office);
-  if(d.title){ P.title = String(d.title).trim(); P.autoTitle = false; }
+  put('info', d.info); put('move', d.move); put('price', d.price); put('office', d.office); put('end', d.end);
+  if(d.title){ P.title = String(d.title).trim(); P.autoTitle = false; if(isGen()) GI().title = P.title; }
   OUT = null; MIXKEY = ''; touch(true);
 }
 function tplAll(){ syncScenes(); P.scenes.forEach(function(s){ var t = tplScene(s); s.head = t.head; s.say = t.say; s.tpl = true; s.headEd = false; }); OUT = null; MIXKEY = ''; touch(true); }
@@ -2949,6 +2966,7 @@ function bgPhotoBlur(ctx, W, H, sty, idx){
   if(b) ctx.drawImage(b, 0, 0, W, H); else bgCard(ctx, W, H, sty, idx);
 }
 function drawPhotoScene(ctx, g, local, W, H, sty){
+  if(g.s.type === 'end') return drawGenEnd(ctx, g, local, W, H, sty);
   var s = g.s, I = PI(), V = H > W, u = V ? W : H, p = clamp(local / g.d, 0, 1), promo = P.vtype === 'promo', o = office();
   if(s.type === 'photo' || s.type === 'hook'){
     var ph = phById(s.ph), im = phImg(ph), mark = s.type === 'photo' && !promo && ph && ph.mark ? ph.mark : null;
@@ -2961,7 +2979,7 @@ function drawPhotoScene(ctx, g, local, W, H, sty){
       var gb = ctx.createLinearGradient(0, H * 0.68, 0, H); gb.addColorStop(0, 'rgba(0,0,0,0)'); gb.addColorStop(1, 'rgba(0,0,0,.5)'); ctx.fillStyle = gb; ctx.fillRect(0, H * 0.68, W, H * 0.32);
       if(mark) drawMark(ctx, R, mark, local, u, W, H);
     } else bgCard(ctx, W, H, sty, g.i);
-    if(s.type === 'hook') hookOverlay(ctx, s, local, W, H, sty);
+    if(s.type === 'hook') (isGen() ? genHookOverlay : hookOverlay)(ctx, s, local, W, H, sty);
     else {
       var phx = ph || {};
       if(phx.room) pill(ctx, phx.room, u * 0.045, u * 0.12, u * 0.034, sty.ac, '#111', 'left');
@@ -3035,7 +3053,8 @@ function drawPhotoFrame(ctx, t, W, H, tl){
   if(gi > 0 && local < FADE){ drawPhotoScene(ctx, segs[gi - 1], segs[gi - 1].d - 0.01, W, H, sty); ctx.globalAlpha = local / FADE; drawPhotoScene(ctx, g, local, W, H, sty); ctx.globalAlpha = 1; }
   else drawPhotoScene(ctx, g, local, W, H, sty);
   var u = Math.min(W, H);
-  if(g.s.type !== 'office'){ ctx.globalAlpha = 0.9; txt(ctx, office().name, u * 0.045, u * 0.05, u * 0.026, 700, '#fff', 'left', true); txt(ctx, office().tel, W - u * 0.045, u * 0.05, u * 0.026, 700, '#fff', 'right', true); ctx.globalAlpha = 1; }
+  if(isGen()){ if(g.s.type !== 'end'){ var gb = genBrand(); ctx.globalAlpha = 0.9; txt(ctx, gb.channel, u * 0.045, u * 0.05, u * 0.028, 800, '#fff', 'left', true); txt(ctx, gb.by, W - u * 0.045, u * 0.05, u * 0.026, 700, '#fff', 'right', true); ctx.globalAlpha = 1; } }
+  else if(g.s.type !== 'office'){ ctx.globalAlpha = 0.9; txt(ctx, office().name, u * 0.045, u * 0.05, u * 0.026, 700, '#fff', 'left', true); txt(ctx, office().tel, W - u * 0.045, u * 0.05, u * 0.026, 700, '#fff', 'right', true); ctx.globalAlpha = 1; }
   ctx.fillStyle = 'rgba(255,255,255,.18)'; ctx.fillRect(0, H - Math.max(4, H * 0.004), W, H);
   ctx.fillStyle = sty.ac; ctx.fillRect(0, H - Math.max(4, H * 0.004), W * Math.min(1, t / tl.total), H);
   ctx.restore();
@@ -3149,7 +3168,7 @@ function pInfo(el){
   $('#svInfoClr', el).onclick = function(e){ e.preventDefault(); if(!confirm('매물 정보 칸을 모두 비울까요? (사진·사무소 정보는 남습니다)')) return; P.info = emptyInfo(); P.propId = ''; P.autoTitle = true; syncSrc(); syncScenes(); touch(true); render(); };
   bindAuto(el);
   bindFoot(el);
-  if(P.kind === 'clip') clipModeBar(el);
+  if(isPK()) clipModeBar(el);
   if(!DANJI) danjiLoad().then(function(){ var dl2 = $('#svDanjiL'); if(dl2) dl2.innerHTML = danjiNames().map(function(n){ return '<option value="' + esc(n) + '">'; }).join(''); }, function(){});
 }
 /* 칸을 고친 뒤 — 화면 전체를 다시 그리지 않고(다음 칸 커서 유지) 숫자·빈칸 안내만 */
@@ -3161,11 +3180,11 @@ function infoBits(el){
 }
 function pPhotos(el){
   var list = P.photos || [], vis = list.filter(function(x){ return !x.off; }), warn = list.filter(function(x){ return x.warn && !x.off; }).length, ai = keysOf('gemini').length > 0;
-  el.innerHTML = '<div class="sv-card"><div class="sv-h"><h3><b>2</b>매물 사진</h3><span class="sv-note">' + list.length + ' / ' + PH_MAX + '</span></div>'
+  el.innerHTML = '<div class="sv-card"><div class="sv-h"><h3><b>2</b>' + (isGen() ? '사진 넣기' : '매물 사진') + '</h3><span class="sv-note">' + list.length + ' / ' + PH_MAX + '</span></div>'
     + '<p class="sv-sub">순서는 상관없습니다. ' + (ai ? '<b>AI로 사진 정리</b>를 누르면 제미나이가 방 종류·화면 글·<b style="color:#e03131">빨간 동그라미</b> 자리·보여 줄 순서를 정합니다.' : '제미나이 열쇠가 있으면 AI가 방 종류·짚을 곳·순서를 정해 줍니다 (왼쪽 🔑 열쇠).') + ' 사진을 누르면 그 자리에 동그라미를 직접 놓을 수 있습니다. 얼굴이나 차량 번호가 보이는 사진은 빼 주세요.</p>'
     + (list.length < PH_MAX ? '<label class="sv-drop" id="svPhDrop">사진을 여기에 끌어 놓거나 눌러서 고르기<span>JPG·PNG·WEBP · 최대 ' + PH_MAX + '장 · 긴 변 1600px 로 줄여 이 브라우저에만 저장</span><input type="file" id="svPhFile" accept="image/*" multiple hidden></label>' : '')
     + '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:12px 0"><button class="sv-btn pri" id="svPhAi"' + (list.length && ai ? '' : ' disabled') + '>✨ AI로 사진 정리' + (list.some(function(x){ return x.ai; }) ? ' (다시)' : '') + '</button>'
-    + '<button class="sv-btn" id="svPhProp">🏢 SJRWS 매물 사진 가져오기</button><span class="sp" style="flex:1"></span>' + (list.length ? '<button class="sv-btn sm" id="svPhClr">🗑 사진 모두 빼기</button>' : '') + '</div>'
+    + (isGen() ? '' : '<button class="sv-btn" id="svPhProp">🏢 SJRWS 매물 사진 가져오기</button>') + '<span class="sp" style="flex:1"></span>' + (list.length ? '<button class="sv-btn sm" id="svPhClr">🗑 사진 모두 빼기</button>' : '') + '</div>'
     + '<div id="svPhOut"></div>'
     + (warn ? '<div class="sv-warn">⚠ 개인정보가 보이는 것 같은 사진이 ' + warn + '장 있습니다 — 빨간 테두리 사진을 확인하고, 필요하면 「빼기」를 눌러 주세요.</div>' : '')
     + '<div class="sv-phg' + (P.fmt === '16:9' ? ' w' : '') + '">' + list.map(function(ph, i){
@@ -3173,7 +3192,7 @@ function pPhotos(el){
         return '<div class="sv-phc' + (ph.off ? ' off' : '') + (ph.warn && !ph.off ? ' warn' : '') + '" data-id="' + esc(ph.id) + '"><div class="th" data-mk title="누르면 그 자리에 빨간 동그라미"><img src="' + ph.src + '" alt="">'
           + (ph.mark ? '<i class="mk" style="left:' + (ph.mark.x * 100) + '%;top:' + (ph.mark.y * 100) + '%;width:' + (ph.mark.r * 200) + '%"></i>' : '')
           + '<span class="n">' + n + (ph.star ? ' ★ 첫 장면' : '') + '</span>' + (ph.warn ? '<span class="w">⚠ ' + esc(ph.warn) + '</span>' : '') + '</div>'
-          + '<div class="bd"><div style="display:flex;gap:4px"><select class="sv-sel sm" data-room>' + ['<option value="">방 종류</option>'].concat(ROOMS.map(function(r){ return '<option' + (ph.room === r ? ' selected' : '') + '>' + r + '</option>'; })).join('') + '</select>'
+          + '<div class="bd"><div style="display:flex;gap:4px"><select class="sv-sel sm" data-room>' + ['<option value="">' + (isGen() ? '공간·주제' : '방 종류') + '</option>'].concat((function(){ var L = (isGen() ? GEN_ROOMS : ROOMS).slice(); if(ph.room && L.indexOf(ph.room) < 0) L.unshift(ph.room); return L; })().map(function(r){ return '<option' + (ph.room === r ? ' selected' : '') + '>' + esc(r) + '</option>'; })).join('') + '</select>'
           + '<input class="sv-in sm" data-what placeholder="짚는 곳" value="' + esc((ph.mark && ph.mark.what) || '') + '"' + (ph.mark ? '' : ' disabled') + '></div>'
           + '<input class="sv-in sm" data-head placeholder="화면 글 (10자)" value="' + esc(ph.head || '') + '"><input class="sv-in sm" data-cap placeholder="사진 설명 한 줄" value="' + esc(ph.cap || '') + '">'
           + '<div class="bt"><button class="sv-btn sm" data-up title="앞으로"' + (i ? '' : ' disabled') + '>◀</button><button class="sv-btn sm" data-dn title="뒤로"' + (i < list.length - 1 ? '' : ' disabled') + '>▶</button>'
@@ -3189,7 +3208,7 @@ function pPhotos(el){
     var b = this; b.disabled = true; b.textContent = '⏳ 제미나이가 사진 ' + list.length + '장을 보는 중… (20~60초)';
     aiPhotos().then(function(w){ render(); toast('사진을 정리했습니다 — 방 종류·화면 글·동그라미를 확인하세요' + (w ? ' (⚠ ' + w + '장 확인 필요)' : '')); }, function(e){ $('#svPhOut', el).innerHTML = '<div class="sv-err">' + esc(e.message) + '</div>'; b.disabled = false; b.textContent = '✨ AI로 사진 정리'; });
   };
-  $('#svPhProp', el).onclick = pickProp;
+  var ppb = $('#svPhProp', el); if(ppb) ppb.onclick = pickProp;
   var cl = $('#svPhClr', el); if(cl) cl.onclick = function(){ if(!confirm('사진을 모두 뺄까요?')) return; P.photos = []; syncScenes(); OUT = null; touch(true); render(); };
   $$('.sv-phc', el).forEach(function(c){
     var ph = phById(c.dataset.id), idx = P.photos.indexOf(ph), chg = function(re){ syncScenes(); OUT = null; MIXKEY = ''; touch(); if(re) render(); };
@@ -3214,7 +3233,7 @@ function pPScript(el){
   syncScenes();
   var have = P.scenes.filter(hasAudio).length, tot = P.scenes.reduce(function(a, s){ return a + (hasAudio(s) ? s.audio.dur : estDur(s.say)); }, 0), eng = textEngine();
   el.innerHTML = '<div class="sv-card"><div class="sv-h"><h3><b>3</b>대본 · 목소리</h3><span class="sv-note">' + P.scenes.length + '장면 · 약 ' + fmtT(tot) + ' · 목소리 ' + have + '/' + P.scenes.length + '</span></div>'
-    + '<p class="sv-sub">장면마다 읽을 말입니다. <b>AI로 대본 쓰기</b>는 매물 정보·사진 정리 결과로 ' + VTYPE[P.vtype].n + '(' + VTYPE[P.vtype].sec + ') 대본을 씁니다. AI 없이 <b>기본 문장</b>으로도 됩니다. 고친 줄은 그 줄만 목소리를 다시 만들면 됩니다.</p>'
+    + '<p class="sv-sub">장면마다 읽을 말입니다. <b>AI로 대본 쓰기</b>는 ' + (isGen() ? '제목·소개할 내용·사진 정리 결과로' : '매물 정보·사진 정리 결과로') + ' ' + VTYPE[P.vtype].n + '(' + VTYPE[P.vtype].sec + ') 대본을 씁니다. AI 없이 <b>기본 문장</b>으로도 됩니다. 고친 줄은 그 줄만 목소리를 다시 만들면 됩니다.</p>'
     + '<div class="sv-f"><label>목소리</label>' + seg('ttsEng', Object.keys(TTS_ENG).map(function(k){ return [k, TTS_ENG[k]]; }), OPT.ttsEngine) + '</div>'
     + (function(){ var vo = voiceOpts(); return '<div class="sv-opts sv-vopt">' + vo.main + '</div>' + (vo.more ? '<details class="sv-more" id="svMore"' + (MORE_OPEN ? ' open' : '') + '><summary><b>' + vo.moreT + '</b><span>' + vo.moreS + '</span></summary><div class="sv-opts sv-vopt" style="margin:10px 0 0">' + vo.more + '</div></details>' : ''); })()
     + '<div class="sv-acts"><button class="sv-btn pri" id="svPsAi"' + (eng ? '' : ' disabled title="AI 열쇠가 필요합니다"') + '>✨ AI로 대본 쓰기' + (eng ? ' (' + ENG_N[eng] + ')' : '') + '</button><button class="sv-btn" id="svPsTpl">기본 문장으로</button>'
@@ -3222,7 +3241,7 @@ function pPScript(el){
     + '<div id="svVoProg"></div><div id="svPsOut"></div>'
     + P.scenes.map(function(s, i){
         var ok = hasAudio(s), ph = s.ph && phById(s.ph);
-        return '<div class="sv-psr" data-i="' + i + '">' + (ph ? '<img src="' + ph.src + '" alt="">' : '<div class="ic">' + ({ hook:'🎬', info:'📐', move:'🔑', price:'₩', office:'🏢' }[s.type] || '•') + '</div>')
+        return '<div class="sv-psr" data-i="' + i + '">' + (ph ? '<img src="' + ph.src + '" alt="">' : '<div class="ic">' + ({ hook:'🎬', info:'📐', move:'🔑', price:'₩', office:'🏢', end:'📺' }[s.type] || '•') + '</div>')
           + '<div class="bd"><div class="lb"><b>' + esc(sceneLabel(s, i)) + '</b>' + (s.type === 'photo' || s.type === 'hook' || s.type === 'info' || s.type === 'move' ? '<input class="sv-in sm" data-h value="' + esc(s.head || '') + '" placeholder="화면 글">' : '') + '</div>'
           + '<textarea class="sv-ta" data-s rows="2">' + esc(s.say || '') + '</textarea>'
           + '<div class="tg">' + (ok ? '<span class="ok">✓ ' + s.audio.dur.toFixed(1) + '초</span> <button class="sv-btn sm" data-play>▶</button>' : s.audio ? '<span class="st">글이 바뀌어 다시 만들어야 합니다</span>' : '<span class="no2">목소리 없음</span>')
@@ -3298,7 +3317,7 @@ function autoBox(){
   if(P.kind === 'clip') return clipAutoBox();
   var miss = missingReq(), n = (P.photos || []).filter(function(x){ return !x.off; }).length;
   return '<div class="sv-auto" id="svAuto">'
-    + (miss.length ? '<button class="sv-btn w sv-miss" id="svMissGo">빈칸 ' + miss.length + '개: ' + esc(miss.slice(0, 4).map(function(k){ return REQ_N[k]; }).join(', ')) + (miss.length > 4 ? ' 등' : '') + ' →</button>' : '<div class="sv-ok" style="margin:0 0 8px">✓ 표시·광고 명시사항이 모두 채워졌습니다</div>')
+    + (isGen() ? '<div class="sv-ok" style="margin:0 0 8px">🎬 일반 사진 — 광고가 아니라 표시·광고 명시사항 없이 「' + esc(genBrand().channel) + '」 · 「' + esc(genBrand().by) + '」만 넣습니다</div>' : miss.length ? '<button class="sv-btn w sv-miss" id="svMissGo">빈칸 ' + miss.length + '개: ' + esc(miss.slice(0, 4).map(function(k){ return REQ_N[k]; }).join(', ')) + (miss.length > 4 ? ' 등' : '') + ' →</button>' : '<div class="sv-ok" style="margin:0 0 8px">✓ 표시·광고 명시사항이 모두 채워졌습니다</div>')
     + '<button class="sv-btn pri big w" id="svAutoGo"' + (n ? '' : ' disabled') + '>✨ AI로 한 번에 만들기</button>'
     + '<button class="sv-btn w" id="svAutoNow" style="margin-top:6px"' + (n ? '' : ' disabled') + '>지금 내용 그대로 영상 만들기</button>'
     + '<div class="sv-note" style="margin-top:6px">' + (n ? '사진 정리 → 대본 → 목소리 → 영상까지 이어서 합니다. 크롬이나 엣지에서 만들어 주세요. 1분 영상에 1~2분쯤 걸립니다.' : '매물 사진을 먼저 넣어 주세요.') + '</div><div id="svAutoOut"></div></div>';
@@ -3790,7 +3809,8 @@ function avaPanel(el){
 var GEN_KIND = ['모델하우스 유니트', '단지 소개', '분양 정보', '부동산 정보', '동네·생활 정보', '기타'];
 var GEN_ROOMS = ['외관', '단지', '조경', '커뮤니티', '모델하우스', '현관', '거실', '주방', '안방', '침실', '욕실', '드레스룸', '발코니', '조망', '주변', '교통', '학교', '상가', '기타'];
 var GEN_BRAND_DEF = { channel:'송도제일부동산TV', by:'BY 송도제일공인중개사 851-6688' };
-function isGen(){ return !!P && P.kind === 'clip' && P.cmode === 'gen'; }
+function isGen(){ return !!P && (P.kind === 'clip' || P.kind === 'photo') && P.cmode === 'gen'; }
+function modeKey(){ return P && P.kind === 'photo' ? 'sdv.pmode' : 'sdv.cmode'; }
 function genBrand(){ return Object.assign({}, GEN_BRAND_DEF, LSX.get('sdv.genbrand', {}) || {}); }
 function GI(){ if(!P.gen) P.gen = { kind:'모델하우스 유니트', title:'', topic:'' }; return P.gen; }
 function genText(){ var G = GI(), b = genBrand(); return ['[영상] ' + G.kind, '[제목] ' + (G.title || ''), G.topic ? '[소개할 내용]\n' + G.topic : '', '[채널] ' + b.channel + ' · ' + b.by].filter(Boolean).join('\n'); }
@@ -3803,13 +3823,14 @@ function genTpl(s){
 function clipModeBar(el){
   var card = $('.sv-card', el); if(!card) return;
   var bar = document.createElement('div'); bar.className = 'sv-vt sv-cmode';
-  bar.innerHTML = '<button data-cm="prop"' + (isGen() ? '' : ' class="on"') + '><b>🏠 매물 영상</b><small>매물 광고 — 매물 정보·표시·광고 명시사항·중개사무소 정보가 들어갑니다</small></button>'
-    + '<button data-cm="gen"' + (isGen() ? ' class="on"' : '') + '><b>🎬 일반 영상</b><small>모델하우스 유니트·단지 소개·분양·부동산 정보 — 광고가 아니라 채널명과 「BY 송도제일공인중개사」만</small></button>';
+  var ph = P.kind === 'photo';
+  bar.innerHTML = '<button data-cm="prop"' + (isGen() ? '' : ' class="on"') + '><b>🏠 매물 ' + (ph ? '사진' : '영상') + '</b><small>매물 광고 — 매물 정보·표시·광고 명시사항·중개사무소 정보가 들어갑니다</small></button>'
+    + '<button data-cm="gen"' + (isGen() ? ' class="on"' : '') + '><b>🎬 일반 ' + (ph ? '사진' : '영상') + '</b><small>모델하우스 유니트·단지 소개·분양·부동산 정보 — 광고가 아니라 채널명과 「BY 송도제일공인중개사」만</small></button>';
   card.insertBefore(bar, card.firstChild);
   $$('[data-cm]', bar).forEach(function(b){ b.onclick = function(){
     var m = b.dataset.cm; if((m === 'gen') === isGen()) return;
-    P.cmode = m; LSX.set('sdv.cmode', m);
-    P.scenes = (P.scenes || []).filter(function(x){ return x.key && (x.key === 'hook' || x.key.indexOf('sg:') === 0); });
+    P.cmode = m; LSX.set(modeKey(), m);
+    P.scenes = (P.scenes || []).filter(function(x){ return x.key && (x.key === 'hook' || x.key.indexOf('sg:') === 0 || x.key.indexOf('ph:') === 0); });
     P.scenes.forEach(function(x){ if(x.key === 'hook' && x.tpl){ x.say = ''; x.headEd = false; } });
     if(m === 'gen'){ var G = GI(); if(!G.title && P.title && !P.autoTitle) G.title = P.title; P.title = G.title; P.autoTitle = false; }
     else { P.autoTitle = true; }
@@ -3832,9 +3853,9 @@ function pGenInfo(el){
     + '<label class="sv-tg"><input type="checkbox" id="svBoth"' + (P.both ? ' checked' : '') + '> 가로 16:9 영상도 같이 만들기 (기본은 세로 9:16)</label>'
     + '<label class="sv-tg"><input type="checkbox" id="svSfx"' + (P.sfx ? ' checked' : '') + '> 효과음 넣기</label>'
     + autoBox()
-    + foot('', 'cclips', '다음: 영상 넣기 →', !!nv(G.title)) + '</div>';
+    + (P.kind === 'photo' ? foot('', 'ppics', '다음: 사진 넣기 →', !!nv(G.title)) : foot('', 'cclips', '다음: 영상 넣기 →', !!nv(G.title))) + '</div>';
   clipModeBar(el);
-  var upd = function(){ P.title = G.title; P.autoTitle = false; syncSrc(); OUT = null; touch(); var n = $('.sv-h .sv-note', el); if(n) n.textContent = nv(G.title) ? '✓ 제목 있음' : '제목을 넣어 주세요'; var nx = $('.sv-foot [data-go="cclips"]', el); if(nx) nx.disabled = !nv(G.title); };
+  var upd = function(){ P.title = G.title; P.autoTitle = false; syncSrc(); OUT = null; touch(); var n = $('.sv-h .sv-note', el); if(n) n.textContent = nv(G.title) ? '✓ 제목 있음' : '제목을 넣어 주세요'; var nx = $('.sv-foot [data-go="cclips"], .sv-foot [data-go="ppics"]', el); if(nx) nx.disabled = !nv(G.title); };
   bindChips(el, 'gkind', function(v){ G.kind = v; P.scenes.forEach(function(x){ if(x.key === 'hook' && x.tpl) x.say = ''; }); syncSrc(); syncScenes(); OUT = null; touch(); });
   $('#svGTitle', el).oninput = function(){ G.title = this.value; upd(); };
   $('#svGTitle', el).onchange = function(){ P.scenes.forEach(function(x){ if(x.key === 'hook' && x.tpl){ x.say = ''; if(!x.headEd) x.head = ''; } }); syncScenes(); touch(); };
@@ -3861,8 +3882,8 @@ function genHookOverlay(ctx, s, local, W, H, sty){
 }
 function drawGenEnd(ctx, tg, local, W, H, sty){
   var b = genBrand(), V = H > W, u = V ? W : H, s = tg.s;
-  var cv = P.cover && phImg(P.cover);
-  if(cv){ var bb = blurBg(P.cover, W, H); if(bb) ctx.drawImage(bb, 0, 0, W, H); ctx.fillStyle = 'rgba(8,16,32,.55)'; ctx.fillRect(0, 0, W, H); }
+  var cvp = cover(), cv = cvp && phImg(cvp);
+  if(cv){ var bb = blurBg(cvp, W, H); if(bb) ctx.drawImage(bb, 0, 0, W, H); ctx.fillStyle = 'rgba(8,16,32,.55)'; ctx.fillRect(0, 0, W, H); }
   else { var g1 = ctx.createLinearGradient(0, 0, W * 0.4, H); g1.addColorStop(0, sty.g1); g1.addColorStop(1, sty.g2); ctx.fillStyle = g1; ctx.fillRect(0, 0, W, H); }
   var a = clamp(local / 0.4, 0, 1), sc = 0.9 + 0.1 * ease(a), cy = H * (V ? 0.4 : 0.42);
   ctx.save(); ctx.globalAlpha = a; ctx.translate(W / 2, cy); ctx.scale(sc, sc);
@@ -4248,7 +4269,7 @@ function fromProps(){
 function paintSector(){
   var el = $('#svSector'); if(!el) return;
   el.innerHTML = '<button data-sec="script"' + (SECTOR === 'script' ? ' class="on"' : '') + '><span class="ic">📝</span><span><b>대본에서 영상 만들기</b><small>원고 → 대본 → AI 그림·내 사진 → 음성 → 유튜브·쇼츠 영상</small></span></button>'
-    + '<button data-sec="photo"' + (SECTOR === 'photo' ? ' class="on"' : '') + '><span class="ic">📸</span><span><b>사진에서 영상 만들기</b><small>매물 사진 + 매물 정보 → 홍보형·설명형 매물 쇼츠 (표시·광고 명시사항 포함)</small></span></button>'
+    + '<button data-sec="photo"' + (SECTOR === 'photo' ? ' class="on"' : '') + '><span class="ic">📸</span><span><b>사진에서 영상 만들기</b><small>매물 사진(광고) · 일반 사진(모델하우스·단지·정보) → 홍보형·설명형 쇼츠</small></span></button>'
     + '<button data-sec="clip"' + (SECTOR === 'clip' ? ' class="on"' : '') + '><span class="ic">🎥</span><span><b>영상에서 영상 만들기</b><small>매물 영상(광고) · 일반 영상(모델하우스·단지·정보) → AI(챗GPT·제미나이·그록) 분석 → 멘트·효과·프로필/캐릭터 → 쇼츠</small></span></button>';
   $$('[data-sec]', el).forEach(function(b){ b.onclick = function(){
     var k = b.dataset.sec; if(k === SECTOR) return; stopPreview(); setSector(k);
@@ -4257,7 +4278,7 @@ function paintSector(){
     LSX.set('sdv.cur', P.id); OUT = null; OUTS = {}; render(); paintList(); try{ window.scrollTo(0, 0); }catch(e){}
   }; });
   var br = $('#svBrand');
-  if(br) br.innerHTML = SECTOR === 'photo' ? '📸 사진에서 영상 만들기 <small>매물 정보 → 매물 사진 → 대본·목소리 → 영상 · 사진만 넣으면 매물 영상이 완성됩니다</small>' : SECTOR === 'clip' ? (isGen() ? '🎥 영상에서 영상 만들기 · 🎬 일반 영상 <small>영상 정보 → 영상 넣기 → AI 분석·편집표 → 목소리 → 영상 · 모델하우스·단지·정보 영상에 멘트·효과·채널 표시를 입힙니다</small>' : '🎥 영상에서 영상 만들기 · 🏠 매물 영상 <small>매물 정보 → 매물 영상 → AI 분석·편집표 → 목소리 → 영상 · 찍은 영상에 멘트·효과·명시사항을 입힙니다</small>') : '🎬 비디오 스튜디오 <small>원고 → 대본 → 화면 → 음성 → 영상 · 유튜브·쇼츠용 MP4</small>';
+  if(br) br.innerHTML = SECTOR === 'photo' ? (isGen() ? '📸 사진에서 영상 만들기 · 🎬 일반 사진 <small>영상 정보 → 사진 넣기 → 대본·목소리 → 영상 · 모델하우스·단지·정보 사진에 멘트·효과·채널 표시를 입힙니다</small>' : '📸 사진에서 영상 만들기 · 🏠 매물 사진 <small>매물 정보 → 매물 사진 → 대본·목소리 → 영상 · 사진만 넣으면 매물 영상이 완성됩니다</small>') : SECTOR === 'clip' ? (isGen() ? '🎥 영상에서 영상 만들기 · 🎬 일반 영상 <small>영상 정보 → 영상 넣기 → AI 분석·편집표 → 목소리 → 영상 · 모델하우스·단지·정보 영상에 멘트·효과·채널 표시를 입힙니다</small>' : '🎥 영상에서 영상 만들기 · 🏠 매물 영상 <small>매물 정보 → 매물 영상 → AI 분석·편집표 → 목소리 → 영상 · 찍은 영상에 멘트·효과·명시사항을 입힙니다</small>') : '🎬 비디오 스튜디오 <small>원고 → 대본 → 화면 → 음성 → 영상 · 유튜브·쇼츠용 MP4</small>';
 }
 
 /* ───────── 작업 파일 · 열쇠 ───────── */
