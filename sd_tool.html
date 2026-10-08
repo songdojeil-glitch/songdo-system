@@ -151,16 +151,18 @@ a.sjb-btn.on::after,span.sjb-btn.on::after{background:linear-gradient(100deg,rgb
 <div id="photo-wrap" class="sjb-zoom"><div id="photo-root"></div></div>
 <div id="card-wrap" class="sjb-zoom"><div id="card-root"></div></div>
 <div id="qr-wrap" class="sjb-zoom"><div id="qr-root"></div></div>
+<div id="trace-wrap" class="sjb-zoom"><div id="trace-root"></div></div>
 <script>
 (function(){
   'use strict';
-  var SD_VER = '2026.10.07-3';
+  var SD_VER = '2026.10.08-1';
   var TABS = [
     [20, '🧰 전체 도구'],
     ['calc', '🧮 부동산 계산기'],
     ['photo', '📸 프로필 사진&캐릭터'],
     ['card', '💳 전자명함'],
     ['qr', '🔳 QR코드'],
+    ['trace', '🗺 평면도 트레이서'],
     [26, '🤝 직방 가격 제안'],
     [27, '🔎 공시가격 조회'],
     [24, '🏗️ 건축물대장'],
@@ -177,7 +179,7 @@ a.sjb-btn.on::after,span.sjb-btn.on::after{background:linear-gradient(100deg,rgb
     if(me && se.name) me.innerHTML = '<b>' + String(se.name).replace(/[<>&"]/g, '') + '</b>' + (se.role ? '<span class="rl">' + (RL[se.role] || String(se.role).replace(/[<>&"]/g, '')) + '</span>' : '') + '<a href="sd_hub.html" style="color:#3b5bdb;text-decoration:none">허브</a>';
   }catch(e){}
   //  탭 열쇠: 숫자(데이터관리 도구 모드 탭) 또는 'calc'(이 파일 안의 부동산 계산기)
-  function key(n){ if(n === 'calc' || n === 'video' || n === 'photo' || n === 'card' || n === 'qr') return n; var k = parseInt(n, 10); return isNaN(k) ? null : k; }
+  function key(n){ if(n === 'calc' || n === 'video' || n === 'photo' || n === 'card' || n === 'qr' || n === 'trace') return n; var k = parseInt(n, 10); return isNaN(k) ? null : k; }
   function ok(n){ n = key(n); return TABS.some(function(t){ return t[0] === n; }); }
   function paint(){
     document.getElementById('tl-tabs').innerHTML = TABS.map(function(t){
@@ -189,6 +191,7 @@ a.sjb-btn.on::after,span.sjb-btn.on::after{background:linear-gradient(100deg,rgb
     document.body.classList.toggle('photo-on', CUR === 'photo');
     document.body.classList.toggle('card-on', CUR === 'card');
     document.body.classList.toggle('qr-on', CUR === 'qr');
+    document.body.classList.toggle('trace-on', CUR === 'trace');
   }
   //  도구 화면 안에서 탭이 바뀌면(전체 도구 카드를 누른 경우 등) 여기도 따라 바꾼다
   window.sdToolTab = function(n, extra){
@@ -210,6 +213,7 @@ a.sjb-btn.on::after,span.sjb-btn.on::after{background:linear-gradient(100deg,rgb
     if(n === 'photo'){ window.sdToolTab('photo'); if(window.sdPhoto) window.sdPhoto.go(); return; }
     if(n === 'card'){ window.sdToolTab('card'); if(window.sdCard) window.sdCard.go(); return; }
     if(n === 'qr'){ window.sdToolTab('qr'); if(window.sdQr) window.sdQr.go(); return; }
+    if(n === 'trace'){ window.sdToolTab('trace'); traceGo(); return; }
     if(n === 'video'){ location.href = 'sd_video.html'; return; }
     var w = null; try{ w = fr.contentWindow; }catch(e){}
     if(FRAME_N && w && typeof w.sw === 'function' && w.document && w.document.getElementById('tc' + n)){ window.sdToolTab(n); w.sw(n); try{ w.scrollTo(0, 0); }catch(e){} return; }
@@ -217,6 +221,18 @@ a.sjb-btn.on::after,span.sjb-btn.on::after{background:linear-gradient(100deg,rgb
     loadFrame(n);
   };
   fr.addEventListener('load', function(){ setTimeout(function(){ ld.style.display = 'none'; }, 300); });
+  /* 🗺 평면도 트레이서 — 따로 된 파일(sd_floortrace.js · 영상에서 영상 만들기도 같이 씀)을 처음 열 때 불러온다 */
+  var TRACE_M = null;
+  function traceGo(){
+    if(TRACE_M) return;
+    var root = document.getElementById('trace-root');
+    if(window.sdTrace){ TRACE_M = window.sdTrace.mount(root); return; }
+    root.innerHTML = '<div style="padding:40px;text-align:center;color:#868e96">🗺 평면도 트레이서 불러오는 중…</div>';
+    var sc = document.createElement('script'); sc.src = 'sd_floortrace.js?v=' + SD_VER;
+    sc.onload = function(){ TRACE_M = window.sdTrace.mount(root); };
+    sc.onerror = function(){ root.innerHTML = '<div style="padding:40px;text-align:center;color:#c92a2a">sd_floortrace.js 를 불러오지 못했습니다 — 깃허브에 같이 올렸는지 확인해 주세요</div>'; };
+    document.head.appendChild(sc);
+  }
   var sp = new URLSearchParams(location.search), q = key(sp.get('tab'));
   //  🎬 영상 만들기는 따로 된 프로그램(sd_video.html — 🎬 영상)이 되었다 — 예전 주소·기억은 그리로
   if(q === 'video'){ location.replace('sd_video.html'); return; }
@@ -229,6 +245,7 @@ a.sjb-btn.on::after,span.sjb-btn.on::after{background:linear-gradient(100deg,rgb
     if(q === 'photo'){ var pm = new URLSearchParams(location.search).get('m') || ''; window.sdToolTab('photo'); window.sdPhoto && window.sdPhoto.go(pm); return; }
     if(q === 'card'){ window.sdToolTab('card'); window.sdCard && window.sdCard.go(); return; }
     if(q === 'qr'){ window.sdToolTab('qr'); window.sdQr && window.sdQr.go(); return; }
+    if(q === 'trace'){ window.sdToolTab('trace'); traceGo(); return; }
     if(q === 'calc'){ var c = sp.get('c'); window.sdToolTab('calc', c ? '&c=' + encodeURIComponent(c) : ''); window.sdCalc && window.sdCalc.go(c || 'home', true); }
     else { window.sdToolTab(q); loadFrame(q); }
   };
@@ -2303,6 +2320,10 @@ textarea.ec-in{resize:vertical;min-height:84px;line-height:1.6}
      · 주소로 열기: sd_tool.html?tab=qr
      ═════════════════════════════════════════════════════════════════ -->
 <style>
+#trace-wrap{flex:1 1 auto;min-height:0;overflow:auto;display:none;scrollbar-gutter:stable both-edges;background:#f6f7f9}
+body.trace-on .tl-wrap{display:none}
+body.trace-on #trace-wrap{display:block}
+#trace-root{max-width:2560px;margin:0 auto;padding:16px 20px 60px}
 #qr-wrap{flex:1 1 auto;min-height:0;overflow:auto;display:none;scrollbar-gutter:stable both-edges;background:#fafaf8}
 body.qr-on .tl-wrap{display:none}
 body.qr-on #qr-wrap{display:block}
