@@ -155,7 +155,7 @@ a.sjb-btn.on::after,span.sjb-btn.on::after{background:linear-gradient(100deg,rgb
 <script>
 (function(){
   'use strict';
-  var SD_VER = '2026.10.08-1';
+  var SD_VER = '2026.10.08-2';
   var TABS = [
     [20, '🧰 전체 도구'],
     ['calc', '🧮 부동산 계산기'],
@@ -1981,7 +1981,7 @@ textarea.ec-in{resize:vertical;min-height:84px;line-height:1.6}
   function toast(m, bad){ var t = document.createElement('div'); t.className = 'ec-toast' + (bad ? ' bad' : ''); t.textContent = m; document.body.appendChild(t); setTimeout(function(){ t.remove(); }, bad ? 5000 : 2400); }
   function author(){ var a = {}; try{ a = JSON.parse(localStorage.getItem('sdbs.author') || '{}') || {}; }catch(e){} return Object.assign({ name:'문형은', title:'대표 공인중개사', office:'송도제일공인중개사사무소', phone:'032-851-6688', addr:'인천 연수구 해돋이로 168, 혜인프라자 1층 103호' }, a); }
   function blank(){ return { id:uid(), style:'profile', color:'#3b4fd8', photo:'', logo:'', banner:'', name:'', company:'', dept:'', position:'', tags:['', '', ''], intro:'',
-    tel1:{ k:'휴대전화', v:'' }, tel2:{ k:'사무실', v:'' }, email:'', web:'', kakao:'', addr:'', place:'', regno:'', links:[], qr:false, at:Date.now() }; }
+    tel1:{ k:'휴대전화', v:'' }, tel2:{ k:'사무실', v:'' }, email:'', web:'', kakao:'', addr:'', place:'', regno:'', links:[], qr:false, logoSz:'l', logoLine:true, at:Date.now() }; }
   function cur(){ return DB.cards.find(function(c){ return c.id === DB.cur; }) || DB.cards[0]; }
   function load(){
     try{ var v = JSON.parse(localStorage.getItem(LS) || 'null'); if(v && Array.isArray(v.cards) && v.cards.length){ DB = v; return; } }catch(e){}
@@ -2007,6 +2007,42 @@ textarea.ec-in{resize:vertical;min-height:84px;line-height:1.6}
   function rr(x, X, Y, W, H, r){ x.beginPath(); x.moveTo(X + r, Y); x.arcTo(X + W, Y, X + W, Y + H, r); x.arcTo(X + W, Y + H, X, Y + H, r); x.arcTo(X, Y + H, X, Y, r); x.arcTo(X, Y, X + W, Y, r); x.closePath(); }
   function cover(x, im, X, Y, W, H){ var k = Math.max(W / im.naturalWidth, H / im.naturalHeight), w = im.naturalWidth * k, h = im.naturalHeight * k; x.save(); x.beginPath(); x.rect(X, Y, W, H); x.clip(); x.drawImage(im, X + (W - w) / 2, Y + (H - h) / 2, w, h); x.restore(); }
   function contain(x, im, X, Y, W, H){ var k = Math.min(W / im.naturalWidth, H / im.naturalHeight), w = im.naturalWidth * k, h = im.naturalHeight * k; x.drawImage(im, X + (W - w) / 2, Y + (H - h) / 2, w, h); }
+  /* 로고 (2026-10-08) — 로고 파일의 투명·흰 여백을 잘라 내고, 가로·세로 비율에 맞춰 「넓이」가 같게 키운다
+     (정사각 앱 아이콘형 로고도 가로로 긴 글자형 로고도 비슷한 무게로 보이게) · 크기 4단계 c.logoSz (기본 크게) */
+  var LOGO_K = { s:0.75, m:1, l:1.3, xl:1.6 }, LOGO_N = [['s', '작게'], ['m', '보통'], ['l', '크게'], ['xl', '아주 크게']], TRIM = {};
+  function trimLogo(im){
+    if(!im) return null; var key = im.src; if(TRIM[key]) return TRIM[key];
+    var w = im.naturalWidth, h = im.naturalHeight, out = im;
+    try{
+      var c = document.createElement('canvas'); c.width = w; c.height = h; var x = c.getContext('2d'); x.drawImage(im, 0, 0); var d = x.getImageData(0, 0, w, h).data;
+      var at = function(i){ return [d[i], d[i + 1], d[i + 2], d[i + 3]]; }, cs = [at(0), at((w - 1) * 4), at((h - 1) * w * 4), at(((h - 1) * w + w - 1) * 4)];
+      var clear = cs.every(function(p){ return p[3] < 16; }), white = !clear && cs.every(function(p){ return p[3] > 240 && p[0] > 242 && p[1] > 242 && p[2] > 242; });
+      if(clear || white){
+        var x0 = w, y0 = h, x1 = -1, y1 = -1;
+        for(var yy = 0; yy < h; yy++) for(var xx = 0; xx < w; xx++){ var i = (yy * w + xx) * 4, ink = clear ? d[i + 3] > 16 : (d[i] < 236 || d[i + 1] < 236 || d[i + 2] < 236); if(ink){ if(xx < x0) x0 = xx; if(xx > x1) x1 = xx; if(yy < y0) y0 = yy; if(yy > y1) y1 = yy; } }
+        if(x1 > x0 && y1 > y0 && ((x1 - x0 + 1) < w * 0.97 || (y1 - y0 + 1) < h * 0.97)){
+          var p = Math.round(Math.max(x1 - x0, y1 - y0) * 0.02), cw = x1 - x0 + 1 + p * 2, ch = y1 - y0 + 1 + p * 2, o = document.createElement('canvas'); o.width = cw; o.height = ch;
+          o.getContext('2d').drawImage(c, x0 - p, y0 - p, cw, ch, 0, 0, cw, ch); out = o;
+        }
+      }
+    }catch(e){}
+    TRIM[key] = out; return out;
+  }
+  function iw(im){ return im.naturalWidth || im.width; } function ih(im){ return im.naturalHeight || im.height; }
+  /* base = 「보통」일 때 정사각 로고 한 변(px), maxW·maxH 넘지 않게 */
+  function logoBox(c, lg, base, maxW, maxH){ var r = iw(lg) / ih(lg), a = Math.pow(base * (LOGO_K[c.logoSz] || LOGO_K.l), 2), w = Math.sqrt(a * r), h = Math.sqrt(a / r), k = Math.min(1, maxW / w, maxH / h); return { w:w * k, h:h * k }; }
+  /* 흰 테두리 (c.logoLine, 기본 켬) — 로고 모양(투명 부분 제외)을 따라 흰 선을 두르고 옅은 그림자를 깔아 어떤 바탕에서도 또렷하게 */
+  var LOGO_LINE = true;
+  function drawLogo(x, lg, X, Y, b, shadow){
+    x.save(); x.imageSmoothingQuality = 'high';
+    if(LOGO_LINE){
+      var t = Math.max(4, Math.round(Math.min(b.w, b.h) * 0.04)), pad = t + 2, sc = document.createElement('canvas'); sc.width = Math.ceil(b.w + pad * 2); sc.height = Math.ceil(b.h + pad * 2);
+      var sx = sc.getContext('2d'); for(var a = 0; a < 24; a++){ var ang = a / 24 * Math.PI * 2; sx.drawImage(lg, pad + Math.cos(ang) * t, pad + Math.sin(ang) * t, b.w, b.h); } sx.drawImage(lg, pad, pad, b.w, b.h);
+      sx.globalCompositeOperation = 'source-in'; sx.fillStyle = '#ffffff'; sx.fillRect(0, 0, sc.width, sc.height);
+      x.save(); x.shadowColor = shadow ? 'rgba(0,0,0,.4)' : 'rgba(0,0,0,.22)'; x.shadowBlur = shadow ? 18 : 10; x.shadowOffsetY = shadow ? 4 : 2; x.drawImage(sc, X - pad, Y - pad); x.restore();
+    } else if(shadow){ x.shadowColor = 'rgba(0,0,0,.35)'; x.shadowBlur = 18; x.shadowOffsetY = 4; }
+    x.drawImage(lg, X, Y, b.w, b.h); x.restore();
+  }
   function person(x, cx, cy, r, col){ x.save(); x.strokeStyle = col; x.lineWidth = r * 0.09; x.lineCap = 'round'; x.beginPath(); x.arc(cx, cy - r * 0.18, r * 0.24, 0, Math.PI * 2); x.stroke(); x.beginPath(); x.arc(cx, cy + r * 0.52, r * 0.42, Math.PI * 1.12, Math.PI * 1.88); x.stroke(); x.restore(); }
   function circlePhoto(x, im, cx, cy, r, bg, ring, ringW){
     x.save(); if(ring){ x.beginPath(); x.arc(cx, cy, r + ringW, 0, Math.PI * 2); x.fillStyle = ring; x.fill(); }
@@ -2045,7 +2081,8 @@ textarea.ec-in{resize:vertical;min-height:84px;line-height:1.6}
   /* 명함 그림 — 폭 1080, 높이는 내용만큼 */
   function draw(c, qrCanvas){
     return Promise.all([img(c.photo), img(c.logo), img(c.banner)]).then(function(a){
-      var ph = a[0], lg = a[1], bn = a[2], W = 1080, M = 72, cv = document.createElement('canvas'); cv.width = W; cv.height = 4200;
+      LOGO_LINE = c.logoLine !== false;
+      var ph = a[0], lg = trimLogo(a[1]), bn = a[2], W = 1080, M = 72, cv = document.createElement('canvas'); cv.width = W; cv.height = 4200;
       var x = cv.getContext('2d'), col = c.color || '#3b4fd8', on = onC(col), dark = c.style === 'dark', bg = dark ? '#17171c' : '#ffffff', ink = dark ? '#f1f3f5' : '#1a1a1a', sub = dark ? '#adb5bd' : '#6b7280', ac = dark ? (lum(col) < 0.12 ? '#c9a96e' : shade(col, 0.35)) : accent(c);
       var name = c.name || '이름', pos = [c.position, c.dept].filter(Boolean).join(' · '), comp = c.company || '', tags = tagList(c), y = 0, tagsDone = false;
       x.fillStyle = bg; x.fillRect(0, 0, W, cv.height);
@@ -2054,19 +2091,20 @@ textarea.ec-in{resize:vertical;min-height:84px;line-height:1.6}
         var gg = x.createLinearGradient(0, H * 0.55, 0, H); gg.addColorStop(0, 'rgba(0,0,0,0)'); gg.addColorStop(1, 'rgba(0,0,0,.45)'); x.fillStyle = gg; x.fillRect(0, H * 0.55, W, H * 0.45);
         x.fillStyle = col; x.globalAlpha = 0.92; rr(x, 48, H - 300, W - 96, 252, 28); x.fill(); x.globalAlpha = 1;
         text(x, name, 96, H - 190, 76, 800, on, 'left', W - 192); text(x, [pos, comp].filter(Boolean).join('  |  '), 96, H - 112, 34, 500, on, 'left', W - 192);
-        if(lg) contain(x, lg, W - 250, 48, 200, 110);
+        if(lg){ var lbF = logoBox(c, lg, 130, 440, 230); drawLogo(x, lg, W - 52 - lbF.w, 52, lbF, true); }
         y = H + 64;
       } else if(c.style === 'frame'){
         x.fillStyle = shade(col, 0.88); x.fillRect(0, 0, W, 1060);
         x.fillStyle = col; rr(x, 64, 64, W - 128, W - 128, 24); x.fill();
         var fp = 22; if(ph) cover(x, ph, 64 + fp, 64 + fp, W - 128 - fp * 2, W - 128 - fp * 2); else { x.fillStyle = shade(col, 0.15); x.fillRect(64 + fp, 64 + fp, W - 128 - fp * 2, W - 128 - fp * 2); person(x, W / 2, W / 2, 260, on); }
         x.fillStyle = col; x.fillRect(0, W - 40, W, 250);
-        text(x, name, M, W + 80, 72, 800, on, 'left', W - M * 2 - (lg ? 220 : 0)); text(x, [pos, comp].filter(Boolean).join('  |  '), M, W + 148, 32, 500, on, 'left', W - M * 2);
-        if(lg) contain(x, lg, W - M - 190, W + 10, 190, 120);
+        var lbR = lg ? logoBox(c, lg, 120, 400, 200) : { w:0, h:0 };
+        text(x, name, M, W + 80, 72, 800, on, 'left', W - M * 2 - (lg ? lbR.w + 30 : 0)); text(x, [pos, comp].filter(Boolean).join('  |  '), M, W + 148, 32, 500, on, 'left', W - M * 2 - (lg ? lbR.w + 30 : 0));
+        if(lg) drawLogo(x, lg, W - M - lbR.w, W - 40 + (250 - lbR.h) / 2, lbR);
         y = W + 210 + 64;
       } else if(c.style === 'block'){
         var BH = 600; x.fillStyle = col; x.fillRect(0, 0, W, BH);
-        if(lg) contain(x, lg, M, 64, 240, 110); else if(comp){ text(x, comp, M, 120, 32, 700, on, 'left', W - 520); }
+        if(lg){ var lbB = logoBox(c, lg, 125, 520, 190); drawLogo(x, lg, M, 56, lbB); } else if(comp){ text(x, comp, M, 120, 32, 700, on, 'left', W - 520); }
         circlePhoto(x, ph, W - M - 170, 250, 170, shade(col, 0.2), on === '#ffffff' ? 'rgba(255,255,255,.85)' : 'rgba(0,0,0,.25)', 8);
         text(x, name, M, 420, 78, 800, on, 'left', W - M * 2);
         if(pos) text(x, pos, M, 482, 34, 500, on, 'left', W - M * 2);
@@ -2074,30 +2112,45 @@ textarea.ec-in{resize:vertical;min-height:84px;line-height:1.6}
         y = BH + 64;
       } else if(c.style === 'cover'){
         var CH = 440; if(bn) cover(x, bn, 0, 0, W, CH); else { var g2 = x.createLinearGradient(0, 0, W, CH); g2.addColorStop(0, shade(col, 0.2)); g2.addColorStop(1, shade(col, -0.2)); x.fillStyle = g2; x.fillRect(0, 0, W, CH); }
-        if(lg) contain(x, lg, W - 260, 40, 210, 110);
+        if(lg){ var lbC = logoBox(c, lg, 130, 460, 220); drawLogo(x, lg, W - 48 - lbC.w, 44, lbC, true); }
         circlePhoto(x, ph, M + 150, CH, 150, col, '#ffffff', 10);
         text(x, name, M, CH + 250, 76, 800, ink, 'left', W - M * 2); text(x, [pos, comp].filter(Boolean).join('  |  '), M, CH + 314, 33, 500, sub, 'left', W - M * 2);
         y = CH + 380;
       } else if(c.style === 'minimal'){
-        x.fillStyle = ac; x.fillRect(M, 110, 96, 12);
-        if(lg) contain(x, lg, W - M - 220, 70, 220, 110);
-        var mw = W - M * 2 - (ph ? 200 : 0); text(x, name, M, 260, 92, 800, ink, 'left', mw); text(x, pos, M, 330, 36, 500, sub, 'left', mw); text(x, comp, M, 384, 34, 700, ac, 'left', mw);
-        if(ph){ circlePhoto(x, ph, W - M - 80, 300, 80, '#f1f3f5'); }
-        y = 450;
+        if(lg){
+          /* 로고가 있으면 위쪽에 왼쪽 로고 · 오른쪽 사진을 나란히, 그 아래 이름 (2026-10-08) */
+          var lbM = logoBox(c, lg, 150, 520, 260), rowY = 70 + Math.max(lbM.h, 250) / 2;
+          drawLogo(x, lg, M, rowY - lbM.h / 2, lbM);
+          circlePhoto(x, ph, W - M - 125, rowY, 125, '#f1f3f5', ac, 5);
+          var ny = rowY + Math.max(lbM.h, 250) / 2 + 60;
+          x.fillStyle = ac; x.fillRect(M, ny, 96, 12);
+          text(x, name, M, ny + 130, 92, 800, ink, 'left', W - M * 2); text(x, pos, M, ny + 200, 36, 500, sub, 'left', W - M * 2); text(x, comp, M, ny + 254, 34, 700, ac, 'left', W - M * 2);
+          y = ny + 320;
+        } else {
+          x.fillStyle = ac; x.fillRect(M, 110, 96, 12);
+          var mw = W - M * 2 - (ph ? 200 : 0); text(x, name, M, 260, 92, 800, ink, 'left', mw); text(x, pos, M, 330, 36, 500, sub, 'left', mw); text(x, comp, M, 384, 34, 700, ac, 'left', mw);
+          if(ph){ circlePhoto(x, ph, W - M - 80, 300, 80, '#f1f3f5'); }
+          y = 450;
+        }
       } else if(c.style === 'dark'){
         var ring = lum(col) < 0.12 ? '#c9a96e' : col;
-        var top = lg ? 90 : 0;
-        x.fillStyle = '#202027'; rr(x, 40, 40, W - 80, 760 + top, 36); x.fill();
-        if(lg) contain(x, lg, W / 2 - 100, 64, 200, 76);
-        circlePhoto(x, ph, W / 2, 330 + top, 170, shade(ring, -0.1), ring, 8);
+        /* 로고가 있으면 왼쪽 로고 · 가운데 금색 세로선 · 오른쪽 사진으로 나란히 (2026-10-08) */
+        var lbD = lg ? logoBox(c, lg, 165, 390, 300) : null, top = 0;
+        x.fillStyle = '#202027'; rr(x, 40, 40, W - 80, 760, 36); x.fill();
+        if(lbD){
+          drawLogo(x, lg, W * 0.29 - lbD.w / 2, 300 - lbD.h / 2, lbD);
+          var dg = x.createLinearGradient(0, 170, 0, 430); dg.addColorStop(0, 'rgba(0,0,0,0)'); dg.addColorStop(0.5, ring); dg.addColorStop(1, 'rgba(0,0,0,0)'); x.fillStyle = dg; x.globalAlpha = 0.7; x.fillRect(W / 2 - 1.5, 170, 3, 260); x.globalAlpha = 1;
+          circlePhoto(x, ph, W * 0.71, 300, 165, shade(ring, -0.1), ring, 8);
+        } else circlePhoto(x, ph, W / 2, 330, 170, shade(ring, -0.1), ring, 8);
         text(x, name, W / 2, 610 + top, 80, 800, '#ffffff', 'center', W - 200); text(x, [pos, comp].filter(Boolean).join('  |  '), W / 2, 676 + top, 33, 500, '#adb5bd', 'center', W - 200);
         if(tags.length){ chips(x, tags, 100, 712 + top, W - 200, 'rgba(255,255,255,.08)', ring, 26, true); tagsDone = true; }
         y = 860 + top;
       } else {   /* profile */
-        if(lg) contain(x, lg, W - M - 200, 56, 200, 90);
-        circlePhoto(x, ph, M + 120, 250, 120, col);
-        text(x, name, M + 280, 240, 72, 800, ink, 'left', W - M * 2 - 280); text(x, pos, M + 280, 298, 32, 500, sub, 'left', W - M * 2 - 280); text(x, comp, M + 280, 346, 30, 700, ac, 'left', W - M * 2 - 280);
-        y = 430; if(tags.length){ y += chips(x, tags, M, y, W - M * 2, shade(col, lum(col) > 0.75 ? -0.06 : 0.88), ac, 28, false) + 44; tagsDone = true; }
+        var lbP = lg ? logoBox(c, lg, 120, 440, 200) : null, dp = lbP ? Math.max(0, 56 + lbP.h + 24 - 130) : 0;
+        if(lbP) drawLogo(x, lg, W - M - lbP.w, 56, lbP);
+        circlePhoto(x, ph, M + 120, 250 + dp, 120, col);
+        text(x, name, M + 280, 240 + dp, 72, 800, ink, 'left', W - M * 2 - 280); text(x, pos, M + 280, 298 + dp, 32, 500, sub, 'left', W - M * 2 - 280); text(x, comp, M + 280, 346 + dp, 30, 700, ac, 'left', W - M * 2 - 280);
+        y = 430 + dp; if(tags.length){ y += chips(x, tags, M, y, W - M * 2, shade(col, lum(col) > 0.75 ? -0.06 : 0.88), ac, 28, false) + 44; tagsDone = true; }
         x.fillStyle = dark ? 'rgba(255,255,255,.1)' : '#eceef2'; x.fillRect(M, y - 10, W - M * 2, 2); y += 40;
       }
       /* 본문 */
@@ -2156,8 +2209,8 @@ textarea.ec-in{resize:vertical;min-height:84px;line-height:1.6}
   function saveBlob(b, name){ var u = URL.createObjectURL(b), a = document.createElement('a'); a.href = u; a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(function(){ URL.revokeObjectURL(u); }, 2000); }
   function cardCanvas(c){ return (c.qr ? qrCanvas(vcard(c, false), 600).catch(function(e){ toast(e.message, true); return null; }) : Promise.resolve(null)).then(function(q){ return draw(c, q); }); }
   /* ── 전자명함 웹페이지 (.html 한 파일 — 휴대폰에서 누르면 전화·문자·메일·길찾기) ── */
-  function webHtml(c, photoSmall){
-    var col = c.color || '#3b4fd8', on = onC(col), ac = accent(c), dark = c.style === 'dark', tags = tagList(c), name = c.name || '이름';
+  function webHtml(c, photoSmall, logoUrl){
+    var logo = logoUrl || c.logo, col = c.color || '#3b4fd8', on = onC(col), ac = accent(c), dark = c.style === 'dark', tags = tagList(c), name = c.name || '이름';
     var tel = [c.tel1, c.tel2].filter(function(t){ return t && t.v; });
     var map = c.place || (c.addr ? 'https://map.naver.com/p/search/' + encodeURIComponent(c.addr) : '');
     var A = [];
@@ -2186,13 +2239,14 @@ textarea.ec-in{resize:vertical;min-height:84px;line-height:1.6}
       + '.acts{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:16px 20px}.acts a{display:flex;align-items:center;gap:8px;padding:14px;border-radius:14px;text-decoration:none;color:inherit;background:' + (dark ? '#22222a' : '#f5f6f8') + ';font-weight:600;font-size:14.5px}.acts a span{font-size:18px}'
       + '.save{display:block;margin:4px 20px 18px;padding:15px;border-radius:14px;background:var(--c);color:var(--on);text-align:center;font-weight:800;text-decoration:none;font-size:15.5px}'
       + '.info{padding:4px 24px 24px;font-size:14px;line-height:1.9}.info div{display:flex;gap:12px;border-top:1px solid ' + (dark ? 'rgba(255,255,255,.08)' : '#f1f3f5') + ';padding:8px 0}.info b{color:var(--ac);min-width:72px;font-size:13px}'
-      + '.lg{display:block;max-width:150px;max-height:60px;margin:0 auto 20px}footer{text-align:center;font-size:11px;color:#adb5bd;padding:0 0 26px}</style></head><body><div class="w">'
-      + hero + (tags.length ? '<div class="tags">' + tags.map(function(t){ return '<span>#' + esc(t) + '</span>'; }).join('') + '</div>' : '')
+      + '.lg{display:block;max-width:' + ({ s:150, m:190, l:240, xl:290 }[c.logoSz] || 240) + 'px;max-height:' + ({ s:52, m:68, l:86, xl:108 }[c.logoSz] || 86) + 'px;margin:0 auto;object-fit:contain' + (c.logoLine !== false ? ';filter:drop-shadow(3px 0 0 #fff) drop-shadow(-3px 0 0 #fff) drop-shadow(0 3px 0 #fff) drop-shadow(0 -3px 0 #fff) drop-shadow(0 2px 5px rgba(0,0,0,.25))' : '') + '}.lgbar{padding:22px 24px 0;text-align:center}.lgbar+header.col .bn{margin-top:18px}header.big .lgo{position:absolute;top:16px;right:16px;max-width:42%;max-height:' + ({ s:52, m:68, l:86, xl:108 }[c.logoSz] || 86) + 'px;filter:' + (c.logoLine !== false ? 'drop-shadow(3px 0 0 #fff) drop-shadow(-3px 0 0 #fff) drop-shadow(0 3px 0 #fff) drop-shadow(0 -3px 0 #fff) ' : '') + 'drop-shadow(0 2px 6px rgba(0,0,0,.35))}header.big{position:relative}.duo{display:flex;align-items:center;justify-content:center;gap:0}.duo .dl,.duo .dr{flex:1;display:flex;justify-content:center;min-width:0}.duo .lg{max-width:100%}.duo i{width:2px;height:110px;background:linear-gradient(transparent,var(--ac),transparent);opacity:.7;margin:0 10px}footer{text-align:center;font-size:11px;color:#adb5bd;padding:0 0 26px}</style></head><body><div class="w">'
+      + (logo && !(c.style === 'full' || c.style === 'frame' || dark || c.style === 'minimal') ? '<div class="lgbar"><img class="lg" src="' + logo + '" alt="' + esc(c.company || '로고') + '"></div>' : '')
+      + (logo && (c.style === 'full' || c.style === 'frame') ? hero.replace('<header class="big">', '<header class="big"><img class="lgo" src="' + logo + '" alt="">') : logo && (dark || c.style === 'minimal') ? hero.replace(pic, '<div class="duo"><div class="dl"><img class="lg" src="' + logo + '" alt="' + esc(c.company || '로고') + '"></div><i></i><div class="dr">' + pic + '</div></div>') : hero) + (tags.length ? '<div class="tags">' + tags.map(function(t){ return '<span>#' + esc(t) + '</span>'; }).join('') + '</div>' : '')
       + (c.intro ? '<div class="intro">' + esc(c.intro) + '</div>' : '')
       + '<div class="acts">' + A.map(function(a){ return '<a href="' + esc(a[2]) + '"' + (/^https?:/.test(a[2]) ? ' target="_blank" rel="noopener"' : '') + '><span>' + a[0] + '</span>' + esc(a[1]) + '</a>'; }).join('') + '</div>'
       + '<a class="save" href="' + vcf + '" download="' + esc(fileBase(c)) + '.vcf">👤 연락처 저장하기</a>'
       + '<div class="info">' + rows(c).map(function(r){ return '<div><b>' + esc(r[0]) + '</b><span>' + esc(r[1]) + '</span></div>'; }).join('') + '</div>'
-      + (c.logo ? '<img class="lg" src="' + c.logo + '" alt="">' : '') + '<footer>' + esc(c.company || '') + ' 전자명함</footer></div></body></html>';
+      + '<footer>' + esc(c.company || '') + ' 전자명함</footer></div></body></html>';
   }
   function smallPhoto(c){ if(!c.photo) return Promise.resolve(''); return img(c.photo).then(function(im){ if(!im) return ''; var s = 480, k = Math.min(1, s / Math.max(im.naturalWidth, im.naturalHeight)), cv = document.createElement('canvas'); cv.width = Math.round(im.naturalWidth * k); cv.height = Math.round(im.naturalHeight * k); cv.getContext('2d').drawImage(im, 0, 0, cv.width, cv.height); return cv.toDataURL('image/jpeg', 0.85); }); }
   function textCard(c){
@@ -2204,7 +2258,7 @@ textarea.ec-in{resize:vertical;min-height:84px;line-height:1.6}
   var OUT = {
     png:function(c){ return cardCanvas(c).then(function(cv){ return new Promise(function(r){ cv.toBlob(r, 'image/png'); }); }).then(function(b){ saveBlob(b, fileBase(c) + '_명함.png'); toast('명함 이미지를 저장했습니다 — 카톡·문자로 보내세요'); }); },
     vcf:function(c){ saveBlob(new Blob([vcard(c, true)], { type:'text/vcard;charset=utf-8' }), fileBase(c) + '.vcf'); toast('연락처 파일(.vcf)을 저장했습니다'); return Promise.resolve(); },
-    html:function(c){ return smallPhoto(c).then(function(p){ saveBlob(new Blob([webHtml(c, p)], { type:'text/html;charset=utf-8' }), fileBase(c) + '_전자명함.html'); toast('전자명함 웹페이지를 저장했습니다'); }); },
+    html:function(c){ return Promise.all([smallPhoto(c), c.logo ? img(c.logo).then(function(im){ var t = trimLogo(im); return t && t !== im && t.toDataURL ? t.toDataURL('image/png') : c.logo; }) : '']).then(function(r){ var p = r[0]; saveBlob(new Blob([webHtml(c, p, r[1])], { type:'text/html;charset=utf-8' }), fileBase(c) + '_전자명함.html'); toast('전자명함 웹페이지를 저장했습니다'); }); },
     qr:function(c){ return qrCanvas(vcard(c, false), 900).then(function(q){ var cv = document.createElement('canvas'), P = 60; cv.width = q.width + P * 2; cv.height = q.height + P * 2 + 90; var x = cv.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, cv.width, cv.height); x.drawImage(q, P, P);
       text(x, [c.name, c.company].filter(Boolean).join(' · ') || '연락처', cv.width / 2, q.height + P + 50, 40, 700, '#1a1a1a', 'center', cv.width - 40); text(x, '휴대폰 카메라로 찍으면 연락처에 저장됩니다', cv.width / 2, q.height + P + 100, 26, 400, '#868e96', 'center');
       return new Promise(function(r){ cv.toBlob(r, 'image/png'); }); }).then(function(b){ saveBlob(b, fileBase(c) + '_QR.png'); toast('QR 코드를 저장했습니다'); }, function(e){ toast(e.message, true); }); },
@@ -2230,7 +2284,8 @@ textarea.ec-in{resize:vertical;min-height:84px;line-height:1.6}
       + '<div class="ec-box"><div class="ec-h">사진 <small>사진은 이 컴퓨터 안에서만 쓰입니다</small></div><div class="ec-pics">'
         + [['photo', '👤', '프로필 사진', '얼굴이 잘 보이는 사진'], ['logo', '🏢', '회사 로고', '선택 · 투명 PNG 추천'], ['banner', '🖼', '배너 이미지', '선택 · 「표지」 스타일 위쪽']].map(function(p){
           return '<label class="ec-pic">' + (c[p[0]] ? '<img src="' + c[p[0]] + '" alt=""><button class="x" data-px="' + p[0] + '" title="빼기">✕</button>' : '<span class="ic">' + p[1] + '</span>') + '<b>' + p[2] + '</b><small>' + p[3] + '</small><input type="file" accept="image/*" data-pic="' + p[0] + '" hidden></label>'; }).join('')
-        + '</div><div class="ec-note" style="font-size:11.5px;color:#868e96;margin-top:8px">📸 프로필 사진이 없다면 옆 탭 「📸 프로필 사진&캐릭터」에서 AI 로 만든 사진·캐릭터를 저장해 넣으세요.</div></div>'
+        + '</div>' + (c.logo ? '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:12px"><b style="font-size:13px">🏢 로고 크기</b><div class="ec-chips" style="margin:0">' + LOGO_N.map(function(z){ return '<button class="ec-chip' + ((c.logoSz || 'l') === z[0] ? ' on' : '') + '" data-lsz="' + z[0] + '">' + z[1] + '</button>'; }).join('') + '</div><label style="display:flex;gap:6px;align-items:center;font-size:12.5px;cursor:pointer"><input type="checkbox" id="ec-lline"' + (c.logoLine !== false ? ' checked' : '') + '> 흰 테두리</label><span style="font-size:11px;color:#868e96;width:100%">로고 둘레의 투명·흰 여백은 저절로 잘라 내고, 흰 테두리로 바탕과 구별되게 합니다</span></div>' : '')
+        + '<div class="ec-note" style="font-size:11.5px;color:#868e96;margin-top:8px">📸 프로필 사진이 없다면 옆 탭 「📸 프로필 사진&캐릭터」에서 AI 로 만든 사진·캐릭터를 저장해 넣으세요.</div></div>'
       + '<div class="ec-nav"><span></span><button class="ec-btn pri" data-step="2">다음: 자기소개 →</button></div>';
     if(STEP === 2) return '<div class="ec-box"><div class="ec-g2"><div class="ec-f"><label>이름</label>' + inp('name', c.name, '예: 문형은') + '</div><div class="ec-f"><label>회사명</label>' + inp('company', c.company, '예: 송도제일공인중개사사무소') + '</div>'
         + '<div class="ec-f"><label>부서</label>' + inp('dept', c.dept, '예: 송도센터') + '</div><div class="ec-f"><label>직책</label>' + inp('position', c.position, '예: 대표 공인중개사') + '</div></div>'
@@ -2281,6 +2336,8 @@ textarea.ec-in{resize:vertical;min-height:84px;line-height:1.6}
     var cx = $('ec-colx'); if(cx) cx.oninput = function(){ c.color = this.value; q('[data-col]').forEach(function(x){ x.classList.remove('on'); }); touch(); };
     q('[data-pic]').forEach(function(f){ f.onchange = function(){ var file = this.files && this.files[0], k = f.dataset.pic; this.value = ''; if(!file) return; if(!/^image\//.test(file.type)) return toast('사진 파일을 골라 주세요', true); if(file.size > 15 * 1048576) return toast('15MB 이하 사진으로 골라 주세요', true);
       shrink(file, k === 'banner' ? 1400 : k === 'logo' ? 600 : 900, k === 'logo').then(function(u){ c[k] = u; if(save()) paint(); }, function(e){ toast(e.message, true); }); }; });
+    q('[data-lsz]').forEach(function(b){ b.onclick = function(){ c.logoSz = b.dataset.lsz; q('[data-lsz]').forEach(function(x){ x.classList.toggle('on', x === b); }); touch(); preview(); }; });
+    var ll = $('ec-lline'); if(ll) ll.onchange = function(){ c.logoLine = this.checked; touch(); preview(); };
     q('[data-px]').forEach(function(b){ b.onclick = function(e){ e.preventDefault(); e.stopPropagation(); c[b.dataset.px] = ''; save(); paint(); }; });
     q('[data-k]').forEach(function(i){ i.oninput = function(){ c[i.dataset.k] = i.value; touch(); if(i.dataset.k === 'name' || i.dataset.k === 'company'){ var ch = root.querySelector('[data-card="' + c.id + '"]'); if(ch) ch.textContent = cardTitle(c); } }; });
     q('[data-tag]').forEach(function(i){ i.oninput = function(){ c.tags[+i.dataset.tag] = i.value; touch(); }; });
