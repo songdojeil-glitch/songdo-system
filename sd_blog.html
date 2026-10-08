@@ -123,6 +123,10 @@ header.top{display:flex;align-items:center;gap:14px;padding:0 18px;height:52px;f
 .picked{flex:0 0 auto;max-width:100%;padding:9px 16px;background:var(--accent-soft);border-bottom:1px solid var(--accent-line);
   font-size:13px;display:flex;align-items:center;gap:9px}
 .picked b{font-weight:700;letter-spacing:-.015em}
+.nwbox{padding:9px 16px 11px;background:#fbfaf6;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:7px;font-size:12.5px}
+.nwbox .nwsrc{color:var(--ink2)}.nwbox .nwsrc a{color:var(--accent);font-weight:700}
+.nwbox .nwrow{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.nwbox .hint{font-size:11.5px;color:var(--ink3)}
+.nwbox textarea,.nwbox input{width:100%;box-sizing:border-box;border:1px solid var(--line);border-radius:8px;padding:7px 9px;font:inherit;font-size:12.5px;line-height:1.55;background:#fff;resize:vertical}
 .picked .tag{font-size:11px;color:var(--accent);background:#fff;border:1px solid var(--accent-line);
   padding:1px 7px;border-radius:999px;white-space:nowrap}
 
@@ -780,7 +784,8 @@ let HELPER = LOCAL ? '' : HELPER_BRIDGE;
    ============================================================ */
 function allCats(){
   const mine = { id:'mine', name:'내 주제', desc:'직접 추가한 주제', icon:'⭐', topics: state.mine };
-  return [mine].concat(CATS);
+  const news = { id:'news', name:'추천 뉴스', desc:'허브 뉴스에서 ✍️ 로 보낸 기사', icon:'📰', topics: newsList().map(n => ({ t:n.t, k:[n.press, n.date, n.status === 'used' ? '✅ 글 씀' : (n.facts ? '📝 메모 있음' : '')].filter(Boolean).join(' · '), news:n })) };
+  return [mine, news].concat(CATS);
 }
 function renderCats(){
   $('#catList').innerHTML = allCats().map(c => `
@@ -817,7 +822,9 @@ function renderTopics(){
   $('#topicHead').innerHTML = `<h2 style="letter-spacing:0">${head}</h2>`;
 
   if(!list.length){
-    $('#topicList').innerHTML = state.cat === 'mine'
+    $('#topicList').innerHTML = state.cat === 'news'
+      ? `<div class="emptynote">아직 추천 뉴스가 없습니다.<br>허브 「📰 오늘의 뉴스」에서 블로그 소재가 될 기사의<br><b>✍️</b> 를 누르면 여기로 옵니다.</div>`
+      : state.cat === 'mine'
       ? `<div class="emptynote">아직 저장한 주제가 없습니다.<br>위 칸에 주제를 적고<br><b>[내 주제에 저장]</b>을 눌러 보세요.</div>`
       : `<div class="emptynote">찾는 주제가 없습니다.<br>위에 직접 입력하거나<br><b>[AI로 관련 주제 10개]</b>를 눌러 보세요.</div>`;
     return;
@@ -831,7 +838,7 @@ function renderTopics(){
         <span class="tt">${esc(t.t)}</span>
         <span class="kk">${esc(t.k || t.cat || '')}</span>
       </span>
-      <span class="star ${mineIdx>=0?'on':''}" data-star="${i}" title="내 주제에 저장">${mineIdx>=0?'★':'☆'}</span>
+      ${t.news ? `<span class="star" data-nx="${i}" title="추천 뉴스에서 빼기">🗑</span>` : `<span class="star ${mineIdx>=0?'on':''}" data-star="${i}" title="내 주제에 저장">${mineIdx>=0?'★':'☆'}</span>`}
     </button>`;
   }).join('');
 
@@ -839,6 +846,7 @@ function renderTopics(){
     b.onclick = (e)=>{
       const t = list[+b.dataset.i];
       if(e.target.dataset.star !== undefined){ toggleMine(t); e.stopPropagation(); return; }
+      if(e.target.dataset.nx !== undefined){ e.stopPropagation(); if(confirm('추천 뉴스에서 뺄까요?\n「' + t.t + '」')) newsDel(t.news.id); return; }
       pick(t);
     };
   });
@@ -851,7 +859,7 @@ function toggleMine(t){
   toast(i >= 0 ? '내 주제에서 뺐습니다' : '내 주제에 저장했습니다');
 }
 function pick(t){
-  state.picked = { t:t.t, k:t.k || '', cat:t.cat || '' };
+  state.picked = t.news ? { t:t.t, k:'', cat:'추천 뉴스', news:t.news } : { t:t.t, k:t.k || '', cat:t.cat || '' };
   renderTopics(); renderPicked();
 }
 function renderPicked(){
@@ -859,9 +867,125 @@ function renderPicked(){
   $('#pickedBar').innerHTML = p
     ? `<div class="picked"><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
          선택한 주제 &nbsp;<b>${esc(p.t)}</b></span>
-       ${p.k?`<span class="tag">${esc(p.k)}</span>`:''}</div>`
+       ${p.k?`<span class="tag">${esc(p.k)}</span>`:''}</div>${newsPanel()}`
     : '';
+  bindNewsPanel();
 }
+/* ── 📰 추천 뉴스 (2026-10-08) — 허브 「오늘의 뉴스」에서 ✍️ 로 보낸 기사 (Firebase sd/sd_blog_news/{id})
+   허브는 날짜·제목·언론사·주소·분류만 보낸다 (기사 본문은 옮기지 않는다 — 저작권).
+   여기서 글을 쓸 때 제미나이가 원문 주소를 직접 읽어(url_context) 「사실 메모」만 만들고,
+   글은 그 사실을 바탕으로 공인중개사 관점의 해설로 새로 쓴다. 출처(언론사·날짜·주소)는 글 끝에 밝힌다 ── */
+state.news = (function(){ try{ return JSON.parse(localStorage.getItem('sdbs.newsCache') || '[]') || []; }catch(e){ return []; } })();
+const NEWS_PATH = 'sd/sd_blog_news';
+function newsList(){
+  return state.news.slice().sort((a, b) => ((a.status === 'used') - (b.status === 'used')) || String(b.date || '').localeCompare(String(a.date || '')) || (b.at || 0) - (a.at || 0));
+}
+async function newsLoad(tries){
+  tries = tries || 0;
+  if(!window._fbDb){ if(tries < 20) setTimeout(() => newsLoad(tries + 1), 500); return; }
+  try{
+    const snap = await window._fbGet(window._fbRef(window._fbDb, NEWS_PATH));
+    const v = snap.exists() ? snap.val() || {} : {};
+    state.news = Object.keys(v).map(k => Object.assign({ id:k }, v[k])).filter(x => x && x.t);
+    try{ localStorage.setItem('sdbs.newsCache', JSON.stringify(state.news)); }catch(e){}
+    renderCats(); if(state.cat === 'news') renderTopics();
+    if(state.picked && state.picked.news){ const n = state.news.find(x => x.id === state.picked.news.id); if(n){ state.picked.news = n; } }
+  }catch(e){ if(tries < 8) setTimeout(() => newsLoad(tries + 1), 1500); }
+}
+function newsSet(id, k, v){
+  const n = state.news.find(x => x.id === id); if(n){ if(v == null) delete n[k]; else n[k] = v; }
+  try{ localStorage.setItem('sdbs.newsCache', JSON.stringify(state.news)); }catch(e){}
+  if(!window._fbDb) return Promise.resolve();
+  return window._fbSet(window._fbRef(window._fbDb, NEWS_PATH + '/' + id + '/' + k), v == null ? null : v).catch(()=>{});
+}
+function newsDel(id){
+  state.news = state.news.filter(x => x.id !== id);
+  try{ localStorage.setItem('sdbs.newsCache', JSON.stringify(state.news)); }catch(e){}
+  if(state.picked && state.picked.news && state.picked.news.id === id){ state.picked = null; renderPicked(); }
+  renderCats(); renderTopics();
+  if(window._fbDb) window._fbSet(window._fbRef(window._fbDb, NEWS_PATH + '/' + id), null).catch(()=>{});
+}
+/* 제미나이가 원문을 직접 읽어 사실만 메모 — 기사 문장을 옮기지 않는다 */
+async function newsFacts(n){
+  const keys = keysOf('gemini');
+  if(!keys.length) throw new Error('기사 원문 읽기는 제미나이 열쇠가 필요합니다 (오른쪽 위 [엔진 설정]). 열쇠가 없으면 기사를 직접 보고 아래 칸에 핵심을 적어 주세요.');
+  const model = state.settings.geminiModel || DEF_SETTINGS.geminiModel;
+  const prompt = `다음 뉴스 기사 주소를 직접 열어 읽고, 공인중개사가 블로그 해설 글을 쓰기 위한 「사실 메모」를 만들어 주세요.
+
+기사 주소: ${n.url}
+기사 제목: ${n.t}
+언론사: ${n.press || ''}  · 날짜: ${n.date || ''}
+
+[규칙 — 저작권]
+- 기사 문장을 그대로 옮기지 마세요. 사실(누가·무엇을·언제·얼마·어디)만 짧은 항목으로 자기 말로 적습니다.
+- 기사에 없는 내용·추측은 넣지 않습니다. 기자 의견·전망은 「기사 전망:」으로 따로 표시합니다.
+- 기사를 열지 못했으면 다른 말 없이 READ_FAIL 한 줄만 쓰세요.
+
+[형식 — 이대로, 한국어]
+핵심: (한 줄)
+사실:
+- (수치·일정·발표 기관·지역 등 5~8개)
+기사 전망: (있으면 한두 줄)
+송도·연수구 관련: (기사에 나온 것만, 없으면 "기사에 없음")`;
+  let last;
+  for(const key of keys){
+    try{
+      const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(key)}`, {
+        method:'POST', headers:{ 'content-type':'application/json' },
+        body: JSON.stringify({ contents:[{ role:'user', parts:[{ text:prompt }] }], tools:[{ url_context:{} }], generationConfig:{ temperature:0.2, maxOutputTokens:8192 } }) });
+      const d = await r.json().catch(()=>({}));
+      if(!r.ok){ const em = (d.error && d.error.message) || ''; last = new Error('제미나이 오류 ' + r.status + ': ' + em.slice(0, 160)); if(/401|403|429|quota|API key/i.test(r.status + em)) continue; throw last; }
+      const c = (d.candidates || [])[0] || {}, txt = ((c.content || {}).parts || []).filter(p => !p.thought).map(p => p.text || '').join('').trim();
+      const meta = (c.urlContextMetadata || c.url_context_metadata || {}).urlMetadata || (c.urlContextMetadata || {}).url_metadata || [];
+      const failed = meta.length && meta.every(m => !/SUCCESS/i.test(m.urlRetrievalStatus || m.url_retrieval_status || ''));
+      if(!txt || /READ_FAIL/.test(txt) || failed) throw new Error('기사 원문을 읽지 못했습니다 (유료·로그인 기사이거나 사이트가 막았을 수 있습니다). 「원문 ↗」으로 기사를 보고 아래 칸에 핵심 사실을 직접 적어 주세요.');
+      return txt;
+    }catch(e){ last = e; if(!/401|403|429|quota/i.test(e.message)) throw e; }
+  }
+  throw last;
+}
+let newsMemoT = 0;
+function newsPanel(){
+  const p = state.picked, n = p && p.news; if(!n) return '';
+  return `<div class="nwbox">
+    <div class="nwsrc">📰 <b>${esc(n.press || '언론사')}</b> · ${esc(n.date || '')} · <a href="${esc(n.url || '#')}" target="_blank" rel="noopener noreferrer">원문 ↗</a>${n.status === 'used' ? ' · <span class="tag">✅ 글 씀' + (n.postTitle ? ' — ' + esc(n.postTitle) : '') + '</span>' : ''}</div>
+    <div class="nwrow"><button class="btn sm" id="btnNewsFacts">${n.facts ? '🔄 기사 다시 읽기' : '📰 기사 핵심 정리 (제미나이가 원문 읽기)'}</button>
+      <span class="hint">기사 문장은 옮기지 않고 <b>사실만</b> 메모합니다. 글은 이 메모로 새로 씁니다.</span></div>
+    <textarea id="newsFacts" rows="${n.facts ? 7 : 3}" placeholder="기사 핵심 사실 메모 — 「기사 핵심 정리」를 누르거나 직접 적어 주세요 (수치·일정·발표 기관)">${esc(n.facts || '')}</textarea>
+    <input id="newsAngle" placeholder="내 관점 (선택) — 예: 송도 전세 수요에 미치는 영향, 실수요자가 챙길 점" value="${esc(n.angle || '')}">
+    <div id="newsOut"></div></div>`;
+}
+function bindNewsPanel(){
+  const p = state.picked, n = p && p.news; if(!n) return;
+  const fa = $('#newsFacts'), an = $('#newsAngle'), bt = $('#btnNewsFacts');
+  if(fa) fa.oninput = () => { n.facts = fa.value; clearTimeout(newsMemoT); newsMemoT = setTimeout(() => newsSet(n.id, 'facts', fa.value), 600); };
+  if(an) an.oninput = () => { n.angle = an.value; clearTimeout(newsMemoT); newsMemoT = setTimeout(() => newsSet(n.id, 'angle', an.value), 600); };
+  if(bt) bt.onclick = async () => {
+    bt.disabled = true; bt.innerHTML = '<span class="spin"></span> 원문 읽는 중…';
+    try{ const f = await newsFacts(n); n.facts = f; newsSet(n.id, 'facts', f); newsSet(n.id, 'factsAt', Date.now()); renderPicked(); toast('기사 핵심을 정리했습니다 — 고칠 곳이 있으면 고쳐 주세요'); }
+    catch(e){ $('#newsOut').innerHTML = `<div class="notice warn" style="margin-top:6px">${esc(e.message)}</div>`; bt.disabled = false; bt.innerHTML = '📰 기사 핵심 정리 (제미나이가 원문 읽기)'; }
+  };
+}
+/* 글 프롬프트에 붙이는 「참고 기사」 — 출처를 밝히고, 요약이 아니라 해설로 */
+function newsPromptPart(){
+  const p = state.picked, n = p && p.news; if(!n) return '';
+  return `
+[참고 기사 — 이 글의 출발점]
+출처: ${n.press || ''}, ${n.date || ''}, 「${n.t}」 ${n.url || ''}
+기사에서 확인된 사실 (메모):
+${(n.facts || '(메모 없음 — 기사 제목에서 확실히 알 수 있는 것만 쓰고, 나머지는 일반론으로)').trim()}
+${n.angle ? '작성자 관점: ' + n.angle : ''}
+
+[참고 기사로 쓸 때 반드시 지킬 것 — 저작권·신뢰]
+A. 기사 문장을 그대로 옮기지 않는다. 위 사실(수치·일정·발표 내용)만 가져와 내 말로 다시 쓴다. 꼭 필요한 직접 인용은 한 문장 이내로, 따옴표와 출처를 붙인다.
+B. 기사 제목을 글 제목으로 그대로 쓰지 않는다. 제목은 독자가 궁금해할 질문·영향 중심으로 새로 짓는다.
+C. 기사 요약은 본문의 20% 이내. 나머지는 공인중개사 관점의 해설 — 송도·연수구의 실수요자·집주인·세입자·투자자에게 무엇이 달라지는지, 지금 챙길 점, 현장에서 보는 분위기, 주의할 점.
+D. 메모에 없는 수치·사실을 지어내지 않는다. 기사 수치는 checkFacts 에 "기사 발표 기준 — 최신 수치 재확인" 으로 넣는다.
+E. 첫 h2 아래 첫 문단에서 "${n.press || '언론'} 보도(${n.date || ''})에 따르면"처럼 출처를 한 번 밝힌다.
+F. 맺음말 바로 앞에 이 문단 블록을 그대로 넣는다: {"t":"p","text":"📰 참고 기사: ${String(n.press || '').replace(/"/g, '')} 「${String(n.t).replace(/"/g, "'")}」(${n.date || ''}) ${n.url || ''}"}
+`;
+}
+
 
 /* ============================================================
    2) AI 호출 — 제미나이 / 클로드
@@ -1235,7 +1359,7 @@ ${p.t}
 
 [핵심 키워드]
 ${p.k || '(지정 없음 — 주제에서 알아서 뽑을 것)'}
-
+${newsPromptPart()}
 [플랫폼]
 ${PLATFORM_NOTE[$('#optPlatform').value]}
 
@@ -1845,6 +1969,16 @@ window.openScript = openScript;
 async function generate(){
   if(!state.picked) return toast('왼쪽에서 주제를 먼저 고르거나 직접 입력해 주세요.', true);
   if(state.busy) return;
+  /* 추천 뉴스 — 사실 메모가 없으면 먼저 원문을 읽는다 (실패하면 직접 적어 달라고) */
+  const nw = state.picked.news;
+  if(nw && !String(nw.facts || '').trim()){
+    if(!keysOf('gemini').length){ if(!confirm('기사 핵심 메모가 비어 있습니다. 제목만으로 쓰면 내용이 부정확할 수 있습니다.\n그래도 쓸까요? (취소 → 아래 칸에 기사 핵심을 적어 주세요)')) return; }
+    else {
+      const b0 = $('#btnNewsFacts'); if(b0){ b0.disabled = true; b0.innerHTML = '<span class="spin"></span> 원문 읽는 중…'; }
+      try{ const f = await newsFacts(nw); nw.facts = f; newsSet(nw.id, 'facts', f); newsSet(nw.id, 'factsAt', Date.now()); renderPicked(); }
+      catch(e){ renderPicked(); const o = $('#newsOut'); if(o) o.innerHTML = `<div class="notice warn" style="margin-top:6px">${esc(e.message)}</div>`; return; }
+    }
+  }
   state.busy = true; $('#btnGen').disabled = true;
   $('#pubbar').style.display = 'none';
   $('#work').innerHTML = `<div class="card"><div class="progress">
@@ -1869,6 +2003,7 @@ async function generate(){
     };
     state.images = {}; state.imgSrc = {}; state.imgSty = {};
     renderPost();
+    if(state.picked.news){ const nn = state.picked.news; nn.status = 'used'; nn.postTitle = state.post.title; newsSet(nn.id, 'status', 'used'); newsSet(nn.id, 'postTitle', state.post.title); newsSet(nn.id, 'usedAt', Date.now()); renderCats(); if(state.cat === 'news') renderTopics(); }
     toast('글이 나왔습니다. 제목을 고르고 사진을 넣어 주세요.');
   }catch(e){
     $('#work').innerHTML = `<div class="card"><div class="body">
@@ -2674,7 +2809,9 @@ function init(){
   if(typeof MODELS_MOVED !== 'undefined' && MODELS_MOVED.length){
     setTimeout(()=>toast('구글이 닫은 옛 모델이라 바꿨습니다 — ' + MODELS_MOVED.join(', ')), 600);
   }
+  try{ if(new URLSearchParams(location.search).get('news')) state.cat = 'news'; }catch(e){}
   renderCats(); renderTopics(); renderPicked(); renderPost();
+  newsLoad();
   refreshEngineChip();
   $('#authorTxt').textContent = state.author.name || '작성자 정보';
   $('#arcCnt').textContent = state.archive.length ? '· ' + state.archive.length : '';
@@ -3786,7 +3923,7 @@ function vdPaintLen(){ var e=document.getElementById('vdLen'); if(e) e.textConte
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.10.06-2';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.10.08-1';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_blog.html';      // 이 파일 이름
   var SD_NAME = '블로그 스튜디오';      // 사람이 부르는 이름
 
