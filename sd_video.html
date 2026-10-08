@@ -13,6 +13,8 @@
 <link rel="apple-touch-icon" sizes="180x180" href="sjrws-180.png">
 <!-- ═════════════════════════════════════════════════════════════════
      🎬 영상 (video) · 비디오 스튜디오 (sd_video.html)  v2026.10.04-3
+     · 2026.10.08-1: 🗺 평면도 트레이스 합성 — 영상에서 영상 만들기 4단계에서 클립마다 트레이스 잇기(같은 영상은 자동)·여기서 만들기/고치기(도구 편집 화면)·
+       자리 5곳·크기·진하기. 원본 클립 시각(mt)을 따라가 자르기·느리게·멈춤에도 위치가 맞음. 정보·사무소 장면에서는 빠짐
      · 2026.10.07-9: ☁ 내 출연진을 Firebase(sd_media/cast_idx · cast_img)에도 저장 → 다른 PC 에서 불러오기. Firebase 로그인(구글/익명) 붙임
      · 2026.10.07-8: 🎭 출연진 — 프로필 P01~06 · 캐릭터 C01~06 을 미리 넣고 ★기본·입 픽스/무브·👄 입 준비(AI 한꺼번에)는 출연진에서만.
        장면 칸은 출연진에서 고르기·자리·크기·빼기. 출연진은 「내 출연진」(이 PC)에 저장돼 다음 영상에서 불러 씀
@@ -392,6 +394,13 @@ html.sv-embed body{background:#f7f8fa}
 .sv-avsz{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--sv-ink2);margin-top:4px}
 .sv-avsz input{flex:1;accent-color:#d6336c;min-width:0;width:100%}
 .sv-avsz b{min-width:38px;text-align:right}
+.sv-trr{display:flex;gap:8px;align-items:flex-start;border:1px solid var(--sv-line);border-radius:10px;padding:7px;margin-bottom:6px;background:#fff}
+.sv-trr>img{width:64px;height:48px;object-fit:cover;border-radius:6px;background:#111;flex:none}.sv-trr .ic{width:64px;height:48px;display:flex;align-items:center;justify-content:center;background:#f1f3f5;border-radius:6px}
+.sv-trr .bd{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;font-size:12px}.sv-trr .bd small{color:var(--sv-ink3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.sv-trr .bd small.ok{color:#2b8a3e;white-space:normal}
+.sv-trr .r{display:flex;gap:4px;flex-wrap:wrap}.sv-trr .r select{flex:1;min-width:140px}
+.sv-trm{position:fixed;inset:0;z-index:10060;background:#f6f7f9;display:flex;flex-direction:column}
+.sv-trm .hd{display:flex;align-items:center;gap:10px;padding:10px 18px;background:#fff;border-bottom:1px solid var(--sv-line)}.sv-trm .hd b{flex:1;font-size:14px}
+.sv-trm .bd{flex:1;overflow:auto;padding:14px 18px 40px}
 .sv-cbar{display:flex;gap:6px;flex-wrap:wrap;margin:2px 0 8px}
 .sv-cast{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px}
 @media(max-width:1000px){.sv-cast{grid-template-columns:minmax(0,1fr)}}
@@ -522,7 +531,7 @@ html.sv-embed body{background:#f7f8fa}
    ═════════════════════════════════════════════════════════════════ */
 (function(){
 'use strict';
-var SD_VER = '2026.10.07-9';
+var SD_VER = '2026.10.08-1';
 window.SD_VERSION = SD_VER;
 var EMBED = /[?&]embed=1\b/.test(location.search);
 if(EMBED) document.documentElement.classList.add('sv-embed');
@@ -1737,7 +1746,7 @@ var IMGS = {};
 function imgOf(s){ if(!s || !s.pic) return null; var c = IMGS[s.id]; if(c && c.src === s.pic) return c.el.complete && c.el.naturalWidth ? c.el : null; var el = new Image(); el.src = s.pic; IMGS[s.id] = { src:s.pic, el:el }; return null; }
 function loadImgs(){
   if(P.kind === 'photo') return loadPhotos();
-  if(P.kind === 'clip'){ if(P.cover) phImg(P.cover); var ce = P.cover && PIMG.cover && PIMG.cover.el; return Promise.all([loadClips(), loadAva(), ce && !(ce.complete && ce.naturalWidth) ? new Promise(function(r){ ce.onload = r; ce.onerror = r; }) : null]); }
+  if(P.kind === 'clip'){ if(P.cover) phImg(P.cover); var ce = P.cover && PIMG.cover && PIMG.cover.el; return Promise.all([loadClips(), loadAva(), loadTraces(), ce && !(ce.complete && ce.naturalWidth) ? new Promise(function(r){ ce.onload = r; ce.onerror = r; }) : null]); }
   return Promise.all(P.scenes.filter(function(s){ return s.pic; }).map(function(s){
     imgOf(s); var el = IMGS[s.id].el;
     return el.complete && el.naturalWidth ? null : new Promise(function(r){ el.onload = r; el.onerror = r; });
@@ -1885,7 +1894,7 @@ function pVideo(el){
   bindOut(el);
   bindFoot(el);
   if(isPK()) photoVideoExtras(el);
-  if(P.kind === 'clip') avaPanel(el);
+  if(P.kind === 'clip'){ tracePanel(el); avaPanel(el); }
   loadImgs().then(function(){ drawAt(PV.t); });
   if(document.fonts && document.fonts.load) document.fonts.load('900 40px "Noto Sans KR"').then(function(){ drawAt(PV.t); }, function(){});
 }
@@ -3926,6 +3935,7 @@ function drawClipFrame(ctx, t, W, H, tl){
     if(SNAP.cv.width !== cv.width || SNAP.cv.height !== cv.height){ SNAP.cv.width = cv.width; SNAP.cv.height = cv.height; }
     var sx = SNAP.cv.getContext('2d'); sx.setTransform(1, 0, 0, 1, 0, 0); sx.drawImage(cv, 0, 0); SNAP.gi = gi;
   }
+  drawTrace(ctx, t, W, H, tg);
   drawAva(ctx, t, W, H, tg, gi > 0 ? segs[gi - 1] : null);
   var u = Math.min(W, H);
   if(isGen()){ if(tg.s.type !== 'end'){ var gb = genBrand(); ctx.globalAlpha = 0.9; txt(ctx, gb.channel, u * 0.045, u * 0.05, u * 0.028, 800, '#fff', 'left', true); txt(ctx, gb.by, W - u * 0.045, u * 0.05, u * 0.026, 700, '#fff', 'right', true); ctx.globalAlpha = 1; } }
@@ -3958,6 +3968,88 @@ async function clipAudio(ctx, tl){
       src.connect(gn); gn.connect(ctx.destination); src.start(q[2], q[0], dur);
     });
   }
+}
+
+/* ── 🗺 평면도 트레이스 합성 (2026-10-08) — 도구 「🗺 평면도 트레이서」(sd_floortrace.js)와 같은 엔진
+   클립마다 트레이스 하나를 잇는다 (P.trace.links[clipId] = traceId). 영상의 장면 시각이 아니라 「원본 클립의 시각」(clipPlan → planTime 의 mt)을
+   따라가므로 구간을 자르거나 느리게·멈춰도 평면도 위치가 맞는다. 정보 카드·가격·사무소·끝 장면에서는 빠진다 ── */
+var TRC = {}, TR_LIB = null, TRCV = null;
+var TR_POS = [['lt', '왼쪽 위'], ['tc', '위 가운데'], ['rt', '오른쪽 위'], ['lb', '왼쪽 아래'], ['rb', '오른쪽 아래']];
+function trLib(){
+  if(window.sdTrace) return Promise.resolve(window.sdTrace);
+  if(!TR_LIB){ TR_LIB = loadJs('sd_floortrace.js?v=' + SD_VER + 'sv').then(function(){ if(!window.sdTrace) throw new Error('sd_floortrace.js 를 읽지 못했습니다'); return window.sdTrace; }); TR_LIB.catch(function(){ TR_LIB = null; }); }
+  return TR_LIB;
+}
+function trOf(){ if(!P.trace) P.trace = { links:{}, on:true, pos:'', size:0, alpha:100 }; if(!P.trace.links) P.trace.links = {}; return P.trace; }
+function trOn(){ var R = P.trace; return !!(R && R.on !== false && R.links && Object.keys(R.links).some(function(k){ return R.links[k]; })); }
+function trPos(V){ return trOf().pos || (V ? 'tc' : 'rt'); }
+function trSize(V){ return trOf().size || (V ? 62 : 30); }
+async function loadTraces(){
+  if(!trOn()) return; var R = trOf(), L = await trLib().catch(function(){ return null; }); if(!L) return;
+  var ids = Object.keys(R.links).map(function(k){ return R.links[k]; }).filter(Boolean);
+  for(var i = 0; i < ids.length; i++){
+    var T = TRC[ids[i]] || await L.get(ids[i]); if(!T) continue; TRC[ids[i]] = T;
+    if(T.plan) await L.imgReady(T.plan.src, false); var st = T.set || {}; if(st.marker === 'char' && st.char) await L.imgReady(st.char, true);
+  }
+}
+function drawTrace(ctx, t, W, H, tg){
+  if(!trOn() || !window.sdTrace || !tg || !tg.s) return;
+  var s = tg.s; if(!(s.type === 'clip' || s.type === 'hook')) return;
+  var pl = clipPlan(tg); if(!pl) return; var R = trOf(), id = R.links[pl.c.id], T = id && TRC[id]; if(!T || !T.plan || !(T.wp || []).length) return;
+  var mt = planTime(pl, t - tg.t0).mt, V = H > W, u = Math.min(W, H), d = window.sdTrace.outDims(T);
+  var w = Math.round(W * clamp(trSize(V), 10, 95) / 100), h = Math.round(w * d.H / d.W); if(h > H * 0.55){ h = Math.round(H * 0.55); w = Math.round(h * d.W / d.H); }
+  if(!TRCV) TRCV = document.createElement('canvas'); if(TRCV.width !== w || TRCV.height !== h){ TRCV.width = w; TRCV.height = h; }
+  window.sdTrace.render(TRCV.getContext('2d'), w, h, T, mt);
+  var pos = trPos(V), m = u * 0.03, top = V ? H * 0.165 : u * 0.085,   /* 세로 영상은 큰 제목 아래 */ x = pos.charAt(0) === 'l' ? m : pos === 'tc' ? (W - w) / 2 : W - m - w, y = pos.charAt(1) === 'b' ? H * (V ? 0.74 : 0.8) - h : top;
+  ctx.save(); ctx.globalAlpha = clamp(R.alpha == null ? 100 : R.alpha, 20, 100) / 100; ctx.drawImage(TRCV, x, y, w, h); ctx.restore();
+}
+/* 4단계 영상 — 🗺 평면도 칸 */
+function tracePanel(el){
+  var R = trOf(), box = document.createElement('div'), V = P.fmt !== '16:9';
+  box.innerHTML = '<div class="sv-grp"><div class="gh"><span>🗺 평면도 트레이스</span><small>도구 → 🗺 평면도 트레이서와 같은 기능 · 걸으며 찍은 클립에</small></div><div id="svTrL"><div class="sv-note">불러오는 중…</div></div></div>';
+  var host = $('#svEnc', el); host = host ? host.parentNode : null; if(host) host.parentNode.insertBefore(box, host); else el.appendChild(box);
+  trLib().then(function(L){ return L.list(); }).then(function(list){
+    /* 같은 영상(이름·길이)으로 만든 트레이스는 저절로 잇는다 */
+    var auto = 0;
+    (P.clips || []).forEach(function(c){ if(R.links[c.id]) return; var f = list.find(function(T){ return T.video && T.video.name === c.name && Math.abs((T.video.dur || 0) - c.dur) < 0.6 && (T.wp || []).length; }); if(f){ R.links[c.id] = f.id; auto++; } });
+    if(auto){ touch(); loadTraces().then(function(){ OUT = null; drawAt(PV.t); }); }
+    var L2 = $('#svTrL', box), opt = function(cur){ return '<option value="">— 쓰지 않음 —</option>' + list.map(function(T){ return '<option value="' + esc(T.id) + '"' + (T.id === cur ? ' selected' : '') + '>' + esc((T.name || '이름 없음').slice(0, 24)) + ' · 점 ' + (T.wp || []).length + '개' + (T.yaw ? ' · 방향 계산' : '') + '</option>'; }).join(''); };
+    var has = trOn();
+    L2.innerHTML = (P.clips || []).map(function(c, i){
+      var id = R.links[c.id], T = id && list.find(function(x){ return x.id === id; });
+      return '<div class="sv-trr" data-c="' + esc(c.id) + '">' + (c.thumb ? '<img src="' + c.thumb + '" alt="">' : '<span class="ic">🎥</span>') + '<div class="bd"><b>클립 ' + (i + 1) + '</b> <small>' + esc(c.name) + ' · ' + fmtT(c.dur) + '</small>'
+        + '<div class="r"><select class="sv-sel sm" data-trsel>' + opt(id) + '</select><button class="sv-btn sm" data-tred>' + (T ? '✏ 고치기' : '＋ 여기서 만들기') + '</button></div>'
+        + (T ? '<small class="ok">✓ 점 ' + T.wp.length + '개' + (T.yaw ? ' · 방향 계산함' : ' · 방향: 이동 방향') + (T.video && Math.abs((T.video.dur || 0) - c.dur) > 0.6 ? ' · <b style="color:#e8590c">길이가 다른 영상으로 만든 트레이스</b>' : '') + '</small>' : '') + '</div></div>';
+    }).join('')
+      + (has ? '<label class="sv-tg" style="margin-top:8px"><input type="checkbox" id="svTrOn"' + (R.on !== false ? ' checked' : '') + '> 영상에 평면도 넣기</label>'
+        + '<div class="sv-f"><label>자리</label>' + seg('trpos', TR_POS, trPos(V)) + '</div>'
+        + '<div class="sv-f"><label>크기 <span>화면 너비의 %</span></label><label class="sv-avsz"><input type="range" min="15" max="90" step="1" id="svTrSz" value="' + trSize(V) + '"><b>' + trSize(V) + '%</b></label></div>'
+        + '<div class="sv-f"><label>진하기</label><label class="sv-avsz"><input type="range" min="30" max="100" step="5" id="svTrA" value="' + (R.alpha == null ? 100 : R.alpha) + '"><b>' + (R.alpha == null ? 100 : R.alpha) + '%</b></label></div>'
+        + '<div class="sv-note">구간을 자르거나 느리게·멈춰도 원본 클립의 시각을 따라가 위치가 맞습니다. 정보 카드·가격·사무소 장면에서는 빠집니다. 마커·부채·카드 모양은 「✏ 고치기」 → ④ 모양에서 바꿉니다.</div>'
+        : '<div class="sv-note" style="margin-top:6px">걸으며 찍은 클립에 「＋ 여기서 만들기」를 누르면 그 클립 영상으로 평면도 경로를 찍을 수 있습니다. 도구에서 같은 영상으로 만든 트레이스는 저절로 이어집니다.</div>');
+    var chg = function(){ OUT = null; touch(); drawAt(PV.t); };
+    $$('[data-trsel]', L2).forEach(function(s){ s.onchange = function(){ var cid = s.closest('[data-c]').dataset.c; if(this.value) R.links[cid] = this.value; else delete R.links[cid]; loadTraces().then(function(){ OUT = null; touch(); render(); }); }; });
+    $$('[data-tred]', L2).forEach(function(b){ b.onclick = function(){ traceEdit(clipById(b.closest('[data-c]').dataset.c)); }; });
+    var on = $('#svTrOn', L2); if(on) on.onchange = function(){ R.on = this.checked; chg(); };
+    bindSeg(L2, 'trpos', function(v){ R.pos = v; chg(); });
+    var sz = $('#svTrSz', L2); if(sz){ sz.oninput = function(){ sz.nextElementSibling.textContent = sz.value + '%'; R.size = +sz.value; OUT = null; drawAt(PV.t); }; sz.onchange = function(){ touch(); }; }
+    var al = $('#svTrA', L2); if(al){ al.oninput = function(){ al.nextElementSibling.textContent = al.value + '%'; R.alpha = +al.value; OUT = null; drawAt(PV.t); }; al.onchange = function(){ touch(); }; }
+    loadTraces().then(function(){ drawAt(PV.t); });
+  }, function(e){ var L2 = $('#svTrL', box); if(L2) L2.innerHTML = '<div class="sv-err">' + esc(e.message || String(e)) + ' — 깃허브에 sd_floortrace.js 를 같이 올렸는지 확인해 주세요</div>'; });
+}
+/* 이 클립 영상으로 트레이스 만들기·고치기 — 도구의 편집 화면을 그대로 띄운다 */
+async function traceEdit(c){
+  if(!c) return; var L = await trLib(), R = trOf(), x = clipEl(c);
+  try{ await x.ready; }catch(e){ return toast(e.message, true); }
+  var m = document.createElement('div'); m.className = 'sv-trm';
+  m.innerHTML = '<div class="hd"><b>🗺 평면도 트레이스 — 클립 ' + ((P.clips || []).indexOf(c) + 1) + ' · ' + esc(c.name) + '</b><span class="sv-note" id="svTrSv"></span><button class="sv-btn pri" id="svTrX">닫고 영상에 쓰기</button></div><div class="bd"><div id="svTrRoot"></div></div>';
+  document.body.appendChild(m);
+  var file; try{ file = new File([x.blob], c.name, { type:x.blob.type || 'video/mp4' }); }catch(e){ file = x.blob; file.name = c.name; }
+  var api = L.mount($('#svTrRoot', m), { embed:true, traceId:R.links[c.id] || '', video:file, name:(P.title || P.gen && P.gen.title || '') + ' · 클립 ' + ((P.clips || []).indexOf(c) + 1),
+    onSave:function(T){ R.links[c.id] = T.id; TRC[T.id] = JSON.parse(JSON.stringify(T)); var e = $('#svTrSv', m); if(e) e.textContent = '✓ 저장됨'; touch(); } });
+  $('#svTrX', m).onclick = function(){
+    api.flush().then(function(){ var T = api.get(); if(T && T.id){ R.links[c.id] = T.id; TRC[T.id] = JSON.parse(JSON.stringify(T)); } try{ var v = $('#ftV', m); if(v){ v.pause(); v.removeAttribute('src'); v.load(); } }catch(e){} m.remove(); OUT = null; touch(true); loadTraces().then(function(){ render(); }); });
+  };
 }
 
 /* ── 🧑‍💼 프로필 사진 · 🐻 캐릭터 합성 (도구 → 프로필 사진&캐릭터 에서 만든 그림) ── */

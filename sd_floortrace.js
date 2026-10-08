@@ -12,7 +12,7 @@
 (function(){
 'use strict';
 if(window.sdTrace) return;
-var VER = '2026.10.08-1';
+var VER = '2026.10.08-2';
 var FONT = "'Noto Sans KR','Apple SD Gothic Neo','Malgun Gothic',sans-serif";
 function $(s, r){ return (r || document).querySelector(s); }
 function $$(s, r){ return Array.prototype.slice.call((r || document).querySelectorAll(s)); }
@@ -399,7 +399,9 @@ var CSS = '.ft{max-width:1320px;margin:0 auto;color:#212529;font-size:13px}.ft *
  + '.ft-note{font-size:11.5px;color:#868e96;line-height:1.6}'
  + '.ft-toast{position:fixed;left:50%;bottom:28px;transform:translate(-50%,20px);background:#1a202c;color:#fff;border-radius:10px;padding:10px 16px;font-size:13px;opacity:0;transition:.25s;z-index:100000;pointer-events:none}.ft-toast.on{opacity:1;transform:translate(-50%,0)}.ft-toast.bad{background:#c92a2a}';
 var ROOMS = ['현관', '거실', '주방', '식당', '안방', '침실1', '침실2', '침실3', '드레스룸', '안방욕실', '공용욕실', '욕실', '발코니', '다용도실', '팬트리', '알파룸', '서재', '복도'];
-function mount(root){
+/* opts (영상에서 영상 만들기에서 열 때): { traceId, video:File, name, embed:true, onSave(T) } */
+function mount(root, opts){
+  opts = opts || {};
   if(!document.getElementById('ft-css')){ var st = document.createElement('style'); st.id = 'ft-css'; st.textContent = CSS; document.head.appendChild(st); }
   var T = null, V = null, SEL = -1, saveT = 0, busy = false, STOP = false, raf = 0, drag = null, LAST = null;
   root.innerHTML = '<div class="ft"><div class="ft-hero"><h2>🗺 평면도 트레이서</h2><p>현관부터 걸으며 찍은 모델하우스·세대 내부 영상을 보면서 평면도에 「지금 여기」를 찍으면, 평면도 위로 <b>이동 경로 · 현재 위치 · 바라보는 방향(부채)</b>이 움직이는 <b>투명 MOV</b>를 만듭니다. 원본 영상과 길이가 같아 프리미어 프로에서 시작만 맞춰 얹으면 됩니다. 방향은 영상에서 브라우저가 계산합니다 (AI·토큰 없음).</p></div>'
@@ -423,6 +425,7 @@ function mount(root){
     + '<div class="ft-card"><h4>④ 모양 · 투명 MOV 내보내기</h4><div class="ft-out"><div id="ftSet"></div><div><div class="ft-pv"><canvas id="ftPv"></canvas></div><div class="ft-note" style="margin-top:4px" id="ftPvInfo"></div>'
     + '<div style="margin-top:10px"><button class="ft-btn pri big" id="ftExp">🎬 투명 MOV 만들기</button><div style="display:flex;gap:6px;margin-top:6px"><button class="ft-btn" id="ftPng">🖼 지금 화면 PNG</button><button class="ft-btn" id="ftExpStop" style="display:none">멈추기</button></div><div id="ftExpOut"></div></div></div></div></div></div>';
   V = $('#ftV', root);
+  if(opts.embed){ ['#ftList', '#ftNew', '#ftDel'].forEach(function(q){ var e = $(q, root); if(e) e.style.display = 'none'; }); var hp = $('.ft-hero p', root); if(hp) hp.innerHTML = '이 클립 영상을 보며 평면도에 「지금 여기」를 찍으세요. 여기서 만든 트레이스는 영상에 바로 합성되고, 도구 → 🗺 평면도 트레이서에도 같이 저장됩니다.'; }
   var pc = $('#ftPc', root), pctx = pc.getContext('2d'), tl = $('#ftTl', root), pv = $('#ftPv', root);
 
   /* 설정 칸 */
@@ -469,7 +472,7 @@ function mount(root){
   }
 
   /* 작업 목록 · 저장 */
-  function save(){ if(!T) return; clearTimeout(saveT); saveT = setTimeout(function(){ putOne(T).then(function(){ var e = $('#ftSaved', root); if(e) e.textContent = '✓ 저장됨'; listPaint(); }); }, 400); var e = $('#ftSaved', root); if(e) e.textContent = '저장 중…'; }
+  function save(){ if(!T) return; clearTimeout(saveT); saveT = setTimeout(function(){ putOne(T).then(function(){ var e = $('#ftSaved', root); if(e) e.textContent = '✓ 저장됨'; listPaint(); if(opts.onSave) try{ opts.onSave(T); }catch(er){} }); }, 400); var e = $('#ftSaved', root); if(e) e.textContent = '저장 중…'; }
   function listPaint(){
     listAll().then(function(L){
       if(T && !L.some(function(x){ return x.id === T.id; })) L.unshift(T);
@@ -664,8 +667,14 @@ function mount(root){
     var yo = $('#ftYawOut', root); if(yo && !busy) yo.innerHTML = T.yaw ? '<div class="ft-note" style="margin-top:6px">✓ 방향 계산해 둠 (장면 ' + (T.yaw.n || '') + '장)</div>' : '';
   }
   window.addEventListener('resize', function(){ if(root.offsetParent && T) tick(); });
-  listAll().then(function(L){ open(L[0] || newTrace()); });
-  return { get:function(){ return T; }, video:V, open:open };
+  if(opts.embed){
+    (opts.traceId ? getOne(opts.traceId) : Promise.resolve(null)).then(function(t){
+      if(!t){ t = newTrace(); t.name = opts.name || ''; }
+      open(t); if(opts.video) onVideoFile(opts.video);
+      if(!opts.traceId) save();
+    });
+  } else listAll().then(function(L){ open(L[0] || newTrace()); });
+  return { get:function(){ return T; }, video:V, open:open, flush:function(){ clearTimeout(saveT); return T ? putOne(T) : Promise.resolve(); } };
 }
 function loadImg(src){ return new Promise(function(res, rej){ var im = new Image(); im.onload = function(){ res(im); }; im.onerror = function(){ rej(new Error('그림을 읽지 못했습니다')); }; im.src = src; }); }
 function shrink(f, max){ return new Promise(function(res){ var fr = new FileReader(); fr.onload = function(){ loadImg(fr.result).then(function(im){ var k = Math.min(1, max / Math.max(im.width, im.height)), c = document.createElement('canvas'); c.width = Math.round(im.width * k); c.height = Math.round(im.height * k); c.getContext('2d').drawImage(im, 0, 0, c.width, c.height); res(c.toDataURL('image/png')); }, function(){ res(fr.result); }); }; fr.readAsDataURL(f); }); }
