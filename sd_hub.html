@@ -313,6 +313,7 @@ a.sjb-btn.on::after,span.sjb-btn.on::after{background:linear-gradient(100deg,rgb
         Google로 로그인
       </button>
       <div id="login-status" style="margin-top:16px;font-size:12px;color:#9aa0b4;min-height:18px"></div>
+      <div id="login-help" style="display:none;margin-top:14px;text-align:left;font-size:11.5px;line-height:1.65;color:#c3c9d8;background:#1e2433;border-radius:10px;padding:12px 14px"></div>
     </div>
     <div style="margin-top:20px">
       <button onclick="showPinFallback()" style="background:none;border:none;color:#9aa0b4;font-size:11px;cursor:pointer;text-decoration:underline">PIN으로 로그인 (임시)</button>
@@ -679,13 +680,16 @@ function initAuth(){
       return;
     }
     _currentUser = user;
+    clearTimeout(_loginWatch); _loginHelp(false);
     var setStatus = function(msg){ var el=document.getElementById('login-status'); if(el) el.textContent=msg; };
-    setStatus('계정 확인 중...');
+    setStatus('계정 확인 중... ('+(user.email||'')+')');
+    var chkT=setTimeout(function(){ setStatus('계정 확인이 늦어지고 있습니다 — 인터넷 연결을 확인하거나 새로고침(F5) 해 주세요. ('+(user.email||'')+')'); }, 15000);
 
     // RTDB에서 사용자 프로필 읽기
     var db = firebase.database();
     var uid = user.uid;
     db.ref('sd_users/'+uid).once('value').then(function(snap){
+      clearTimeout(chkT);
       var profile = snap.val();
 
       if(!profile){
@@ -735,9 +739,14 @@ function initAuth(){
 
       _onAuthSuccess(profile);
     }).catch(function(err){
-      setStatus('오류: '+err.message);
+      clearTimeout(chkT);
+      console.warn('[로그인] 계정 확인 실패', err);
+      setStatus('계정 확인 오류: '+err.message+' ('+(user.email||'')+')');
+      _loginHelp(true, '로그인은 되었지만 계정 정보를 읽지 못했습니다. 새로고침(F5) 후 다시 시도하고, 계속되면 대표에게 이 화면을 보여 주세요.');
     });
   });
+  //  페이지 이동 방식으로 돌아왔을 때 실패 이유 보여 주기
+  try{ if(sessionStorage.getItem('sd_login_redirect')){ sessionStorage.removeItem('sd_login_redirect'); auth.getRedirectResult().catch(function(err){ console.warn('[로그인] 페이지 이동 실패', err); _loginFail((LOGIN_ERR[err && err.code] || ('로그인 실패: '+(err && err.message || err)))+(err && err.code ? ' ('+err.code+')' : '')); }); } }catch(e){}
 }
 
 function _onAuthSuccess(profile){
@@ -781,17 +790,60 @@ function _showPending(email){
 }
 
 // ── Google 로그인
+//  2026-10-08 — 팝업 창이 결과를 못 돌려주면 「로그인 중...」에서 멈춰 버리던 것:
+//   · 오류 코드를 알아듣기 쉬운 말로 · 25초가 지나도 답이 없으면 버튼을 다시 살리고 해결 방법 + 「다른 방식(페이지 이동)으로 로그인」
+//   · 구글 계정 고르기 창을 매번 띄운다 (다른 사람 계정이 크롬에 남아 있어도 고를 수 있게)
+var _loginWatch = 0;
+var LOGIN_ERR = {
+  'auth/popup-blocked':'로그인 창(팝업)이 차단되었습니다. 주소창 오른쪽의 팝업 차단 표시를 눌러 「항상 허용」 후 다시 눌러 주세요.',
+  'auth/popup-closed-by-user':'로그인 창이 닫혔습니다. 다시 눌러 계정을 골라 주세요.',
+  'auth/cancelled-popup-request':'로그인 창이 이미 열려 있습니다. 작업 표시줄에서 그 창을 찾아 마저 진행해 주세요.',
+  'auth/network-request-failed':'인터넷 연결이 불안정합니다. 연결을 확인하고 다시 시도해 주세요.',
+  'auth/unauthorized-domain':'이 주소에서는 로그인이 허용되어 있지 않습니다. 대표에게 알려 주세요.',
+  'auth/internal-error':'구글 로그인 처리 중 오류가 났습니다. 잠시 뒤 다시 시도하거나 아래 다른 방식을 써 주세요.',
+  'auth/web-storage-unsupported':'브라우저 저장소가 막혀 있습니다(시크릿 창·쿠키 차단). 일반 창에서 열어 주세요.'
+};
+function _loginHelp(show, msg){
+  var h=document.getElementById('login-help'); if(!h) return;
+  if(!show){ h.style.display='none'; return; }
+  h.innerHTML=(msg?'<b style="color:#ffd43b">'+msg+'</b><br><br>':'')
+    +'<b>해결 방법</b><br>① 로그인 창이 뒤에 숨어 있지 않은지 작업 표시줄을 확인해 주세요.<br>'
+    +'② 주소창 오른쪽 팝업 차단 표시 → 「항상 허용」.<br>'
+    +'③ 크롬 확장 프로그램(링크·광고 차단 등)을 잠시 끄거나 <b>시크릿 창(Ctrl+Shift+N)</b>에서 열어 보세요.<br>'
+    +'④ 그래도 안 되면 아래 버튼 — 로그인 창 없이 페이지를 이동해 로그인합니다.<br>'
+    +'<button onclick="signInWithGoogleRedirect()" style="margin-top:10px;width:100%;padding:10px;background:#4f8ef7;border:none;border-radius:9px;color:#fff;font-weight:700;font-size:12.5px;cursor:pointer">↪ 다른 방식(페이지 이동)으로 로그인</button>';
+  h.style.display='block';
+}
+function _loginFail(msg){
+  clearTimeout(_loginWatch);
+  var btn=document.getElementById('google-login-btn'), status=document.getElementById('login-status');
+  if(btn) btn.disabled=false;
+  if(status) status.textContent='';
+  _loginHelp(true, msg);
+}
+function _googleProvider(){
+  var provider = new firebase.auth.GoogleAuthProvider();
+  provider.setCustomParameters({ prompt:'select_account' }); // 모든 구글 계정 허용 · 계정 고르기 창을 늘 띄움
+  return provider;
+}
 function signInWithGoogle(){
   var btn=document.getElementById('google-login-btn');
   var status=document.getElementById('login-status');
   if(btn) btn.disabled=true;
-  if(status) status.textContent='로그인 중...';
-  var provider = new firebase.auth.GoogleAuthProvider();
-  provider.setCustomParameters({hd: undefined}); // 모든 구글 계정 허용
-  firebase.auth().signInWithPopup(provider).catch(function(err){
-    if(btn) btn.disabled=false;
-    if(status) status.textContent='로그인 실패: '+err.message;
+  if(status) status.textContent='로그인 중... (열린 구글 창에서 계정을 골라 주세요)';
+  _loginHelp(false);
+  clearTimeout(_loginWatch);
+  _loginWatch=setTimeout(function(){ if(!_currentUser) _loginFail('로그인 창에서 답이 오지 않습니다 (25초).'); }, 25000);
+  firebase.auth().signInWithPopup(_googleProvider()).then(function(){ clearTimeout(_loginWatch); }).catch(function(err){
+    console.warn('[로그인] 팝업 실패', err && err.code, err && err.message);
+    _loginFail((LOGIN_ERR[err && err.code] || ('로그인 실패: '+(err && err.message || err)))+(err && err.code ? ' ('+err.code+')' : ''));
   });
+}
+function signInWithGoogleRedirect(){
+  var status=document.getElementById('login-status');
+  if(status) status.textContent='구글 로그인 페이지로 이동합니다...';
+  try{ sessionStorage.setItem('sd_login_redirect','1'); }catch(e){}
+  firebase.auth().signInWithRedirect(_googleProvider()).catch(function(err){ _loginFail('페이지 이동 로그인 실패: '+(LOGIN_ERR[err && err.code] || (err && err.message) || err)); });
 }
 
 // ── 로그아웃
@@ -2110,7 +2162,7 @@ function hbMount(){
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.10.08-1';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.10.08-2';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_hub.html';      // 이 파일 이름
   var SD_NAME = '허브';      // 사람이 부르는 이름
 
