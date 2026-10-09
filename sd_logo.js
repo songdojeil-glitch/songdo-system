@@ -30,6 +30,7 @@
   var SLOTS = [
     { id:'brief_head', sec:'🏢 매물 · 📡 데이터', n:'매물 브리핑 보고서 · 현장방문 일정표 — 머리 로고', hint:'가로형(로고+글자) 추천', def:['office', 'wide'] },
     { id:'report_head', sec:'📡 데이터', n:'송도 주택시장 리포트 · 단지 리포트 · 인쇄 화면 — 머리 로고', hint:'가로형 추천', def:['office', 'wide'] },
+    { id:'contract_head', sec:'📑 계약', n:'가계약서 — 머리 로고', hint:'가로형 추천 · 비우면 매물 브리핑 보고서 머리 로고를 씀', def:['office', 'wide'] },
     { id:'est_office', sec:'🏪 상가', n:'상가 견적서 (중개사무소 명의) — 머리 로고', hint:'흰색 또는 사각 아이콘 (남색 띠 위)', def:['office', 'white'] },
     { id:'est_agency', sec:'🏪 상가', n:'상가 견적서 (분양대행사 명의) — 머리 로고', hint:'분양대행 로고', def:['agency', ''] },
     { id:'doc_foot', sec:'📄 모든 문서', n:'문서 아래쪽 보조 로고 (협회 등)', hint:'한국공인중개사협회 연수구지회 등 — 비우면 넣지 않음', def:['assoc', ''] },
