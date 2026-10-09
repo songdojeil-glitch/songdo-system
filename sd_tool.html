@@ -155,7 +155,7 @@ a.sjb-btn.on::after,span.sjb-btn.on::after{background:linear-gradient(100deg,rgb
 <script>
 (function(){
   'use strict';
-  var SD_VER = '2026.10.09-3';
+  var SD_VER = '2026.10.09-4';
   var TABS = [
     [20, '🧰 전체 도구'],
     ['calc', '🧮 부동산 계산기'],
@@ -2296,7 +2296,13 @@ textarea.ec-in{resize:vertical;min-height:84px;line-height:1.6}
     if(withPhoto && c.photo){ var b = c.photo.split(',')[1]; if(b && b.length < 300000) L.push('PHOTO;ENCODING=b;TYPE=JPEG:' + b); }
     L.push('END:VCARD'); return L.join('\r\n');
   }
-  function fileBase(c){ return String(c.name || '명함').replace(/[\\/:*?"<>|\s]+/g, '_') + (String(c.label || '').trim() ? '_' + String(c.label).trim().replace(/[\\/:*?"<>|\s]+/g, '_').slice(0, 20) : '') + (c.company ? '_' + String(c.company).replace(/[\\/:*?"<>|\s]+/g, '').slice(0, 16) : ''); }
+  /* 파일 이름 (2026-10-09) — [명함 이름_]이름_종류__날짜  예) APT중개용_문형은_풀사진명함__2026-10-09.png
+     명함 이름(목적)·스타일이 들어가 다운로드 폴더에서 구분·관리가 되게. 날짜는 이 컴퓨터 날짜(한국 시간) */
+  function fsafe(t){ return String(t || '').trim().replace(/[\\/:*?"<>|]+/g, '').replace(/\s+/g, ''); }
+  function today(){ var d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
+  function styleName(c){ return fsafe((STYLES.find(function(x){ return x[0] === c.style; }) || [0, ''])[1]); }
+  function fileName(c, kind, ext){ return [fsafe(c.label).slice(0, 24), fsafe(c.name).slice(0, 12) || '명함'].filter(Boolean).join('_') + '_' + kind + '__' + today() + '.' + ext; }
+  function fileBase(c){ return [fsafe(c.label).slice(0, 24), fsafe(c.name).slice(0, 12) || '명함'].filter(Boolean).join('_'); }
   function saveBlob(b, name){ var u = URL.createObjectURL(b), a = document.createElement('a'); a.href = u; a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(function(){ URL.revokeObjectURL(u); }, 2000); }
   function cardCanvas(c){ return (c.qr ? qrCanvas(vcard(c, false), 600).catch(function(e){ toast(e.message, true); return null; }) : Promise.resolve(null)).then(function(q){ return draw(c, q); }); }
   /* ── 전자명함 웹페이지 (.html 한 파일 — 휴대폰에서 누르면 전화·문자·메일·길찾기) ── */
@@ -2335,7 +2341,7 @@ textarea.ec-in{resize:vertical;min-height:84px;line-height:1.6}
       + (logo && (c.style === 'full' || c.style === 'frame') ? hero.replace('<header class="big">', '<header class="big"><img class="lgo" src="' + logo + '" alt="">') : logo && (dark || c.style === 'minimal') ? hero.replace(pic, '<div class="duo"><div class="dl"><img class="lg" src="' + logo + '" alt="' + esc(c.company || '로고') + '"></div><i></i><div class="dr">' + pic + '</div></div>') : hero) + (tags.length ? '<div class="tags">' + tags.map(function(t){ return '<span>#' + esc(t) + '</span>'; }).join('') + '</div>' : '')
       + (c.intro ? '<div class="intro">' + esc(c.intro) + '</div>' : '')
       + '<div class="acts">' + A.map(function(a){ return '<a href="' + esc(a[2]) + '"' + (/^https?:/.test(a[2]) ? ' target="_blank" rel="noopener"' : '') + '><span>' + a[0] + '</span>' + esc(a[1]) + '</a>'; }).join('') + '</div>'
-      + '<a class="save" href="' + vcf + '" download="' + esc(fileBase(c)) + '.vcf">👤 연락처 저장하기</a>'
+      + '<a class="save" href="' + vcf + '" download="' + esc(fsafe(c.name) || '연락처') + '.vcf">👤 연락처 저장하기</a>'
       + '<div class="info">' + rows(c).map(function(r){ return '<div><b>' + esc(r[0]) + '</b><span>' + esc(r[1]) + '</span></div>'; }).join('') + '</div>'
       + '<footer>' + esc(c.company || '') + ' 전자명함</footer></div></body></html>';
   }
@@ -2347,12 +2353,12 @@ textarea.ec-in{resize:vertical;min-height:84px;line-height:1.6}
     return L.join('\n');
   }
   var OUT = {
-    png:function(c){ return cardCanvas(c).then(function(cv){ return new Promise(function(r){ cv.toBlob(r, 'image/png'); }); }).then(function(b){ saveBlob(b, fileBase(c) + '_명함.png'); toast('명함 이미지를 저장했습니다 — 카톡·문자로 보내세요'); }); },
-    vcf:function(c){ saveBlob(new Blob([vcard(c, true)], { type:'text/vcard;charset=utf-8' }), fileBase(c) + '.vcf'); toast('연락처 파일(.vcf)을 저장했습니다'); return Promise.resolve(); },
-    html:function(c){ return Promise.all([smallPhoto(c), c.logo ? img(c.logo).then(function(im){ var t = trimLogo(im); return t && t !== im && t.toDataURL ? t.toDataURL('image/png') : c.logo; }) : '']).then(function(r){ var p = r[0]; saveBlob(new Blob([webHtml(c, p, r[1])], { type:'text/html;charset=utf-8' }), fileBase(c) + '_전자명함.html'); toast('전자명함 웹페이지를 저장했습니다'); }); },
+    png:function(c){ return cardCanvas(c).then(function(cv){ return new Promise(function(r){ cv.toBlob(r, 'image/png'); }); }).then(function(b){ saveBlob(b, fileName(c, styleName(c) + '명함', 'png')); toast('명함 이미지를 저장했습니다 — 카톡·문자로 보내세요'); }); },
+    vcf:function(c){ saveBlob(new Blob([vcard(c, true)], { type:'text/vcard;charset=utf-8' }), fileName(c, '연락처', 'vcf')); toast('연락처 파일(.vcf)을 저장했습니다'); return Promise.resolve(); },
+    html:function(c){ return Promise.all([smallPhoto(c), c.logo ? img(c.logo).then(function(im){ var t = trimLogo(im); return t && t !== im && t.toDataURL ? t.toDataURL('image/png') : c.logo; }) : '']).then(function(r){ var p = r[0]; saveBlob(new Blob([webHtml(c, p, r[1])], { type:'text/html;charset=utf-8' }), fileName(c, '전자명함', 'html')); toast('전자명함 웹페이지를 저장했습니다'); }); },
     qr:function(c){ return qrCanvas(vcard(c, false), 900).then(function(q){ var cv = document.createElement('canvas'), P = 60; cv.width = q.width + P * 2; cv.height = q.height + P * 2 + 90; var x = cv.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, cv.width, cv.height); x.drawImage(q, P, P);
       text(x, [c.name, c.company].filter(Boolean).join(' · ') || '연락처', cv.width / 2, q.height + P + 50, 40, 700, '#1a1a1a', 'center', cv.width - 40); text(x, '휴대폰 카메라로 찍으면 연락처에 저장됩니다', cv.width / 2, q.height + P + 100, 26, 400, '#868e96', 'center');
-      return new Promise(function(r){ cv.toBlob(r, 'image/png'); }); }).then(function(b){ saveBlob(b, fileBase(c) + '_QR.png'); toast('QR 코드를 저장했습니다'); }, function(e){ toast(e.message, true); }); },
+      return new Promise(function(r){ cv.toBlob(r, 'image/png'); }); }).then(function(b){ saveBlob(b, fileName(c, 'QR', 'png')); toast('QR 코드를 저장했습니다'); }, function(e){ toast(e.message, true); }); },
     txt:function(c){ var t = textCard(c); var done = function(){ toast('문자 명함을 복사했습니다 — 카톡에 붙여 넣으세요'); }; if(navigator.clipboard && window.isSecureContext) return navigator.clipboard.writeText(t).then(done, function(){ prompt('아래 글을 복사하세요', t); }); prompt('아래 글을 복사하세요', t); return Promise.resolve(); }
   };
   /* ── 화면 ── */
@@ -2401,7 +2407,7 @@ textarea.ec-in{resize:vertical;min-height:84px;line-height:1.6}
       + '<div class="ec-chips">' + DB.cards.map(function(x){ return '<button class="ec-chip' + (x.id === c.id ? ' on' : '') + '" data-card="' + x.id + '"' + (x._by ? ' title="만든 사람: ' + esc(x._by) + '"' : '') + '>' + esc(cardTitle(x)) + (x._by && x._by !== me() ? ' <small style="opacity:.6">· ' + esc(x._by) + '</small>' : '') + '</button>'; }).join('') + '</div>'
       + '<div class="ec-row" style="margin-bottom:8px"><b style="font-size:12.5px;white-space:nowrap">🏷 명함 이름</b><input class="ec-in" id="ec-label" value="' + esc(c.label || '') + '" maxlength="24" placeholder="예: 중개용 · 분양대행용 · 협회용 (목적별로 구별)" style="flex:1;min-width:160px"></div>'
       + '<div class="ec-row"><button class="ec-btn" id="ec-new">＋ 새 명함</button><button class="ec-btn" id="ec-dup">⧉ 복제</button><button class="ec-btn" id="ec-del"' + (DB.cards.length > 1 ? '' : ' disabled') + '>🗑 삭제</button></div>'
-      + '<div class="ec-bk"><button id="ec-exp" title="명함 전부를 파일(.json) 하나로 내려받아 따로 보관">⬇ 백업 저장</button><span>·</span><label title="백업 저장한 파일(.json)에서 명함을 다시 넣기 — 지금 명함은 그대로 두고 더합니다">⬆ 백업에서 복원<input type="file" id="ec-imp" accept=".json,application/json" hidden></label></div></div>'
+      + '<div class="ec-bk"><button id="ec-exp" title="지금 고른 명함을 파일(.json)로 내려받아 따로 보관 — 파일 이름: 명함이름_이름_명함__날짜">⬇ 백업 저장</button><span>·</span><label title="백업 저장한 파일(.json)에서 명함을 다시 넣기 — 지금 명함은 그대로 두고 더합니다">⬆ 백업에서 복원<input type="file" id="ec-imp" accept=".json,application/json" hidden></label></div></div>'
       + '<div class="ec-steps">' + [['1', '디자인'], ['2', '자기소개'], ['3', '기본 정보']].map(function(s){ return '<button data-step="' + s[0] + '"' + (STEP === +s[0] ? ' class="on"' : '') + '><i>' + s[0] + '</i>' + s[1] + '</button>'; }).join('') + '</div>'
       + '<div id="ec-step">' + stepHtml(c) + '</div>'
       + '<div class="ec-lock">☁ 명함(정보·사진·로고)은 이 브라우저와 <b>SJRWS Firebase</b>에 함께 저장됩니다. 다른 PC·브라우저에서 도구 → 전자명함을 열면 그대로 불러옵니다. 사무실 계정은 같은 명함 목록을 함께 봅니다. 아래 「백업 저장」은 따로 보관이 필요할 때만 쓰세요.</div><div id="ec-cloudhelp">' + clHelp() + '</div>'
@@ -2421,7 +2427,8 @@ textarea.ec-in{resize:vertical;min-height:84px;line-height:1.6}
     $('ec-new').onclick = function(){ var n = blank(); n._by = me(); DB.cards.push(n); DB.cur = n.id; save(); STEP = 1; paint(); toast('새 명함을 만들었습니다'); };
     $('ec-dup').onclick = function(){ var n = JSON.parse(JSON.stringify(c)); n.id = uid(); n.at = Date.now(); delete n._cat; delete n._up; delete n._auto; n._by = me(); n.label = (String(c.label || '').trim() ? String(c.label).trim() + ' ' : '') + '사본'; DB.cards.push(n); DB.cur = n.id; if(save()) toast('명함을 복제했습니다 — 위 「명함 이름」을 목적에 맞게 바꿔 주세요'); paint(); };
     $('ec-del').onclick = function(){ if(DB.cards.length < 2 || !confirm('「' + cardTitle(c) + '」 명함을 지울까요?\nFirebase 에서도 지워져 다른 PC 에서도 사라집니다.')) return; var gone = c.id, was = c._cat; DB.cards = DB.cards.filter(function(x){ return x.id !== gone; }); DB.cur = DB.cards[0].id; save(); paint(); if(was) cloudDel(gone); };
-    $('ec-exp').onclick = function(){ saveBlob(new Blob([JSON.stringify({ type:'sjrws-ecard', ver:1, at:new Date().toISOString(), cards:DB.cards }, null, 1)], { type:'application/json' }), '내명함_' + new Date().toISOString().slice(0, 10) + '.json'); toast('명함 ' + DB.cards.length + '장을 백업 파일로 저장했습니다 (다운로드 폴더)'); };
+    /* 백업 — 지금 고른 명함 한 장을 「APT중개용_문형은_명함__2026-10-09.json」 으로 */
+    $('ec-exp').onclick = function(){ var one = JSON.parse(JSON.stringify(c)); ['_cat', '_up', '_auto'].forEach(function(k){ delete one[k]; }); var nm = fileName(c, '명함', 'json'); saveBlob(new Blob([JSON.stringify({ type:'sjrws-ecard', ver:1, at:new Date().toISOString(), cards:[one] }, null, 1)], { type:'application/json' }), nm); toast('「' + cardTitle(c) + '」 명함을 백업했습니다 — 다운로드 폴더 ' + nm); };
     $('ec-imp').onchange = function(){ var f = this.files && this.files[0]; this.value = ''; if(!f) return; f.text().then(function(t){ var j = JSON.parse(t), list = j && (j.cards || (j.name != null ? [j] : null)); if(!Array.isArray(list) || !list.length) throw new Error('명함 파일이 아닙니다');
         list.forEach(function(x){ var n = Object.assign(blank(), x, { id:uid(), at:Date.now() }); delete n._cat; delete n._up; delete n._auto; n._by = me(); n.tags = (n.tags || []).concat(['', '', '']).slice(0, 3); DB.cards.push(n); DB.cur = n.id; }); save(); paint(); toast('백업에서 명함 ' + list.length + '장을 복원했습니다'); }).catch(function(e){ toast('복원하지 못했습니다: ' + e.message, true); }); };
     q('[data-step]').forEach(function(b){ b.onclick = function(){ STEP = +b.dataset.step; paint(); try{ $('card-wrap').scrollTop = 0; }catch(e){} }; });
