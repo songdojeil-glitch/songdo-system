@@ -47,44 +47,44 @@
   var R3 = ['전세', '월세'], SG = ['sangga', 'sbun'];
   var DEF_TERMS = {
     basic:[
-      { text:'본 가계약은 위 물건에 대하여 {갑}과 {을}이 위 조건으로 본 계약을 체결하기로 약정하는 것이며, 가계약금이 {갑} 계좌에 입금된 때에 성립한다.', on:true },
-      { text:'본 계약은 {본계약일}에 체결하며, 본 계약서는 개업공인중개사가 표준 계약서 양식으로 작성한다.', on:true },
-      { text:'{을}이 본 계약을 체결하지 않을 경우 가계약금은 {갑}에게 귀속되며, {을}은 그 반환을 청구하지 않는다.', on:true },
-      { text:'{갑}이 본 계약을 체결하지 않을 경우 {갑}은 {을}에게 가계약금의 배액을 상환한다.', on:true },
-      { text:'가계약금은 본 계약 시 계약금의 일부로 충당한다.', on:true },
-      { text:'{갑}은 본 계약 체결 시까지 위 물건을 제3자와 계약하거나 광고하지 않으며, 등기사항증명서상 권리관계를 현 상태대로 유지한다.', on:true },
-      { text:'본 가계약서에 정하지 않은 사항은 본 계약 시 당사자가 협의하여 정하며, 민법 및 부동산 거래 관례에 따른다.', on:true },
-      { text:'잔금일 기준으로 제세공과금 및 관리비는 일할 계산하여 정산한다.', d:['매매'], t:['apt', 'op', 'ss', 'sangga'], on:true },
-      { text:'{갑}은 잔금일까지 위 물건의 근저당권 등 제한물권을 말소한다. 다만 승계하기로 한 경우에는 특약에 따로 적는다.', d:['매매'], t:['apt', 'op', 'ss', 'sangga'], on:true },
-      { text:'{갑}은 본 계약 시 국세·지방세 완납증명서를 제시하고, 선순위 보증금·근저당 등 권리관계를 {을}에게 확인시켜 준다.', d:R3, on:true },
-      { text:'{갑}은 {을}이 잔금일에 전입신고 및 확정일자를 받을 수 있도록 협조하며, 잔금일 다음 날까지 위 물건에 새로운 담보권을 설정하지 않는다.', d:R3, t:['apt', 'op'], on:true },
-      { text:'분양권 전매 제한·명의변경 가능 여부는 시행사(분양사무소)에 확인한 뒤 본 계약을 체결하며, 전매가 불가능하면 본 가계약은 없던 것으로 하고 가계약금은 {을}에게 돌려준다.', d:['매매'], t:['aptbun', 'sbun'], on:true },
-      { text:'분양권 매매대금은 프리미엄과 {갑}이 이미 낸 계약금(·중도금)을 합한 금액이며, 남은 분양대금과 중도금 대출은 {을}이 승계한다.', d:['매매'], t:['aptbun', 'sbun'], on:true },
-      { text:'상가의 매매대금·월 차임에 대한 부가가치세는 별도이며, 세금계산서 발행 여부는 본 계약 시 정한다.', t:['sangga', 'sbun'], on:true },
-      { text:'권리금은 본 가계약 금액에 포함되지 않는다.', d:R3, t:['sangga'], on:true },
-      { text:'생활형숙박시설은 숙박업 신고 대상으로 주거용 사용(전입신고)에 제한이 있음을 {을}은 확인하였다.', t:['ss'], on:true }
+      { ti:'가계약 성립', text:'본 가계약은 위 물건에 대하여 {갑}과 {을}이 위 조건으로 본 계약을 체결하기로 약정하는 것이며, 가계약금이 {갑} 계좌에 입금된 때에 성립한다.', on:true },
+      { ti:'본 계약 체결', text:'본 계약은 {본계약일}에 체결하며, 본 계약서는 개업공인중개사가 표준 계약서 양식으로 작성한다.', on:true },
+      { ti:'매수(임차) 측 불이행', text:'{을}이 본 계약을 체결하지 않을 경우 가계약금은 {갑}에게 귀속되며, {을}은 그 반환을 청구하지 않는다.', on:true },
+      { ti:'매도(임대) 측 불이행', text:'{갑}이 본 계약을 체결하지 않을 경우 {갑}은 {을}에게 가계약금의 배액을 상환한다.', on:true },
+      { ti:'가계약금 충당', text:'가계약금은 본 계약 시 계약금의 일부로 충당한다.', on:true },
+      { ti:'물건 유지·광고 중지', text:'{갑}은 본 계약 체결 시까지 위 물건을 제3자와 계약하거나 광고하지 않으며, 등기사항증명서상 권리관계를 현 상태대로 유지한다.', on:true },
+      { ti:'정하지 않은 사항', text:'본 가계약서에 정하지 않은 사항은 본 계약 시 당사자가 협의하여 정하며, 민법 및 부동산 거래 관례에 따른다.', on:true },
+      { ti:'제세공과금·관리비 정산', text:'잔금일 기준으로 제세공과금 및 관리비는 일할 계산하여 정산한다.', d:['매매'], t:['apt', 'op', 'ss', 'sangga'], on:true },
+      { ti:'근저당 등 말소', text:'{갑}은 잔금일까지 위 물건의 근저당권 등 제한물권을 말소한다. 다만 승계하기로 한 경우에는 특약에 따로 적는다.', d:['매매'], t:['apt', 'op', 'ss', 'sangga'], on:true },
+      { ti:'세금 완납·권리관계 확인', text:'{갑}은 본 계약 시 국세·지방세 완납증명서를 제시하고, 선순위 보증금·근저당 등 권리관계를 {을}에게 확인시켜 준다.', d:R3, on:true },
+      { ti:'전입·확정일자 협조', text:'{갑}은 {을}이 잔금일에 전입신고 및 확정일자를 받을 수 있도록 협조하며, 잔금일 다음 날까지 위 물건에 새로운 담보권을 설정하지 않는다.', d:R3, t:['apt', 'op'], on:true },
+      { ti:'분양권 전매 확인', text:'분양권 전매 제한·명의변경 가능 여부는 시행사(분양사무소)에 확인한 뒤 본 계약을 체결하며, 전매가 불가능하면 본 가계약은 없던 것으로 하고 가계약금은 {을}에게 돌려준다.', d:['매매'], t:['aptbun', 'sbun'], on:true },
+      { ti:'분양권 매매대금·승계', text:'분양권 매매대금은 프리미엄과 {갑}이 이미 낸 계약금(·중도금)을 합한 금액이며, 남은 분양대금과 중도금 대출은 {을}이 승계한다.', d:['매매'], t:['aptbun', 'sbun'], on:true },
+      { ti:'상가 부가가치세', text:'상가의 매매대금·월 차임에 대한 부가가치세는 별도이며, 세금계산서 발행 여부는 본 계약 시 정한다.', t:['sangga', 'sbun'], on:true },
+      { ti:'권리금 별도', text:'권리금은 본 가계약 금액에 포함되지 않는다.', d:R3, t:['sangga'], on:true },
+      { ti:'생숙 주거 사용 제한', text:'생활형숙박시설은 숙박업 신고 대상으로 주거용 사용(전입신고)에 제한이 있음을 {을}은 확인하였다.', t:['ss'], on:true }
     ],
     special:[
-      { text:'현 시설 상태 그대로의 매매이며, {을}은 현장을 확인하였다.', d:['매매'] },
-      { text:'{을}의 대출이 금융기관 사정으로 실행되지 않을 경우 본 가계약은 해제하고 가계약금은 {을}에게 돌려준다.', d:['매매'] },
-      { text:'현 임차인의 임대차(보증금 ○○원, 월 차임 ○○원, 만기 ○○)를 {을}이 승계하며, 승계 보증금은 매매대금에서 공제한다.', d:['매매'], t:['apt', 'op', 'sangga'] },
-      { text:'잔금일 전 도배·장판은 {갑}이 부담하여 시공한다.', d:R3, t:['apt', 'op'] },
-      { text:'{을}의 전세자금대출이 승인되지 않을 경우 본 가계약은 해제하고 가계약금은 {을}에게 돌려준다.', d:['전세'], t:['apt', 'op'] },
-      { text:'전세보증금 반환보증(HUG·HF·SGI) 가입이 거절될 경우 본 가계약은 해제하고 가계약금은 {을}에게 돌려준다.', d:['전세'], t:['apt', 'op'] },
-      { text:'반려동물 사육을 허용하며, 퇴거 시 그로 인한 훼손은 {을}이 원상 복구한다.', d:R3, t:['apt', 'op'] },
-      { text:'{갑}은 위 건물에 위반건축물 등재·행정처분 사실이 없음을 고지하며, 사실과 다를 경우 {을}은 본 가계약을 해제하고 가계약금 반환을 청구할 수 있다.', t:['sangga', 'op', 'ss'] },
-      { text:'영업에 필요한 용도변경·영업허가는 {을}이 자기 책임과 비용으로 진행하며, 허가가 나지 않는 사유가 건물에 있는 경우 서로 협의한다.', d:R3, t:['sangga'] },
-      { text:'인테리어 공사는 잔금일 이후(또는 ○월 ○일부터) 시작할 수 있으며, 계약 종료 시 {을}은 원상 복구한다.', d:R3, t:['sangga'] },
-      { text:'간판 설치 위치·크기는 건물 관리규약에 따르며, 설치·철거 비용은 {을}이 부담한다.', d:R3, t:['sangga'] },
-      { text:'하수도원인자부담금·정화조 용량 부족에 따른 비용은 {갑}·{을} 협의하여 정한다.', t:['sangga'] },
-      { text:'영업 양도에 따른 권리금은 기존 임차인과 {을} 사이의 별도 계약으로 하며, {갑}은 신규 임대차 체결에 협조한다.', d:R3, t:['sangga'] },
-      { text:'사업의 포괄 양수도로 처리하되, 포괄 양수도가 인정되지 않을 경우 부가가치세는 {을}이 부담한다.', d:['매매'], t:['sangga'] },
-      { text:'명의변경 수수료 등 분양권 명의변경 비용은 {을}이 부담한다.', d:['매매'], t:['aptbun', 'sbun'] },
-      { text:'{갑}이 선택한 유상 옵션(○○)은 매매대금에 포함한다.', d:['매매'], t:['aptbun'] },
-      { text:'월 관리비는 {을}이 부담하며, 장기수선충당금은 {갑}이 부담한다.', d:R3, t:['apt', 'op'] }
+      { ti:'현 시설 상태 매매', text:'현 시설 상태 그대로의 매매이며, {을}은 현장을 확인하였다.', d:['매매'] },
+      { ti:'대출 불가 시 해제', text:'{을}의 대출이 금융기관 사정으로 실행되지 않을 경우 본 가계약은 해제하고 가계약금은 {을}에게 돌려준다.', d:['매매'] },
+      { ti:'임차인 승계', text:'현 임차인의 임대차(보증금 ○○원, 월 차임 ○○원, 만기 ○○)를 {을}이 승계하며, 승계 보증금은 매매대금에서 공제한다.', d:['매매'], t:['apt', 'op', 'sangga'] },
+      { ti:'도배·장판', text:'잔금일 전 도배·장판은 {갑}이 부담하여 시공한다.', d:R3, t:['apt', 'op'] },
+      { ti:'전세대출 불가 시 해제', text:'{을}의 전세자금대출이 승인되지 않을 경우 본 가계약은 해제하고 가계약금은 {을}에게 돌려준다.', d:['전세'], t:['apt', 'op'] },
+      { ti:'보증보험 거절 시 해제', text:'전세보증금 반환보증(HUG·HF·SGI) 가입이 거절될 경우 본 가계약은 해제하고 가계약금은 {을}에게 돌려준다.', d:['전세'], t:['apt', 'op'] },
+      { ti:'반려동물', text:'반려동물 사육을 허용하며, 퇴거 시 그로 인한 훼손은 {을}이 원상 복구한다.', d:R3, t:['apt', 'op'] },
+      { ti:'위반건축물·행정처분 고지', text:'{갑}은 위 건물에 위반건축물 등재·행정처분 사실이 없음을 고지하며, 사실과 다를 경우 {을}은 본 가계약을 해제하고 가계약금 반환을 청구할 수 있다.', t:['sangga', 'op', 'ss'] },
+      { ti:'용도변경·영업허가', text:'영업에 필요한 용도변경·영업허가는 {을}이 자기 책임과 비용으로 진행하며, 허가가 나지 않는 사유가 건물에 있는 경우 서로 협의한다.', d:R3, t:['sangga'] },
+      { ti:'인테리어·원상복구', text:'인테리어 공사는 잔금일 이후(또는 ○월 ○일부터) 시작할 수 있으며, 계약 종료 시 {을}은 원상 복구한다.', d:R3, t:['sangga'] },
+      { ti:'간판', text:'간판 설치 위치·크기는 건물 관리규약에 따르며, 설치·철거 비용은 {을}이 부담한다.', d:R3, t:['sangga'] },
+      { ti:'하수도원인자부담금·정화조', text:'하수도원인자부담금·정화조 용량 부족에 따른 비용은 {갑}·{을} 협의하여 정한다.', t:['sangga'] },
+      { ti:'권리금·영업양도', text:'영업 양도에 따른 권리금은 기존 임차인과 {을} 사이의 별도 계약으로 하며, {갑}은 신규 임대차 체결에 협조한다.', d:R3, t:['sangga'] },
+      { ti:'포괄양수도·부가세', text:'사업의 포괄 양수도로 처리하되, 포괄 양수도가 인정되지 않을 경우 부가가치세는 {을}이 부담한다.', d:['매매'], t:['sangga'] },
+      { ti:'분양권 명의변경 비용', text:'명의변경 수수료 등 분양권 명의변경 비용은 {을}이 부담한다.', d:['매매'], t:['aptbun', 'sbun'] },
+      { ti:'유상 옵션 포함', text:'{갑}이 선택한 유상 옵션(○○)은 매매대금에 포함한다.', d:['매매'], t:['aptbun'] },
+      { ti:'관리비·장기수선충당금', text:'월 관리비는 {을}이 부담하며, 장기수선충당금은 {갑}이 부담한다.', d:R3, t:['apt', 'op'] }
     ]
   };
-  function seedTerms(){ var o = { basic:[], special:[] }; ['basic', 'special'].forEach(function(k){ o[k] = DEF_TERMS[k].map(function(x){ return { id:uid('t'), text:x.text, d:x.d || [], t:x.t || [], on:!!x.on }; }); }); return o; }
+  function seedTerms(){ var o = { basic:[], special:[] }; ['basic', 'special'].forEach(function(k){ o[k] = DEF_TERMS[k].map(function(x){ return { id:uid('t'), ti:x.ti || '', text:x.text, d:x.d || [], t:x.t || [], on:!!x.on }; }); }); return o; }
   /* ── 저장 ── */
   function waitStore(){ return new Promise(function(res){ var n = 0; (function chk(){ if(window.storage && window.storage.get) return res(); if(++n > 100) return res(); setTimeout(chk, 100); })(); }); }
   function sget(k){ return waitStore().then(function(){ return window.storage.get(k); }).then(function(r){ try{ return r && r.value ? JSON.parse(r.value) : null; }catch(e){ return null; } }, function(){ return null; }); }
@@ -93,7 +93,10 @@
   function loadAll(force){
     return Promise.all([
       LIST && !force ? LIST : sget(LK).then(function(v){ LIST = Array.isArray(v) ? v : []; return LIST; }),
-      TERMS && !force ? TERMS : sget(TK).then(function(v){ TERMS = v && Array.isArray(v.basic) ? v : seedTerms(); if(!v) sset(TK, TERMS).catch(function(){}); return TERMS; }),
+      TERMS && !force ? TERMS : sget(TK).then(function(v){ TERMS = v && Array.isArray(v.basic) ? v : seedTerms(); if(!v) sset(TK, TERMS).catch(function(){});
+        /* 예전에 저장한 처음 예시 조건에 제목 붙이기 (2026-10-09) */
+        ['basic', 'special'].forEach(function(k){ TERMS[k] = TERMS[k] || []; TERMS[k].forEach(function(t){ if(!t.ti){ var m = DEF_TERMS[k].find(function(x){ return x.text === t.text; }); if(m) t.ti = m.ti; } }); });
+        return TERMS; }),
       OFFICE ? OFFICE : sget('sd_office').then(function(v){ OFFICE = Object.assign({ name:'송도제일공인중개사사무소', owner:'문형은', tel:'032-851-6688', addr:'인천 연수구 해돋이로 168 혜인프라자 1층 103호', regno:'28185-2016-00161' }, v || {}); return OFFICE; })
     ]);
   }
@@ -126,7 +129,7 @@
   function stepIdx(k){ return STEPS.findIndex(function(s){ return s[0] === k; }); }
   /* ═════════ 화면 ═════════ */
   var ROOT = null;
-  function render(){ if(!ROOT) return; if(VIEW === 'list') return paintList(); paintEdit(); }
+  function render(){ if(!ROOT) return; if(VIEW === 'list') return paintList(); if(VIEW === 'terms') return paintTerms(); paintEdit(); }
   function paintList(){
     var L = (LIST || []).filter(function(d){ if(!Q) return true; var s = [d.no, title(d), d.deal, ptN(d.ptype), d.parties && d.parties.g.name, d.parties && d.parties.e.name, d.by].join(' '); return s.indexOf(Q) >= 0; });
     ROOT.innerHTML = '<div class="pc">'
@@ -140,7 +143,7 @@
         : '<div class="pc-empty">' + (Q ? '찾는 가계약서가 없습니다.' : '아직 저장한 가계약서가 없습니다. 「＋ 새 가계약서」로 시작하세요.') + '</div>')
       + '</div></div>';
     $('pc-new').onclick = function(){ D = blank(); STEP = 'type'; VIEW = 'edit'; render(); };
-    $('pc-terms').onclick = function(){ termsModal(); };
+    $('pc-terms').onclick = function(){ VIEW = 'terms'; EDIT = null; render(); };
     $('pc-q').oninput = function(){ Q = this.value.trim(); var p = this.selectionStart; paintList(); var i = $('pc-q'); i.focus(); try{ i.setSelectionRange(p, p); }catch(e){} };
     qa('[data-open]').forEach(function(b){ b.onclick = function(){ var d = LIST.find(function(x){ return x.id === b.dataset.open; }); if(!d) return; D = norm(JSON.parse(JSON.stringify(d))); STEP = 'done'; VIEW = 'edit'; render(); }; });
     qa('[data-dup]').forEach(function(b){ b.onclick = function(){ var d = LIST.find(function(x){ return x.id === b.dataset.dup; }); if(!d) return; D = norm(JSON.parse(JSON.stringify(d))); D.id = uid(); D.no = ''; D.status = '작성 중'; D.createdAt = 0; D.by = ''; D.signDate = today(); STEP = 'type'; VIEW = 'edit'; render(); toast('「' + title(d) + '」 을 복제했습니다 — 바꿀 곳만 고쳐 저장하세요'); }; });
@@ -237,7 +240,7 @@
       + '<div class="pc-row"><label class="pc-ck"><input type="checkbox" id="pc-showall"' + (SHOWALL[k] ? ' checked' : '') + '> 다른 거래·물건용 조건도 보기</label><span class="sp"></span><button class="pc-btn sm" id="pc-tadd">＋ 조건 추가 (목록에)</button></div>'
       + '<div class="pc-terms">' + show.map(function(t){ var on = ids.indexOf(t.id) >= 0, ed = EDIT && EDIT.id === t.id;
           if(ed) return termEditor(t);
-          return '<div class="pc-term' + (on ? ' on' : '') + (fits(t, D) ? '' : ' off') + '"><label><input type="checkbox" data-tsel="' + t.id + '"' + (on ? ' checked' : '') + '><span>' + esc(sub(t.text)) + '</span></label><div class="pc-tb">' + scopeTag(t) + '<button class="pc-btn xs" data-tup="' + t.id + '" title="위로">↑</button><button class="pc-btn xs" data-tdn="' + t.id + '" title="아래로">↓</button><button class="pc-btn xs" data-ted="' + t.id + '">✎ 수정</button><button class="pc-btn xs x" data-tdel="' + t.id + '">🗑</button></div></div>'; }).join('')
+          return '<div class="pc-term' + (on ? ' on' : '') + (fits(t, D) ? '' : ' off') + '"><label><input type="checkbox" data-tsel="' + t.id + '"' + (on ? ' checked' : '') + '><span>' + (t.ti ? '<b class="pc-tti">' + esc(t.ti) + '</b>' : '') + esc(sub(t.text)) + '</span></label><div class="pc-tb">' + scopeTag(t) + '<button class="pc-btn xs" data-tup="' + t.id + '" title="위로">↑</button><button class="pc-btn xs" data-tdn="' + t.id + '" title="아래로">↓</button><button class="pc-btn xs" data-ted="' + t.id + '">✎ 수정</button><button class="pc-btn xs x" data-tdel="' + t.id + '">🗑</button></div></div>'; }).join('')
       + (EDIT && EDIT.id === 'new' ? termEditor(EDIT) : '') + (show.length ? '' : '<div class="pc-empty">이 거래·물건에 맞는 조건이 아직 없습니다. 「＋ 조건 추가」로 만들어 주세요.</div>') + '</div>'
       + '<div class="pc-lab" style="margin-top:14px">이 계약에만 쓰는 ' + (k === 'basic' ? '기본 조건' : '특약') + ' <span>목록에 저장하지 않고 이 가계약서에만 들어갑니다</span></div>'
       + extra.map(function(x, i){ return '<div class="pc-row"><textarea class="pc-in" data-ex="' + i + '" rows="2" style="flex:1">' + esc(x) + '</textarea><button class="pc-btn sm x" data-exx="' + i + '">빼기</button></div>'; }).join('')
@@ -247,10 +250,18 @@
   function scopeTag(t){ var a = (t.d && t.d.length ? t.d.join('·') : '모든 거래') + ' / ' + (t.t && t.t.length ? t.t.map(ptN).map(function(s){ return s.replace('생활형숙박시설(생숙)', '생숙'); }).join('·') : '모든 물건'); return '<span class="pc-scope">' + esc(a) + (t.on ? ' · 기본 선택' : '') + '</span>'; }
   function termEditor(t){
     var isNew = t.id === 'new';
-    return '<div class="pc-term ed"><textarea class="pc-in" id="pc-ttext" rows="3" placeholder="조건 글 — {갑} 매도인·임대인, {을} 매수인·임차인, {본계약일}, {잔금일} 을 쓸 수 있습니다">' + esc(t.text || '') + '</textarea>'
+    return '<div class="pc-term ed"><input class="pc-in" id="pc-ttitle" value="' + esc(t.ti || '') + '" placeholder="조건 제목 (짧게 · 예: 대출 불가 시 해제)" style="font-weight:700"><textarea class="pc-in" id="pc-ttext" rows="3" placeholder="조건 글 — {갑} 매도인·임대인, {을} 매수인·임차인, {본계약일}, {잔금일} 을 쓸 수 있습니다">' + esc(t.text || '') + '</textarea>'
       + '<div class="pc-row" style="flex-wrap:wrap"><span class="pc-lab" style="margin:0">거래</span>' + DEALS.map(function(x){ return '<label class="pc-ck"><input type="checkbox" data-ed="' + x + '"' + ((t.d || []).indexOf(x) >= 0 ? ' checked' : '') + '> ' + x + '</label>'; }).join('') + '<span class="pc-note" style="margin:0">(아무것도 안 고르면 모든 거래)</span></div>'
       + '<div class="pc-row" style="flex-wrap:wrap"><span class="pc-lab" style="margin:0">물건</span>' + PT.map(function(p){ return '<label class="pc-ck"><input type="checkbox" data-et="' + p[0] + '"' + ((t.t || []).indexOf(p[0]) >= 0 ? ' checked' : '') + '> ' + p[1] + '</label>'; }).join('') + '<span class="pc-note" style="margin:0">(아무것도 안 고르면 모든 물건)</span></div>'
       + '<div class="pc-row"><label class="pc-ck"><input type="checkbox" id="pc-ton"' + (t.on ? ' checked' : '') + '> 새 가계약서에 처음부터 골라 두기</label><span class="sp"></span><button class="pc-btn sm" id="pc-tcancel">취소</button><button class="pc-btn sm pri" id="pc-tsave">' + (isNew ? '목록에 추가' : '수정 저장') + '</button></div></div>';
+  }
+  /* 조건 편집 저장 — 작성 단계·목록 관리 둘 다 */
+  function commitEdit(k, after){
+    var text = nv($('pc-ttext').value); if(!text){ toast('조건 글을 적어 주세요', true); return false; }
+    var ti = nv(($('pc-ttitle') || {}).value), d = qa('[data-ed]').filter(function(c){ return c.checked; }).map(function(c){ return c.dataset.ed; }), t = qa('[data-et]').filter(function(c){ return c.checked; }).map(function(c){ return c.dataset.et; }), on = $('pc-ton').checked, n = null, o = null;
+    if(EDIT.id === 'new'){ n = { id:uid('t'), ti:ti, text:text, d:d, t:t, on:on }; if(EDIT.at != null && EDIT.at >= 0) TERMS[k].splice(EDIT.at, 0, n); else TERMS[k].push(n); }
+    else { o = TERMS[k].find(function(x){ return x.id === EDIT.id; }); if(o){ o.ti = ti; o.text = text; o.d = d; o.t = t; o.on = on; } }
+    EDIT = null; if(after) after(n, o); saveTerms(); render(); return true;
   }
   function bindTerms(k){
     var sel = D[k], extraK = k === 'basic' ? 'extraBasic' : 'extraSpecial';
@@ -262,13 +273,7 @@
     qa('[data-tdn]').forEach(function(b){ b.onclick = function(){ mv(b.dataset.tdn, 1); }; });
     qa('[data-ted]').forEach(function(b){ b.onclick = function(){ EDIT = JSON.parse(JSON.stringify(TERMS[k].find(function(x){ return x.id === b.dataset.ted; }))); render(); }; });
     qa('[data-tdel]').forEach(function(b){ b.onclick = function(){ var t = TERMS[k].find(function(x){ return x.id === b.dataset.tdel; }); if(!t || !confirm('이 조건을 목록에서 지울까요?\n\n' + sub(t.text) + '\n\n(이미 저장한 가계약서에는 그대로 남습니다)')) return; TERMS[k] = TERMS[k].filter(function(x){ return x.id !== t.id; }); D[k] = D[k].filter(function(x){ return x.id !== t.id; }); saveTerms(); render(); }; });
-    var ts = $('pc-tsave'); if(ts) ts.onclick = function(){
-      var text = nv($('pc-ttext').value); if(!text) return toast('조건 글을 적어 주세요', true);
-      var d = qa('[data-ed]').filter(function(c){ return c.checked; }).map(function(c){ return c.dataset.ed; }), t = qa('[data-et]').filter(function(c){ return c.checked; }).map(function(c){ return c.dataset.et; }), on = $('pc-ton').checked;
-      if(EDIT.id === 'new'){ var n = { id:uid('t'), text:text, d:d, t:t, on:on }; TERMS[k].push(n); D[k].push({ id:n.id, text:n.text }); }
-      else { var o = TERMS[k].find(function(x){ return x.id === EDIT.id; }); if(o){ o.text = text; o.d = d; o.t = t; o.on = on; var s = D[k].find(function(x){ return x.id === o.id; }); if(s) s.text = text; } }
-      EDIT = null; dirty(); saveTerms(); render();
-    };
+    var ts = $('pc-tsave'); if(ts) ts.onclick = function(){ commitEdit(k, function(n, o){ if(n) D[k].push({ id:n.id, text:n.text }); if(o){ var s2 = D[k].find(function(x){ return x.id === o.id; }); if(s2) s2.text = o.text; } dirty(); }); };
     var tc = $('pc-tcancel'); if(tc) tc.onclick = function(){ EDIT = null; render(); };
     qa('[data-ex]').forEach(function(t){ t.oninput = function(){ D[extraK][+t.dataset.ex] = t.value; dirty(); }; });
     qa('[data-exx]').forEach(function(b){ b.onclick = function(){ D[extraK].splice(+b.dataset.exx, 1); dirty(); render(); }; });
@@ -345,17 +350,47 @@
       if(!items.length) return toast('고객 → 중개업소 목록이 비어 있습니다', true); picker('pc-brksel', items, '중개업소', function(b){ D.brokers[1] = { name:b.name || '', ceo:b.rep || '', regno:b.regNo || '', addr:[b.addr, b.bldg].filter(Boolean).join(' '), tel:b.tel || '', mobile:b.mobile || '' }; dirty(); render(); }); };
     if(BRKS) return go2(); sget('sd_brokers').then(function(v){ BRKS = Array.isArray(v) ? v : v ? Object.keys(v).map(function(k){ return v[k]; }) : []; go2(); });
   }
-  /* ── 조건 목록 관리 (목록 화면에서) ── */
-  function termsModal(){
-    var m = document.createElement('div'); m.className = 'pc-mask';
-    var paint = function(){
-      m.innerHTML = '<div class="pc-modal"><div class="pc-h">⚙ 기본·특약 조건 목록 <span class="sp"></span><button class="pc-btn sm" data-x>닫기</button></div><p class="pc-sub">조건마다 쓰는 거래·물건이 붙어 있습니다. 고치기·추가는 가계약서 작성 ⑤⑥ 단계에서 해도 같은 목록에 저장됩니다. <button class="pc-btn xs" data-reset>처음 예시 조건 다시 넣기</button></p>'
-        + ['basic', 'special'].map(function(k){ return '<div class="pc-lab">' + (k === 'basic' ? '기본 조건' : '특약 조건') + ' <span>' + TERMS[k].length + '개</span></div>' + TERMS[k].map(function(t){ return '<div class="pc-term"><label><span>' + esc(t.text) + '</span></label><div class="pc-tb">' + scopeTag(t) + '<button class="pc-btn xs x" data-mdel="' + k + ':' + t.id + '">🗑</button></div></div>'; }).join(''); }).join('') + '</div>';
-      m.querySelector('[data-x]').onclick = function(){ m.remove(); };
-      m.querySelector('[data-reset]').onclick = function(){ if(!confirm('처음 예시 조건을 목록 끝에 다시 넣을까요? (지금 목록은 그대로 두고 더합니다)')) return; var s = seedTerms(); TERMS.basic = TERMS.basic.concat(s.basic.filter(function(x){ return !TERMS.basic.some(function(y){ return y.text === x.text; }); })); TERMS.special = TERMS.special.concat(s.special.filter(function(x){ return !TERMS.special.some(function(y){ return y.text === x.text; }); })); saveTerms(); paint(); };
-      Array.prototype.slice.call(m.querySelectorAll('[data-mdel]')).forEach(function(b){ b.onclick = function(){ var a = b.dataset.mdel.split(':'); if(!confirm('이 조건을 목록에서 지울까요?')) return; TERMS[a[0]] = TERMS[a[0]].filter(function(x){ return x.id !== a[1]; }); saveTerms(); paint(); }; });
-    };
-    paint(); document.body.appendChild(m); m.onclick = function(e){ if(e.target === m) m.remove(); };
+  /* ── ⚙ 기본·특약 조건 목록 관리 — 가계약서 작성과 따로, 물건 구분 × 거래 방식으로 나눠 보고 추가·수정·삭제 (2026-10-09) ── */
+  var TV = { k:'basic', pt:'all', deal:'all' };
+  function tvMatch(t){
+    var okPt = TV.pt === 'all' ? true : TV.pt === 'common' ? !(t.t && t.t.length) : (t.t || []).indexOf(TV.pt) >= 0;
+    var okD = TV.deal === 'all' ? true : !(t.d && t.d.length) || t.d.indexOf(TV.deal) >= 0;
+    return okPt && okD;
+  }
+  function tvSub(t){ var dd = { deal:TV.deal !== 'all' ? TV.deal : (t.d && t.d.length === 1 ? t.d[0] : '매매') }; return String(t.text || '').replace(/\{갑\}/g, dd.deal === '매매' ? '매도인' : '임대인').replace(/\{을\}/g, dd.deal === '매매' ? '매수인' : '임차인').replace(/\{본계약일\}/g, '본 계약일').replace(/\{잔금일\}/g, '잔금일'); }
+  function paintTerms(){
+    var L = TERMS[TV.k] || [], cnt = function(pt, deal){ var o = TV.pt, od = TV.deal; TV.pt = pt; TV.deal = deal; var n = L.filter(tvMatch).length; TV.pt = o; TV.deal = od; return n; };
+    var shown = L.filter(tvMatch);
+    var tabsPt = [['all', '📚 전체'], ['common', '📌 공통 (모든 물건)']].concat(PT.map(function(p){ return [p[0], p[2] + ' ' + p[1].replace('생활형숙박시설(생숙)', '생숙')]; }));
+    var tabsD = [['all', '전체 거래']].concat(DEALS.map(function(x){ return [x, x]; }));
+    ROOT.innerHTML = '<div class="pc">'
+      + '<div class="pc-card"><div class="pc-h"><button class="pc-btn sm" id="pc-tback">← 가계약서 목록</button> ⚙ 기본·특약 조건 목록 관리<span class="sp"></span><button class="pc-btn sm" id="pc-treset">처음 예시 조건 다시 넣기</button></div>'
+      + '<p class="pc-sub">사무실 공용 조건 목록입니다. 여기서 만든 조건은 가계약서 작성 ⑤⑥ 단계에 그 거래·물건에 맞춰 나타나고, 「기본 선택」 조건은 처음부터 ☑ 되어 있습니다. 글 안의 <code>{갑}</code>은 매도인·임대인, <code>{을}</code>은 매수인·임차인으로 바뀝니다 (아래 미리보기는 고른 거래 기준).</p>'
+      + '<div class="pc-seg">' + [['basic', '📋 기본 조건', '가계약에 공통으로 들어갈 내용'], ['special', '✳ 특약 조건', '계약마다 골라 붙이는 조건']].map(function(x){ return '<button data-tk="' + x[0] + '" class="' + (TV.k === x[0] ? 'on' : '') + '"><b>' + x[1] + ' <em>' + (TERMS[x[0]] || []).length + '</em></b><small>' + x[2] + '</small></button>'; }).join('') + '</div></div>'
+      + '<div class="pc-card"><div class="pc-lab" style="margin-top:0">🏠 물건 구분</div><div class="pc-tabs">' + tabsPt.map(function(x){ return '<button data-tpt="' + x[0] + '" class="' + (TV.pt === x[0] ? 'on' : '') + '">' + x[1] + ' <em>' + cnt(x[0], TV.deal) + '</em></button>'; }).join('') + '</div>'
+      + '<div class="pc-lab">🤝 거래 방식</div><div class="pc-tabs sm">' + tabsD.map(function(x){ return '<button data-tdl="' + x[0] + '" class="' + (TV.deal === x[0] ? 'on' : '') + '">' + x[1] + ' <em>' + cnt(TV.pt, x[0]) + '</em></button>'; }).join('') + '</div>'
+      + '<div class="pc-row" style="margin-top:12px"><b>' + esc((tabsPt.find(function(x){ return x[0] === TV.pt; }) || [])[1] || '') + ' · ' + esc(TV.deal === 'all' ? '전체 거래' : TV.deal) + '</b><span class="pc-note" style="margin:0;padding:3px 8px">' + shown.length + '개</span><span class="sp"></span><button class="pc-btn sm pri" id="pc-mnew">＋ 새 ' + (TV.k === 'basic' ? '기본 조건' : '특약') + ' 만들기</button></div>'
+      + '<div class="pc-terms">' + (EDIT && EDIT.id === 'new' ? termEditor(EDIT) : '') + shown.map(function(t){
+          if(EDIT && EDIT.id === t.id) return termEditor(t);
+          return '<div class="pc-term mg"><div class="pc-tt">' + (t.ti ? '<b>' + esc(t.ti) + '</b>' : '<b style="color:#adb5bd">(제목 없음)</b>') + (t.on ? '<span class="pc-badge">기본 선택</span>' : '') + '</div><div class="pc-tx">' + esc(tvSub(t)) + '</div>'
+            + '<div class="pc-tb" style="padding-left:0">' + scopeTag(t) + '<button class="pc-btn xs" data-mup="' + t.id + '" title="위로">↑</button><button class="pc-btn xs" data-mdn="' + t.id + '" title="아래로">↓</button><button class="pc-btn xs" data-mdup="' + t.id + '">⧉ 복제</button><button class="pc-btn xs" data-med="' + t.id + '">✎ 수정</button><button class="pc-btn xs x" data-mdel="' + t.id + '">🗑 삭제</button></div></div>'; }).join('')
+      + (shown.length || (EDIT && EDIT.id === 'new') ? '' : '<div class="pc-empty">이 구분에 맞는 조건이 없습니다. 「＋ 새 ' + (TV.k === 'basic' ? '기본 조건' : '특약') + ' 만들기」로 만들어 주세요.</div>') + '</div>'
+      + '<div class="pc-note">📌 조건 글은 참고용 예시입니다. 실제 거래에 맞게 고치고, 필요하면 전문가 검토를 받으세요. 지운 조건은 이미 저장한 가계약서에는 그대로 남습니다.</div></div></div>';
+    $('pc-tback').onclick = function(){ if(EDIT && !confirm('편집 중인 조건이 있습니다. 나갈까요?')) return; EDIT = null; VIEW = 'list'; render(); };
+    $('pc-treset').onclick = function(){ if(!confirm('처음 예시 조건 중 지금 목록에 없는 것을 끝에 다시 넣을까요? (지금 목록은 그대로 둡니다)')) return; var sd = seedTerms(); ['basic', 'special'].forEach(function(k){ TERMS[k] = TERMS[k].concat(sd[k].filter(function(x){ return !TERMS[k].some(function(y){ return y.text === x.text; }); })); }); saveTerms(); render(); };
+    qa('[data-tk]').forEach(function(b){ b.onclick = function(){ TV.k = b.dataset.tk; EDIT = null; render(); }; });
+    qa('[data-tpt]').forEach(function(b){ b.onclick = function(){ TV.pt = b.dataset.tpt; render(); }; });
+    qa('[data-tdl]').forEach(function(b){ b.onclick = function(){ TV.deal = b.dataset.tdl; render(); }; });
+    var k = TV.k, L2 = TERMS[k];
+    $('pc-mnew').onclick = function(){ EDIT = { id:'new', ti:'', text:'', d:TV.deal === 'all' ? [] : [TV.deal], t:TV.pt === 'all' || TV.pt === 'common' ? [] : [TV.pt], on:k === 'basic' }; render(); var e = $('pc-ttitle'); if(e) e.focus(); };
+    var mv = function(id, dlt){ var vis = L2.filter(tvMatch), i = vis.findIndex(function(x){ return x.id === id; }), j = i + dlt; if(i < 0 || j < 0 || j >= vis.length) return; var a = L2.indexOf(vis[i]), b = L2.indexOf(vis[j]), tmp = L2[a]; L2[a] = L2[b]; L2[b] = tmp; saveTerms(); render(); };
+    qa('[data-mup]').forEach(function(b){ b.onclick = function(){ mv(b.dataset.mup, -1); }; });
+    qa('[data-mdn]').forEach(function(b){ b.onclick = function(){ mv(b.dataset.mdn, 1); }; });
+    qa('[data-med]').forEach(function(b){ b.onclick = function(){ EDIT = JSON.parse(JSON.stringify(L2.find(function(x){ return x.id === b.dataset.med; }))); render(); var e = $('pc-ttext'); if(e) e.focus(); }; });
+    qa('[data-mdup]').forEach(function(b){ b.onclick = function(){ var o = L2.find(function(x){ return x.id === b.dataset.mdup; }); if(!o) return; EDIT = Object.assign(JSON.parse(JSON.stringify(o)), { id:'new', ti:(o.ti || '') + ' (사본)', at:L2.indexOf(o) + 1 }); render(); var e = $('pc-ttitle'); if(e) e.focus(); }; });
+    qa('[data-mdel]').forEach(function(b){ b.onclick = function(){ var o = L2.find(function(x){ return x.id === b.dataset.mdel; }); if(!o || !confirm('이 조건을 목록에서 지울까요?\n\n' + (o.ti ? '[' + o.ti + '] ' : '') + tvSub(o) + '\n\n(이미 저장한 가계약서에는 그대로 남습니다)')) return; TERMS[k] = L2.filter(function(x){ return x.id !== o.id; }); saveTerms(); render(); }; });
+    var ts = $('pc-tsave'); if(ts) ts.onclick = function(){ commitEdit(k); };
+    var tc = $('pc-tcancel'); if(tc) tc.onclick = function(){ EDIT = null; render(); };
   }
   /* ═════════ 가계약서 문서 ═════════ */
   function rowsHtml(rows){ return rows.filter(function(r){ return nv(r[1]); }).map(function(r){ return '<tr class="pb"><th>' + r[0] + '</th><td>' + r[1] + '</td></tr>'; }).join(''); }
@@ -449,6 +484,9 @@
     + '.pc-empty{padding:24px;text-align:center;color:#adb5bd;font-size:12.5px}.pc-foot{display:flex;gap:8px;margin:0 0 20px}.pc-pv{width:100%;min-height:900px;border:1px solid #e9ecef;border-radius:10px;margin-top:10px;background:#eef0f4}'
     + '.pc-mask{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9998;display:flex;align-items:center;justify-content:center;padding:20px}.pc-modal{background:#fff;border-radius:14px;max-width:860px;width:100%;max-height:88vh;overflow:auto;padding:18px 20px}'
     + '.pc-toast{position:fixed;top:16px;left:50%;transform:translateX(-50%);z-index:9999;background:#e8f5e9;border:1px solid #a5d6a7;border-radius:8px;padding:9px 16px;font-size:13px}.pc-toast.bad{background:#ffebee;border-color:#ef9a9a}'
+    + '.pc-seg{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}.pc-seg button{border:1.5px solid #dee2e6;background:#fff;border-radius:12px;padding:12px 14px;text-align:left;cursor:pointer;font-family:inherit}.pc-seg button b{font-size:15px;display:block}.pc-seg button em{font-style:normal;font-size:12px;color:#868e96;font-weight:600}.pc-seg button small{color:#868e96;font-size:11.5px}.pc-seg button.on{border-color:#1a2744;background:#edf2ff}'
+    + '.pc-tabs{display:flex;gap:6px;flex-wrap:wrap}.pc-tabs button{border:1px solid #dee2e6;background:#fff;border-radius:20px;padding:6px 13px;font-size:12.5px;cursor:pointer;font-family:inherit;color:#495057}.pc-tabs button em{font-style:normal;color:#adb5bd;font-size:11px;margin-left:2px}.pc-tabs button.on{background:#1971c2;border-color:#1971c2;color:#fff;font-weight:700}.pc-tabs button.on em{color:#d0ebff}.pc-tabs.sm button.on{background:#1a2744;border-color:#1a2744}'
+    + '.pc-term.mg{padding:12px 14px}.pc-tt{display:flex;gap:8px;align-items:center}.pc-tt b{font-size:13.5px}.pc-tx{font-size:12.5px;color:#495057;line-height:1.65}.pc-badge{font-size:10.5px;background:#ebfbee;color:#2b8a3e;border-radius:8px;padding:1px 7px}.pc-tti{display:block;font-size:12.5px;color:#1a2744;margin-bottom:1px}'
     + '@media(max-width:760px){.pc-g3,.pc-g4,.pc-big,.pc-big.six{grid-template-columns:1fr 1fr}.s2,.s3{grid-column:span 2}}';
   function css(){ if($('pc-css')) return; var s = document.createElement('style'); s.id = 'pc-css'; s.textContent = CSS; document.head.appendChild(s); }
   window.sdPre = {
