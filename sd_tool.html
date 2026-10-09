@@ -155,7 +155,7 @@ a.sjb-btn.on::after,span.sjb-btn.on::after{background:linear-gradient(100deg,rgb
 <script>
 (function(){
   'use strict';
-  var SD_VER = '2026.10.08-3';
+  var SD_VER = '2026.10.09-1';
   var TABS = [
     [20, '🧰 전체 도구'],
     ['calc', '🧮 부동산 계산기'],
@@ -1983,16 +1983,91 @@ textarea.ec-in{resize:vertical;min-height:84px;line-height:1.6}
   function blank(){ return { id:uid(), style:'profile', color:'#3b4fd8', photo:'', logo:'', banner:'', name:'', company:'', dept:'', position:'', tags:['', '', ''], intro:'',
     tel1:{ k:'휴대전화', v:'' }, tel2:{ k:'사무실', v:'' }, email:'', web:'', kakao:'', addr:'', place:'', regno:'', links:[], qr:false, logoSz:'l', logoLine:true, at:Date.now() }; }
   function cur(){ return DB.cards.find(function(c){ return c.id === DB.cur; }) || DB.cards[0]; }
-  function load(){
-    try{ var v = JSON.parse(localStorage.getItem(LS) || 'null'); if(v && Array.isArray(v.cards) && v.cards.length){ DB = v; return; } }catch(e){}
-    var c = blank(), a = author(); c.name = a.name || ''; c.company = a.office || ''; c.position = a.title || ''; c.tel2.v = a.phone || ''; c.addr = a.addr || '';
+  function load(fresh){
+    if(!fresh){ try{ var v = JSON.parse(localStorage.getItem(LS) || 'null'); if(v && Array.isArray(v.cards) && v.cards.length){ DB = v; return; } }catch(e){} }
+    var c = blank(), a = author(); c.name = a.name || ''; c.company = a.office || ''; c.position = a.title || ''; c.tel2.v = a.phone || ''; c.addr = a.addr || ''; c._auto = true;
     DB = { cards:[c], cur:c.id };
   }
   function save(){
+    cloudLater();
     try{ localStorage.setItem(LS, JSON.stringify(DB)); return true; }
-    catch(e){ toast('이 브라우저 저장 공간이 꽉 찼습니다 — 사진이 큰 명함을 지우거나 「내 명함 파일 저장」으로 옮겨 두세요', true); return false; }
+    catch(e){ toast('이 브라우저 저장 공간이 꽉 찼습니다 — Firebase 에는 저장되니 다른 PC 에서도 불러올 수 있습니다', true); return false; }
   }
-  function touch(){ var c = cur(); if(c) c.at = Date.now(); clearTimeout(T); T = setTimeout(function(){ save(); preview(); }, 160); }
+  function touch(){ var c = cur(); if(c){ c.at = Date.now(); c._auto = false; } clearTimeout(T); T = setTimeout(function(){ save(); preview(); }, 160); }
+  /* ── ☁ Firebase 저장 (2026-10-09) — 브라우저·PC 를 바꿔도 같은 명함
+     sd_media/ecard_idx/{id} = 글 정보(이름·회사·연락처·스타일…)  ·  sd_media/ecard_img/{id} = { photo, logo, banner } (바뀔 때만 올림)
+     이 브라우저(localStorage)는 빠른 임시 저장. 열 때 Firebase 것과 비교해 더 최근 것을 쓴다 (at). 사무실 계정 전체가 같은 명함 목록을 본다 */
+  var CL = { st:'', err:'', pulled:false, busy:false, t:0 };
+  var EC_RULE = '"sd_media": { ".read": "auth != null", ".write": "auth != null" }';
+  var IMGK = ['photo', 'logo', 'banner'];
+  function loadJs(u){ return new Promise(function(res, rej){ var sc = document.createElement('script'); sc.src = u; sc.onload = res; sc.onerror = function(){ rej(new Error('불러오지 못했습니다: ' + u)); }; document.head.appendChild(sc); }); }
+  var FBP = null;
+  function fbDb(){
+    if(FBP) return FBP;
+    FBP = (async function(){
+      if(!window.firebase) await loadJs('https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js');
+      if(!window.firebase.database) await loadJs('https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js');
+      if(!window.storage) await loadJs('firebase-storage.js');
+      if(!window.firebase.auth) await loadJs('https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js');
+      /* 허브에서 한 구글 로그인이 살아 있으면 그대로, 없으면 익명 */
+      await new Promise(function(res){ var done = false, fin = function(){ if(!done){ done = true; res(); } }; try{ var au = firebase.auth(), un = au.onAuthStateChanged(function(u){ if(done) return; try{ un(); }catch(e){} if(u) return fin(); au.signInAnonymously().then(fin, fin); }); }catch(e){ fin(); } setTimeout(fin, 8000); });
+      return firebase.database();
+    })();
+    FBP.catch(function(){ FBP = null; });
+    return FBP;
+  }
+  function me(){ try{ var se = JSON.parse(localStorage.getItem('sd_auth_session') || '{}') || {}; return se.name || se.email || ''; }catch(e){ return ''; } }
+  function imgSig(c){ return IMGK.map(function(k){ var v = c[k] || ''; return v.length + ':' + v.slice(-12); }).join('|'); }
+  function idxOf(c){ var o = {}; Object.keys(c).forEach(function(k){ if(IMGK.indexOf(k) < 0 && k.charAt(0) !== '_') o[k] = c[k]; }); o.by = c._by || me(); o.hasImg = IMGK.filter(function(k){ return !!c[k]; }); return JSON.parse(JSON.stringify(o)); }
+  function clSt(t, err){ CL.st = t || ''; CL.err = err ? String(err) : ''; var e = $('ec-cloud'); if(e) e.innerHTML = clHtml(); var h = $('ec-cloudhelp'); if(h) h.innerHTML = clHelp(); }
+  function clHtml(){ return CL.err ? '<span style="color:#e03131">⚠ Firebase 저장 안 됨' + (/PERMISSION|permission/i.test(CL.err) ? ' — 쓰기 권한' : ' — ' + esc(CL.err.slice(0, 60))) + '</span>' : esc(CL.st || '☁ Firebase 연결 중…'); }
+  function clHelp(){ return /PERMISSION|permission/i.test(CL.err) ? '<div style="font-size:12px;color:#c92a2a;background:#fff5f5;border:1px solid #ffc9c9;border-radius:10px;padding:10px 12px;margin-top:8px;line-height:1.6">Firebase 쓰기 권한이 막혀 있어 이 브라우저에만 저장했습니다. Firebase 콘솔 → Realtime Database → <b>규칙</b>의 "rules" 안에 아래 한 줄이 있는지 확인하고 게시해 주세요 (영상 「내 출연진」과 같은 규칙).<pre style="white-space:pre-wrap;margin:6px 0 0;font-size:11.5px">' + esc(EC_RULE) + '</pre></div>' : ''; }
+  function cloudLater(){ clearTimeout(CL.t); CL.t = setTimeout(cloudPush, 1500); }
+  async function cloudPush(){
+    if(!CL.pulled){ return; }   // 처음 Firebase 것을 받기 전에는 올리지 않는다 (옛 것으로 덮지 않게)
+    if(CL.busy){ cloudLater(); return; } CL.busy = true;
+    try{
+      var db = await fbDb(), n = 0;
+      for(var i = 0; i < DB.cards.length; i++){
+        var c = DB.cards[i]; if(c._auto && !c._cat) continue;
+        if(c._cat && c._cat >= (c.at || 0) && c._up === imgSig(c)) continue;
+        clSt('☁ 저장 중…');
+        if(c._up !== imgSig(c)){ var im = {}; IMGK.forEach(function(k){ if(c[k]) im[k] = c[k]; }); await db.ref('sd_media/ecard_img/' + c.id).set(im); c._up = imgSig(c); }
+        if(!c._by) c._by = me();
+        await db.ref('sd_media/ecard_idx/' + c.id).set(idxOf(c)); c._cat = c.at || Date.now(); n++;
+      }
+      try{ localStorage.setItem(LS, JSON.stringify(DB)); }catch(e){}
+      var d = new Date(); clSt('☁ Firebase 에 저장됨 ' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'));
+    }catch(e){ console.warn('[명함] Firebase 저장 실패', e); clSt('', (e && e.message) || e); }
+    finally{ CL.busy = false; }
+  }
+  async function cloudPull(){
+    try{
+      clSt('☁ Firebase 에서 명함을 받는 중…');
+      var db = await fbDb(), idx = (await db.ref('sd_media/ecard_idx').once('value')).val() || {}, changed = false, ids = Object.keys(idx);
+      /* 손대지 않은 기본 명함 하나뿐이면 Firebase 것으로 바꾼다 */
+      if(ids.length && DB.cards.length === 1 && DB.cards[0]._auto && !DB.cards[0]._cat){ DB.cards = []; changed = true; }
+      for(var i = 0; i < ids.length; i++){
+        var id = ids[i], r = idx[id] || {}, loc = DB.cards.find(function(x){ return x.id === id; });
+        if(loc && (loc.at || 0) >= (r.at || 0)){ loc._cat = Math.max(loc._cat || 0, r.at || 0); continue; }
+        var im = (await db.ref('sd_media/ecard_img/' + id).once('value')).val() || {};
+        var n = Object.assign(blank(), r, { id:id }); IMGK.forEach(function(k){ n[k] = im[k] || ''; }); delete n.hasImg; delete n.by;
+        n.tags = (n.tags || []).concat(['', '', '']).slice(0, 3); n.links = n.links || []; n._by = r.by || ''; n._cat = r.at || 0; n._up = imgSig(n);
+        if(loc) DB.cards[DB.cards.indexOf(loc)] = n; else DB.cards.push(n);
+        changed = true;
+      }
+      /* 다른 PC 에서 지운 명함 — 한 번 올라갔던(_cat) 것이 Firebase 에 없으면 여기서도 지운다 */
+      var before = DB.cards.length; DB.cards = DB.cards.filter(function(x){ return !x._cat || idx[x.id]; }); if(DB.cards.length !== before) changed = true;
+      if(!DB.cards.length) load(true);
+      if(!DB.cards.find(function(x){ return x.id === DB.cur; })) DB.cur = DB.cards[0].id;
+      CL.pulled = true;
+      try{ localStorage.setItem(LS, JSON.stringify(DB)); }catch(e){}
+      clSt('☁ Firebase 와 맞췄습니다 · 명함 ' + ids.length + '장');
+      if(changed) paint();
+      cloudPush();   // 이 브라우저에만 있던 명함은 올린다
+    }catch(e){ console.warn('[명함] Firebase 받기 실패', e); CL.pulled = true; clSt('', (e && e.message) || e); }
+  }
+  function cloudDel(id){ fbDb().then(function(db){ return Promise.all([db.ref('sd_media/ecard_idx/' + id).remove(), db.ref('sd_media/ecard_img/' + id).remove()]); }).then(function(){ clSt('☁ Firebase 에서도 지웠습니다'); }, function(e){ clSt('', (e && e.message) || e); }); }
   function cardTitle(c){ return c.name ? c.name + (c.company ? ' · ' + c.company : '') : '이름 없는 명함 ' + (DB.cards.indexOf(c) + 1); }
   /* ── 색 ── */
   function rgb(h){ h = String(h || '#000').replace('#', ''); if(h.length === 3) h = h.replace(/./g, '$&$&'); var n = parseInt(h, 16) || 0; return [n >> 16 & 255, n >> 8 & 255, n & 255]; }
@@ -2318,13 +2393,13 @@ textarea.ec-in{resize:vertical;min-height:84px;line-height:1.6}
   function paint(){
     var root = $('card-root'); if(!root) return; var c = cur();
     root.innerHTML = '<div class="ec-cols"><div>'
-      + '<div class="ec-box"><div class="ec-h">💳 내 명함 <small>' + DB.cards.length + '장 · 이 컴퓨터에 자동 저장</small></div>'
-      + '<div class="ec-chips">' + DB.cards.map(function(x){ return '<button class="ec-chip' + (x.id === c.id ? ' on' : '') + '" data-card="' + x.id + '">' + esc(cardTitle(x)) + '</button>'; }).join('') + '</div>'
+      + '<div class="ec-box"><div class="ec-h">💳 내 명함 <small>' + DB.cards.length + '장 · 자동 저장</small><span style="flex:1"></span><button id="ec-cloud" title="눌러서 Firebase 와 다시 맞추기" style="border:none;background:none;font:inherit;font-size:11.5px;font-weight:600;color:#1971c2;cursor:pointer;padding:0">' + clHtml() + '</button></div>'
+      + '<div class="ec-chips">' + DB.cards.map(function(x){ return '<button class="ec-chip' + (x.id === c.id ? ' on' : '') + '" data-card="' + x.id + '"' + (x._by ? ' title="만든 사람: ' + esc(x._by) + '"' : '') + '>' + esc(cardTitle(x)) + (x._by && x._by !== me() ? ' <small style="opacity:.6">· ' + esc(x._by) + '</small>' : '') + '</button>'; }).join('') + '</div>'
       + '<div class="ec-row"><button class="ec-btn" id="ec-new">＋ 새 명함</button><button class="ec-btn" id="ec-dup">⧉ 복제</button><button class="ec-btn" id="ec-del"' + (DB.cards.length > 1 ? '' : ' disabled') + '>🗑 삭제</button><span style="flex:1"></span>'
       + '<button class="ec-btn" id="ec-exp">⬇ 내 명함 파일 저장(.json)</button><label class="ec-btn" style="cursor:pointer">⬆ 불러오기<input type="file" id="ec-imp" accept=".json,application/json" hidden></label></div></div>'
       + '<div class="ec-steps">' + [['1', '디자인'], ['2', '자기소개'], ['3', '기본 정보']].map(function(s){ return '<button data-step="' + s[0] + '"' + (STEP === +s[0] ? ' class="on"' : '') + '><i>' + s[0] + '</i>' + s[1] + '</button>'; }).join('') + '</div>'
       + '<div id="ec-step">' + stepHtml(c) + '</div>'
-      + '<div class="ec-lock">🔒 입력한 정보와 사진은 이 컴퓨터(브라우저)에만 저장되고 서버로 보내지 않습니다. 다른 컴퓨터에서 이어서 쓰려면 「내 명함 파일 저장(.json)」으로 파일을 옮겨 「불러오기」 하세요.</div>'
+      + '<div class="ec-lock">☁ 명함(정보·사진·로고)은 이 브라우저와 <b>SJRWS Firebase</b>에 함께 저장됩니다. 다른 PC·브라우저에서 도구 → 전자명함을 열면 그대로 불러옵니다. 사무실 계정은 같은 명함 목록을 함께 봅니다. 「내 명함 파일 저장(.json)」은 따로 보관용입니다.</div><div id="ec-cloudhelp">' + clHelp() + '</div>'
       + '</div><div class="ec-pv"><div class="lab"><span><b>●</b> 실시간 미리보기</span><span id="ec-pvst"></span></div><div class="stage"><canvas id="ec-pv" width="1080" height="1400"></canvas></div>'
       + '<div class="ec-out"><button class="main" data-out="png"><b>🖼 명함 이미지</b><small>PNG · 카톡·문자로 바로 보내기</small></button><button data-out="vcf"><b>👤 연락처 파일</b><small>.vcf · 휴대폰 연락처에 저장</small></button>'
       + '<button data-out="html"><b>🌐 전자명함 웹페이지</b><small>.html · 누르면 전화·문자·메일</small></button><button data-out="qr"><b>▦ QR 코드</b><small>PNG · 찍으면 연락처 저장</small></button>'
@@ -2335,13 +2410,14 @@ textarea.ec-in{resize:vertical;min-height:84px;line-height:1.6}
   }
   function bind(root){
     var c = cur(), q = function(s){ return Array.prototype.slice.call(root.querySelectorAll(s)); };
+    var cb = $('ec-cloud'); if(cb) cb.onclick = function(){ cloudPull(); };
     q('[data-card]').forEach(function(b){ b.onclick = function(){ DB.cur = b.dataset.card; save(); paint(); }; });
-    $('ec-new').onclick = function(){ var n = blank(); DB.cards.push(n); DB.cur = n.id; save(); STEP = 1; paint(); toast('새 명함을 만들었습니다'); };
-    $('ec-dup').onclick = function(){ var n = JSON.parse(JSON.stringify(c)); n.id = uid(); n.at = Date.now(); DB.cards.push(n); DB.cur = n.id; if(save()) toast('명함을 복제했습니다'); paint(); };
-    $('ec-del').onclick = function(){ if(DB.cards.length < 2 || !confirm('「' + cardTitle(c) + '」 명함을 지울까요?')) return; DB.cards = DB.cards.filter(function(x){ return x.id !== c.id; }); DB.cur = DB.cards[0].id; save(); paint(); };
+    $('ec-new').onclick = function(){ var n = blank(); n._by = me(); DB.cards.push(n); DB.cur = n.id; save(); STEP = 1; paint(); toast('새 명함을 만들었습니다'); };
+    $('ec-dup').onclick = function(){ var n = JSON.parse(JSON.stringify(c)); n.id = uid(); n.at = Date.now(); delete n._cat; delete n._up; delete n._auto; n._by = me(); DB.cards.push(n); DB.cur = n.id; if(save()) toast('명함을 복제했습니다'); paint(); };
+    $('ec-del').onclick = function(){ if(DB.cards.length < 2 || !confirm('「' + cardTitle(c) + '」 명함을 지울까요?\nFirebase 에서도 지워져 다른 PC 에서도 사라집니다.')) return; var gone = c.id, was = c._cat; DB.cards = DB.cards.filter(function(x){ return x.id !== gone; }); DB.cur = DB.cards[0].id; save(); paint(); if(was) cloudDel(gone); };
     $('ec-exp').onclick = function(){ saveBlob(new Blob([JSON.stringify({ type:'sjrws-ecard', ver:1, at:new Date().toISOString(), cards:DB.cards }, null, 1)], { type:'application/json' }), '내명함_' + new Date().toISOString().slice(0, 10) + '.json'); toast('명함 ' + DB.cards.length + '장을 파일로 저장했습니다'); };
     $('ec-imp').onchange = function(){ var f = this.files && this.files[0]; this.value = ''; if(!f) return; f.text().then(function(t){ var j = JSON.parse(t), list = j && (j.cards || (j.name != null ? [j] : null)); if(!Array.isArray(list) || !list.length) throw new Error('명함 파일이 아닙니다');
-        list.forEach(function(x){ var n = Object.assign(blank(), x, { id:uid() }); n.tags = (n.tags || []).concat(['', '', '']).slice(0, 3); DB.cards.push(n); DB.cur = n.id; }); save(); paint(); toast('명함 ' + list.length + '장을 불러왔습니다'); }).catch(function(e){ toast('불러오지 못했습니다: ' + e.message, true); }); };
+        list.forEach(function(x){ var n = Object.assign(blank(), x, { id:uid(), at:Date.now() }); delete n._cat; delete n._up; delete n._auto; n._by = me(); n.tags = (n.tags || []).concat(['', '', '']).slice(0, 3); DB.cards.push(n); DB.cur = n.id; }); save(); paint(); toast('명함 ' + list.length + '장을 불러왔습니다'); }).catch(function(e){ toast('불러오지 못했습니다: ' + e.message, true); }); };
     q('[data-step]').forEach(function(b){ b.onclick = function(){ STEP = +b.dataset.step; paint(); try{ $('card-wrap').scrollTop = 0; }catch(e){} }; });
     q('[data-st]').forEach(function(b){ b.onclick = function(){ c.style = b.dataset.st; q('[data-st]').forEach(function(x){ x.classList.toggle('on', x === b); }); touch(); preview(); }; });
     q('[data-col]').forEach(function(b){ b.onclick = function(){ c.color = b.dataset.col; q('[data-col]').forEach(function(x){ x.classList.toggle('on', x === b); }); var cx = $('ec-colx'); if(cx) cx.value = c.color; touch(); preview(); }; });
@@ -2373,7 +2449,7 @@ textarea.ec-in{resize:vertical;min-height:84px;line-height:1.6}
   }
   load();
   window.sdCard = {
-    go:function(){ paint(); },
+    go:function(){ paint(); if(!CL.pulled && !CL.pulling){ CL.pulling = true; cloudPull(); } },
     // 시험용
     _db:function(){ return DB; }, _vcard:vcard, _web:webHtml, _text:textCard, _draw:draw, _qr:qrCanvas, _onC:onC, STYLES:STYLES
   };
