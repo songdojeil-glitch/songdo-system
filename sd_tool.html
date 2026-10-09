@@ -155,7 +155,7 @@ a.sjb-btn.on::after,span.sjb-btn.on::after{background:linear-gradient(100deg,rgb
 <script>
 (function(){
   'use strict';
-  var SD_VER = '2026.10.08-2';
+  var SD_VER = '2026.10.08-3';
   var TABS = [
     [20, '🧰 전체 도구'],
     ['calc', '🧮 부동산 계산기'],
@@ -2089,9 +2089,13 @@ textarea.ec-in{resize:vertical;min-height:84px;line-height:1.6}
       if(c.style === 'full'){
         var H = 1240; if(ph) cover(x, ph, 0, 0, W, H); else { var g = x.createLinearGradient(0, 0, 0, H); g.addColorStop(0, shade(col, 0.25)); g.addColorStop(1, shade(col, -0.25)); x.fillStyle = g; x.fillRect(0, 0, W, H); person(x, W / 2, H * 0.4, 260, 'rgba(255,255,255,.75)'); }
         var gg = x.createLinearGradient(0, H * 0.55, 0, H); gg.addColorStop(0, 'rgba(0,0,0,0)'); gg.addColorStop(1, 'rgba(0,0,0,.45)'); x.fillStyle = gg; x.fillRect(0, H * 0.55, W, H * 0.45);
-        x.fillStyle = col; x.globalAlpha = 0.92; rr(x, 48, H - 300, W - 96, 252, 28); x.fill(); x.globalAlpha = 1;
-        text(x, name, 96, H - 190, 76, 800, on, 'left', W - 192); text(x, [pos, comp].filter(Boolean).join('  |  '), 96, H - 112, 34, 500, on, 'left', W - 192);
-        if(lg){ var lbF = logoBox(c, lg, 130, 440, 230); drawLogo(x, lg, W - 52 - lbF.w, 52, lbF, true); }
+        /* 아래 색 패널 — 이름 / 직책 / 회사, 로고는 패널 오른쪽(회사명 오른쪽)에 (2026-10-08) */
+        var lbF = lg ? logoBox(c, lg, 120, 330, 210) : null, PT = H - (lg ? 330 : 300), PHh = lg ? 282 : 252, tw = W - 192 - (lbF ? lbF.w + 36 : 0);
+        x.fillStyle = col; x.globalAlpha = 0.92; rr(x, 48, PT, W - 96, PHh, 28); x.fill(); x.globalAlpha = 1;
+        if(lbF){
+          text(x, name, 96, PT + 104, 76, 800, on, 'left', tw); if(pos) text(x, pos, 96, PT + 168, 32, 500, on, 'left', tw); if(comp) text(x, comp, 96, PT + (pos ? 226 : 168), 34, 700, on, 'left', tw);
+          drawLogo(x, lg, W - 48 - 32 - lbF.w, PT + (PHh - lbF.h) / 2, lbF);
+        } else { text(x, name, 96, H - 190, 76, 800, on, 'left', W - 192); text(x, [pos, comp].filter(Boolean).join('  |  '), 96, H - 112, 34, 500, on, 'left', W - 192); }
         y = H + 64;
       } else if(c.style === 'frame'){
         x.fillStyle = shade(col, 0.88); x.fillRect(0, 0, W, 1060);
@@ -2104,18 +2108,25 @@ textarea.ec-in{resize:vertical;min-height:84px;line-height:1.6}
         y = W + 210 + 64;
       } else if(c.style === 'block'){
         var BH = 600; x.fillStyle = col; x.fillRect(0, 0, W, BH);
-        if(lg){ var lbB = logoBox(c, lg, 125, 520, 190); drawLogo(x, lg, M, 56, lbB); } else if(comp){ text(x, comp, M, 120, 32, 700, on, 'left', W - 520); }
+        if(lg){ var lbB = logoBox(c, lg, 125, 480, 230); drawLogo(x, lg, M, Math.min(250 - lbB.h / 2, 318 - lbB.h), lbB); } else if(comp){ text(x, comp, M, 120, 32, 700, on, 'left', W - 520); }
         circlePhoto(x, ph, W - M - 170, 250, 170, shade(col, 0.2), on === '#ffffff' ? 'rgba(255,255,255,.85)' : 'rgba(0,0,0,.25)', 8);
         text(x, name, M, 420, 78, 800, on, 'left', W - M * 2);
         if(pos) text(x, pos, M, 482, 34, 500, on, 'left', W - M * 2);
         if(comp && lg) text(x, comp, M, 534, 30, 400, on, 'left', W - M * 2);
         y = BH + 64;
       } else if(c.style === 'cover'){
-        var CH = 440; if(bn) cover(x, bn, 0, 0, W, CH); else { var g2 = x.createLinearGradient(0, 0, W, CH); g2.addColorStop(0, shade(col, 0.2)); g2.addColorStop(1, shade(col, -0.2)); x.fillStyle = g2; x.fillRect(0, 0, W, CH); }
-        if(lg){ var lbC = logoBox(c, lg, 130, 460, 220); drawLogo(x, lg, W - 48 - lbC.w, 44, lbC, true); }
-        circlePhoto(x, ph, M + 150, CH, 150, col, '#ffffff', 10);
-        text(x, name, M, CH + 250, 76, 800, ink, 'left', W - M * 2); text(x, [pos, comp].filter(Boolean).join('  |  '), M, CH + 314, 33, 500, sub, 'left', W - M * 2);
-        y = CH + 380;
+        /* 배너는 위쪽 둥근 띠(작게), 사진은 배너 아래 — 서로 겹쳐 가리지 않게 (2026-10-08) */
+        var BX = 40, BY = 40, BW = W - 80, CH = 300;
+        x.save(); rr(x, BX, BY, BW, CH, 28); x.clip();
+        if(bn) cover(x, bn, BX, BY, BW, CH); else { var g2 = x.createLinearGradient(BX, BY, BX + BW, BY + CH); g2.addColorStop(0, shade(col, 0.2)); g2.addColorStop(1, shade(col, -0.2)); x.fillStyle = g2; x.fillRect(BX, BY, BW, CH); }
+        x.restore();
+        if(lg){ var lbC = logoBox(c, lg, 120, 400, CH - 60); drawLogo(x, lg, BX + BW - 30 - lbC.w, BY + 30, lbC, true); }
+        var pcy = BY + CH + 40 + 135;
+        circlePhoto(x, ph, M + 135, pcy, 135, col, '#ffffff', 8);
+        x.save(); x.beginPath(); x.arc(M + 135, pcy, 143, 0, Math.PI * 2); x.strokeStyle = shade(col, 0.6); x.lineWidth = 2; x.stroke(); x.restore();
+        var ctw = W - M * 2 - 300;
+        text(x, name, M + 300, pcy - 18, 76, 800, ink, 'left', ctw); if(pos) text(x, pos, M + 300, pcy + 42, 32, 500, sub, 'left', ctw); if(comp) text(x, comp, M + 300, pcy + (pos ? 92 : 42), 32, 700, ac, 'left', ctw);
+        y = pcy + 135 + 60;
       } else if(c.style === 'minimal'){
         if(lg){
           /* 로고가 있으면 위쪽에 왼쪽 로고 · 오른쪽 사진을 나란히, 그 아래 이름 (2026-10-08) */
@@ -2146,10 +2157,11 @@ textarea.ec-in{resize:vertical;min-height:84px;line-height:1.6}
         if(tags.length){ chips(x, tags, 100, 712 + top, W - 200, 'rgba(255,255,255,.08)', ring, 26, true); tagsDone = true; }
         y = 860 + top;
       } else {   /* profile */
-        var lbP = lg ? logoBox(c, lg, 120, 440, 200) : null, dp = lbP ? Math.max(0, 56 + lbP.h + 24 - 130) : 0;
-        if(lbP) drawLogo(x, lg, W - M - lbP.w, 56, lbP);
-        circlePhoto(x, ph, M + 120, 250 + dp, 120, col);
-        text(x, name, M + 280, 240 + dp, 72, 800, ink, 'left', W - M * 2 - 280); text(x, pos, M + 280, 298 + dp, 32, 500, sub, 'left', W - M * 2 - 280); text(x, comp, M + 280, 346 + dp, 30, 700, ac, 'left', W - M * 2 - 280);
+        /* 사진 · 이름 · 로고를 가로 한 줄로 — 로고는 오른쪽, 사진 가운데 높이 (2026-10-08) */
+        var lbP = lg ? logoBox(c, lg, 110, 240, 230) : null, dp = 0, ptw = W - M * 2 - 280 - (lbP ? lbP.w + 30 : 0);
+        if(lbP) drawLogo(x, lg, W - M - lbP.w, 250 - lbP.h / 2, lbP);
+        circlePhoto(x, ph, M + 120, 250, 120, col);
+        text(x, name, M + 280, 240, 72, 800, ink, 'left', ptw); text(x, pos, M + 280, 298, 32, 500, sub, 'left', ptw); text(x, comp, M + 280, 346, 30, 700, ac, 'left', ptw);
         y = 430 + dp; if(tags.length){ y += chips(x, tags, M, y, W - M * 2, shade(col, lum(col) > 0.75 ? -0.06 : 0.88), ac, 28, false) + 44; tagsDone = true; }
         x.fillStyle = dark ? 'rgba(255,255,255,.1)' : '#eceef2'; x.fillRect(M, y - 10, W - M * 2, 2); y += 40;
       }
@@ -2225,14 +2237,14 @@ textarea.ec-in{resize:vertical;min-height:84px;line-height:1.6}
     var pic = photoSmall ? '<img class="ph" src="' + photoSmall + '" alt="">' : '<div class="ph ph0">' + esc(name.slice(0, 1)) + '</div>';
     var hero = c.style === 'full' || c.style === 'frame'
       ? '<header class="big">' + (photoSmall ? '<img src="' + photoSmall + '" alt="">' : '<div class="bg0"></div>') + '<div class="pan"><h1>' + esc(name) + '</h1><p>' + esc([c.position, c.dept, c.company].filter(Boolean).join(' · ')) + '</p></div></header>'
-      : '<header class="hd ' + (c.style === 'block' || c.style === 'cover' ? 'col' : '') + '">' + (c.style === 'cover' && c.banner ? '<div class="bn" style="background-image:url(' + c.banner + ')"></div>' : c.style === 'block' || c.style === 'cover' ? '<div class="bn"></div>' : '') + pic + '<h1>' + esc(name) + '</h1><p>' + esc([c.position, c.dept].filter(Boolean).join(' · ')) + '</p><p class="co">' + esc(c.company) + '</p></header>';
+      : '<header class="hd ' + (c.style === 'block' || c.style === 'cover' ? 'col' : '') + (c.style === 'cover' ? ' cv' : '') + '">' + (c.style === 'cover' && c.banner ? '<div class="bn" style="background-image:url(' + c.banner + ')"></div>' : c.style === 'block' || c.style === 'cover' ? '<div class="bn"></div>' : '') + pic + '<h1>' + esc(name) + '</h1><p>' + esc([c.position, c.dept].filter(Boolean).join(' · ')) + '</p><p class="co">' + esc(c.company) + '</p></header>';
     return '<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>' + esc(name + (c.company ? ' · ' + c.company : '')) + '</title>'
       + '<meta property="og:title" content="' + esc(name + ' ' + (c.position || '')) + '"><meta property="og:description" content="' + esc(c.company + (c.intro ? ' — ' + c.intro.slice(0, 60) : '')) + '">'
       + '<style>:root{--c:' + col + ';--on:' + on + ';--ac:' + (dark ? (lum(col) < 0.12 ? '#c9a96e' : shade(col, 0.35)) : ac) + '}*{box-sizing:border-box}body{margin:0;background:' + (dark ? '#0f0f13' : '#eef0f3') + ';color:' + (dark ? '#f1f3f5' : '#1a1a1a') + ';font-family:\'Noto Sans KR\',\'Apple SD Gothic Neo\',\'Malgun Gothic\',sans-serif}'
       + '.w{max-width:480px;margin:0 auto;min-height:100vh;background:' + (dark ? '#17171c' : '#fff') + ';box-shadow:0 0 30px rgba(0,0,0,.08)}'
       + 'header{text-align:center;padding:36px 24px 22px;position:relative}header h1{margin:14px 0 4px;font-size:28px}header p{margin:2px 0;color:' + (dark ? '#adb5bd' : '#6b7280') + ';font-size:15px}header .co{color:var(--ac);font-weight:700}'
       + '.ph{width:132px;height:132px;border-radius:50%;object-fit:cover;border:5px solid ' + (dark ? 'var(--ac)' : '#fff') + ';box-shadow:0 4px 16px rgba(0,0,0,.15);position:relative;background:var(--c)}.ph0{display:inline-flex;align-items:center;justify-content:center;color:var(--on);font-size:52px;font-weight:800}'
-      + 'header.col{padding-top:0}header.col .bn{height:150px;background:var(--c);background-size:cover;background-position:center;margin:0 -24px -66px}'
+      + 'header.col{padding-top:0}header.col .bn{height:150px;background:var(--c);background-size:cover;background-position:center;margin:0 -24px -66px}header.cv{padding-top:16px}header.cv .bn{height:120px;margin:0 0 18px;border-radius:16px}'
       + 'header.big{padding:0}header.big img,header.big .bg0{width:100%;aspect-ratio:4/5;object-fit:cover;display:block;background:var(--c)}header.big .pan{background:var(--c);color:var(--on);margin:-70px 16px 0;position:relative;border-radius:18px;padding:16px 20px;text-align:left}header.big .pan h1{margin:0 0 4px}header.big .pan p{color:var(--on);opacity:.9}'
       + '.tags{display:flex;gap:6px;flex-wrap:wrap;justify-content:center;padding:6px 20px 0}.tags span{background:' + (dark ? 'rgba(255,255,255,.08)' : 'color-mix(in srgb,var(--c) 12%,#fff)') + ';color:var(--ac);border-radius:20px;padding:5px 12px;font-size:13px;font-weight:600}'
       + '.intro{padding:18px 24px 6px;line-height:1.75;font-size:15px;white-space:pre-wrap}'
