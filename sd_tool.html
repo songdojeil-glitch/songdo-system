@@ -155,7 +155,7 @@ a.sjb-btn.on::after,span.sjb-btn.on::after{background:linear-gradient(100deg,rgb
 <script>
 (function(){
   'use strict';
-  var SD_VER = '2026.10.09-4';
+  var SD_VER = '2026.10.09-5';
   var TABS = [
     [20, '🧰 전체 도구'],
     ['calc', '🧮 부동산 계산기'],
@@ -163,6 +163,7 @@ a.sjb-btn.on::after,span.sjb-btn.on::after{background:linear-gradient(100deg,rgb
     ['card', '💳 전자명함'],
     ['qr', '🔳 QR코드'],
     ['trace', '🗺 평면도 트레이서'],
+    ['logo', '🏷 로고 관리'],
     [26, '🤝 직방 가격 제안'],
     [27, '🔎 공시가격 조회'],
     [24, '🏗️ 건축물대장'],
@@ -179,7 +180,7 @@ a.sjb-btn.on::after,span.sjb-btn.on::after{background:linear-gradient(100deg,rgb
     if(me && se.name) me.innerHTML = '<b>' + String(se.name).replace(/[<>&"]/g, '') + '</b>' + (se.role ? '<span class="rl">' + (RL[se.role] || String(se.role).replace(/[<>&"]/g, '')) + '</span>' : '') + '<a href="sd_hub.html" style="color:#3b5bdb;text-decoration:none">허브</a>';
   }catch(e){}
   //  탭 열쇠: 숫자(데이터관리 도구 모드 탭) 또는 'calc'(이 파일 안의 부동산 계산기)
-  function key(n){ if(n === 'calc' || n === 'video' || n === 'photo' || n === 'card' || n === 'qr' || n === 'trace') return n; var k = parseInt(n, 10); return isNaN(k) ? null : k; }
+  function key(n){ if(n === 'calc' || n === 'video' || n === 'photo' || n === 'card' || n === 'qr' || n === 'trace' || n === 'logo') return n; var k = parseInt(n, 10); return isNaN(k) ? null : k; }
   function ok(n){ n = key(n); return TABS.some(function(t){ return t[0] === n; }); }
   function paint(){
     document.getElementById('tl-tabs').innerHTML = TABS.map(function(t){
@@ -192,6 +193,7 @@ a.sjb-btn.on::after,span.sjb-btn.on::after{background:linear-gradient(100deg,rgb
     document.body.classList.toggle('card-on', CUR === 'card');
     document.body.classList.toggle('qr-on', CUR === 'qr');
     document.body.classList.toggle('trace-on', CUR === 'trace');
+    document.body.classList.toggle('logo-on', CUR === 'logo');
   }
   //  도구 화면 안에서 탭이 바뀌면(전체 도구 카드를 누른 경우 등) 여기도 따라 바꾼다
   window.sdToolTab = function(n, extra){
@@ -214,6 +216,7 @@ a.sjb-btn.on::after,span.sjb-btn.on::after{background:linear-gradient(100deg,rgb
     if(n === 'card'){ window.sdToolTab('card'); if(window.sdCard) window.sdCard.go(); return; }
     if(n === 'qr'){ window.sdToolTab('qr'); if(window.sdQr) window.sdQr.go(); return; }
     if(n === 'trace'){ window.sdToolTab('trace'); traceGo(); return; }
+    if(n === 'logo'){ window.sdToolTab('logo'); if(window.sdLogoUi) window.sdLogoUi.go(); return; }
     if(n === 'video'){ location.href = 'sd_video.html'; return; }
     var w = null; try{ w = fr.contentWindow; }catch(e){}
     if(FRAME_N && w && typeof w.sw === 'function' && w.document && w.document.getElementById('tc' + n)){ window.sdToolTab(n); w.sw(n); try{ w.scrollTo(0, 0); }catch(e){} return; }
@@ -246,6 +249,7 @@ a.sjb-btn.on::after,span.sjb-btn.on::after{background:linear-gradient(100deg,rgb
     if(q === 'card'){ window.sdToolTab('card'); window.sdCard && window.sdCard.go(); return; }
     if(q === 'qr'){ window.sdToolTab('qr'); window.sdQr && window.sdQr.go(); return; }
     if(q === 'trace'){ window.sdToolTab('trace'); traceGo(); return; }
+    if(q === 'logo'){ window.sdToolTab('logo'); window.sdLogoUi && window.sdLogoUi.go(); return; }
     if(q === 'calc'){ var c = sp.get('c'); window.sdToolTab('calc', c ? '&c=' + encodeURIComponent(c) : ''); window.sdCalc && window.sdCalc.go(c || 'home', true); }
     else { window.sdToolTab(q); loadFrame(q); }
   };
@@ -2381,7 +2385,7 @@ textarea.ec-in{resize:vertical;min-height:84px;line-height:1.6}
       + '<div class="ec-box"><div class="ec-h">사진 <small>사진은 이 컴퓨터 안에서만 쓰입니다</small></div><div class="ec-pics">'
         + [['photo', '👤', '프로필 사진', '얼굴이 잘 보이는 사진'], ['logo', '🏢', '회사 로고', '선택 · 투명 PNG 추천'], ['banner', '🖼', '배너 이미지', '선택 · 「표지」 스타일 위쪽']].map(function(p){
           return '<label class="ec-pic">' + (c[p[0]] ? '<img src="' + c[p[0]] + '" alt=""><button class="x" data-px="' + p[0] + '" title="빼기">✕</button>' : '<span class="ic">' + p[1] + '</span>') + '<b>' + p[2] + '</b><small>' + p[3] + '</small><input type="file" accept="image/*" data-pic="' + p[0] + '" hidden></label>'; }).join('')
-        + '</div>' + (c.logo ? '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:12px"><b style="font-size:13px">🏢 로고 크기</b><div class="ec-chips" style="margin:0">' + LOGO_N.map(function(z){ return '<button class="ec-chip' + ((c.logoSz || 'l') === z[0] ? ' on' : '') + '" data-lsz="' + z[0] + '">' + z[1] + '</button>'; }).join('') + '</div><label style="display:flex;gap:6px;align-items:center;font-size:12.5px;cursor:pointer"><input type="checkbox" id="ec-lline"' + (c.logoLine !== false ? ' checked' : '') + '> 흰 테두리</label><span style="font-size:11px;color:#868e96;width:100%">로고 둘레의 투명·흰 여백은 저절로 잘라 내고, 흰 테두리로 바탕과 구별되게 합니다</span></div>' : '')
+        + '</div><div style="margin-top:10px"><button class="ec-btn" id="ec-lgpick">🏷 로고 관리에서 로고 고르기</button> <span style="font-size:11px;color:#868e96">도구 → 🏷 로고 관리에 모아 둔 로고</span></div>' + (c.logo ? '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:12px"><b style="font-size:13px">🏢 로고 크기</b><div class="ec-chips" style="margin:0">' + LOGO_N.map(function(z){ return '<button class="ec-chip' + ((c.logoSz || 'l') === z[0] ? ' on' : '') + '" data-lsz="' + z[0] + '">' + z[1] + '</button>'; }).join('') + '</div><label style="display:flex;gap:6px;align-items:center;font-size:12.5px;cursor:pointer"><input type="checkbox" id="ec-lline"' + (c.logoLine !== false ? ' checked' : '') + '> 흰 테두리</label><span style="font-size:11px;color:#868e96;width:100%">로고 둘레의 투명·흰 여백은 저절로 잘라 내고, 흰 테두리로 바탕과 구별되게 합니다</span></div>' : '')
         + '<div class="ec-note" style="font-size:11.5px;color:#868e96;margin-top:8px">📸 프로필 사진이 없다면 옆 탭 「📸 프로필 사진&캐릭터」에서 AI 로 만든 사진·캐릭터를 저장해 넣으세요.</div></div>'
       + '<div class="ec-nav"><span></span><button class="ec-btn pri" data-step="2">다음: 자기소개 →</button></div>';
     if(STEP === 2) return '<div class="ec-box"><div class="ec-g2"><div class="ec-f"><label>이름</label>' + inp('name', c.name, '예: 문형은') + '</div><div class="ec-f"><label>회사명</label>' + inp('company', c.company, '예: 송도제일공인중개사사무소') + '</div>'
@@ -2438,6 +2442,7 @@ textarea.ec-in{resize:vertical;min-height:84px;line-height:1.6}
     q('[data-pic]').forEach(function(f){ f.onchange = function(){ var file = this.files && this.files[0], k = f.dataset.pic; this.value = ''; if(!file) return; if(!/^image\//.test(file.type)) return toast('사진 파일을 골라 주세요', true); if(file.size > 15 * 1048576) return toast('15MB 이하 사진으로 골라 주세요', true);
       shrink(file, k === 'banner' ? 1400 : k === 'logo' ? 600 : 900, k === 'logo').then(function(u){ c[k] = u; if(save()) paint(); }, function(e){ toast(e.message, true); }); }; });
     q('[data-lsz]').forEach(function(b){ b.onclick = function(){ c.logoSz = b.dataset.lsz; q('[data-lsz]').forEach(function(x){ x.classList.toggle('on', x === b); }); touch(); preview(); }; });
+    var lp = $('ec-lgpick'); if(lp) lp.onclick = function(){ if(!window.sdLogoPick) return toast('로고 관리를 불러오지 못했습니다', true); window.sdLogoPick(function(u){ c.logo = u; c.at = Date.now(); if(save()) paint(); toast('로고를 넣었습니다'); }, 'ecard'); };
     var ll = $('ec-lline'); if(ll) ll.onchange = function(){ c.logoLine = this.checked; touch(); preview(); };
     q('[data-px]').forEach(function(b){ b.onclick = function(e){ e.preventDefault(); e.stopPropagation(); c[b.dataset.px] = ''; save(); paint(); }; });
     q('[data-k]').forEach(function(i){ i.oninput = function(){ c[i.dataset.k] = i.value; touch(); if(i.dataset.k === 'name' || i.dataset.k === 'company'){ var ch = root.querySelector('[data-card="' + c.id + '"]'); if(ch) ch.textContent = cardTitle(c); } }; });
@@ -2785,7 +2790,7 @@ textarea.qx-in{resize:vertical;min-height:84px;line-height:1.6}
       + '<div class="qx-col"><label><input type="color" id="qx-bg" value="' + esc(S.bg) + '"> 배경</label><label><input type="checkbox" id="qx-eyeon"' + (S.eyeC ? ' checked' : '') + '> 모서리 눈 색 따로</label>' + (S.eyeC ? '<input type="color" id="qx-eyec" value="' + esc(S.eyeC) + '">' : '') + '</div><div class="qx-con" id="qx-con"></div>';
     if(E === 'logo') return '<span class="qx-lab">가운데 사진/로고 <span style="font-weight:400;color:#71717a">정사각으로 자동 맞춤 · 10MB 이하</span></span><div class="qx-row">'
       + (S.logo ? '<img src="' + S.logo + '" alt="" style="width:52px;height:52px;border-radius:10px;object-fit:cover;border:1px solid #3a3a40">' : '')
-      + '<label class="qx-btn" style="cursor:pointer">📷 사진 선택<input type="file" id="qx-logo" accept="image/*" hidden></label>' + (S.logo ? '<button class="qx-btn" id="qx-logox">사진 제거</button>' : '') + '</div>'
+      + '<label class="qx-btn" style="cursor:pointer">📷 사진 선택<input type="file" id="qx-logo" accept="image/*" hidden></label><button class="qx-btn" id="qx-lgpick">🏷 로고 관리에서</button>' + (S.logo ? '<button class="qx-btn" id="qx-logox">사진 제거</button>' : '') + '</div>'
       + (S.logo ? '<div class="qx-gap"></div><div class="qx-range">가운데 크기 <input type="range" id="qx-lpct" min="12" max="30" value="' + S.logoPct + '"> <b id="qx-lpctn">' + S.logoPct + '%</b><label style="display:flex;gap:6px;align-items:center;margin-left:6px"><input type="checkbox" id="qx-lbg"' + (S.logoBg ? ' checked' : '') + '> 바탕 깔기</label></div>' : '')
       + '<div class="qx-note">사진을 넣으면 오류 복원을 가장 높게(H · 약 30%) 바꿔 가운데를 가려도 읽히게 합니다. 사무소 로고·대표 얼굴 사진을 많이 씁니다.</div>';
     if(E === 'frame') return '<span class="qx-lab">프레임</span>' + seg('qx-frame', FRAMES, S.frame) + (S.frame !== 'none' ? '<div class="qx-gap"></div><div class="qx-row"><input class="qx-in" id="qx-cap" maxlength="24" value="' + esc(S.cap) + '" placeholder="예: SCAN & DISCOVER · 매물 보기 · 와이파이 연결" style="flex:1;min-width:180px"><label style="display:flex;gap:7px;align-items:center;font-size:12px;color:#c4c4cc"><input type="color" id="qx-capc" value="' + esc(S.capC) + '" style="width:36px;height:30px;border:1px solid #3a3a40;border-radius:8px;padding:0;background:#101012"> 프레임 색</label></div><div class="qx-row" style="margin-top:8px">' + ['스캔하세요', 'SCAN & DISCOVER', '매물 보러 가기', '상담 전화', '와이파이 연결', '블로그 보기'].map(function(c){ return '<button class="qx-btn sm" data-cap="' + esc(c) + '">' + esc(c) + '</button>'; }).join('') + '</div>' : '<div class="qx-note">카드 · 아래 글씨 · 말풍선 중에 고르면 「스캔하세요」 같은 안내 글을 붙일 수 있어요.</div>');
@@ -2840,6 +2845,7 @@ textarea.qx-in{resize:vertical;min-height:84px;line-height:1.6}
     var lf = $('qx-logo'); if(lf) lf.onchange = function(){ var f = this.files && this.files[0]; this.value = ''; if(!f) return; if(!/^image\//.test(f.type)) return toast('사진 파일을 골라 주세요', true); if(f.size > 10 * 1048576) return toast('10MB 이하 사진으로 골라 주세요', true);
       var u = URL.createObjectURL(f), im = new Image(); im.onload = function(){ var s = Math.min(im.naturalWidth, im.naturalHeight), c = document.createElement('canvas'), z = Math.min(600, s); c.width = c.height = z; c.getContext('2d').drawImage(im, (im.naturalWidth - s) / 2, (im.naturalHeight - s) / 2, s, s, 0, 0, z, z); URL.revokeObjectURL(u); S.logo = c.toDataURL('image/png'); paint(); }; im.onerror = function(){ URL.revokeObjectURL(u); toast('사진을 읽지 못했습니다', true); }; im.src = u; };
     var lx = $('qx-logox'); if(lx) lx.onclick = function(){ S.logo = ''; paint(); };
+    var lgp = $('qx-lgpick'); if(lgp) lgp.onclick = function(){ if(!window.sdLogoPick) return; window.sdLogoPick(function(u){ var im = new Image(); im.onload = function(){ var s0 = Math.max(im.naturalWidth, im.naturalHeight), c = document.createElement('canvas'), z = Math.min(600, s0); c.width = c.height = z; var x = c.getContext('2d'), k = z / s0; x.drawImage(im, (z - im.naturalWidth * k) / 2, (z - im.naturalHeight * k) / 2, im.naturalWidth * k, im.naturalHeight * k); S.logo = c.toDataURL('image/png'); paint(); }; im.src = u; }, 'ecard'); };
     var lp = $('qx-lpct'); if(lp) lp.oninput = function(){ S.logoPct = +this.value; $('qx-lpctn').textContent = this.value + '%'; preview(); };
     var lb = $('qx-lbg'); if(lb) lb.onchange = function(){ S.logoBg = this.checked; preview(); };
     $('qx-reset').onclick = function(){ var keep = { type:S.type, f:S.f, logo:S.logo, px:S.px, etab:S.etab }; S = Object.assign(JSON.parse(JSON.stringify(DEF)), keep); paint(); };
@@ -2852,6 +2858,150 @@ textarea.qx-in{resize:vertical;min-height:84px;line-height:1.6}
   window.sdQr = { go:function(){ paint(); }, _s:function(){ return S; }, _payload:payload, _build:build, _svg:function(){ return matrix(payload(), ecl()).then(function(m){ return svg(m, S, 1000); }); }, _check:function(){ return CHECK; }, _problem:problem, _scan:function(cv, t){ return jsqr().then(function(J){ return scanTry(J, cv, t); }); }, THEMES:THEMES };
 })();
 </script>
+<!-- ═════════════════════════════════════════════════════════════════
+     🏷 로고 관리 (sd_tool.html · window.sdLogoUi)  2026-10-09
+     · 로고 보관함 — 송도제일공인중개사사무소(2D·3D 사각, 로고+글자) · 분양대행 · 유튜브 채널(송도제일부동산TV·상가닷컴TV) · 협회(연수구지회) · 기타
+     · 쓰임새 연결 — 화면(섹터)별 문서·그림에 어떤 로고를 넣을지 (매물 브리핑, 시장 리포트, 상가 견적서, 사진 워터마크, 블로그 카드, 영상 채널, 전자명함·QR)
+     · 저장은 sd_logo.js (Firebase sd_media/logo_idx · logo_img · logo_map) — 다른 화면들이 같은 파일로 읽는다
+     ═════════════════════════════════════════════════════════════════ -->
+<style>
+#logo-wrap{flex:1 1 auto;min-height:0;overflow:auto;display:none;scrollbar-gutter:stable both-edges;background:#f6f7fb}
+body.logo-on .tl-wrap{display:none}
+body.logo-on #logo-wrap{display:block}
+.lgm{max-width:1240px;margin:0 auto;padding:18px 18px 60px;font-family:'Noto Sans KR','Apple SD Gothic Neo','Malgun Gothic',sans-serif;color:#1f2937}
+.lgm-box{background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:16px 18px;margin-bottom:14px}
+.lgm-h{font-size:16px;font-weight:800;margin:0 0 4px;display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.lgm-h small{font-size:12px;font-weight:500;color:#6b7280}
+.lgm-sub{font-size:12.5px;color:#6b7280;line-height:1.65;margin:0 0 12px}
+.lgm-st{margin-left:auto;font-size:12px;font-weight:600;color:#1971c2;background:none;border:none;cursor:pointer;font-family:inherit}
+.lgm-cat{margin:14px 0 8px;font-size:13.5px;font-weight:800;color:#374151;display:flex;align-items:center;gap:8px}
+.lgm-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px}
+.lgm-t{border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;background:#fff;display:flex;flex-direction:column}
+.lgm-pv{height:120px;display:flex;align-items:center;justify-content:center;padding:12px;cursor:pointer;position:relative;background:#fff}
+.lgm-pv.ck{background-color:#fff;background-image:linear-gradient(45deg,#eef0f3 25%,transparent 25%),linear-gradient(-45deg,#eef0f3 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#eef0f3 75%),linear-gradient(-45deg,transparent 75%,#eef0f3 75%);background-size:16px 16px;background-position:0 0,0 8px,8px -8px,-8px 0}
+.lgm-pv.dk{background:#1a2744}
+.lgm-pv img{max-width:100%;max-height:100%;object-fit:contain}
+.lgm-pv .bg{position:absolute;right:6px;top:6px;font-size:10.5px;background:rgba(255,255,255,.85);border-radius:8px;padding:1px 6px;color:#495057}
+.lgm-f{padding:8px 10px 10px;display:flex;flex-direction:column;gap:6px;border-top:1px solid #f1f3f5}
+.lgm-in,.lgm-sel{width:100%;box-sizing:border-box;padding:6px 8px;border:1px solid #dee2e6;border-radius:8px;font-size:12.5px;font-family:inherit;background:#fff}
+.lgm-row{display:flex;gap:6px;align-items:center}
+.lgm-use{font-size:11px;color:#0b7285;line-height:1.5;min-height:16px}
+.lgm-x{border:1px solid #ffc9c9;background:#fff5f5;color:#c92a2a;border-radius:8px;font-size:11.5px;padding:5px 8px;cursor:pointer;font-family:inherit;white-space:nowrap}
+.lgm-add{border:2px dashed #ced4da;border-radius:12px;min-height:200px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;color:#868e96;font-size:13px;cursor:pointer;background:#fafbfc}
+.lgm-add:hover{border-color:#e8590c;color:#d9480f;background:#fff4e6}
+.lgm-add b{font-size:26px}
+.lgm-sec{margin:16px 0 6px;font-size:13px;font-weight:800;color:#495057}
+.lgm-slot{display:grid;grid-template-columns:minmax(0,1.5fr) 190px minmax(200px,1fr);gap:12px;align-items:center;padding:10px 0;border-bottom:1px solid #f1f3f5}
+.lgm-slot b{font-size:13.5px}
+.lgm-slot small{display:block;font-size:11.5px;color:#868e96;margin-top:2px}
+.lgm-sp{height:64px;border-radius:9px;display:flex;align-items:center;justify-content:center;padding:8px;border:1px solid #e9ecef;overflow:hidden}
+.lgm-sp img{max-width:100%;max-height:100%;object-fit:contain}
+.lgm-sp i{font-size:11px;color:#adb5bd;font-style:normal}
+.lgm-err{font-size:12px;color:#c92a2a;background:#fff5f5;border:1px solid #ffc9c9;border-radius:10px;padding:10px 12px;margin-top:8px;line-height:1.6}
+.lgm-tip{font-size:12px;color:#5c3d00;background:#fff9db;border:1px solid #ffe8a1;border-radius:10px;padding:10px 12px;line-height:1.65}
+.lgm-toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%);background:#212529;color:#fff;padding:10px 18px;border-radius:10px;font-size:13px;z-index:9999}
+.lgm-toast.bad{background:#c92a2a}
+@media(max-width:760px){.lgm-slot{grid-template-columns:1fr}}
+</style>
+<div id="logo-wrap" class="sjb-zoom"><div id="logo-root"></div></div>
+<script src="sd_logo.js?v=2026.10.09-5"></script>
+<script>
+(function(){
+  'use strict';
+  var $ = function(id){ return document.getElementById(id); };
+  var esc = function(s){ return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); };
+  var L = window.sdLogo, ST = { msg:'', err:'', busy:false, bg:{} }, ADDCAT = 'office';
+  var SLOT_BG = { est_office:'#1a2744', est_agency:'#1a2744', wm_photo:'linear-gradient(135deg,#8d99ae,#d6dde6)', blog_card:'#2b2f3a', yt_main:'#111', yt_sangga:'#111' };
+  function toast(m, bad){ var t = document.createElement('div'); t.className = 'lgm-toast' + (bad ? ' bad' : ''); t.textContent = m; document.body.appendChild(t); setTimeout(function(){ t.remove(); }, bad ? 5000 : 2400); }
+  function catN(k){ var c = L.CATS.find(function(x){ return x[0] === k; }); return c ? c[1] : k; }
+  function usesOf(id){ var m = L.map(); return L.SLOTS.filter(function(s){ return m[s.id] === id; }); }
+  function stHtml(){ return ST.err ? '<span style="color:#c92a2a">⚠ ' + esc(/PERMISSION|permission/i.test(ST.err) ? 'Firebase 쓰기 권한이 막혀 있습니다' : ST.err.slice(0, 80)) + '</span>' : esc(ST.msg || '☁ Firebase 와 맞추는 중…'); }
+  function err(e){ ST.err = (e && e.message) || String(e); ST.busy = false; paint(); toast('저장하지 못했습니다: ' + ST.err.slice(0, 60), true); }
+  function paint(){
+    var root = $('logo-root'); if(!root) return;
+    var all = L.list(), m = L.map();
+    root.innerHTML = '<div class="lgm">'
+      + '<div class="lgm-box"><div class="lgm-h">🏷 로고 관리 <small>로고를 한 곳에 모아 두고, SJRWS 가 만드는 보고서·견적서·사진·카드에 어떤 로고가 들어갈지 정합니다</small><button class="lgm-st" id="lgm-sync" title="눌러서 Firebase 와 다시 맞추기">' + stHtml() + '</button></div>'
+      + '<p class="lgm-sub">① 아래 <b>로고 보관함</b>에 로고 파일을 넣고(투명 PNG 가 가장 좋습니다 · 둘레 여백은 저절로 잘라 냄) ② <b>쓰임새 연결</b>에서 문서마다 로고를 고르면 끝입니다. 로고는 SJRWS Firebase 에 저장되어 모든 PC·브라우저·직원 화면에 같이 적용됩니다.</p>'
+      + (/PERMISSION|permission/i.test(ST.err) ? '<div class="lgm-err">Firebase 콘솔 → Realtime Database → <b>규칙</b>의 "rules" 안에 아래 한 줄이 있어야 저장됩니다 (영상 「내 출연진」·전자명함과 같은 규칙).<pre style="white-space:pre-wrap;margin:6px 0 0;font-size:11.5px">' + esc(L.RULE) + '</pre></div>' : '')
+      + '</div>'
+      /* ① 보관함 */
+      + '<div class="lgm-box"><div class="lgm-h">① 로고 보관함 <small>' + all.length + '개 · 그림을 누르면 바탕(체크·흰색·남색)을 바꿔 봅니다</small></div>'
+      + L.CATS.map(function(c){
+          var mine = all.filter(function(x){ return (x.cat || 'etc') === c[0]; });
+          return '<div class="lgm-cat">' + c[1] + ' <small style="font-weight:500;color:#adb5bd">' + mine.length + '</small></div><div class="lgm-grid">'
+            + mine.map(function(x){ var bg = ST.bg[x.id] || 'ck', u = usesOf(x.id);
+                return '<div class="lgm-t" data-lg="' + x.id + '"><div class="lgm-pv ' + bg + '" data-bgt="' + x.id + '"><img src="' + (L.img(x.id) || '') + '" alt=""><span class="bg">' + (bg === 'ck' ? '투명' : bg === 'dk' ? '남색' : '흰색') + ' 바탕</span></div>'
+                  + '<div class="lgm-f"><input class="lgm-in" data-nm value="' + esc(x.name || '') + '" placeholder="로고 이름 (예: 송도제일 3D 사각)">'
+                  + '<div class="lgm-row"><select class="lgm-sel" data-ct>' + L.CATS.map(function(k){ return '<option value="' + k[0] + '"' + (k[0] === x.cat ? ' selected' : '') + '>' + k[1].replace(/^\S+\s/, '').replace(/\s*\(.*\)$/, '').replace('공인중개사사무소', '') + '</option>'; }).join('') + '</select>'
+                  + '<select class="lgm-sel" data-kd><option value="">모양</option>' + L.KINDS.map(function(k){ return '<option value="' + k[0] + '"' + (k[0] === x.kind ? ' selected' : '') + '>' + k[1] + '</option>'; }).join('') + '</select></div>'
+                  + '<div class="lgm-row"><div class="lgm-use" style="flex:1">' + (u.length ? '✓ ' + u.map(function(s){ return esc(s.n.split(' — ')[0]); }).join(' · ') : '<span style="color:#adb5bd">아직 연결 안 됨</span>') + '</div><button class="lgm-x" data-del>삭제</button></div>'
+                  + '<div style="font-size:10.5px;color:#adb5bd">' + (x.w || '?') + '×' + (x.h || '?') + 'px' + (x.alpha ? ' · 투명' : ' · 바탕 있음') + (x.by ? ' · ' + esc(x.by) : '') + '</div></div></div>'; }).join('')
+            + '<label class="lgm-add" data-addcat="' + c[0] + '"><b>＋</b>로고 넣기<small style="font-size:11px">파일 고르기 · 여러 개 가능</small><input type="file" accept="image/*" multiple hidden data-file="' + c[0] + '"></label></div>';
+        }).join('')
+      + '<div class="lgm-tip" style="margin-top:14px">💡 로고 그림을 복사(Ctrl+C)한 뒤 이 화면에서 <b>Ctrl+V</b> 로 붙여 넣으면 마지막으로 누른 묶음(지금: ' + esc(catN(ADDCAT)) + ')에 들어갑니다. 같은 로고라도 <b>사각 아이콘 · 로고+글자(가로형) · 흰색</b>을 따로 넣어 두면 문서마다 알맞은 것을 고를 수 있습니다.</div></div>'
+      /* ② 쓰임새 */
+      + '<div class="lgm-box"><div class="lgm-h">② 쓰임새 연결 <small>화면(섹터)별 문서·그림 — 고르는 즉시 모든 화면에 적용</small></div>'
+      + '<p class="lgm-sub">미리보기 칸은 실제 문서의 바탕색(견적서는 남색 띠, 워터마크는 사진 위)으로 보여 줍니다. 「넣지 않음」이면 지금처럼 글자만 나옵니다.</p>'
+      + (function(){ var secs = []; L.SLOTS.forEach(function(s){ if(secs.indexOf(s.sec) < 0) secs.push(s.sec); });
+          return secs.map(function(sec){ return '<div class="lgm-sec">' + esc(sec) + '</div>' + L.SLOTS.filter(function(s){ return s.sec === sec; }).map(function(s){ var id = m[s.id] && L.meta(m[s.id]) ? m[s.id] : '', u = id ? L.img(id) : '';
+              return '<div class="lgm-slot"><div><b>' + esc(s.n) + '</b><small>' + esc(s.hint) + '</small></div>'
+                + '<div class="lgm-sp" style="background:' + (SLOT_BG[s.id] || '#fff') + '">' + (u ? '<img src="' + u + '" alt="">' : '<i>넣지 않음</i>') + '</div>'
+                + '<select class="lgm-sel" data-slot="' + s.id + '"><option value="">— 넣지 않음 —</option>' + L.CATS.map(function(c){ var g = all.filter(function(x){ return (x.cat || 'etc') === c[0]; }); return g.length ? '<optgroup label="' + esc(c[1].replace(/^\S+\s/, '')) + '">' + g.map(function(x){ return '<option value="' + x.id + '"' + (x.id === id ? ' selected' : '') + '>' + esc(x.name || '이름 없는 로고') + '</option>'; }).join('') + '</optgroup>' : ''; }).join('') + '</select></div>'; }).join(''); }).join(''); })()
+      + '<div class="lgm-tip" style="margin-top:14px">📄 계약서는 지금 SJRWS 가 직접 만들지 않고(계약관리는 올린 계약서 파일을 보관만 함) 연결할 곳이 없습니다. 🎬 영상 채널 로고는 보관·연결만 해 두면 다음 단계에서 영상 썸네일·화면 모서리에 넣습니다.</div></div>'
+      + '</div>';
+    bind(root);
+  }
+  function addFiles(files, cat){
+    var list = Array.prototype.slice.call(files || []).filter(function(f){ return /^image\//.test(f.type); }); if(!list.length) return;
+    ST.busy = true; ST.err = ''; ST.msg = '☁ 로고 올리는 중… (' + list.length + ')'; paint();
+    (async function(){
+      for(var i = 0; i < list.length; i++){ var f = list[i]; if(f.size > 15 * 1048576){ toast(f.name + ': 15MB 이하로 넣어 주세요', true); continue; } await L.add(f, { name:(f.name || '로고').replace(/\.[^.]+$/, ''), cat:cat }); }
+    })().then(function(){ ST.busy = false; ST.msg = '☁ Firebase 에 저장됨'; paint(); toast('로고를 넣었습니다 — 이름·모양을 확인하고 ② 쓰임새에 연결하세요'); }, err);
+  }
+  function bind(root){
+    var q = function(s){ return Array.prototype.slice.call(root.querySelectorAll(s)); };
+    $('lgm-sync').onclick = function(){ ST.msg = '☁ Firebase 와 맞추는 중…'; ST.err = ''; paint(); L.refresh().then(function(){ ST.msg = '☁ Firebase 와 맞췄습니다'; paint(); }, err); };
+    q('[data-file]').forEach(function(i){ i.onchange = function(){ ADDCAT = i.dataset.file; addFiles(this.files, i.dataset.file); this.value = ''; }; });
+    q('[data-addcat]').forEach(function(l){ l.addEventListener('mousedown', function(){ ADDCAT = l.dataset.addcat; }); });
+    q('[data-bgt]').forEach(function(b){ b.onclick = function(){ var id = b.dataset.bgt, o = ST.bg[id] || 'ck'; ST.bg[id] = o === 'ck' ? 'wh' : o === 'wh' ? 'dk' : 'ck'; paint(); }; });
+    q('.lgm-t').forEach(function(t){
+      var id = t.dataset.lg, sv = function(meta){ L.update(id, meta).then(function(){ ST.msg = '☁ Firebase 에 저장됨'; ST.err = ''; var e = $('lgm-sync'); if(e) e.innerHTML = stHtml(); }, err); };
+      var nm = t.querySelector('[data-nm]'); nm.onchange = function(){ sv({ name:this.value.trim() }); setTimeout(paint, 300); };
+      t.querySelector('[data-ct]').onchange = function(){ sv({ cat:this.value }); setTimeout(paint, 300); };
+      t.querySelector('[data-kd]').onchange = function(){ sv({ kind:this.value }); };
+      t.querySelector('[data-del]').onclick = function(){ var u = usesOf(id); if(!confirm('「' + ((L.meta(id) || {}).name || '이 로고') + '」 를 지울까요?' + (u.length ? '\n연결된 쓰임새 ' + u.length + '곳은 「넣지 않음」으로 바뀝니다.' : '') + '\nFirebase 에서 지워져 모든 PC 에서 사라집니다.')) return; L.remove(id).then(function(){ ST.msg = '☁ 지웠습니다'; paint(); }, err); };
+    });
+    q('[data-slot]').forEach(function(s){ s.onchange = function(){ var v = this.value; L.link(s.dataset.slot, v).then(function(){ ST.msg = '☁ 연결을 저장했습니다'; ST.err = ''; paint(); }, err); }; });
+  }
+  document.addEventListener('paste', function(e){
+    if(!document.body.classList.contains('logo-on')) return;
+    if(e.target && /^(INPUT|TEXTAREA)$/.test(e.target.tagName)) return;
+    var it = Array.prototype.slice.call((e.clipboardData || {}).items || []).filter(function(x){ return /^image\//.test(x.type); }); if(!it.length) return;
+    e.preventDefault(); addFiles(it.map(function(x){ var f = x.getAsFile(); try{ return new File([f], '붙여넣은 로고.png', { type:f.type }); }catch(er){ return f; } }), ADDCAT);
+  });
+  L.onChange(function(){ if(document.body.classList.contains('logo-on')) paint(); });
+  /* 다른 도구(전자명함·QR)에서 「🏷 로고 관리에서」 고르기 — cb(dataUrl) */
+  window.sdLogoPick = function(cb, prefer){
+    var open = function(){
+      var all = L.list(), pid = prefer ? L.idOf(prefer) : '';
+      if(pid) all.sort(function(a, b){ return (b.id === pid) - (a.id === pid); });
+      var m = document.createElement('div'); m.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9998;display:flex;align-items:center;justify-content:center;padding:20px';
+      m.innerHTML = '<div style="background:#fff;border-radius:16px;max-width:760px;width:100%;max-height:86vh;overflow:auto;padding:18px 20px;font-family:\'Noto Sans KR\',sans-serif"><div style="display:flex;align-items:center;margin-bottom:10px"><b style="font-size:16px">🏷 로고 관리에서 고르기</b><span style="flex:1"></span><button data-x style="border:none;background:none;font-size:20px;cursor:pointer">✕</button></div>'
+        + (all.length ? '<div class="lgm-grid">' + all.map(function(x){ return '<button data-pick="' + x.id + '" style="border:' + (x.id === pid ? '2px solid #e8590c' : '1px solid #e5e7eb') + ';border-radius:12px;background:#fff;cursor:pointer;padding:0;overflow:hidden;font-family:inherit"><div class="lgm-pv ck" style="height:100px"><img src="' + (L.img(x.id) || '') + '" alt=""></div><div style="padding:6px 8px;font-size:12px;text-align:left"><b>' + esc(x.name || '이름 없는 로고') + '</b><br><span style="color:#868e96;font-size:11px">' + esc(catN(x.cat).replace(/^\S+\s/, '')) + (x.id === pid ? ' · 기본' : '') + '</span></div></button>'; }).join('') + '</div>'
+          : '<div style="padding:30px;text-align:center;color:#868e96;font-size:13px">로고 보관함이 비어 있습니다.<br>도구 → 🏷 로고 관리에서 로고를 먼저 넣어 주세요.</div>')
+        + '</div>';
+      document.body.appendChild(m);
+      m.onclick = function(e){ if(e.target === m || e.target.closest('[data-x]')) m.remove(); var b = e.target.closest('[data-pick]'); if(b){ L.small(b.dataset.pick, 800).then(function(u){ m.remove(); cb(u); }); } };
+    };
+    L.ready().then(open, open);
+  };
+  window.sdLogoUi = {
+    go:function(){ paint(); ST.msg = '☁ Firebase 와 맞추는 중…'; L.refresh().then(function(){ ST.msg = '☁ Firebase 와 맞췄습니다 · 로고 ' + L.list().length + '개'; ST.err = ''; paint(); }, function(e){ ST.err = (e && e.message) || String(e); paint(); }); }
+  };
+})();
+</script>
+
 <script>window.__sdToolStart && window.__sdToolStart();</script>
 <script>
 (function(){

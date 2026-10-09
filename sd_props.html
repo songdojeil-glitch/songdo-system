@@ -632,6 +632,8 @@ const LOGO_DESCRIPTIONS = {
 };
 
 // Canvas에 워터마킹 적용
+/* 🏷 로고 관리 (sd_logo.js) 의 「매물·상가 사진 워터마크」 로고 — 'lib' 로 고르면 쓴다 (2026-10-09) */
+try{ Object.defineProperty(REAL_LOGO_DATA, 'lib', { get:function(){ return window.sdLogo ? window.sdLogo.src('wm_photo') : ''; }, enumerable:false }); }catch(e){}
 function applyWatermarkToCanvas(sourceCanvas, logoType, opacity) {
   if (!logoType || logoType === '' || !REAL_LOGO_DATA[logoType]) {
     return sourceCanvas;
@@ -1178,6 +1180,7 @@ window.addEventListener('load', function() {
           <label class="fl" style="margin-bottom:3px">로고 선택</label>
           <select id="f-logo-type" class="fi" style="padding:6px 8px">
             <option value="">없음 (워터마킹 비활성화)</option>
+            <option value="lib">🏷 로고 관리 — 사진 워터마크 로고</option>
             <option value="1">로고1 - 송도제일부동산 (회사명)</option>
             <option value="2">로고2 - 032-851-6688</option>
             <option value="3">로고3 - 010-6401-9345</option>
@@ -8667,7 +8670,7 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.10.06-1';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.10.09-1';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_props.html';      // 이 파일 이름
   var SD_NAME = '매물관리';      // 사람이 부르는 이름
 
@@ -11626,6 +11629,8 @@ textarea.bf-in{resize:vertical;line-height:1.6}
   /* ── 문서(고객용 / 임직원용) ── */
   function docHtml(d, staff){
     var V = d.type === 'visit', of = d.office || office(), date = V ? d.visitDate : d.briefDate;
+    /* 🏷 로고 관리 (sd_logo.js) — 머리 로고 · 아래 보조 로고(협회 등) */
+    var LGH = window.sdLogo ? window.sdLogo.src('brief_head') : '', LGF = window.sdLogo ? window.sdLogo.src('doc_foot') : '';
     var th = (V ? '<th style="width:74px;white-space:nowrap">방문 시간</th>' : '') + '<th style="width:30px">No</th><th>단지명</th><th style="width:62px">전용(㎡)</th><th style="width:62px">분양평수</th><th style="width:118px">가격</th><th>특이사항</th>' + (staff ? '<th style="width:150px" class="ag">중개업소</th>' : '');
     var rows = (d.items || []).map(function(it, i){ return '<tr>' + (V ? '<td class="tm">' + esc(it.time || '-') + '</td>' : '') + '<td class="c">' + (i + 1) + '</td><td><b>' + esc(it.cx) + '</b>' + (it.kind || it.floor ? '<div class="s">' + esc([it.kind, it.floor].filter(Boolean).join(' · ')) + '</div>' : '') + '</td>'
       + '<td class="c">' + esc(it.area || '-') + '</td><td class="c">' + esc(it.py ? (/평/.test(it.py) ? it.py : it.py + '평') : '-') + '</td><td class="p">' + esc(it.price || '-') + '</td><td class="m">' + esc(it.memo || '').replace(/\n/g, '<br>') + '</td>'
@@ -11647,14 +11652,16 @@ textarea.bf-in{resize:vertical;line-height:1.6}
       + '.note{margin-top:14px;border:1px solid #ffe08a;background:#fffbea;border-radius:8px;padding:10px 14px;white-space:pre-wrap}.note b{display:block;color:#8a6100;margin-bottom:3px}'
       + '.foot{margin-top:22px;border-top:2px solid #1a237e;padding-top:10px;display:flex;justify-content:space-between;gap:14px;font-size:11.5px;color:#343a40}.foot b{font-size:13.5px;color:#1a237e}.foot .r{text-align:right}'
       + '.dis{margin-top:10px;font-size:10px;color:#868e96;line-height:1.6}.conf{margin-top:8px;font-size:10.5px;color:#c62828;font-weight:700}'
+      + '.brand.lg{display:flex;align-items:center;gap:12px}.brand.lg img{height:48px;width:auto;max-width:230px;object-fit:contain}.flg{text-align:right;margin-top:8px}.flg img{height:30px;width:auto;max-width:200px;object-fit:contain}'
       + '</style></head><body><div class="pg">'
-      + '<div class="top"><div class="brand"><small>SONGDO JEIL REAL ESTATE</small><b>' + esc(of.name) + '</b></div><span class="badge' + (staff ? ' st' : '') + '">' + (staff ? '🔒 임직원용 · 대외비' : '고객용') + '</span></div>'
+      + '<div class="top"><div class="brand' + (LGH ? ' lg' : '') + '">' + (LGH ? '<img src="' + LGH + '" alt="로고">' : '') + '<div><small>SONGDO JEIL REAL ESTATE</small><b>' + esc(of.name) + '</b></div></div><span class="badge' + (staff ? ' st' : '') + '">' + (staff ? '🔒 임직원용 · 대외비' : '고객용') + '</span></div>'
       + '<h1>' + esc(d.title) + '<span>' + (V ? '방문 ' : '') + (d.items || []).length + '건</span></h1>'
       + '<dl class="info">' + info.map(function(x){ return '<div><dt>' + x[0] + '</dt><dd>' + x[1] + '</dd></div>'; }).join('') + (info.length % 2 ? '<div><dt></dt><dd></dd></div>' : '') + '</dl>'
       + (d.intro ? '<p class="intro">' + esc(d.intro) + '</p>' : '')
       + '<table><thead><tr>' + th + '</tr></thead><tbody>' + rows + '</tbody></table>'
       + (d.note ? '<div class="note"><b>📌 종합 특이사항 · 안내</b>' + esc(d.note) + '</div>' : '')
       + '<div class="foot"><div><b>' + esc(of.name) + '</b><br>' + esc(of.title) + ' ' + esc(of.ceo) + (of.regno ? ' · 등록번호 ' + esc(of.regno) : '') + '<br>' + esc(of.addr) + '</div><div class="r">대표전화 <b>' + esc(of.tel) + '</b><br>작성 <b style="font-size:12px">' + esc(d.auName || of.ceo) + '</b>' + (d.auTitle ? ' ' + esc(d.auTitle) : '') + (d.auMobile ? '<br>휴대폰 <b style="font-size:12px">' + esc(d.auMobile) + '</b>' : '') + '<br>발행 ' + esc(dText(today())) + '</div></div>'
+      + (LGF ? '<div class="flg"><img src="' + LGF + '" alt="로고"></div>' : '')
       + '<div class="dis">※ 본 자료는 ' + esc(d.cust || '고객') + ' 님의 매물 검토를 돕기 위해 ' + esc(of.name) + '에서 작성했습니다. 가격·조건은 소유자 사정으로 바뀌거나 거래가 끝날 수 있으니 계약 전 다시 확인해 주세요.</div>'
       + (staff ? '<div class="conf">🔒 임직원용 — 중개업소 정보와 고객 연락처가 들어 있습니다. 고객에게 전달하지 마세요.</div>' : '')
       + '</div></body></html>';
@@ -11732,6 +11739,7 @@ textarea.bf-in{resize:vertical;line-height:1.6}
     _cart:function(){ return CART; }, _draft:function(){ return D; }, _doc:docHtml, _won:won, _opt:function(){ return OPT; }, _hist:function(){ return HIST; }, _author:function(){ return author(); }, _reset:function(){ CUSTS = null; BRK = null; HIST = null; } };
 })();
 </script>
+<script src="sd_logo.js?v=2026.10.09-1"></script>
 </body>
 </html>
 
