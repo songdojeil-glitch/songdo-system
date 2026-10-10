@@ -7,6 +7,7 @@
      — 이 파일을 Claude 에게 주면 건물명 정리·중복 묶기·확인을 거쳐 최종 원장 sd_bldg_info.json 으로 완성한다
      (파일에는 오피스 원장 다음 단계에 쓸 전체 주건축물 목록도 함께 담는다)
    · 인증키·법정동코드는 S실거래가 탭의 것(sdKR.key · sdKR.umd)을 그대로 쓴다. 호출은 쪽(page)마다 1회
+   · 2026.10.10-10 📒 원장 목록의 건물명 → 🏬 상가건물 종합 정보 창 (sd_bldg_full.js: 원장 + 🏪 상가관리 연결 + 📄 상가분양자료 추가)
    ═════════════════════════════════════════════════════════════════ */
 (function(){
   'use strict';
@@ -191,13 +192,15 @@
   }
   function infoList(){
     var D = INFO.d, L = infoRows();
-    return '<div class="bl-scroll"><table class="bl-t"><thead><tr><th>건물명</th><th>유형</th><th>지번</th><th>도로명</th><th>집합/일반</th><th>주용도</th><th>층(지상/지하)</th><th>연면적</th><th>호수</th><th>주차</th><th>사용승인</th><th>확인</th></tr></thead><tbody>'
+    var SD = W.sdBldFull && CXS ? CXS : null;
+    return '<div class="bl-scroll"><table class="bl-t"><thead><tr><th>건물명 <small style="font-weight:400;color:#888">(누르면 종합 정보)</small></th><th title="🏪 상가관리 연결 · 📄 분양자료">종합</th><th>유형</th><th>지번</th><th>도로명</th><th>집합/일반</th><th>주용도</th><th>층(지상/지하)</th><th>연면적</th><th>호수</th><th>주차</th><th>사용승인</th><th>확인</th></tr></thead><tbody>'
       + L.map(function(r){
-          return '<tr><td><b>' + esc(r.n) + '</b>' + (r.dongs ? ' <small>(' + r.dongs.length + '개 동)</small>' : '') + '</td><td>' + esc(r.t) + '</td><td>' + esc(r.jb) + '</td><td>' + esc(r.road) + '</td><td>' + esc(r.kind) + '</td>'
+          return '<tr><td><a href="javascript:void 0" class="bl-nm" onclick="sdBldLedger.open(\'' + esc(r.id) + '\')"><b>' + esc(r.n) + '</b></a>' + (r.dongs ? ' <small>(' + r.dongs.length + '개 동)</small>' : '') + '</td>'
+            + '<td>' + (SD && SD.xref[r.id] ? '<span title="상가관리 연결">🏪</span>' : '') + (SD && SD.bun[r.id] ? '<span title="분양자료">📄</span>' : '') + '</td><td>' + esc(r.t) + '</td><td>' + esc(r.jb) + '</td><td>' + esc(r.road) + '</td><td>' + esc(r.kind) + '</td>'
             + '<td class="bl-etc">' + esc((r.main || []).join('·')) + '</td><td>' + r.gf + ' / ' + r.bf + '</td><td style="text-align:right">' + Math.round(r.tot).toLocaleString() + '㎡<br><small>' + Math.round(r.tot / 3.3058).toLocaleString() + '평</small></td>'
             + '<td style="text-align:right">' + (r.ho || '') + '</td><td style="text-align:right">' + (r.pkg || '') + '</td><td>' + esc(r.use) + '</td><td class="bl-etc" style="color:#c62828">' + esc((r.chk || []).join(' / ')) + '</td></tr>';
         }).join('') + '</tbody></table></div>'
-      + '<div class="bl-sub">' + L.length + '개 건물 · 연면적·호수·주차는 건축물대장 표제부 합계(여러 동이면 합친 값) · 일반건축물은 호수가 0으로 나옵니다 · ' + esc(D.src || '') + '</div>';
+      + '<div class="bl-sub">' + L.length + '개 건물 · 건물명을 누르면 <b>🏬 상가건물 종합 정보</b>(원장 + 🏪 상가관리 + 📄 분양자료) · 연면적·호수·주차는 건축물대장 표제부 합계(여러 동이면 합친 값) · 일반건축물은 호수가 0으로 나옵니다 · ' + esc(D.src || '') + '</div>';
   }
   function paintInfo(){ var e = $('bl-info'); if(e) e.innerHTML = infoHtml(); }
 
@@ -230,7 +233,108 @@
     + '.bl-msg{font-size:12px}.bl-sum{font-size:12px;background:#f5f8ff;border-radius:8px;padding:8px 10px;margin:6px 0;line-height:1.7}'
     + '.bl-tabs{display:flex;gap:5px;flex-wrap:wrap;align-items:center;margin:8px 0}.bl-tab{padding:4px 10px;border:1px solid var(--border,#ddd);border-radius:14px;background:#fff;font-size:11.5px;cursor:pointer;font-family:inherit}.bl-tab.on{background:#1a2744;color:#fff;border-color:#1a2744}.bl-q{margin-left:auto;width:200px}'
     + '.bl-scroll{max-height:460px;overflow:auto;border:1px solid var(--border,#eee);border-radius:8px}.bl-t{border-collapse:collapse;width:100%;font-size:11.5px}.bl-t th{position:sticky;top:0;background:#f3f5f9;font-weight:700;text-align:left;padding:5px 7px;white-space:nowrap;border-bottom:1px solid #dde}'
-    + '.bl-t td{padding:4px 7px;border-bottom:1px solid #f0f0f0;white-space:nowrap}.bl-t td.bl-etc{white-space:normal;min-width:160px;max-width:280px;color:#666}';
+    + '.bl-t td{padding:4px 7px;border-bottom:1px solid #f0f0f0;white-space:nowrap}.bl-t td.bl-etc{white-space:normal;min-width:160px;max-width:280px;color:#666}'
+    + '.bl-nm{color:#1a2744;text-decoration:none}.bl-nm:hover{text-decoration:underline}'
+    + '.bl-cx{position:fixed;inset:0;background:rgba(15,20,35,.45);z-index:9000;display:flex;align-items:flex-start;justify-content:center;padding:28px 12px;overflow:auto}'
+    + '.bl-cx-box{background:#fff;border-radius:14px;width:min(880px,100%);box-shadow:0 12px 40px rgba(0,0,0,.25);font-size:12.5px;color:#222}'
+    + '.bl-cx-hd{display:flex;gap:10px;align-items:baseline;padding:14px 18px;border-bottom:1px solid #eee;flex-wrap:wrap}.bl-cx-hd h3{margin:0;font-size:17px}.bl-cx-hd small{color:#777}'
+    + '.bl-cx-x{margin-left:auto;border:0;background:none;font-size:20px;cursor:pointer;color:#888}'
+    + '.bl-cx-sec{padding:12px 18px;border-bottom:1px solid #f1f1f1}.bl-cx-sec h4{margin:0 0 8px;font-size:13px}'
+    + '.bl-chips{display:flex;gap:6px;flex-wrap:wrap}.bl-chip{padding:4px 10px;border-radius:14px;font-size:11.5px;background:#f2f4f8;color:#555}.bl-chip.on{background:#e7f1ff;color:#1a4fa0;font-weight:700}'
+    + '.bl-ft{width:100%;border-collapse:collapse}.bl-ft td,.bl-ft th{padding:5px 8px;border-bottom:1px solid #f0f0f0;text-align:left;vertical-align:top}.bl-ft th{background:#f6f7fa;font-size:11.5px;color:#555}.bl-ft td.k{width:120px;color:#555;white-space:nowrap}'
+    + '.bl-src{font-size:10.5px;padding:1px 7px;border-radius:9px;white-space:nowrap}.bl-src.원장{background:#eef2f7;color:#41546f}.bl-src.상가관리{background:#e8f6ec;color:#22783a}.bl-src.분양{background:#fff3e0;color:#a35a00}'
+    + '.bl-gh td{background:#fafbfd;font-size:11px;color:#8a93a3;font-weight:700;padding-top:9px}.bl-warn{color:#c62828}'
+    + '.bl-rv{background:#fffaf2;border:1px solid #f3dfbf;border-radius:10px;padding:10px 12px;margin-top:8px}.bl-rv input{width:100%;box-sizing:border-box;padding:4px 7px;border:1px solid #ddd;border-radius:6px;font:inherit;font-size:12px}'
+    + '.bl-rv .cur{color:#777;font-size:11px}.bl-flr{display:flex;gap:5px;align-items:center;margin:3px 0}.bl-flr input{width:90px}';
+  /* ── 🏬 상가건물 종합 정보 창 (원장 + 🏪 상가관리 + 📄 분양자료 — sd_bldg_full.js) ── */
+  var CXS = null, CX = null;
+  function cxSide(force){ if(!W.sdBldFull) return Promise.resolve(null); return W.sdBldFull.side(force).then(function(S){ CXS = S; var e = $('bl-info-list'); if(e) e.innerHTML = infoList(); return S; }, function(){ return null; }); }
+  function cxBadge(src){ return '<span class="bl-src ' + src + '">' + ({ '원장':'🏛 원장', '상가관리':'🏪 상가관리', '분양':'📄 분양자료' }[src] || src) + '</span>'; }
+  function cxOpen(id){
+    if(!W.sdBldFull){ alert('종합 정보 모듈(sd_bldg_full.js)을 읽지 못했습니다 — 화면을 새로 고쳐 주세요'); return; }
+    CX = { id:id, F:null, sug:null, rv:null, busy:'', msg:'' };
+    var box = $('bl-cx'); if(!box){ box = document.createElement('div'); box.id = 'bl-cx'; box.className = 'bl-cx'; box.onclick = function(e){ if(e.target === box) cxClose(); }; document.body.appendChild(box); }
+    box.style.display = 'flex'; box.innerHTML = '<div class="bl-cx-box"><div class="bl-cx-sec">불러오는 중…</div></div>';
+    cxReload(true);
+  }
+  function cxClose(){ var b = $('bl-cx'); if(b){ b.style.display = 'none'; b.innerHTML = ''; } CX = null; }
+  function cxReload(force){
+    if(!CX) return; var id = CX.id;
+    return cxSide(force).then(function(){ return Promise.all([W.sdBldFull.full(id), W.sdBldFull.suggest(id).catch(function(){ return []; })]); })
+      .then(function(a){ if(!CX || CX.id !== id) return; CX.F = a[0]; CX.sug = a[1]; cxPaint(); }, function(e){ if(CX){ CX.msg = '<span class="bl-warn">' + esc(e.message || String(e)) + '</span>'; cxPaint(); } });
+  }
+  function cxPaint(){
+    var box = $('bl-cx'); if(!box || !CX) return;
+    var F = CX.F; if(!F){ box.innerHTML = '<div class="bl-cx-box"><div class="bl-cx-hd"><h3>종합 정보</h3><button class="bl-cx-x" onclick="sdBldLedger.close()">✕</button></div><div class="bl-cx-sec">' + (CX.msg || '불러오는 중…') + '</div></div>'; return; }
+    var s = F.src, G = { '법적':'건물 (법적값 — 원장 우선)', '현장':'상가 (현장값 — 상가관리 우선)', '추가':'원장에 없는 값' }, lastG = '';
+    var rows = F.rows.map(function(r){ var h = ''; if(r.g !== lastG){ lastG = r.g; h = '<tr class="bl-gh"><td colspan="3">' + G[r.g] + '</td></tr>'; } return h + '<tr><td class="k">' + esc(r.label) + '</td><td' + (r.warn ? ' class="bl-warn"' : '') + '>' + esc(r.v) + '</td><td style="width:90px">' + cxBadge(r.src) + '</td></tr>'; }).join('');
+    var fl = '';
+    if(F.floors){
+      var D = F.floors.dongs;
+      fl = '<div class="bl-cx-sec"><h4>층별 상가 호실 ' + cxBadge(F.floors.src) + '</h4><table class="bl-ft" style="max-width:520px"><tr><th>층</th>' + D.map(function(d){ return '<th style="text-align:right">' + esc(d) + '</th>'; }).join('') + '<th style="text-align:right">계</th></tr>'
+        + F.floors.list.map(function(r){ return '<tr><td>' + esc(r.fl) + '</td>' + D.map(function(d){ return '<td style="text-align:right">' + (r.by[d] || '—') + '</td>'; }).join('') + '<td style="text-align:right"><b>' + r.n + '</b></td></tr>'; }).join('')
+        + '<tr><td><b>계</b></td>' + D.map(function(d){ return '<td style="text-align:right"><b>' + F.floors.list.reduce(function(t, r){ return t + (r.by[d] || 0); }, 0) + '</b></td>'; }).join('') + '<td style="text-align:right"><b>' + F.floors.list.reduce(function(t, r){ return t + r.n; }, 0) + '</b></td></tr></table></div>';
+    }
+    var sug = CX.sug || [], cur = s.sangga ? s.sangga.id : '';
+    var opts = '<option value="">— 상가관리 건물 고르기 —</option>' + sug.map(function(g){ return '<option value="' + esc(g.id) + '"' + (g.id === cur ? ' selected' : '') + '>' + (g.score >= 2 && g.id !== cur ? '★ ' : '') + esc(g.name) + ' (' + g.n + '실)' + (g.taken ? ' · 지금 「' + esc(g.taken) + '」에 연결' : '') + '</option>'; }).join('');
+    var top = sug.filter(function(g){ return g.score >= 2; })[0];
+    var bun = s.bunyang;
+    box.innerHTML = '<div class="bl-cx-box">'
+      + '<div class="bl-cx-hd"><h3>🏬 ' + esc(F.name) + '</h3><small>' + esc(F.type || '') + ' · 송도동 ' + esc(F.jb) + (F.road ? ' · ' + esc(F.road) : '') + '</small><button class="bl-cx-x" onclick="sdBldLedger.close()" title="닫기">✕</button></div>'
+      + '<div class="bl-cx-sec"><div class="bl-chips"><span class="bl-chip on">🏛 원장 ✓</span><span class="bl-chip' + (s.sangga ? ' on' : '') + '">🏪 상가관리 ' + (s.sangga ? '「' + esc(s.sangga.name) + '」' : '연결 안 됨') + '</span><span class="bl-chip' + (bun ? ' on' : '') + '">📄 분양자료 ' + (bun ? esc(bun.at) : '없음') + '</span></div>'
+      + '<div class="bl-sub" style="margin-top:6px">세 자료를 볼 때마다 합칩니다. 값이 다르면 <b>건물 항목은 원장</b>, <b>상가 호실·층·입점은 상가관리</b>가 먼저이고, 빈 값·0 은 다음 자료로 넘어갑니다.</div>' + (CX.msg ? '<div class="bl-msg">' + CX.msg + '</div>' : '') + '</div>'
+      + '<div class="bl-cx-sec"><h4>종합 정보</h4><table class="bl-ft">' + rows + '</table></div>'
+      + fl
+      + '<div class="bl-cx-sec"><h4>🏪 상가관리 연결</h4><div class="bl-row" style="margin:0"><select id="bl-cx-sg" class="bl-in-t" style="min-width:280px">' + opts + '</select>'
+      + '<button type="button" class="bl-btn pri" onclick="sdBldLedger.link()"' + (CX.busy ? ' disabled' : '') + '>연결</button>' + (cur ? '<button type="button" class="bl-btn" onclick="sdBldLedger.unlink()">연결 끊기</button>' : '') + '</div>'
+      + '<div class="bl-sub">' + (cur ? '연결된 상가관리 건물의 호실·층·입점 현황이 종합 정보에 들어갑니다 (소유자·임차인 이름·연락처는 넣지 않습니다).' : top ? '★ 표시가 이름이 비슷한 건물입니다 — 고른 뒤 「연결」을 누르세요.' : '상가관리에 이 건물이 없으면 연결하지 않아도 됩니다.') + '</div></div>'
+      + '<div class="bl-cx-sec"><h4>📄 상가분양자료</h4>'
+      + (bun ? '<div class="bl-sub">' + esc(bun.at) + (bun.by ? ' · ' + esc(bun.by) : '') + (bun.files && bun.files.length ? ' · ' + esc(bun.files.join(', ')) : '') + '</div>' : '<div class="bl-sub">분양 홍보 PDF·JPEG 를 넣으면 AI 가 주차·전용률·층별 상가 호실 등을 뽑고, 확인한 뒤 저장합니다.</div>')
+      + '<div class="bl-row"><label class="bl-btn pri" style="cursor:pointer">' + (CX.busy === 'ai' ? '⏳ 읽는 중…' : '📄 상가분양자료 추가 (PDF·JPEG)') + '<input type="file" id="bl-cx-f" accept="application/pdf,image/*" multiple hidden onchange="sdBldLedger.bunFiles(this.files)"' + (CX.busy ? ' disabled' : '') + '></label>'
+      + '<button type="button" class="bl-btn" onclick="sdBldLedger.bunEdit()">' + (bun ? '✏️ 고치기' : '✏️ 직접 입력') + '</button>' + (bun ? '<button type="button" class="bl-btn" onclick="sdBldLedger.bunDel()">지우기</button>' : '') + '</div>'
+      + '<div id="bl-cx-rv">' + (CX.rv ? cxRvHtml() : '') + '</div></div>'
+      + '</div>';
+  }
+  /* 확인 화면 — 뽑은 값(고칠 수 있음) 옆에 지금 원장·상가관리 값 */
+  var RVCMP = { addr:'주소', scale:'규모', plA:'대지면적', tot:'연면적', pkg:'주차', shopHo:'상가 호실', shopFloors:'상가 층', done:'사용승인' };
+  function cxRvHtml(){
+    var R = CX.rv, d = R.d, F = CX.F, cmp = function(f){ var lb = RVCMP[f]; if(!lb) return ''; var r = F.rows.filter(function(x){ return x.label === lb && x.src !== '분양'; })[0]; return r ? '<span class="cur">' + (r.src === '상가관리' ? '🏪 ' : '🏛 ') + esc(r.v) + '</span>' : ''; };
+    return '<div class="bl-rv"><b>' + (R.files && R.files.length ? '📄 뽑은 값 확인 — ' + esc(R.files.join(', ')) : '✏️ 분양자료 직접 입력') + '</b>'
+      + (d.note ? '<div class="bl-sub bl-warn">AI 메모: ' + esc(d.note) + '</div>' : '')
+      + '<div class="bl-sub">틀린 값은 고치고 없는 값은 비워 두세요. 오른쪽은 지금 원장·상가관리 값 — 다르면 종합 정보에서는 그쪽이 먼저입니다.</div>'
+      + '<table class="bl-ft"><tr><th>항목</th><th>분양자료 값</th><th>지금 원장·상가관리</th></tr>'
+      + W.sdBldFull.FIELDS.map(function(f){ return '<tr><td class="k">' + esc(f[1]) + '</td><td><input data-rf="' + f[0] + '" value="' + esc(d[f[0]] == null ? '' : d[f[0]]) + '" oninput="sdBldLedger.rvSet(this)"></td><td>' + cmp(f[0]) + '</td></tr>'; }).join('')
+      + '</table><div style="margin-top:8px"><b style="font-size:12px">층별 상가 호실</b> <span class="cur">(예: 1층 · A동 · 36 — 동 구분이 없으면 동은 비움)</span>'
+      + (d.floors || []).map(function(x, i){ return '<div class="bl-flr"><input data-fi="' + i + '" data-fk="fl" value="' + esc(x.fl) + '" placeholder="층" oninput="sdBldLedger.rvFl(this)"><input data-fi="' + i + '" data-fk="dong" value="' + esc(x.dong) + '" placeholder="동" oninput="sdBldLedger.rvFl(this)"><input data-fi="' + i + '" data-fk="n" value="' + esc(x.n) + '" placeholder="호실 수" oninput="sdBldLedger.rvFl(this)"><button type="button" class="bl-btn" onclick="sdBldLedger.rvFlDel(' + i + ')">✕</button></div>'; }).join('')
+      + '<button type="button" class="bl-btn" style="margin-top:4px" onclick="sdBldLedger.rvFlAdd()">+ 층 더하기</button></div>'
+      + '<div class="bl-row" style="margin-top:10px"><button type="button" class="bl-btn pri" onclick="sdBldLedger.rvSave()">💾 저장 — 종합 정보에 반영</button><button type="button" class="bl-btn" onclick="sdBldLedger.rvCancel()">취소</button></div></div>';
+  }
+  function cxRv(d, files){ CX.rv = { d:JSON.parse(JSON.stringify(d || {})), files:files || [] }; if(!CX.rv.d.floors) CX.rv.d.floors = []; var e = $('bl-cx-rv'); if(e){ e.innerHTML = cxRvHtml(); e.scrollIntoView({ block:'nearest' }); } }
+  function cxRvFloorsPaint(){ var e = $('bl-cx-rv'); if(e) e.innerHTML = cxRvHtml(); }
+  var CXAPI = {
+    open:cxOpen, close:cxClose,
+    link:function(){ var v = ($('bl-cx-sg') || {}).value; if(!v){ alert('상가관리 건물을 고르세요'); return; } CX.busy = 'link'; W.sdBldFull.link(CX.id, v).then(function(){ CX.busy = ''; CX.msg = '<span style="color:#22783a">🏪 상가관리와 연결했습니다</span>'; cxReload(true); }, function(e){ CX.busy = ''; CX.msg = '<span class="bl-warn">연결 저장 실패: ' + esc(e.message) + '</span>'; cxPaint(); }); },
+    unlink:function(){ if(!confirm('상가관리 연결을 끊을까요? (상가관리 자료는 그대로입니다)')) return; W.sdBldFull.link(CX.id, null).then(function(){ CX.msg = '연결을 끊었습니다'; cxReload(true); }); },
+    bunFiles:function(fl){
+      var files = Array.prototype.slice.call(fl || []); if(!files.length) return;
+      var b = Object.assign({ id:CX.id }, CX.F.raw.ledger); CX.busy = 'ai'; CX.msg = '⏳ 분양자료 ' + files.length + '개를 AI 가 읽는 중… (30초 안팎)'; cxPaint();
+      W.sdBldFull.extract(files, b).then(function(d){ CX.busy = ''; CX.msg = '✅ 다 읽었습니다 — 아래에서 확인하고 저장하세요'; cxPaint(); cxRv(d, files.map(function(f){ return f.name; })); },
+        function(e){ CX.busy = ''; CX.msg = '<span class="bl-warn">' + esc(e.message || String(e)) + '</span>'; cxPaint(); });
+    },
+    bunEdit:function(){ var bun = CXS && CXS.bun[CX.id]; cxRv(bun ? bun.d : {}, bun ? bun.files : []); },
+    bunDel:function(){ if(!confirm('이 건물의 분양자료를 지울까요? (원장·상가관리는 그대로입니다)')) return; W.sdBldFull.saveBun(CX.id, null).then(function(){ CX.msg = '분양자료를 지웠습니다'; cxReload(true); }); },
+    rvSet:function(el){ var k = el.dataset.rf, f = W.sdBldFull.FIELDS.filter(function(x){ return x[0] === k; })[0], v = el.value.trim(); if(!v) delete CX.rv.d[k]; else CX.rv.d[k] = f && f[2] === 'num' ? (parseFloat(v.replace(/[^0-9.]/g, '')) || 0) : v; },
+    rvFl:function(el){ var r = CX.rv.d.floors[+el.dataset.fi]; if(!r) return; r[el.dataset.fk] = el.dataset.fk === 'n' ? (parseInt(el.value.replace(/[^0-9]/g, ''), 10) || 0) : el.value.trim(); },
+    rvFlAdd:function(){ CX.rv.d.floors.push({ fl:'', dong:'', n:0 }); cxRvFloorsPaint(); },
+    rvFlDel:function(i){ CX.rv.d.floors.splice(i, 1); cxRvFloorsPaint(); },
+    rvCancel:function(){ CX.rv = null; var e = $('bl-cx-rv'); if(e) e.innerHTML = ''; },
+    rvSave:function(){
+      var d = CX.rv.d; d.floors = (d.floors || []).filter(function(x){ return x.fl && x.n; }); delete d.note;
+      var keep = Object.keys(d).filter(function(k){ return k !== 'floors'; }).length || d.floors.length;
+      if(!keep){ alert('넣은 값이 없습니다'); return; }
+      W.sdBldFull.saveBun(CX.id, d, CX.rv.files).then(function(){ CX.rv = null; CX.msg = '<span style="color:#22783a">📄 분양자료를 저장했습니다 — 종합 정보에 반영</span>'; cxReload(true); }, function(e){ alert('저장 실패: ' + (e.message || e)); });
+    }
+  };
   function mount(){
     if(W.__brPopup) return true;
     var tc = $('tc24'), br = $('br-root'); if(!tc || !br) return false;
@@ -238,7 +342,7 @@
       if(!$('bl-css')){ var st = document.createElement('style'); st.id = 'bl-css'; st.textContent = CSS; document.head.appendChild(st); }
       var di = document.createElement('div'); di.id = 'bl-info'; di.className = 'bl-card'; tc.appendChild(di);
       var d = document.createElement('div'); d.id = 'bl-root'; tc.appendChild(d);
-      paintInfo(); infoLoad();
+      paintInfo(); infoLoad(); setTimeout(function(){ cxSide(); }, 1500);
       try{ ST.open = false; var last = JSON.parse(localStorage.getItem(LS) || 'null'); if(last && last.ledger){ ST.res = { at:last.at, dong:last.dong, totals:last.totals, counts:last.counts || {}, ledger:last.ledger, all:last.ledger, recap:[] }; ST.dong = last.dong || ST.dong; ST.open = false; ST.msg = '<span style="color:#888">' + esc(String(last.at || '').slice(0, 10)) + ' 에 받은 목록 (파일 내려받기는 다시 받은 뒤에 전체 목록이 들어갑니다)</span>'; } }catch(e){}
       paint();
     }
@@ -254,6 +358,7 @@
     infoT:function(t){ INFO.t = t; paintInfo(); },
     infoQ:function(v){ INFO.q = v; var e = $('bl-info-list'); if(e) e.innerHTML = infoList(); },
     infoCsv:infoCsv };
+  Object.keys(CXAPI).forEach(function(k){ W.sdBldLedger[k] = CXAPI[k]; });
   /* 다른 화면에서 쓰는 상가 원장 — sdBldInfo.load().then(d => …) · find('혜인프라자') · byJibun('21-13') */
   W.sdBldInfo = { load:infoLoad,
     find:function(nm){ var d = INFO.d; if(!d) return null; var k = String(nm || '').trim(); var id = d.alias[k] || d.alias[k.replace(/\s/g, '')] || d.alias[k.replace(/^송도\s*/, '')]; return id ? d.bldg[id] : null; },

@@ -1283,7 +1283,9 @@ a.sjb-btn.on::after,span.sjb-btn.on::after{background:linear-gradient(100deg,rgb
   <div class="modal-box" style="max-width:500px">
     <h2 id="bldg-modal-title" style="font-size:16px;font-weight:600;margin:0 0 1rem">🏢 건물 추가</h2>
     <div style="margin-bottom:12px"><label class="fl">건물명</label>
-      <input id="new-bldg-name" class="fi" placeholder="예: 송도더샵그란알레" oninput="onBldgNameInput(this.value)">
+      <input id="new-bldg-name" class="fi" placeholder="예: 송도더샵그란알레" oninput="onBldgNameInput(this.value)" list="bl-led-names" autocomplete="off">
+      <datalist id="bl-led-names"></datalist>
+      <div style="font-size:11px;color:#888;margin-top:4px">목록은 📒 송도 상가 건물 원장(건축물대장)의 건물명입니다 — 원장 이름과 같으면 새 건물이 원장과 자동으로 연결돼 🏬 상가건물 종합 정보에 들어갑니다.</div>
     </div>
     <div id="bldg-update-notice" style="display:none;padding:8px 12px;background:#fff3e0;border-radius:8px;font-size:12px;color:#e65100;margin-bottom:10px">
       ⚠️ 이미 등록된 건물입니다. 엑셀 파일을 선택하면 <strong>호실 데이터가 갱신</strong>됩니다.
@@ -1541,6 +1543,8 @@ function openAddBldg(){
   document.getElementById('bldg-modal-title').textContent='🏢 건물 추가';
   document.getElementById('bldg-modal-btn').textContent='추가';
   document.getElementById('bldg-modal').classList.add('open');
+  // 상가 원장 건물명 목록 (sd_bldg_full.js)
+  if(window.sdBldFull){ sdBldFull.names().then(function(L){ var dl=document.getElementById('bl-led-names'); if(dl && !dl.options.length) dl.innerHTML=L.map(function(n){ return '<option value="'+String(n).replace(/"/g,'&quot;')+'">'; }).join(''); }, function(){}); }
 }
 
 function onBldgNameInput(val){
@@ -1604,6 +1608,8 @@ function addBldg(){
       BUILDINGS[existingIdx].props = props;
     } else {
       BUILDINGS.push({ id:newId, name:name, props:ensureContactFields(props) });
+      // 상가 원장과 이름이 같으면 연결 (🏬 상가건물 종합 정보 = 원장 + 상가관리 + 분양자료)
+      if(window.sdBldFull){ sdBldFull.autoLink(newId, name).then(function(lid){ if(lid) showToast('🏬 상가 원장과 연결했습니다 ('+lid+')'); }, function(){}); }
     }
     saveBuildingsToStorage();
     document.getElementById('bldg-modal').classList.remove('open');
@@ -7784,7 +7790,7 @@ function applyAIResult(){
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.10.10-5';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.10.10-10';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_sangga.html';      // 이 파일 이름
   var SD_NAME = '상가관리';      // 사람이 부르는 이름
 
@@ -9528,5 +9534,6 @@ function applyAIResult(){
 })();
 </script>
 <script src="sd_logo.js?v=2026.10.09-1"></script>
+<script src="sd_bldg_full.js?v=2026.10.10-10"></script>
 </body>
 </html>
