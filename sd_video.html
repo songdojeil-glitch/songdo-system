@@ -555,7 +555,7 @@ html.sv-embed body{background:#f7f8fa}
    ═════════════════════════════════════════════════════════════════ */
 (function(){
 'use strict';
-var SD_VER = '2026.10.10-10';
+var SD_VER = '2026.10.11-1';
 window.SD_VERSION = SD_VER;
 var EMBED = /[?&]embed=1\b/.test(location.search);
 if(EMBED) document.documentElement.classList.add('sv-embed');
@@ -4159,10 +4159,10 @@ function pLInfo(el){
   bindFoot(el);
 }
 /* ── 2단계 — 지도 · 포인트 ── */
-var LMODE = 'home', LEZ = 1, LPEND = null, LSCA = null, LMS = null;
+var LMODE = 'home', LEZ = 1, LPEND = null, LSCA = null, LMS = null, LHOMEPICK = false;   // LHOMEPICK: 「🏠 단지 위치」를 눌러 다시 찍는 중
 function pLMap(el){
   var L = LI(), m = L.map, R = lRoutes(), mpp = lMpp();
-  if(!L.home && m) LMODE = 'home'; else if(LMODE === 'home' && L.home && !LPEND) LMODE = 'poi';
+  if(!L.home && m) LMODE = 'home'; else if(LMODE === 'home' && L.home && !LPEND && !LHOMEPICK) LMODE = 'poi';   // 처음 열 때만 포인트 찍기로 — 직접 「🏠 단지 위치」를 누르면 다시 찍을 수 있다
   syncLocScenes(); var tot = timeline().total;
   el.innerHTML = '<div class="sv-card"><div class="sv-h"><h3><b>2</b>지도 · 주변 포인트</h3><span class="sv-note">포인트 ' + (L.pois || []).length + ' · 거리 ' + R.length + ' · 예상 ' + fmtT(tot) + '</span></div>'
     + '<p class="sv-sub">지도 그림을 넣고 <b>단지 위치</b> → <b>주변 포인트</b>(역·학교·쇼핑·공원…)를 찍은 뒤, 거리·이동 시간을 보여 줄 포인트에 ☑ 를 하세요. 거리·시간은 네이버·카카오 길찾기 값을 적는 게 정확하고, 비워 두면 <b>축척</b>으로 「약」 값을 계산합니다.</p>'
@@ -4197,7 +4197,7 @@ function pLMap(el){
   if(!m) return;
   bindChips(el, 'lcred', function(v){ L.credit = v; $('#svLCred', el).value = v; OUT = null; touch(); });
   $('#svLCred', el).oninput = function(){ L.credit = this.value; OUT = null; touch(); };
-  $$('#svLMode button', el).forEach(function(b){ b.onclick = function(){ LMODE = b.dataset.v; LSCA = null; if(LMODE !== 'poi') LPEND = null; lmKeep(); render(); }; });
+  $$('#svLMode button', el).forEach(function(b){ b.onclick = function(){ LMODE = b.dataset.v; LHOMEPICK = LMODE === 'home'; LSCA = null; if(LMODE !== 'poi') LPEND = null; lmKeep(); render(); }; });
   var ks = $('#svLKind', el); if(ks) ks.onchange = function(){ L.lastK = this.value; if(LPEND) LPEND.kind = this.value; touch(); };
   bindSeg(el, 'lez', function(v){ LEZ = +v; lmSize(); });
   $$('[data-near]', el).forEach(function(b){ b.onclick = function(){ var n = L.near[+b.dataset.near]; LPEND = Object.assign({}, n); LMODE = 'poi'; lmKeep(); render(); toast('지도에서 「' + n.name + '」 자리를 누르세요'); }; });
@@ -4218,9 +4218,9 @@ function pLMap(el){
   lmBind(); lmSize();
 }
 function lHint(){
-  if(LMODE === 'home') return '🏠 지도에서 <b>단지 위치</b>를 누르세요. 찍은 핀은 끌어서 옮길 수 있습니다.';
+  if(LMODE === 'home') return LI().home ? '🏠 <b>단지 위치 다시 찍기</b> — 지도에서 새 자리를 누르면 단지 핀이 그리로 옮겨지고 포인트 찍기로 돌아갑니다. (핀·이름표를 끌어 옮겨도 됩니다)' : '🏠 지도에서 <b>단지 위치</b>를 누르세요. 찍은 핀은 끌어서 옮길 수 있습니다.';
   if(LMODE === 'scale') return LSCA ? '📏 두 번째 점을 누르세요 (축척 막대의 다른 끝).' : '📏 지도의 <b>축척 막대</b> 왼쪽 끝 → 오른쪽 끝을 차례로 누르고, 아래 칸에 그 거리(m)를 적으세요.';
-  return '📍 ' + (LPEND ? '「' + esc(LPEND.name) + '」 자리를 누르세요.' : '포인트 자리를 누르면 아래 표에 줄이 생깁니다 — 이름을 적고, 거리를 보여 줄 곳은 ☑ 거리.') + ' 핀은 끌어서 옮길 수 있습니다.';
+  return '📍 ' + (LPEND ? '「' + esc(LPEND.name) + '」 자리를 누르세요.' : '포인트 자리를 누르면 아래 표에 줄이 생깁니다 — 이름을 적고, 거리를 보여 줄 곳은 ☑ 거리.') + ' 핀은 끌어서 옮길 수 있습니다. 단지 위치를 고치려면 <b>🏠 단지 위치</b>를 누르세요.';
 }
 function lmKeep(){ var w = $('#svLWrap'); LMS = w ? { l:w.scrollLeft, t:w.scrollTop, y:window.scrollY } : null; }
 function lmSize(){
@@ -4255,6 +4255,7 @@ function lmBind(){
   var hit = function(q){
     if(L.home && Math.hypot(L.home.x * q.W - q.px, L.home.y * q.H - 24 - q.py) < 16) return L.home;
     if(L.home && Math.hypot(L.home.x * q.W - q.px, L.home.y * q.H - q.py) < 10) return L.home;
+    if(L.home && L.name && Math.abs(L.home.x * q.W - q.px) < 60 && q.py > L.home.y * q.H - 64 && q.py < L.home.y * q.H - 38) return L.home;   // 이름표를 잡아도 단지 핀이 끌린다
     for(var i = (L.pois || []).length - 1; i >= 0; i--){ var p = L.pois[i]; if(Math.hypot(p.x * q.W - q.px, p.y * q.H - q.py) < 17) return p; }
     return null;
   };
@@ -4263,7 +4264,7 @@ function lmBind(){
   c.onpointerup = function(e){
     var q = at(e);
     if(drag){ var d = drag; drag = null; if(moved){ OUT = null; MIXKEY = ''; touch(); lmKeep(); render(); return; } if(d !== L.home && LMODE !== 'home'){ var i = L.pois.indexOf(d), row = $('.sv-lpoi[data-i="' + i + '"] [data-n]'); if(row){ row.focus(); row.scrollIntoView({ behavior:'smooth', block:'center' }); } return; } }
-    if(LMODE === 'home'){ L.home = { x:q.x, y:q.y }; LMODE = 'poi'; OUT = null; touch(); lmKeep(); render(); toast('단지 위치를 찍었습니다 — 이제 주변 포인트를 찍으세요'); return; }
+    if(LMODE === 'home'){ var again = !!L.home; L.home = { x:q.x, y:q.y }; LMODE = 'poi'; LHOMEPICK = false; OUT = null; MIXKEY = ''; touch(); lmKeep(); render(); toast(again ? '단지 위치를 옮겼습니다' : '단지 위치를 찍었습니다 — 이제 주변 포인트를 찍으세요'); return; }
     if(LMODE === 'scale'){
       if(!LSCA){ LSCA = { x:q.x, y:q.y }; L.scale = null; lmDraw(); var hn = $('#svLHint'); if(hn) hn.innerHTML = lHint(); return; }
       L.scale = { a:LSCA, b:{ x:q.x, y:q.y }, m:0 }; LSCA = null; LMODE = 'poi'; touch(); lmKeep(); render(); setTimeout(function(){ var i = $('#svLScM'); if(i){ i.focus(); i.scrollIntoView({ behavior:'smooth', block:'center' }); } }, 60); return;
