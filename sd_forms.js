@@ -605,7 +605,12 @@
     return '<div class="fm-ch"><h3>🗂 작성한 문서 <small>' + Object.keys(C.doc).length + '건</small></h3><span class="sp"></span>'
       + '<select class="fm-in" id="fm-qcat" style="max-width:170px"><option value="">모든 카테고리</option>' + cats().map(function(c){ return '<option value="' + esc(c.id) + '"' + (c.id === S.qcat ? ' selected' : '') + '>' + esc(c.n) + '</option>'; }).join('') + '</select>'
       + '<input class="fm-in" id="fm-q" placeholder="이름·내용 검색" value="' + esc(S.q) + '" style="max-width:220px"></div>'
-      + (L.length ? '<div class="fm-list">' + L.map(function(d){
+      + '<div id="fm-dlist">' + docsList() + '</div>';
+  }
+  /* 찾기 칸은 그대로 두고 목록만 다시 그린다 (한글 조합이 끊기지 않게) */
+  function docsList(){
+    var q = S.q.trim().toLowerCase(), L = docs().filter(function(d){ return (!S.qcat || d.cat === S.qcat) && (!q || (d.name + ' ' + (d.who || '') + ' ' + JSON.stringify(d.vals || {})).toLowerCase().indexOf(q) >= 0); });
+    return (L.length ? '<div class="fm-list">' + L.map(function(d){
         return '<div class="fm-li"><div class="t"><b>' + esc(d.name) + '</b>' + (d.who ? '<span class="tag">' + esc(d.who) + '</span>' : '') + '<span class="tag g">' + esc(catOf(d.cat).n) + '</span>' + (d._loc ? '<span class="tag w">이 PC만</span>' : '') + '<small>' + esc(ymd(d.at)) + (d.by ? ' · ' + esc(d.by) : '') + '</small></div>'
           + '<div class="b"><button class="fm-btn sm pri" data-act="open" data-id="' + esc(d.id) + '">열기</button><button class="fm-btn sm" data-act="dprint" data-id="' + esc(d.id) + '">🖨</button><button class="fm-btn sm" data-act="ddup" data-id="' + esc(d.id) + '">⧉ 복제</button><button class="fm-btn sm x" data-act="ddel" data-id="' + esc(d.id) + '">🗑</button></div></div>';
       }).join('') + '</div>' : '<div class="fm-empty">' + (Object.keys(C.doc).length ? '찾는 문서가 없습니다' : '아직 보관한 문서가 없습니다.<br>서식을 작성한 뒤 <b>💾 문서 보관</b>을 누르면 여기에 모입니다.') + '</div>');
@@ -744,7 +749,7 @@
     }
     if(S.view === 'docs'){
       var q = document.getElementById('fm-q'), qc = document.getElementById('fm-qcat');
-      q.oninput = function(){ S.q = q.value; var p = q.selectionStart; paint(); var q2 = document.getElementById('fm-q'); q2.focus(); q2.selectionStart = q2.selectionEnd = p; };
+      q.oninput = function(){ S.q = q.value; var e = document.getElementById('fm-dlist'); if(e) e.innerHTML = docsList(); };
       qc.onchange = function(){ S.qcat = qc.value; paint(); };
     }
   }

@@ -139,8 +139,12 @@
       var c = v === '전체' ? ST.res.all.length : v === '상가 전체' ? ST.res.ledger.length : ST.res.ledger.filter(function(r){ return r.cat === v; }).length;
       return '<button type="button" class="bl-tab' + (ST.view === v ? ' on' : '') + '" onclick="sdBldLedger.view(\'' + v + '\')">' + v + ' <b>' + c.toLocaleString() + '</b></button>';
     }).join('');
-    return '<div class="bl-tabs">' + tabs + '<input class="bl-q" id="bl-q" placeholder="건물명·지번·도로명 찾기" value="' + esc(ST.q) + '" oninput="sdBldLedger.q(this.value)"></div>'
-      + '<div class="bl-scroll"><table class="bl-t"><thead><tr><th>건물명</th><th>동</th><th>지번</th><th>도로명</th><th>대장</th><th>주용도</th><th>기타용도</th><th>층(지상/지하)</th><th>연면적㎡</th><th>호수</th><th>주차</th><th>사용승인</th></tr></thead><tbody>'
+    return '<div class="bl-tabs">' + tabs + '<input class="bl-q" id="bl-q" placeholder="건물명·지번·도로명 찾기" value="' + esc(ST.q) + '" oninput="sdBldLedger.q(this.value)"></div><div id="bl-tbl">' + tableList() + '</div>';
+  }
+  /* 찾기 칸은 그대로 두고 표만 다시 그린다 — 칸을 새로 만들면 한글이 조합 중에 끊겨 자모가 따로 들어간다 */
+  function tableList(){
+    var L = rows(), sh = L.slice(0, 400);
+    return '<div class="bl-scroll"><table class="bl-t"><thead><tr><th>건물명</th><th>동</th><th>지번</th><th>도로명</th><th>대장</th><th>주용도</th><th>기타용도</th><th>층(지상/지하)</th><th>연면적㎡</th><th>호수</th><th>주차</th><th>사용승인</th></tr></thead><tbody>'
       + sh.map(function(r){
           return '<tr><td>' + (r.n ? esc(r.n) : '<span style="color:#c33">(이름 없음)</span>') + (r.nmFrom ? ' <small title="' + esc(r.nmFrom) + '에서 가져온 이름">*</small>' : '') + '</td><td>' + esc(r.dn) + '</td><td>' + esc(r.jb) + '</td><td>' + esc(r.road) + '</td>'
             + '<td>' + esc(r.gb || r.kind) + '</td><td>' + esc(r.main) + '</td><td class="bl-etc">' + esc(r.etc) + '</td><td>' + (r.gf || '') + ' / ' + (r.bf || '') + '</td>'
@@ -183,13 +187,17 @@
     return h + '<div class="bl-in"><div class="bl-sub">' + esc(D.rule || '') + ' 제외한 공공·부대시설 ' + (D.excluded || []).length + '동.</div>'
       + '<div class="bl-tabs">' + tabs + '<input class="bl-q" id="bl-iq" placeholder="건물명·지번·도로명 찾기" value="' + esc(INFO.q) + '" oninput="sdBldLedger.infoQ(this.value)">'
       + '<button type="button" class="bl-btn" onclick="sdBldLedger.infoCsv()">📥 엑셀(CSV) 내려받기</button></div>'
-      + '<div class="bl-scroll"><table class="bl-t"><thead><tr><th>건물명</th><th>유형</th><th>지번</th><th>도로명</th><th>집합/일반</th><th>주용도</th><th>층(지상/지하)</th><th>연면적</th><th>호수</th><th>주차</th><th>사용승인</th><th>확인</th></tr></thead><tbody>'
+      + '<div id="bl-info-list">' + infoList() + '</div></div>';
+  }
+  function infoList(){
+    var D = INFO.d, L = infoRows();
+    return '<div class="bl-scroll"><table class="bl-t"><thead><tr><th>건물명</th><th>유형</th><th>지번</th><th>도로명</th><th>집합/일반</th><th>주용도</th><th>층(지상/지하)</th><th>연면적</th><th>호수</th><th>주차</th><th>사용승인</th><th>확인</th></tr></thead><tbody>'
       + L.map(function(r){
           return '<tr><td><b>' + esc(r.n) + '</b>' + (r.dongs ? ' <small>(' + r.dongs.length + '개 동)</small>' : '') + '</td><td>' + esc(r.t) + '</td><td>' + esc(r.jb) + '</td><td>' + esc(r.road) + '</td><td>' + esc(r.kind) + '</td>'
             + '<td class="bl-etc">' + esc((r.main || []).join('·')) + '</td><td>' + r.gf + ' / ' + r.bf + '</td><td style="text-align:right">' + Math.round(r.tot).toLocaleString() + '㎡<br><small>' + Math.round(r.tot / 3.3058).toLocaleString() + '평</small></td>'
             + '<td style="text-align:right">' + (r.ho || '') + '</td><td style="text-align:right">' + (r.pkg || '') + '</td><td>' + esc(r.use) + '</td><td class="bl-etc" style="color:#c62828">' + esc((r.chk || []).join(' / ')) + '</td></tr>';
         }).join('') + '</tbody></table></div>'
-      + '<div class="bl-sub">' + L.length + '개 건물 · 연면적·호수·주차는 건축물대장 표제부 합계(여러 동이면 합친 값) · 일반건축물은 호수가 0으로 나옵니다 · ' + esc(D.src || '') + '</div></div>';
+      + '<div class="bl-sub">' + L.length + '개 건물 · 연면적·호수·주차는 건축물대장 표제부 합계(여러 동이면 합친 값) · 일반건축물은 호수가 0으로 나옵니다 · ' + esc(D.src || '') + '</div>';
   }
   function paintInfo(){ var e = $('bl-info'); if(e) e.innerHTML = infoHtml(); }
 
@@ -239,12 +247,12 @@
   var tries = 0, tm = setInterval(function(){ if(mount() || ++tries > 120) clearInterval(tm); }, 500);
   W.sdBldLedger = { run:run, download:download, paint:paint,
     view:function(v){ ST.view = v; paint(); },
-    q:function(v){ ST.q = v; var keep = $('bl-q'), pos = keep ? keep.selectionStart : 0; paint(); var k2 = $('bl-q'); if(k2){ k2.focus(); k2.selectionStart = k2.selectionEnd = pos; } },
+    q:function(v){ ST.q = v; var e = $('bl-tbl'); if(e) e.innerHTML = tableList(); },
     toggle:function(){ ST.open = !ST.open; paint(); },
     state:function(){ return ST; }, _rec:rec, _cat:catOf,
     infoToggle:function(){ INFO.open = !INFO.open; paintInfo(); },
     infoT:function(t){ INFO.t = t; paintInfo(); },
-    infoQ:function(v){ INFO.q = v; var k = $('bl-iq'), pos = k ? k.selectionStart : 0; paintInfo(); var k2 = $('bl-iq'); if(k2){ k2.focus(); k2.selectionStart = k2.selectionEnd = pos; } },
+    infoQ:function(v){ INFO.q = v; var e = $('bl-info-list'); if(e) e.innerHTML = infoList(); },
     infoCsv:infoCsv };
   /* 다른 화면에서 쓰는 상가 원장 — sdBldInfo.load().then(d => …) · find('혜인프라자') · byJibun('21-13') */
   W.sdBldInfo = { load:infoLoad,
