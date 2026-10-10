@@ -555,7 +555,7 @@ html.sv-embed body{background:#f7f8fa}
    ═════════════════════════════════════════════════════════════════ */
 (function(){
 'use strict';
-var SD_VER = '2026.10.08-3';
+var SD_VER = '2026.10.10-9';
 window.SD_VERSION = SD_VER;
 var EMBED = /[?&]embed=1\b/.test(location.search);
 if(EMBED) document.documentElement.classList.add('sv-embed');
@@ -3088,6 +3088,21 @@ function danjiFind(name){
   return code && A[code] ? Object.assign({ code:code }, A[code]) : null;
 }
 function danjiNames(){ if(!DANJI) return []; var A = DANJI.apt || {}; return Object.keys(A).map(function(c){ return A[c].n; }).sort(); }
+/* 상가·건물 — 도구 → 건축물대장의 「송도 상가 건물 원장」(sd_bldg_info.json) */
+var BLDG = null;
+function bldgLoad(){ if(BLDG) return Promise.resolve(BLDG); return fetch('sd_bldg_info.json', { cache:'no-cache' }).then(function(r){ if(!r.ok) throw new Error('상가 건물 원장 파일이 없습니다'); return r.json(); }).then(function(d){ BLDG = d; return d; }); }
+function bldgList(){ if(!BLDG) return []; var B = BLDG.bldg || {}, cnt = {}, ids = Object.keys(B);
+  ids.forEach(function(id){ var n = B[id].n; cnt[n] = (cnt[n] || 0) + 1; });
+  return ids.map(function(id){ var b = B[id]; return { id:id, label:cnt[b.n] > 1 ? b.n + ' · 송도동 ' + b.jb : b.n }; }).sort(function(a, b){ return a.label.localeCompare(b.label, 'ko'); }); }
+function bldgNames(){ return bldgList().map(function(x){ return x.label; }); }
+function bldgFind(name){
+  if(!BLDG || !name) return null; var B = BLDG.bldg || {}, al = BLDG.alias || {}, k = nk(name), id = null;
+  var hit = bldgList().find(function(x){ return x.label === name || nk(x.label) === k; }); if(hit) id = hit.id;
+  if(!id){ var ak = Object.keys(al).find(function(x){ return x === name || nk(x) === k; }); if(ak) id = al[ak]; }
+  if(!id){ var jb = /(\d+(?:-\d+)?)\s*(번지)?$/.exec(String(name).trim()); if(jb && /^[\d\s-]|송도동|번지/.test(name)){ var js = (BLDG.jidx || {})['송도동|' + jb[1]]; if(js && js.length) id = js[0]; } }
+  if(!id && k.length >= 2){ var best = null; Object.keys(B).forEach(function(c){ var n = nk(String(B[c].n).replace(/^\(이름 없음\)\s*/, '')); if(n && (n.indexOf(k) >= 0 || k.indexOf(n) >= 0) && (!best || Math.abs(n.length - k.length) < Math.abs(nk(B[best].n).length - k.length))) best = c; }); id = best; }
+  return id && B[id] ? Object.assign({ id:id }, B[id]) : null;
+}
 function ymd(s){ var m = /(\d{4})\D?(\d{1,2})\D?(\d{1,2})/.exec(String(s || '')); return m ? m[1] + '.' + String(m[2]).padStart(2, '0') + '.' + String(m[3]).padStart(2, '0') : nv(s); }
 function addrJibun(a){ return String(a || '').replace(/\s+\D[^\d]*$/, '').replace(/\s+[가-힣A-Za-z].*$/, function(x){ return /동\s*\d/.test(x) ? x : ''; }).trim(); }
 /* 단지 자료(K-apt)로 채우기 — 빈칸만 */
@@ -4065,6 +4080,22 @@ function lDanjiFacts(a){
   if(a.sub_line && a.sub_st) f.push(['지하철', a.sub_line + ' ' + a.sub_st]);
   return f.slice(0, 8);
 }
+/* 상가 건물 원장 → 개요 카드 (확인된 숫자만) */
+function lBldgFacts(b){
+  var f = [], dg = Array.isArray(b.dongs) ? b.dongs : [];
+  if(b.t) f.push(['유형', b.t]);
+  if(b.gf || b.bf) f.push(['규모', (b.bf ? '지하 ' + b.bf + '층 · ' : '') + '지상 ' + (b.gf || '?') + '층' + (dg.length > 1 ? ' (' + dg.length + '개 동)' : '')]);
+  if(+b.tot) f.push(['연면적', Math.round(+b.tot).toLocaleString() + '㎡ (약 ' + Math.round(+b.tot / 3.3058).toLocaleString() + '평)']);
+  if(+b.ho) f.push(['호실', (+b.ho).toLocaleString() + '실']);
+  var u = /(\d{4})\D?(\d{1,2})/.exec(b.use || ''); if(u) f.push(['사용승인', u[1] + '년 ' + (+u[2]) + '월']); else if(b.yr) f.push(['사용승인', b.yr + '년']);
+  var use = String(b.etc || (b.main || []).join(', ')).split(/[,·]/).map(function(x){ return x.replace(/\(.*?\)/g, '').trim(); }).filter(function(x, i, a){ return x && a.indexOf(x) === i; });
+  if(use.length) f.push(['주용도', use.slice(0, 3).join(' · ')]);
+  if(+b.pkg) f.push(['주차', (+b.pkg).toLocaleString() + '대']);
+  if(+b.ev) f.push(['승강기', b.ev + '대']);
+  if(b.apt) f.push(['연계 단지', b.apt]);
+  return f.slice(0, 8);
+}
+function lBldgAddr(b){ return '인천광역시 연수구 ' + (b.road ? b.road : '송도동 ' + b.jb); }
 /* 단지 자료의 가까운 역·초등학교 (직선거리) — 2단계에서 지도에 찍을 때 쓴다 */
 function lDanjiNear(a){
   var o = a.loc || {}, n = [];
@@ -4073,12 +4104,13 @@ function lDanjiNear(a){
   return n;
 }
 function pLInfo(el){
-  var L = LI(), dn = danjiNames();
-  if(!DANJI) danjiLoad().then(function(){ if(P && P.step === 'linfo' && isLoc()) render(); }, function(){});
-  el.innerHTML = '<div class="sv-card"><div class="sv-h"><h3><b>1</b>단지 정보</h3><span class="sv-note">입지 영상 · 25~30초</span></div>'
-    + '<p class="sv-sub">지도에 찍을 단지(건물)와 <b>개요 카드</b>에 들어갈 내용입니다. SJRWS 단지 자료에서 고르면 세대수·입주·시공 등이 채워지고, 조감도는 <b>단지이미지</b>에서 불러오거나 파일·붙여넣기(Ctrl+V)로 넣습니다.</p>'
+  var L = LI(), isB = L.kind === 'bldg', dn = isB ? bldgNames() : danjiNames(), ready = isB ? !!BLDG : !!DANJI;
+  if(!DANJI) danjiLoad().then(function(){ if(P && P.step === 'linfo' && isLoc() && !isB) render(); }, function(){});
+  if(!BLDG) bldgLoad().then(function(){ if(P && P.step === 'linfo' && isLoc() && isB) render(); }, function(){});
+  el.innerHTML = '<div class="sv-card"><div class="sv-h"><h3><b>1</b>' + (isB ? '건물 정보' : '단지 정보') + '</h3><span class="sv-note">입지 영상 · 25~30초</span></div>'
+    + '<p class="sv-sub">지도에 찍을 단지(건물)와 <b>개요 카드</b>에 들어갈 내용입니다. ' + (isB ? 'SJRWS <b>상가 건물 원장</b>(도구 → 건축물대장)에서 고르면 규모·연면적·호실·사용승인 등이 채워지고, 건물 사진은' : 'SJRWS 단지 자료에서 고르면 세대수·입주·시공 등이 채워지고, 조감도는') + ' <b>단지이미지</b>에서 불러오거나 파일·붙여넣기(Ctrl+V)로 넣습니다.</p>'
     + '<div class="sv-f"><label>종류</label>' + seg('lkind', [['apt', '🏠 아파트 단지'], ['bldg', '🏢 상가·건물·오피스텔']], L.kind) + '</div>'
-    + '<div class="sv-f"><label>SJRWS 단지 자료에서 찾기 <span>' + (DANJI ? dn.length + '개 단지' : '불러오는 중…') + '</span></label><div style="display:flex;gap:6px"><input class="sv-in" id="svLDj" list="svLDjL" placeholder="단지 이름 (예: 힐스테이트레이크 송도4차)" style="flex:1"><button class="sv-btn" id="svLDjGo">가져오기</button></div>'
+    + '<div class="sv-f"><label>' + (isB ? 'SJRWS 상가 건물 원장에서 찾기' : 'SJRWS 단지 자료에서 찾기') + ' <span>' + (ready ? dn.length + (isB ? '개 건물 · 이름 또는 지번' : '개 단지') : '불러오는 중…') + '</span></label><div style="display:flex;gap:6px"><input class="sv-in" id="svLDj" list="svLDjL" placeholder="' + (isB ? '건물 이름 또는 지번 (예: 송도 스마트스퀘어 · 203-5)' : '단지 이름 (예: 힐스테이트레이크 송도4차)') + '" style="flex:1"><button class="sv-btn" id="svLDjGo">가져오기</button></div>'
     + '<datalist id="svLDjL">' + dn.map(function(n){ return '<option value="' + esc(n) + '">'; }).join('') + '</datalist></div>'
     + '<div class="sv-row2"><div class="sv-f"><label>이름 <span>지도 핀·카드 제목</span></label><input class="sv-in" id="svLName" value="' + esc(L.name) + '" placeholder="단지·건물 이름"></div>'
     + '<div class="sv-f"><label>주소</label><input class="sv-in" id="svLAddr" value="' + esc(L.addr) + '" placeholder="인천광역시 연수구 송도동 …"></div></div>'
@@ -4089,9 +4121,22 @@ function pLInfo(el){
     + '<div class="sv-acts" style="margin-top:8px"><label class="sv-btn sm" style="cursor:pointer">📁 파일<input type="file" id="svLAerF" accept="image/*" hidden></label><button class="sv-btn sm" id="svLDjImg">🏙 단지이미지에서</button><span class="sv-note">또는 그림을 복사해 이 화면에서 Ctrl+V</span></div>'
     + '<div id="svLDjBox" style="margin-top:8px"></div></div>'
     + foot('', 'lmap', '다음: 지도 · 포인트 →', !!nv(L.name)) + '</div>';
-  bindSeg(el, 'lkind', function(v){ L.kind = v; OUT = null; touch(); });
+  bindSeg(el, 'lkind', function(v){ var q = $('#svLDj', el).value; L.kind = v; OUT = null; touch(); render(); var q2 = $('#svLDj'); if(q2 && q){ q2.value = q; } });
+  var pullB = function(b){
+    if((L.facts || []).some(function(f){ return nv(f[1]); }) && !confirm('「' + b.n + '」 원장 자료로 이름·주소·개요 카드를 바꿀까요?')) return;
+    L.name = String(b.n).replace(/^\(이름 없음\)\s*/, ''); L.addr = lBldgAddr(b); L.code = b.id; L.facts = lBldgFacts(b); L.near = []; L.kind = 'bldg'; L.djFolder = '';
+    P.autoTitle = true; syncLocScenes(); OUT = null; touch(true); render(); toast('「' + b.n + '」 상가 건물 원장 자료를 넣었습니다' + (b.chk && b.chk.length ? ' — 확인 필요: ' + b.chk[0] : ''));
+  };
   var pull = function(){
-    var a = danjiFind(nv($('#svLDj', el).value)); if(!a) return toast('SJRWS 단지 자료에서 찾지 못했습니다 — 이름을 목록에서 골라 주세요', true);
+    var q = nv($('#svLDj', el).value); if(!q) return toast('이름을 적거나 목록에서 골라 주세요', true);
+    Promise.all([danjiLoad().catch(function(){}), bldgLoad().catch(function(){})]).then(function(){
+      var b = bldgFind(q), d = danjiFind(q);
+      if(isB){ if(b) return pullB(b); if(d){ toast('상가 원장에는 없고 아파트 단지 자료에 있어 「🏠 아파트 단지」로 가져옵니다'); return pullA(d); } }
+      else { if(d) return pullA(d); if(b){ toast('아파트 단지가 아니라 상가 건물 원장에서 찾았습니다 — 「🏢 상가·건물」로 가져옵니다'); return pullB(b); } }
+      toast((isB ? 'SJRWS 상가 건물 원장' : 'SJRWS 단지 자료') + '에서 「' + q + '」을 찾지 못했습니다 — 목록에서 고르거나 이름·주소를 직접 적어 주세요', true);
+    });
+  };
+  var pullA = function(a){
     if((L.facts || []).some(function(f){ return nv(f[1]); }) && !confirm('「' + a.n + '」 자료로 이름·주소·개요 카드를 바꿀까요?')) return;
     L.name = a.n; L.addr = String(a.addr || '').replace(new RegExp('\\s*' + a.n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*$'), '').trim(); L.code = a.code; L.facts = lDanjiFacts(a); L.near = lDanjiNear(a); L.kind = 'apt'; L.djFolder = '';
     P.autoTitle = true; syncLocScenes(); OUT = null; touch(true); render(); toast('「' + a.n + '」 자료를 넣었습니다');
