@@ -2846,6 +2846,7 @@ function deleteBldg(id, name){
 
 function selectBldg(id){
   _aiRows=[];        // 건물이 바뀌면 이전 건물의 인식 결과를 비운다 (아래에서 새로 불러온다)
+  _aiManual=false;
   curBldgId = id;
   renderBldgTabs();
   var bldg = BUILDINGS.find(function(b){return b.id===id;});
@@ -2898,11 +2899,11 @@ function sw(n){
   if(n===7)initBrochureTab();
   if(n===8)initPhotoTab();
   if(n===4){ initFloorMap();
-    if(typeof _aiRows!=='undefined' && !_aiRows.length && typeof aiLoadRows==='function'){
+    if(typeof _aiRows!=='undefined' && !_aiRows.length && _aiLoadedBldg!==curBldgId && typeof aiLoadRows==='function'){
       aiLoadRows(true).then(function(){ renderAIInfo(); });
     } else if(typeof renderAIInfo==='function') renderAIInfo();
   }
-  if(n===5){ if(!_aiRows.length) aiLoadRows(true); if(typeof sgRenderUsage==='function') sgRenderUsage(); }
+  if(n===5){ if(!_aiRows.length && _aiLoadedBldg!==curBldgId) aiLoadRows(true); if(typeof sgRenderUsage==='function') sgRenderUsage(); }
   if(n===9)initBlogTab();
 }
 
@@ -5105,7 +5106,7 @@ function calcMonthly(price, depRate, yieldRate){
 function renderDash(){
   // 인포 패널은 대시보드와 같은 데이터를 쓰므로 함께 갱신한다
   setTimeout(function(){
-    if(typeof _aiRows!=='undefined' && !_aiRows.length && typeof aiLoadRows==='function'){
+    if(typeof _aiRows!=='undefined' && !_aiRows.length && _aiLoadedBldg!==curBldgId && typeof aiLoadRows==='function'){
       aiLoadRows(true).then(function(){ renderAIInfo(); });
     } else if(typeof renderAIInfo==='function') renderAIInfo();
   },0);
@@ -6734,6 +6735,8 @@ function sgCallAPI(body){
 
 var _aiImgs = [];       // [{dataUrl, media_type, dong, name}]
 var _aiRows = [];       // [{dong, floor, name, ho, conf, src, use}]
+var _aiManual = false;
+var _aiLoadedBldg = null;  // 이 건물의 저장된 인포를 이미 읽었는지 — 다 지운 뒤 옛 저장본이 되살아나지 않게  // 업소가 0곳이어도 인포를 띄운다 — 「입점현황 인포 만들기」로 빈 인포를 만들어 네이버 검색으로 채우는 중 (2026-10-10)
 var AI_MAX_IMGS = 8;
 
 function sgShowUsage(){
@@ -6830,7 +6833,7 @@ function runAIRecognize(){
   if(!_aiImgs.length){ aiStatus('먼저 사진을 올려주세요.','err'); return; }
   var btn=document.getElementById('ai-btn');
   btn.disabled=true;
-  _aiRows=[];
+  _aiRows=[]; _aiManual=false; _aiLoadedBldg=curBldgId;
   var idx=0;
   var next=function(){
     if(idx>=_aiImgs.length){
@@ -6999,7 +7002,7 @@ var _aiInfoOpen=true;
 /* 만들어둔 입점현황 인포를 지운다. 저장본까지 비워 다음에 탭을 열 때 되살아나지 않게 한다. */
 function hoInfoClear(){
   if(!confirm('만들어진 입점현황 인포를 지웁니다.\n(호실 현황 자료는 그대로입니다)\n\n계속할까요?')) return;
-  _aiRows=[];
+  _aiRows=[]; _aiManual=false; _aiLoadedBldg=curBldgId;
   if(typeof _aiInfoOpen!=='undefined') _aiInfoOpen=false;
   try{
     if(window.storage){
@@ -7021,7 +7024,12 @@ function hoInfoOpen(){
   var b=BUILDINGS.find(function(x){return x.id===curBldgId;});
   if(!b){ showToast('건물을 먼저 선택해 주세요'); return; }
   var withTenant=(b.props||[]).filter(function(p){ return p.tenant && String(p.tenant).trim(); });
-  if(!withTenant.length){ showToast('입점업종이 입력된 호실이 없습니다'); return; }
+  if(!(b.props||[]).length){ showToast('호실이 아직 없습니다 — 「전체 호실 현황」에 호실부터 등록해 주세요'); return; }
+  /* 업종이 하나도 없어도 멈추지 않는다 — 모든 층을 빈 인포로 만들고, 층마다 🔍 네이버 검색과
+     빈 호실 칩(누르면 업소명 입력)으로 하나씩 채운다. 인포 사진이 없는 건물용 (2026-10-10) */
+  if(!withTenant.length && !confirm('입점업종이 입력된 호실이 아직 없습니다.\n\n'
+    +'모든 층·호실을 「빈 입점현황 인포」로 만들까요?\n'
+    +'층마다 🔍 네이버 검색 단추와 빈 호실 칩이 생겨,\n검색해 보고 호실을 눌러 업소명을 바로 적을 수 있습니다.')) return;
 
   var curAddr='';
   try{ curAddr=(document.getElementById('ai-addr')||{}).value||''; }catch(e){}
@@ -7053,13 +7061,43 @@ function hoInfoOpen(){
     _rows.push({ dong:_dg, floor:fl, name:nm2, ho:String(p.ho||'').trim(),
                  conf:'호실', src:'호실현황', use:true });
   });
-  _aiRows = _rows;
+  _aiRows = _rows; _aiManual = true; _aiLoadedBldg = curBldgId;
   if(typeof aiSaveRows==='function') aiSaveRows(true);
   if(typeof renderAIInfo==='function') renderAIInfo();
   _aiInfoOpen=true;
   ['ai-info-body','ai-info-body2'].forEach(function(id){ var e=document.getElementById(id); if(e) e.style.display='block'; });
   ['ai-info-toggle','ai-info-toggle2'].forEach(function(id){ var e=document.getElementById(id); if(e) e.textContent='접기'; });
-  showToast('📋 호실 현황 '+_aiRows.length+'곳으로 입점현황 인포를 만들었습니다');
+  showToast(_aiRows.length ? '📋 호실 현황 '+_aiRows.length+'곳으로 입점현황 인포를 만들었습니다 — 빈 호실은 칩을 눌러 채우세요'
+    : '📋 빈 입점현황 인포를 만들었습니다 — 층마다 🔍 네이버 검색 후 빈 호실을 눌러 업소명을 적으세요');
+  setTimeout(function(){ var c=document.getElementById('ai-info-card'); if(c&&c.offsetParent) try{ c.scrollIntoView({behavior:'smooth',block:'start'}); }catch(e){} },80);
+}
+
+/* 빈 호실 칩을 눌러 업소명(업종)을 바로 적는다 — 호실 현황 입점업종에 반영하고, 인포 목록에도 같은 층·업소로 묶는다 */
+function aiInfoQuickFill(ho){
+  var b=BUILDINGS.find(function(x){return x.id===curBldgId;});
+  if(!b) return;
+  var p=(b.props||[]).find(function(x){ return String(x.ho)===String(ho); });
+  if(!p) return;
+  var nm=prompt((p.floor?p.floor+' ':'')+ho+'호에 입점한 업소명(또는 업종)을 적어 주세요\n예: 스타벅스 · 연세바른치과 · 편의점', '');
+  if(nm===null) return;
+  nm=String(nm).trim();
+  if(!nm) return;
+  p.tenant=nm;
+  if(!p.status || p.status==='미분양') p.status='분양&임대';
+  var dk=dongKeyOf(p.ho, p.floor), dg=(dk && dk!=='_B') ? dk : (isBasementFloor(p.floor) ? '' : (p.dong||''));
+  var fk=aiFloorKey(p.floor), key=nm.replace(/\s/g,'');
+  var row=_aiRows.find(function(r){
+    if(aiFloorKey(r.floor)!==fk || String(r.name||'').replace(/\s/g,'')!==key) return false;
+    return isBasementFloor(p.floor) || (r.dong||'')===dg;
+  });
+  if(row){
+    var cur=String(row.ho||'').split(',').map(function(x){return x.trim();}).filter(Boolean);
+    if(cur.indexOf(String(ho))<0) cur.push(String(ho));
+    row.ho=cur.sort().join(',');
+  }else _aiRows.push({ dong:dg, floor:p.floor||'', name:nm, ho:String(ho), conf:'직접입력', src:'호실칩', use:true });
+  _aiManual=true;
+  aiInfoRefreshAll();
+  showToast('✅ '+ho+'호 → '+nm);
 }
 
 /* ── 입점현황 인포 ──
@@ -7098,7 +7136,7 @@ function renderAIInfo(){
   var cards=['ai-info-card','ai-info-card2'].map(function(id){return document.getElementById(id);}).filter(Boolean);
   if(!cards.length) return;
   var b=BUILDINGS.find(function(x){return x.id===curBldgId;});
-  if(!b || !_aiRows.length){ cards.forEach(function(c){ c.style.display='none'; }); return; }
+  if(!b || (!_aiRows.length && !_aiManual)){ cards.forEach(function(c){ c.style.display='none'; }); return; }
 
   // 이미 입점업종이 채워진 업소는 배정 완료로 본다
   // 한 업소가 여러 호실을 쓸 수 있으므로 배열로 모은다
@@ -7123,8 +7161,9 @@ function renderAIInfo(){
   });
   var todoCnt=_aiRows.filter(function(r){ return r.name && !isDone(r); }).length;
   cards.forEach(function(c){ c.style.display='block'; });
-  var subTxt='· 인식 '+_aiRows.length+'곳 · 배정 '+(_aiRows.length-todoCnt)+'곳 · 미배정 '+todoCnt+'곳'
-    +(_aiInfoView==='todo'?' (미배정만 표시)':'');
+  var freeAll=(b.props||[]).filter(function(p){ return !String(p.tenant||'').trim(); }).length;
+  var subTxt=(_aiRows.length ? '· 업소 '+_aiRows.length+'곳 · 배정 '+(_aiRows.length-todoCnt)+'곳 · 미배정 '+todoCnt+'곳' : '· 직접 채우는 중')
+    +' · 빈 호실 '+freeAll+'개'+(_aiInfoView==='todo'?' (미배정만 표시)':'');
   ['ai-info-sub','ai-info-sub2'].forEach(function(id){
     var e=document.getElementById(id); if(e) e.textContent=subTxt;
   });
@@ -7135,7 +7174,7 @@ function renderAIInfo(){
       if(e){ e.innerHTML=h; e.style.display=_aiInfoOpen?'block':'none'; }
     });
   };
-  if(!rows.length && _aiInfoView==='todo'){
+  if(!rows.length && _aiInfoView==='todo' && !(_aiManual && freeAll)){
     paint('<div style="font-size:12px;color:#2e7d32;padding:10px">✅ 인식된 업소가 모두 호실에 배정됐습니다.</div>');
     return;
   }
@@ -7172,9 +7211,12 @@ function renderAIInfo(){
     grp[d][f].push(r);
   });
   // '미배정만' 보기에서는 남은 업소가 없는 층까지 늘어놓으면 오히려 방해된다
+  var hasFree=function(d,f){ return _aiManual && (b.props||[]).some(function(p){
+      if(dongKeyOf(p.ho,p.floor)!==d && d!=='-') return false;
+      return aiFloorKey(p.floor)===aiFloorKey(f) && !String(p.tenant||'').trim(); }); };
   if(_aiInfoView==='todo'){
     Object.keys(grp).forEach(function(d){
-      Object.keys(grp[d]).forEach(function(f){ if(!grp[d][f].length) delete grp[d][f]; });
+      Object.keys(grp[d]).forEach(function(f){ if(!grp[d][f].length && !hasFree(d,f)) delete grp[d][f]; });
       if(!Object.keys(grp[d]).length) delete grp[d];
     });
   }
@@ -7206,11 +7248,24 @@ function renderAIInfo(){
             +'<option value="__SPLIT__">✂️ 호실 나누기 — 한 칸에 여러 업체</option>'
             +(free.length>1?'<option value="__ALL__">▣ 전체 '+free.length+'개 ('+free[0].ho+'~'+free[free.length-1].ho+')</option>':'')
             +free.map(function(p){ return '<option value="'+p.ho+'">'+p.ho+'</option>'; }).join('');
+          /* 🔍 이 층 업소를 네이버에서 — 「건물명 1층」 (건물명이 없으면 주소). 지하는 「지하1층」 */
+          var fk=aiFloorKey(f), flab=fk.charAt(0)==='B' ? '지하'+fk.slice(1)+'층' : (fk ? fk.slice(1)+'층' : f);
+          var fq=encodeURIComponent(((bname||addr)+' '+(d!=='-'&&d!=='_B'?d+'동 ':'')+flab).trim());
+          var freeChips=free.length ? '<div style="flex-basis:100%;display:flex;flex-wrap:wrap;gap:3px;align-items:center;margin-top:2px">'
+              +'<span style="font-size:10px;color:#90a4ae;margin-right:2px">빈 호실 '+free.length+' ·</span>'
+              +free.slice(0,40).map(function(p){
+                  return '<button onclick="aiInfoQuickFill(\''+String(p.ho).replace(/'/g,"\\'")+'\')" title="'+p.ho+'호 업소명 적기" '
+                    +'style="font-size:10px;border:1px dashed #b0bec5;background:#fff;color:#546e7a;border-radius:8px;padding:1px 6px;cursor:pointer">'+p.ho+'</button>';
+                }).join('')
+              +(free.length>40?'<span style="font-size:10px;color:#90a4ae">외 '+(free.length-40)+'개 — 「＋ 업소 추가」 후 호실 고르기</span>':'')
+              +'</div>' : '';
           return '<div style="display:flex;gap:8px;align-items:flex-start;padding:6px 0;border-top:1px solid #e8f0f8">'
             +'<div style="min-width:74px;padding-top:4px">'
               +'<div style="font-size:11px;font-weight:700;color:#455a64">'+f+'</div>'
               +'<div style="font-size:9px;color:#90a4ae">'
                 +list.filter(function(x){return (assigned[akey(x.floor,x.name)]||[]).length;}).length+'/'+list.length+'</div>'
+              +'<a href="https://search.naver.com/search.naver?query='+fq+'" target="_blank" rel="noopener" title="네이버에서 이 층 업소 찾기" '
+                +'style="display:inline-block;margin-top:3px;font-size:10px;color:#03a94d;border:1px solid #b7e4c7;background:#f0fbf4;border-radius:8px;padding:1px 6px;text-decoration:none;white-space:nowrap">🔍 네이버</a>'
             +'</div>'
             +'<div style="flex:1;display:flex;flex-wrap:wrap;gap:5px">'
             +(list.length?'':'<span style="font-size:11px;color:#b0bec5;align-self:center">등록된 업소 없음</span>')
@@ -7256,11 +7311,21 @@ function renderAIInfo(){
               }).join('')
             +'<button onclick="aiInfoAddRow(\''+d+'\',\''+f+'\')" title="이 층에 업소 추가" '
               +'style="background:#fff;border:1px dashed #90caf9;color:#1565c0;border-radius:14px;padding:2px 10px;font-size:11px;cursor:pointer">＋ 업소 추가</button>'
+            +freeChips
             +'</div></div>';
         }).join('')
       +'</div>';
   }).join('');
-  paint(html);
+  var bq=encodeURIComponent((bname && addr ? bname+' '+addr : (bname||addr)).trim());
+  var topBar=(bq ? '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px">'
+      +'<a href="https://map.naver.com/p/search/'+encodeURIComponent(bname||addr)+'" target="_blank" rel="noopener" '
+        +'style="font-size:11px;font-weight:700;color:#fff;background:#03c75a;border-radius:8px;padding:4px 10px;text-decoration:none">🗺 네이버지도에서 이 건물 업소 보기</a>'
+      +'<a href="https://search.naver.com/search.naver?query='+bq+'" target="_blank" rel="noopener" '
+        +'style="font-size:11px;color:#03a94d;border:1px solid #b7e4c7;background:#f0fbf4;border-radius:8px;padding:3px 9px;text-decoration:none">🔍 네이버 검색 (건물 전체)</a>'
+      +(_aiManual ? '<span style="font-size:10.5px;color:#7a92a8">층마다 <b>🔍 네이버</b>로 찾아보고 <b>빈 호실</b>을 누르면 업소명을 바로 적습니다. 한 업소가 여러 호실이면 업소 칩의 「＋ 호실」로 더 붙이세요.</span>' : '')
+      +'</div>'
+    : '<div style="font-size:11px;color:#e65100;margin-bottom:8px">건물명·주소가 없어 네이버 검색 단추를 만들 수 없습니다 — 「📋 입점현황 인포 만들기」를 다시 눌러 상가명·주소를 넣어 주세요.</div>');
+  paint(topBar+(html||'<div style="font-size:12px;color:#90a4ae;padding:8px">호실이 없습니다.</div>'));
 }
 
 // 공통 — 반영 후 화면 전체 갱신
@@ -7500,8 +7565,9 @@ function aiSetFilter(f){
 function aiSaveRows(manual){
   if(_aiSaveTimer) clearTimeout(_aiSaveTimer);
   var run=function(){
-    if(!window.storage||!_aiRows.length) return;
-    var payload={ saved:new Date().toISOString(), rows:_aiRows };
+    if(!window.storage) return;
+    if(!_aiRows.length && !_aiManual && _aiLoadedBldg!==curBldgId) return;   // 아직 안 읽은 건물은 빈 것으로 덮지 않는다
+    var payload={ saved:new Date().toISOString(), rows:_aiRows, manual:!!_aiManual };
     window.storage.set(bldgKey('ai_rows'), JSON.stringify(payload)).then(function(r){
       var el=document.getElementById('ai-save-info');
       if(!r){ if(el) el.innerHTML='<span style="color:#c62828">저장 실패</span>'; return; }
@@ -7513,11 +7579,15 @@ function aiSaveRows(manual){
 }
 function aiLoadRows(silent){
   if(!window.storage) return Promise.resolve(false);
+  var forB=curBldgId;
   return window.storage.get(bldgKey('ai_rows')).then(function(r){
+    if(forB!==curBldgId) return false;
+    _aiLoadedBldg=forB;
     if(!r||!r.value){ if(!silent) showToast('저장된 작업이 없습니다.'); return false; }
     var v=JSON.parse(r.value);
     var rows=(v&&v.rows)?v.rows:(Array.isArray(v)?v:[]);
-    if(!rows.length){ if(!silent) showToast('저장된 작업이 없습니다.'); return false; }
+    _aiManual=!!(v&&v.manual);
+    if(!rows.length){ if(_aiManual){ _aiRows=[]; return true; } if(!silent) showToast('저장된 작업이 없습니다.'); return false; }
     _aiRows=rows;
     var el=document.getElementById('ai-save-info');
     if(el&&v.saved) el.textContent='💾 '+new Date(v.saved).toLocaleString('ko-KR',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})+' 저장됨';
@@ -7714,7 +7784,7 @@ function applyAIResult(){
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.10.09-1';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.10.10-5';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_sangga.html';      // 이 파일 이름
   var SD_NAME = '상가관리';      // 사람이 부르는 이름
 
