@@ -108,7 +108,7 @@
         if(nm){ r.n = String(nm); r.nmFrom = rByJb[r.jb] ? '총괄표제부' : '실거래 건물명 사전'; nameFix++; }
       });
       var ledger = allMain.filter(function(r){ return r.cat; });
-      var cnt = {}; ledger.forEach(function(r){ var k = r.cat + '·' + (r.kind || '?'); cnt[k] = (cnt[k] || 0) + 1; });
+      var cnt = {}; ledger.forEach(function(r){ var k = r.cat + '·' + (r.gb || r.kind || '?'); cnt[k] = (cnt[k] || 0) + 1; });
       ST.res = { ver:1, at:new Date().toISOString(), by:me(), sgg:SGG, bjd:bjd, dong:dong,
         src:'국토교통부 건축물대장정보 서비스 — 표제부(getBrTitleInfo)·총괄표제부(getBrRecapTitleInfo)',
         rule:'주건축물 · 주용도 제1·2종근린생활시설/판매시설 = 상가(집합·일반) · 공동주택+근린/판매 = 주상복합 · 업무시설+근린/판매 = 업무복합',
@@ -143,11 +143,56 @@
       + '<div class="bl-scroll"><table class="bl-t"><thead><tr><th>건물명</th><th>동</th><th>지번</th><th>도로명</th><th>대장</th><th>주용도</th><th>기타용도</th><th>층(지상/지하)</th><th>연면적㎡</th><th>호수</th><th>주차</th><th>사용승인</th></tr></thead><tbody>'
       + sh.map(function(r){
           return '<tr><td>' + (r.n ? esc(r.n) : '<span style="color:#c33">(이름 없음)</span>') + (r.nmFrom ? ' <small title="' + esc(r.nmFrom) + '에서 가져온 이름">*</small>' : '') + '</td><td>' + esc(r.dn) + '</td><td>' + esc(r.jb) + '</td><td>' + esc(r.road) + '</td>'
-            + '<td>' + esc(r.kind) + '</td><td>' + esc(r.main) + '</td><td class="bl-etc">' + esc(r.etc) + '</td><td>' + (r.gf || '') + ' / ' + (r.bf || '') + '</td>'
+            + '<td>' + esc(r.gb || r.kind) + '</td><td>' + esc(r.main) + '</td><td class="bl-etc">' + esc(r.etc) + '</td><td>' + (r.gf || '') + ' / ' + (r.bf || '') + '</td>'
             + '<td style="text-align:right">' + (r.tot ? Math.round(r.tot).toLocaleString() : '') + '</td><td style="text-align:right">' + (r.ho || '') + '</td><td style="text-align:right">' + (r.pkg || '') + '</td><td>' + esc(r.use) + '</td></tr>';
         }).join('') + '</tbody></table></div>'
       + (L.length > sh.length ? '<div class="bl-sub">앞 ' + sh.length + '줄만 보입니다 (전체 ' + L.length.toLocaleString() + '줄은 내려받은 파일에 모두 들어 있습니다)</div>' : '');
   }
+  /* ── 📒 정리된 상가 원장 (sd_bldg_info.json — Claude 가 원본을 정리해 깃허브에 올린 파일) ── */
+  var INFO = { d:null, err:'', t:'', q:'', open:true };
+  function infoLoad(){
+    if(INFO.d || INFO.busy) return Promise.resolve(INFO.d);
+    INFO.busy = true;
+    return fetch('sd_bldg_info.json?v=' + encodeURIComponent(W.SD_VERSION || Date.now())).then(function(r){ if(!r.ok) throw new Error('sd_bldg_info.json 을 읽지 못했습니다 (' + r.status + ') — 깃허브에 올렸는지 확인해 주세요'); return r.json(); })
+      .then(function(d){ INFO.d = d; INFO.busy = false; paintInfo(); return d; }, function(e){ INFO.err = e.message || String(e); INFO.busy = false; paintInfo(); return null; });
+  }
+  function infoRows(){
+    if(!INFO.d) return [];
+    var L = Object.keys(INFO.d.bldg).map(function(k){ return INFO.d.bldg[k]; }), q = INFO.q.trim().toLowerCase();
+    if(INFO.t === '확인 필요') L = L.filter(function(r){ return r.chk; }); else if(INFO.t) L = L.filter(function(r){ return r.t === INFO.t; });
+    if(q) L = L.filter(function(r){ return (r.n + ' ' + r.jb + ' ' + r.road + ' ' + (r.main || []).join(' ') + ' ' + (r.etc || '')).toLowerCase().indexOf(q) >= 0; });
+    return L;
+  }
+  function infoCsv(){
+    var L = infoRows(), e = function(v){ return '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"'; };
+    var head = ['건물명','유형','지번','도로명','집합/일반','주용도','지상층','지하층','연면적㎡','연면적평','대지면적㎡','호수','주차','승강기','사용승인','동 수','단지코드','확인 필요'];
+    var lines = [head.map(e).join(',')].concat(L.map(function(r){ return [r.n, r.t, '송도동 ' + r.jb, r.road, r.kind, (r.main || []).join('·'), r.gf, r.bf, r.tot, Math.round(r.tot / 3.3058), r.plA, r.ho, r.pkg, r.ev, r.use, r.dongs ? r.dongs.length : 1, r.apt || '', (r.chk || []).join(' / ')].map(e).join(','); }));
+    var b = new Blob(['\ufeff' + lines.join('\r\n')], { type:'text/csv;charset=utf-8' }), u = URL.createObjectURL(b), a = document.createElement('a');
+    a.href = u; a.download = '송도동_상가건물원장' + (INFO.t ? '_' + INFO.t.replace(/[·\s]/g, '') : '') + '_' + (INFO.d.ver || today()) + '.csv'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(function(){ URL.revokeObjectURL(u); }, 3000);
+  }
+  function infoHtml(){
+    var D = INFO.d;
+    var h = '<div class="bl-hd" onclick="sdBldLedger.infoToggle()"><b>📒 송도 상가 건물 원장</b><small>' + (D ? esc(D.ver) + ' 정리 · ' + D.count + '개 건물 · 건축물대장 기준' : '정리된 원장 (sd_bldg_info.json)') + '</small><span style="flex:1"></span><span>' + (INFO.open ? '접기 ▲' : '펼치기 ▼') + '</span></div>';
+    if(!INFO.open) return h;
+    if(!D) return h + '<div class="bl-in"><div class="bl-sub">' + (INFO.err ? '<span style="color:#c33">' + esc(INFO.err) + '</span>' : '불러오는 중…') + '</div></div>';
+    var types = Object.keys(D.types).sort(function(a, b){ return D.types[b] - D.types[a]; }), chk = Object.keys(D.bldg).filter(function(k){ return D.bldg[k].chk; }).length;
+    var tabs = '<button type="button" class="bl-tab' + (!INFO.t ? ' on' : '') + '" onclick="sdBldLedger.infoT(\'\')">전체 <b>' + D.count + '</b></button>'
+      + types.map(function(t){ return '<button type="button" class="bl-tab' + (INFO.t === t ? ' on' : '') + '" onclick="sdBldLedger.infoT(\'' + t + '\')">' + esc(t) + ' <b>' + D.types[t] + '</b></button>'; }).join('')
+      + (chk ? '<button type="button" class="bl-tab' + (INFO.t === '확인 필요' ? ' on' : '') + '" onclick="sdBldLedger.infoT(\'확인 필요\')" style="color:#c62828">확인 필요 <b>' + chk + '</b></button>' : '');
+    var L = infoRows();
+    return h + '<div class="bl-in"><div class="bl-sub">' + esc(D.rule || '') + ' 제외한 공공·부대시설 ' + (D.excluded || []).length + '동.</div>'
+      + '<div class="bl-tabs">' + tabs + '<input class="bl-q" id="bl-iq" placeholder="건물명·지번·도로명 찾기" value="' + esc(INFO.q) + '" oninput="sdBldLedger.infoQ(this.value)">'
+      + '<button type="button" class="bl-btn" onclick="sdBldLedger.infoCsv()">📥 엑셀(CSV) 내려받기</button></div>'
+      + '<div class="bl-scroll"><table class="bl-t"><thead><tr><th>건물명</th><th>유형</th><th>지번</th><th>도로명</th><th>집합/일반</th><th>주용도</th><th>층(지상/지하)</th><th>연면적</th><th>호수</th><th>주차</th><th>사용승인</th><th>확인</th></tr></thead><tbody>'
+      + L.map(function(r){
+          return '<tr><td><b>' + esc(r.n) + '</b>' + (r.dongs ? ' <small>(' + r.dongs.length + '개 동)</small>' : '') + '</td><td>' + esc(r.t) + '</td><td>' + esc(r.jb) + '</td><td>' + esc(r.road) + '</td><td>' + esc(r.kind) + '</td>'
+            + '<td class="bl-etc">' + esc((r.main || []).join('·')) + '</td><td>' + r.gf + ' / ' + r.bf + '</td><td style="text-align:right">' + Math.round(r.tot).toLocaleString() + '㎡<br><small>' + Math.round(r.tot / 3.3058).toLocaleString() + '평</small></td>'
+            + '<td style="text-align:right">' + (r.ho || '') + '</td><td style="text-align:right">' + (r.pkg || '') + '</td><td>' + esc(r.use) + '</td><td class="bl-etc" style="color:#c62828">' + esc((r.chk || []).join(' / ')) + '</td></tr>';
+        }).join('') + '</tbody></table></div>'
+      + '<div class="bl-sub">' + L.length + '개 건물 · 연면적·호수·주차는 건축물대장 표제부 합계(여러 동이면 합친 값) · 일반건축물은 호수가 0으로 나옵니다 · ' + esc(D.src || '') + '</div></div>';
+  }
+  function paintInfo(){ var e = $('bl-info'); if(e) e.innerHTML = infoHtml(); }
+
   function paint(){
     var root = $('bl-root'); if(!root) return;
     var t = ST.res && ST.res.totals;
@@ -183,8 +228,10 @@
     var tc = $('tc24'), br = $('br-root'); if(!tc || !br) return false;
     if(!$('bl-root')){
       if(!$('bl-css')){ var st = document.createElement('style'); st.id = 'bl-css'; st.textContent = CSS; document.head.appendChild(st); }
+      var di = document.createElement('div'); di.id = 'bl-info'; di.className = 'bl-card'; tc.appendChild(di);
       var d = document.createElement('div'); d.id = 'bl-root'; tc.appendChild(d);
-      try{ var last = JSON.parse(localStorage.getItem(LS) || 'null'); if(last && last.ledger){ ST.res = { at:last.at, dong:last.dong, totals:last.totals, counts:last.counts || {}, ledger:last.ledger, all:last.ledger, recap:[] }; ST.dong = last.dong || ST.dong; ST.open = false; ST.msg = '<span style="color:#888">' + esc(String(last.at || '').slice(0, 10)) + ' 에 받은 목록 (파일 내려받기는 다시 받은 뒤에 전체 목록이 들어갑니다)</span>'; } }catch(e){}
+      paintInfo(); infoLoad();
+      try{ ST.open = false; var last = JSON.parse(localStorage.getItem(LS) || 'null'); if(last && last.ledger){ ST.res = { at:last.at, dong:last.dong, totals:last.totals, counts:last.counts || {}, ledger:last.ledger, all:last.ledger, recap:[] }; ST.dong = last.dong || ST.dong; ST.open = false; ST.msg = '<span style="color:#888">' + esc(String(last.at || '').slice(0, 10)) + ' 에 받은 목록 (파일 내려받기는 다시 받은 뒤에 전체 목록이 들어갑니다)</span>'; } }catch(e){}
       paint();
     }
     return true;
@@ -194,5 +241,13 @@
     view:function(v){ ST.view = v; paint(); },
     q:function(v){ ST.q = v; var keep = $('bl-q'), pos = keep ? keep.selectionStart : 0; paint(); var k2 = $('bl-q'); if(k2){ k2.focus(); k2.selectionStart = k2.selectionEnd = pos; } },
     toggle:function(){ ST.open = !ST.open; paint(); },
-    state:function(){ return ST; }, _rec:rec, _cat:catOf };
+    state:function(){ return ST; }, _rec:rec, _cat:catOf,
+    infoToggle:function(){ INFO.open = !INFO.open; paintInfo(); },
+    infoT:function(t){ INFO.t = t; paintInfo(); },
+    infoQ:function(v){ INFO.q = v; var k = $('bl-iq'), pos = k ? k.selectionStart : 0; paintInfo(); var k2 = $('bl-iq'); if(k2){ k2.focus(); k2.selectionStart = k2.selectionEnd = pos; } },
+    infoCsv:infoCsv };
+  /* 다른 화면에서 쓰는 상가 원장 — sdBldInfo.load().then(d => …) · find('혜인프라자') · byJibun('21-13') */
+  W.sdBldInfo = { load:infoLoad,
+    find:function(nm){ var d = INFO.d; if(!d) return null; var k = String(nm || '').trim(); var id = d.alias[k] || d.alias[k.replace(/\s/g, '')] || d.alias[k.replace(/^송도\s*/, '')]; return id ? d.bldg[id] : null; },
+    byJibun:function(jb){ var d = INFO.d; if(!d) return []; return (d.jidx['송도동|' + String(jb || '').trim()] || []).map(function(id){ return d.bldg[id]; }); } };
 })();
