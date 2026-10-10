@@ -155,7 +155,7 @@ a.sjb-btn.on::after,span.sjb-btn.on::after{background:linear-gradient(100deg,rgb
 <script>
 (function(){
   'use strict';
-  var SD_VER = '2026.10.09-5';
+  var SD_VER = '2026.10.10-3';
   var TABS = [
     [20, '🧰 전체 도구'],
     ['calc', '🧮 부동산 계산기'],
@@ -164,6 +164,7 @@ a.sjb-btn.on::after,span.sjb-btn.on::after{background:linear-gradient(100deg,rgb
     ['qr', '🔳 QR코드'],
     ['trace', '🗺 평면도 트레이서'],
     ['logo', '🏷 로고 관리'],
+    ['form', '📄 서식'],
     [26, '🤝 직방 가격 제안'],
     [27, '🔎 공시가격 조회'],
     [24, '🏗️ 건축물대장'],
@@ -180,7 +181,7 @@ a.sjb-btn.on::after,span.sjb-btn.on::after{background:linear-gradient(100deg,rgb
     if(me && se.name) me.innerHTML = '<b>' + String(se.name).replace(/[<>&"]/g, '') + '</b>' + (se.role ? '<span class="rl">' + (RL[se.role] || String(se.role).replace(/[<>&"]/g, '')) + '</span>' : '') + '<a href="sd_hub.html" style="color:#3b5bdb;text-decoration:none">허브</a>';
   }catch(e){}
   //  탭 열쇠: 숫자(데이터관리 도구 모드 탭) 또는 'calc'(이 파일 안의 부동산 계산기)
-  function key(n){ if(n === 'calc' || n === 'video' || n === 'photo' || n === 'card' || n === 'qr' || n === 'trace' || n === 'logo') return n; var k = parseInt(n, 10); return isNaN(k) ? null : k; }
+  function key(n){ if(n === 'calc' || n === 'video' || n === 'photo' || n === 'card' || n === 'qr' || n === 'trace' || n === 'logo' || n === 'form') return n; var k = parseInt(n, 10); return isNaN(k) ? null : k; }
   function ok(n){ n = key(n); return TABS.some(function(t){ return t[0] === n; }); }
   function paint(){
     document.getElementById('tl-tabs').innerHTML = TABS.map(function(t){
@@ -194,6 +195,7 @@ a.sjb-btn.on::after,span.sjb-btn.on::after{background:linear-gradient(100deg,rgb
     document.body.classList.toggle('qr-on', CUR === 'qr');
     document.body.classList.toggle('trace-on', CUR === 'trace');
     document.body.classList.toggle('logo-on', CUR === 'logo');
+    document.body.classList.toggle('form-on', CUR === 'form');
   }
   //  도구 화면 안에서 탭이 바뀌면(전체 도구 카드를 누른 경우 등) 여기도 따라 바꾼다
   window.sdToolTab = function(n, extra){
@@ -217,6 +219,7 @@ a.sjb-btn.on::after,span.sjb-btn.on::after{background:linear-gradient(100deg,rgb
     if(n === 'qr'){ window.sdToolTab('qr'); if(window.sdQr) window.sdQr.go(); return; }
     if(n === 'trace'){ window.sdToolTab('trace'); traceGo(); return; }
     if(n === 'logo'){ window.sdToolTab('logo'); if(window.sdLogoUi) window.sdLogoUi.go(); return; }
+    if(n === 'form'){ window.sdToolTab('form'); formGo(); return; }
     if(n === 'video'){ location.href = 'sd_video.html'; return; }
     var w = null; try{ w = fr.contentWindow; }catch(e){}
     if(FRAME_N && w && typeof w.sw === 'function' && w.document && w.document.getElementById('tc' + n)){ window.sdToolTab(n); w.sw(n); try{ w.scrollTo(0, 0); }catch(e){} return; }
@@ -236,6 +239,17 @@ a.sjb-btn.on::after,span.sjb-btn.on::after{background:linear-gradient(100deg,rgb
     sc.onerror = function(){ root.innerHTML = '<div style="padding:40px;text-align:center;color:#c92a2a">sd_floortrace.js 를 불러오지 못했습니다 — 깃허브에 같이 올렸는지 확인해 주세요</div>'; };
     document.head.appendChild(sc);
   }
+  /* 📄 서식 — 따로 된 파일(sd_forms.js)을 처음 열 때 불러온다 */
+  var FORM_M = false;
+  function formGo(){
+    var root = document.getElementById('form-root');
+    if(window.sdForms){ if(!FORM_M){ FORM_M = true; window.sdForms.mount(root); } else window.sdForms.go(); return; }
+    root.innerHTML = '<div style="padding:40px;text-align:center;color:#868e96">📄 서식 불러오는 중…</div>';
+    var sc = document.createElement('script'); sc.src = 'sd_forms.js?v=' + SD_VER;
+    sc.onload = function(){ FORM_M = true; window.sdForms.mount(root); };
+    sc.onerror = function(){ root.innerHTML = '<div style="padding:40px;text-align:center;color:#c92a2a">sd_forms.js 를 불러오지 못했습니다 — 깃허브에 같이 올렸는지 확인해 주세요</div>'; };
+    document.head.appendChild(sc);
+  }
   var sp = new URLSearchParams(location.search), q = key(sp.get('tab'));
   //  🎬 영상 만들기는 따로 된 프로그램(sd_video.html — 🎬 영상)이 되었다 — 예전 주소·기억은 그리로
   if(q === 'video'){ location.replace('sd_video.html'); return; }
@@ -250,6 +264,7 @@ a.sjb-btn.on::after,span.sjb-btn.on::after{background:linear-gradient(100deg,rgb
     if(q === 'qr'){ window.sdToolTab('qr'); window.sdQr && window.sdQr.go(); return; }
     if(q === 'trace'){ window.sdToolTab('trace'); traceGo(); return; }
     if(q === 'logo'){ window.sdToolTab('logo'); window.sdLogoUi && window.sdLogoUi.go(); return; }
+    if(q === 'form'){ window.sdToolTab('form'); formGo(); return; }
     if(q === 'calc'){ var c = sp.get('c'); window.sdToolTab('calc', c ? '&c=' + encodeURIComponent(c) : ''); window.sdCalc && window.sdCalc.go(c || 'home', true); }
     else { window.sdToolTab(q); loadFrame(q); }
   };
@@ -2904,7 +2919,14 @@ body.logo-on #logo-wrap{display:block}
 @media(max-width:760px){.lgm-slot{grid-template-columns:1fr}}
 </style>
 <div id="logo-wrap" class="sjb-zoom"><div id="logo-root"></div></div>
-<script src="sd_logo.js?v=2026.10.09-5"></script>
+<!-- 📄 서식 (sd_forms.js · window.sdForms) 2026-10-10 — 위임장·영수증·차용증·내용증명 등 / 추가 서식 / A4 1장 인쇄·PDF·JPEG -->
+<style>
+#form-wrap{flex:1 1 auto;min-height:0;overflow:auto;display:none;scrollbar-gutter:stable both-edges;background:#f6f7fb}
+body.form-on .tl-wrap{display:none}
+body.form-on #form-wrap{display:block}
+</style>
+<div id="form-wrap" class="sjb-zoom"><div id="form-root"></div></div>
+<script src="sd_logo.js?v=2026.10.10-3"></script>
 <script>
 (function(){
   'use strict';

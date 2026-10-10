@@ -38,6 +38,7 @@
     { id:'blog_card', sec:'✍️ 블로그', n:'블로그 이미지 카드 · 쇼츠 — 오른쪽 아래 로고', hint:'블로그에서 따로 올린 로고가 없을 때 이것을 씀', def:['office', 'wide'] },
     { id:'yt_main', sec:'🎬 영상', n:'유튜브 송도제일부동산TV 채널 로고', hint:'영상 썸네일·화면 모서리 (영상 쪽 연결은 다음 단계)', def:['youtube', ''] },
     { id:'yt_sangga', sec:'🎬 영상', n:'유튜브 상가닷컴TV 채널 로고', hint:'상가 영상용 (다음 단계)', def:['youtube', ''] },
+    { id:'form_foot', sec:'🧰 도구', n:'서식 (위임장·영수증 등) — 아래쪽 「입회 중개사무소」 로고', hint:'가로형 추천 · 비우면 매물 브리핑 보고서 머리 로고를 씀', def:['office', 'wide'] },
     { id:'ecard', sec:'🧰 도구', n:'전자명함 · QR 코드 기본 로고', hint:'「🏷 로고 관리에서」 단추로 고를 때 맨 앞에 보임', def:['office', 'square'] }
   ];
   var LK = 'sd_logo_cache', IK = 'sd_logo_img_';
