@@ -2162,7 +2162,7 @@ function hbMount(){
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.10.12-1';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.10.12-2';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_hub.html';      // 이 파일 이름
   var SD_NAME = '허브';      // 사람이 부르는 이름
 
@@ -3077,7 +3077,8 @@ function hbMount(){
     $('hbh-list').innerHTML = L.length ? L.slice().reverse().map(function(x){
       return '<div><i>' + esc(x.date.slice(5)) + '</i><b class="' + (x.kind === 'news_songdo' ? 'S">송도' : 'H">부동산') + '</b><span>' + esc(x.subject) + '</span><i>' + esc(x.corp) + '</i></div>';
     }).join('') : '<div style="justify-content:center;color:#888;padding:14px">올릴 새 기사가 없습니다</div>';
-    $('hbh-go').disabled = !L.length;
+    //  2026-10-12: 새 기사가 0건이어도 단추는 끄지 않는다 (꺼진 단추가 켜진 것과 같은 색이라 고장처럼 보였다)
+    $('hbh-go').textContent = L.length ? '① 관리자 창 열기 (' + L.length + '건)' : '① 관리자 창 열기';
     return L;
   }
   async function reload(){
@@ -3110,8 +3111,12 @@ function hbMount(){
     $('hbh-from').onchange = $('hbh-to').onchange = reload;
     $('hbh-skip').onchange = paintList;
     $('hbh-go').onclick = function(){
+      var n = ITEMS.filter(function(x){ return !($('hbh-skip').checked && REGMAP[x.key]); }).length;
       WIN = window.open(ADMIN, 'sjadm');
-      $('hbh-res').textContent = '② 열린 관리자 창에서 즐겨찾기 「SJRWS 뉴스등록」을 눌러 주세요…';
+      if(!WIN){ $('hbh-res').innerHTML = '⚠️ 새 창이 막혔습니다 — 주소창 오른쪽의 <b>팝업 차단 아이콘</b>을 눌러 「항상 허용」으로 바꾼 뒤 다시 눌러 주세요.'; return; }
+      try{ WIN.focus(); }catch(e){}
+      $('hbh-res').textContent = n ? '② 열린 관리자 창에서 즐겨찾기 「SJRWS 뉴스등록」을 눌러 주세요… (' + n + '건)'
+        : 'ℹ️ 이 기간에 올릴 새 기사가 없어 관리자 창만 열었습니다. (다시 올리려면 「이미 올린 기사 빼기」를 끄세요 — 홈페이지 쪽에서 같은 제목은 건너뜁니다)';
     };
     reload();
   };
