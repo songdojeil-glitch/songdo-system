@@ -3335,7 +3335,26 @@ function getApiKey(){
   }
   return k.trim();
 }
-function callAPI(prompt,loadEl,loadTxtEl,loadMsg,onDone){
+/* callAPI(prompt, 로딩칸, 로딩글칸, 로딩글, onDone(txt, usage), opts)
+   opts.search=false → 웹검색 없이 (기본은 웹검색 사용) · opts.maxTokens
+   2026-10-11: 웹검색 답은 출처마다 글 조각으로 와서, 조각을 줄바꿈으로 잇던 탓에 문장이 끊겼다 → 조각은 그대로 붙이고,
+   검색 전에 한 말(「검색해 보겠습니다」 등)은 버린다. 사용량(usage)을 onDone 두 번째 값으로 넘긴다. */
+function apiText(content){
+  var c=content||[], last=-1;
+  c.forEach(function(b,i){ if(b.type!=='text') last=i; });
+  var after=c.slice(last+1).filter(function(b){return b.type==='text';});
+  var use=after.length&&after.map(function(b){return b.text;}).join('').trim() ? after : c.filter(function(b){return b.type==='text';});
+  return use.map(function(b){return b.text;}).join('').trim();
+}
+function apiCost(u){
+  if(!u) return '';
+  var i=(u.input_tokens||0)+(u.cache_creation_input_tokens||0)+(u.cache_read_input_tokens||0), o=u.output_tokens||0;
+  var ws=(u.server_tool_use&&u.server_tool_use.web_search_requests)||0;
+  var usd=i*3/1e6+o*15/1e6+ws*0.01;     // claude-sonnet-4-6 : 입력 $3 · 출력 $15 (100만 토큰당) · 웹검색 1회 $0.01
+  return '🔢 입력 '+i.toLocaleString()+' · 출력 '+o.toLocaleString()+' 토큰'+(ws?' · 웹검색 '+ws+'회':'')+' · 약 $'+usd.toFixed(3)+' (≈'+Math.round(usd*1400).toLocaleString()+'원)';
+}
+function callAPI(prompt,loadEl,loadTxtEl,loadMsg,onDone,opts){
+  opts=opts||{};
   var key=getApiKey();
   if(!key){alert('API 키가 필요합니다.');return;}
   document.getElementById(loadEl).style.display='block';document.getElementById(loadTxtEl).textContent=loadMsg;
@@ -3349,8 +3368,8 @@ function callAPI(prompt,loadEl,loadTxtEl,loadMsg,onDone){
     },
     body:JSON.stringify({
       model:'claude-sonnet-4-6',
-      max_tokens:3000,
-      tools:[{type:'web_search_20250305',name:'web_search'}],
+      max_tokens:opts.maxTokens||3000,
+      tools:opts.search===false?undefined:[{type:'web_search_20250305',name:'web_search'}],
       messages:[{role:'user',content:prompt}]
     })
   })
@@ -3361,8 +3380,8 @@ function callAPI(prompt,loadEl,loadTxtEl,loadMsg,onDone){
   })
   .then(function(d){
     document.getElementById(loadEl).style.display='none';
-    var txt=d.content.filter(function(b){return b.type==='text';}).map(function(b){return b.text;}).join('\n').trim();
-    onDone(txt);
+    var txt=apiText(d.content);
+    onDone(txt,d.usage);
   })
   .catch(function(e){
     document.getElementById(loadEl).style.display='none';
@@ -3456,17 +3475,64 @@ function resetListing(){
   document.getElementById('ls-res').style.display='none';
   document.getElementById('ls-saved-sel').value='';
 }
+/* 상세페이지 AI 작성 (2026-10-11 개편)
+   아파트이고 SJRWS 단지 자료가 있으면 → 웹검색 없이 「확인된 자료」(매물 입력값 + K-apt + 건축물대장 + 실거래)만으로 쓴다.
+   자료에 없는 단지(분양권·오피스텔·상가 등)만 예전처럼 웹검색. 결과 위에 쓴 자료·토큰·비용을 보여 준다. */
 function genListing(){
   var p=getProp('ls-sel');if(!p)return;
   var ext=document.getElementById('ls-ext').value.trim();
   document.getElementById('ls-res').style.display='none';
-  callAPI('당신은 인천 연수구 송도국제도시 전문 공인중개사(송도제일공인중개사사무소) 매물 상세설명 전문가입니다.\n\n[매물 정보]\n- 매물 종류: '+p.propertyType+'\n- 단지명: '+p.complexName+'\n- 동/호수: '+(p.unitInfo||'미입력')+'\n- 전용면적: '+(p.areaInfo||'미입력')+'\n- 층수: '+(p.floorInfo||'미입력')+'\n- 향: '+(p.direction||'미입력')+'\n- 가격: '+priceTxt(p)+'\n- 입주: '+(p.moveIn||'협의')+'\n- 소장 메모: '+(p.memo||'없음')+(ext?'\n- 추가 강조: '+ext:'')+'\n\n웹검색으로 "'+p.complexName+'" 실제 정보를 수집하여 아래 형식으로 작성하세요.\n\n📝 매물 상세 정보\n✨ 안녕하세요! 송도 21년 차 전문가, 송도제일공인중개사사무소입니다 😃.\n\n🌟 매물 핵심 포인트\n✅ **[포인트명]**: [설명] (4~6개)\n\n이모지 풍부하게. 500자 이내.',
-  'ls-load','ls-ltxt','단지 정보를 검색하고 있습니다...',function(txt){
-    document.getElementById('ls-txt').value=txt;document.getElementById('ag-txt').value=AGENCY;
-    loadSavedListingSelect();
-    document.getElementById('ls-cb').textContent=txt.length+'자';document.getElementById('ls-cc').textContent='매물설명 '+txt.length+'자 생성 완료';
-    document.getElementById('ls-res').style.display='block';
-    document.getElementById('ls-txt').oninput=function(){document.getElementById('ls-cb').textContent=this.value.length+'자';};
+  var ld=document.getElementById('ls-load'), lt=document.getElementById('ls-ltxt');
+  ld.style.display='block'; lt.textContent='매물 자료를 모으는 중…';
+  var gather=window.sdListingFacts ? window.sdListingFacts(p,function(t){lt.textContent=t;}) : Promise.resolve(null);
+  gather.catch(function(){return null;}).then(function(F){
+    ld.style.display='none';
+    var rules='\n\n[작성 규칙]\n- 위 자료에 있는 사실·숫자만 쓰세요. 자료에 없는 층수·시세·학교·브랜드 평가·개발 호재는 지어내지 마세요.\n'
+      +'- "영구", "보장", "최고", "유일", "확정" 같은 단정·과장 표현은 쓰지 마세요 (부동산 표시·광고 규정).\n'
+      +'- 가격·시세 비교는 [실거래] 자료가 있을 때만, "국토부 실거래 기준"이라고 밝혀서 쓰세요.\n'
+      +'- 소유주 이름·연락처·호수는 쓰지 마세요.\n'
+      +'- 시공사는 회사명(예: 포스코건설)으로만 쓰고 "(주)"는 빼세요.';
+    var form='\n\n아래 형식으로 작성하세요.\n\n📝 매물 상세 정보\n✨ 안녕하세요! 송도 21년 차 전문가, 송도제일공인중개사사무소입니다 😃.\n\n🌟 매물 핵심 포인트\n✅ **[포인트명]**: [설명] (4~6개)\n\n이모지 풍부하게. 700자 이내. 머리말·설명 없이 본문만.';
+    var head='당신은 인천 연수구 송도국제도시 전문 공인중개사(송도제일공인중개사사무소) 매물 상세설명 전문가입니다.';
+    var useData=!!(F&&F.found&&(F.kapt||F.br));
+    var prompt, opts, msg;
+    if(useData){
+      prompt=head+'\n\n아래는 송도제일 업무시스템(SJRWS)이 확인한 자료입니다.\n\n[매물 정보]\n'+F.mine+(ext?'\n- 추가 강조: '+ext:'')
+        +(F.kapt?'\n\n[단지 정보 · 공동주택관리정보시스템(K-apt)]\n'+F.kapt:'')
+        +(F.br?'\n\n[건축물대장 · 국토교통부]\n'+F.br:'')
+        +(F.deal?'\n\n'+F.deal:'')
+        +rules+form;
+      opts={search:false,maxTokens:1800}; msg='SJRWS 자료로 작성하고 있습니다…';
+    } else {
+      prompt=head+'\n\n[매물 정보]\n'+(F?F.mine:'- 매물 종류: '+p.propertyType+'\n- 단지명: '+p.complexName)+(ext?'\n- 추가 강조: '+ext:'')
+        +'\n\nSJRWS 에 이 단지 자료가 없어 웹검색으로 "'+p.complexName+'" 의 실제 정보(세대수·준공·주변 시설)를 확인해 쓰세요. 확인되지 않는 내용과 출처가 불분명한 시세는 쓰지 마세요.'
+        +rules.replace('위 자료에 있는 사실·숫자만','위 자료와 웹검색으로 확인한 사실·숫자만')+form;
+      opts={search:true}; msg='SJRWS 에 단지 자료가 없어 웹검색으로 확인하고 있습니다…';
+    }
+    callAPI(prompt,'ls-load','ls-ltxt',msg,function(txt,usage){
+      document.getElementById('ls-txt').value=txt;document.getElementById('ag-txt').value=AGENCY;
+      loadSavedListingSelect();
+      document.getElementById('ls-cb').textContent=txt.length+'자';
+      var srcs=useData?F.src.join(' · '):'매물 입력값 · 웹검색';
+      document.getElementById('ls-cc').textContent='매물설명 '+txt.length+'자 생성 완료';
+      var info=document.getElementById('ls-info');
+      if(!info){
+        info=document.createElement('div'); info.id='ls-info';
+        info.style.cssText='font-size:11.5px;color:#555;background:#f8f9fb;border:0.5px solid #e3e6ee;border-radius:10px;padding:8px 12px;margin-bottom:10px;line-height:1.7';
+        var res=document.getElementById('ls-res'); res.insertBefore(info,res.children[1]||null);
+      }
+      info.innerHTML='';
+      function line(t,c){var d=document.createElement('div');d.textContent=t;if(c)d.style.color=c;info.appendChild(d);}
+      line('📚 쓴 자료: '+srcs+(useData?'':'  ※ SJRWS 단지 자료가 없어 웹검색 사용 — 숫자를 꼭 확인하세요'), useData?'#1b5e20':'#b45309');
+      if(F&&F.warn&&F.warn.length) line('ℹ️ '+F.warn.join(' · '),'#888');
+      if(usage) line(apiCost(usage),'#555');
+      var det=document.createElement('details'); det.style.marginTop='2px';
+      var sm=document.createElement('summary'); sm.textContent='🔎 AI 에 넘긴 자료 보기'; sm.style.cursor='pointer'; det.appendChild(sm);
+      var pre=document.createElement('pre'); pre.style.cssText='white-space:pre-wrap;font-size:11px;margin:6px 0 0;max-height:260px;overflow:auto;background:#fff;border:0.5px solid #e3e6ee;border-radius:8px;padding:8px';
+      pre.textContent=prompt.split('\n\n[작성 규칙]')[0]; det.appendChild(pre); info.appendChild(det);
+      document.getElementById('ls-res').style.display='block';
+      document.getElementById('ls-txt').oninput=function(){document.getElementById('ls-cb').textContent=this.value.length+'자';};
+    },opts);
   });
 }
 function reListing(){document.getElementById('ls-res').style.display='none';genListing();}
@@ -8678,7 +8744,7 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.10.11-2';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.10.11-3';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_props.html';      // 이 파일 이름
   var SD_NAME = '매물관리';      // 사람이 부르는 이름
 
@@ -12228,7 +12294,209 @@ textarea.bf-in{resize:vertical;line-height:1.6}
   if(typeof _e === 'function'){ window.editP = function(){ var r = _e.apply(this, arguments); var m = $('px-mgmt'); if(m) m.dataset.auto = ''; var g = $('px-gross'); if(g) g.dataset.auto = ''; later(); return r; }; }
   var _c = window.clearF;
   if(typeof _c === 'function'){ window.clearF = function(){ var r = _c.apply(this, arguments); var m = $('px-mgmt'); if(m){ m.dataset.auto = ''; } var g = $('px-gross'); if(g) g.dataset.auto = ''; var h = $('px-mgmt-auto'); if(h) h.innerHTML = ''; return r; }; }
-  window.sdMgmtAuto = { run:run, calc:calc, find:function(n){ return load().then(function(){ return find(n); }); }, load:load, key:key };
+  window.sdMgmtAuto = { run:run, calc:calc, find:function(n){ return load().then(function(){ return find(n); }); }, load:load, key:key,
+    get:function(n){ return load().then(function(){ var f = find(n); return f.c ? { code:f.c, apt:A[f.c], di:(DI.apt || {})[f.c] || null } : { code:null, many:!!f.many }; }); } };   // 상세페이지 자료(sdListingFacts)가 함께 쓴다
+})();
+</script>
+<script>
+/* ════════════════════════════════════════════════════════════════════
+   📝 상세페이지 자료 모으기 (2026-10-11) — window.sdListingFacts(p)
+   상세페이지 「AI 작성」이 웹검색 대신 SJRWS 안의 자료로 쓰게 한다. AI 에 넘기는 「확인된 자료」 를 만든다.
+   ① 매물 입력값 전부 — 기본 칸 + 사용승인일·공급면적·전용률·월 관리비·방/욕실·난방
+   ② K-apt 단지 자료 (sd_danji_info.json · sd_apt.json) — 세대·동·시공·주차·난방·학교·역·버스·편의·관리비
+   ③ 건축물대장 (국토교통부 표제부 · 총괄표제부, 데이터관리와 같은 인증키 sd_molit_key) — 지상/지하 층수·용도·구조·승강기·용적률
+      한 번 받으면 이 PC 에 90일 보관 (하루 호출 한도 아끼기)
+   ④ 국토부 실거래 (데이터관리가 Firebase sd_data 에 올린 자료, gzip) — 같은 단지 · 같은 전용 · 최근 12개월
+   소유주 이름·연락처·동호수(호)는 넘기지 않는다.
+   ════════════════════════════════════════════════════════════════════ */
+(function(){
+  'use strict';
+  var BR_T = 'https://apis.data.go.kr/1613000/BldRgstHubService/getBrTitleInfo';
+  var BR_R = 'https://apis.data.go.kr/1613000/BldRgstHubService/getBrRecapTitleInfo';
+  var UMD_FALLBACK = { '28185': { '옥련동':'10100','선학동':'10200','연수동':'10300','청학동':'10400','동춘동':'10500','송도동':'10600' } };
+  var BRC = 'sd_br_cache_v1', BRC_DAYS = 90;
+
+  //  기다림 상한 — 연결이 느리거나 끊겨도 「모으는 중…」에 멈추지 않게
+  function limit(pr, ms, why){ return Promise.race([pr, new Promise(function(_, no){ setTimeout(function(){ no(new Error(why)); }, ms); })]); }
+  function sget(k){
+    var v = null; try{ v = localStorage.getItem(k); }catch(e){}
+    try{
+      if(window.storage && window.storage.get) return limit(Promise.resolve(window.storage.get(k)), 2500, 't').then(function(r){ return (r && r.value) || v; }, function(){ return v; });
+    }catch(e){}
+    return Promise.resolve(v);
+  }
+  function eok(man){ man = Math.round(+man || 0); if(!man) return ''; var e = Math.floor(man / 10000), r = man % 10000;
+    return (e ? e + '억' : '') + (r ? (e ? ' ' : '') + r.toLocaleString() + '만' : '') + '원'; }
+  function num(v){ var x = parseFloat(String(v == null ? '' : v).replace(/[^0-9.\-]/g, '')); return isNaN(x) ? 0 : x; }
+  function ymd(s){ s = String(s || '').replace(/[^0-9]/g, ''); return s.length >= 8 ? s.slice(0,4) + '.' + s.slice(4,6) + '.' + s.slice(6,8) : ''; }
+  function nkey(x){ return window.sdMgmtAuto ? window.sdMgmtAuto.key(x) : String(x || '').replace(/\s+/g, ''); }
+
+  // ── ③ 건축물대장 ───────────────────────────────────────────
+  function cacheGet(code){ try{ var c = JSON.parse(localStorage.getItem(BRC) || '{}')[code]; if(c && Date.now() - c.ts < BRC_DAYS * 864e5) return c.d; }catch(e){} return null; }
+  function cachePut(code, d){ try{ var c = JSON.parse(localStorage.getItem(BRC) || '{}'); c[code] = { ts:Date.now(), d:d }; localStorage.setItem(BRC, JSON.stringify(c)); }catch(e){} }
+  function items(j){
+    if(j && j.OpenAPI_ServiceResponse){ var em = String((j.OpenAPI_ServiceResponse.cmmMsgHeader || {}).errMsg || ''); throw new Error(/NOT_REGISTERED|NO_OPENAPI/.test(em) ? '건축물대장 활용신청 필요' : /LIMITED/.test(em) ? '오늘 호출 한도 초과' : (em || '건축물대장 오류')); }
+    var l = (((j || {}).response || {}).body || {}).items; l = (l && l.item) || [];
+    return Array.isArray(l) ? l : [l];
+  }
+  function ask(url, key, sgg, bj, jb){
+    var m = String(jb).match(/^(\d+)(?:-(\d+))?/); if(!m) return Promise.resolve([]);
+    var u = url + '?serviceKey=' + encodeURIComponent(key) + '&sigunguCd=' + sgg + '&bjdongCd=' + bj + '&platGbCd=0'
+          + '&bun=' + ('000' + m[1]).slice(-4) + '&ji=' + ('000' + (m[2] || '0')).slice(-4) + '&numOfRows=200&pageNo=1&_type=json';
+    return fetch(u).then(function(r){ return r.text(); }).then(function(t){ var j; try{ j = JSON.parse(t); }catch(e){ throw new Error('건축물대장 응답을 읽지 못함'); } return items(j); });
+  }
+  function ledger(code, apt){
+    var c = cacheGet(code); if(c) return Promise.resolve(c);
+    var sgg = '28185', umd = String(apt.d || '송도동'), js = (apt.j || []).slice(0, 3);
+    if(!js.length) return Promise.reject(new Error('지번 없음'));
+    return Promise.all([sget('sd_molit_key'), sget('sd_umd_codes')]).then(function(v){
+      var key = String(v[0] || '').trim(); if(!key) throw new Error('국토부 인증키 없음(데이터관리에서 등록)');
+      var U = {}; try{ U = JSON.parse(v[1] || '{}') || {}; }catch(e){}
+      var bj = (U[sgg] || {})[umd] || (UMD_FALLBACK[sgg] || {})[umd]; if(!bj) throw new Error('법정동코드 없음(' + umd + ')');
+      return Promise.all(js.map(function(jb){ return Promise.all([ask(BR_T, key, sgg, bj, jb), ask(BR_R, key, sgg, bj, jb).catch(function(){ return []; })]); }));
+    }).then(function(rs){
+      var T = [], R = [];
+      rs.forEach(function(x){ T = T.concat(x[0]); R = R.concat(x[1]); });
+      var main = T.filter(function(x){ return /공동주택|아파트/.test(String(x.mainPurpsCdNm || '') + String(x.etcPurps || '')); });
+      if(!main.length) main = T.filter(function(x){ return num(x.grndFlrCnt) >= 5; });
+      if(!T.length) throw new Error('건축물대장에 자료 없음');
+      var fl = main.map(function(x){ return num(x.grndFlrCnt); }).filter(Boolean), ug = T.map(function(x){ return num(x.ugrndFlrCnt); });
+      var st = {}; main.forEach(function(x){ var s = String(x.strctCdNm || '').trim(); if(s) st[s] = (st[s] || 0) + 1; });
+      var ua = main.map(function(x){ return String(x.useAprDay || '').trim(); }).filter(Boolean).sort();
+      var ev = main.reduce(function(a, x){ return a + num(x.rideUseElvtCnt) + num(x.emgenUseElvtCnt); }, 0);
+      var rc = R[0] || {};
+      var d = {
+        dongs: main.length, flMax: fl.length ? Math.max.apply(null, fl) : 0, flMin: fl.length ? Math.min.apply(null, fl) : 0,
+        ugMax: ug.length ? Math.max.apply(null, ug) : 0,
+        purp: String((main[0] || {}).mainPurpsCdNm || '').trim(),
+        strct: Object.keys(st).sort(function(a, b){ return st[b] - st[a]; })[0] || '',
+        useApr: ymd(rc.useAprDay) || ymd(ua[0]), elev: ev,
+        vlRat: num(rc.vlRat), bcRat: num(rc.bcRat), pk: num(rc.totPkngCnt), hh: num(rc.hhldCnt)
+      };
+      cachePut(code, d); return d;
+    });
+  }
+
+  // ── ④ 실거래 (Firebase sd_data · gzip) ───────────────────────
+  var DEALS = null, DEALQ = null;
+  function b64u8(b64){ var bin = atob(b64), u = new Uint8Array(bin.length); for(var i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return u; }
+  function gunzip(v){
+    var b64 = Array.isArray(v) ? v.join('') : (v && typeof v === 'object') ? Object.keys(v).sort(function(a, b){ return a - b; }).map(function(k){ return v[k] || ''; }).join('') : (v || '');
+    if(!b64) return Promise.resolve([]);
+    if(typeof DecompressionStream === 'undefined') return Promise.reject(new Error('압축 해제 미지원 브라우저'));
+    var ds = new DecompressionStream('gzip'), w = ds.writable.getWriter(); w.write(b64u8(b64)); w.close();
+    return new Response(ds.readable).arrayBuffer().then(function(buf){ return JSON.parse(new TextDecoder().decode(buf)); });
+  }
+  function deals(){
+    if(DEALS) return Promise.resolve(DEALS);
+    if(DEALQ) return DEALQ;
+    var db = window._fbDb, g = window._fbGet, rf = window._fbRef;
+    if(!db || !g || !rf) return Promise.reject(new Error('Firebase 연결 전'));
+    DEALQ = g(rf(db, 'sd_data')).then(function(s){
+      var d = s && s.exists() ? s.val() : null; if(!d) return { sale:[], rent:[], upd:'' };
+      return Promise.all([d.sale_gz ? gunzip(d.sale_gz) : (d.sale_data || []), d.rent_gz ? gunzip(d.rent_gz) : (d.rent_data || [])])
+        .then(function(v){ DEALS = { sale:v[0] || [], rent:v[1] || [], upd:(d.meta || {}).updated || '' }; return DEALS; });
+    });
+    DEALQ.catch(function(){ DEALQ = null; });
+    return DEALQ;
+  }
+  function pickName(rows, names){
+    var ks = names.map(nkey).filter(function(k){ return k && k.length >= 3; }), set = {};
+    rows.forEach(function(r){ var n = r.단지명 || r['단지명']; if(n) set[n] = 1; });
+    var all = Object.keys(set), hit = all.filter(function(n){ return ks.indexOf(nkey(n)) >= 0; });
+    if(hit.length === 1) return hit[0];
+    if(hit.length > 1) return null;
+    hit = all.filter(function(n){ var k = nkey(n); return k.length >= 3 && ks.some(function(q){ return k.indexOf(q) >= 0 || q.indexOf(k) >= 0; }); });
+    return hit.length === 1 ? hit[0] : null;
+  }
+  function dealFacts(D, deal, names, sq){
+    var rent = deal !== '매매', rows = rent ? D.rent : D.sale;
+    var nm = pickName(rows, names); if(!nm) return null;
+    var now = new Date(), cut = (now.getFullYear() - 1) * 100 + (now.getMonth() + 1);
+    var L = rows.filter(function(r){
+      var a = num(r.전용 || r['전용(㎡)']);
+      if((r.단지명 || r['단지명']) !== nm || Math.abs(a - sq) > 0.6 || num(r.계약년월) < cut) return false;
+      if(!rent) return !r.해제사유 && num(r.거래금액) > 0;
+      var mo = num(r.월세금액); return deal === '전세' ? mo === 0 && num(r.보증금액) > 0 : mo > 0;
+    }).sort(function(a, b){ return (num(b.계약년월) * 100 + num(b.계약일)) - (num(a.계약년월) * 100 + num(a.계약일)); });
+    if(!L.length) return { nm:nm, n:0 };
+    function ym(r){ var s = String(num(r.계약년월)); return s.slice(0, 4) + '.' + s.slice(4, 6); }
+    var v = L.map(function(r){ return rent ? num(r.보증금액) : num(r.거래금액); });
+    var lines = L.slice(0, 5).map(function(r){
+      return '  · ' + ym(r) + ' ' + (r.층 ? r.층 + '층 ' : '') + (rent ? (deal === '전세' ? '전세 ' + eok(r.보증금액) : '보증금 ' + eok(r.보증금액) + ' / 월 ' + num(r.월세금액) + '만원') : eok(r.거래금액));
+    });
+    var avg = Math.round(v.reduce(function(a, b){ return a + b; }, 0) / v.length);
+    return { nm:nm, n:L.length, txt:'[국토부 실거래 · ' + deal + ' · 전용 ' + sq + '㎡ 같은 평형 · 최근 12개월 ' + L.length + '건' + (D.upd ? ' · 자료 ' + D.upd : '') + ']\n'
+      + '- ' + (rent ? '보증금 ' : '') + '평균 ' + eok(avg) + ' · 최고 ' + eok(Math.max.apply(null, v)) + ' · 최저 ' + eok(Math.min.apply(null, v)) + '\n- 최근 거래\n' + lines.join('\n') };
+  }
+
+  // ── ② K-apt 단지 자료 문장 ───────────────────────────────────
+  function kaptFacts(a, di, sq, hasFee){
+    var o = [], L = di.loc || {};
+    function add(k, v){ if(v !== '' && v != null && v !== 0) o.push('- ' + k + ': ' + v); }
+    add('단지명(K-apt)', a.n || di.n);
+    add('사용승인(K-apt)', di.use || a.y);
+    add('규모', (di.b || a.b ? (di.b || a.b) + '개 동 ' : '') + (di.h || a.h ? (di.h || a.h) + '세대' : ''));
+    if(di.sizes && sq){ var bs = null; di.sizes.forEach(function(s){ if(Math.abs(s[0] - sq) < 0.6 && (!bs || Math.abs(s[0] - sq) < Math.abs(bs[0] - sq))) bs = s; });
+      if(bs) add('이 평형', '전용 ' + bs[0] + '㎡ · 공급 ' + bs[2] + '㎡ · 단지 내 ' + bs[1] + '세대'); }
+    add('시공', di.builder); add('시행', di.dev);
+    add('난방', di.heat || a.heat); add('복도', di.corr); add('관리', di.mgmt);
+    add('주차', di.park_u ? di.park_u.toLocaleString() + '대 (세대당 ' + di.park_ratio + '대)' : '');
+    add('승강기', di.elev ? di.elev + '대' : ''); add('CCTV', di.cctv ? di.cctv + '대' : ''); add('홈네트워크', di.homenet === '유' ? '있음' : '');
+    add('부대·복리시설', di.welfare);
+    add('지하철', L.st ? L.st + '역(' + (L.line || di.sub_line || '') + ') 직선 ' + Math.round(L.st_m) + 'm' : (di.sub_st ? di.sub_st + ' (' + (di.sub_line || '') + ')' : ''));
+    add('버스', L.bus_m ? '가장 가까운 정류장 ' + Math.round(L.bus_m) + 'm · 500m 안 정류장 ' + (L.bus500 || 0) + '곳' : di.bus_walk);
+    add('초등학교', L.elem ? L.elem + ' 직선 ' + Math.round(L.elem_m) + 'm' : '');
+    add('주변 학교(K-apt)', di.edu);
+    add('1km 안', [L.e1k ? '초교 ' + L.e1k : '', L.m1k ? '중학교 ' + L.m1k : '', L.hs1k ? '고교 ' + L.hs1k : '', L.acad1k ? '학원 ' + L.acad1k : '', L.hosp1k ? '의료기관 ' + L.hosp1k : '', L.mart1k ? '마트·슈퍼 ' + L.mart1k : ''].filter(Boolean).join(' · '));
+    add('주변 편의(K-apt)', di.conv);
+    if(!hasFee && a.fee && a.k && sq){ var ar = sq * a.k, ym = String(a.fee.ym || ''); add('관리비(단지평균 ' + ym.slice(0, 4) + '.' + (+ym.slice(4, 6)) + ')', '약 ' + Math.round((a.fee.pub + a.fee.ind) * ar / 1000) / 10 + '만원/월 (공용+개별, 장기수선충당금 ' + Math.round(a.fee.ltr * ar / 1000) / 10 + '만원 별도)'); }
+    return o.join('\n');
+  }
+
+  // ── 모으기 ──────────────────────────────────────────────────
+  window.sdListingFacts = function(p, say){
+    say = say || function(){};
+    var sq = num(p.areaInfo), deal = /월세|임대/.test(p.propertyType) ? '월세' : /전세/.test(p.propertyType) ? '전세' : '매매';
+    var src = [], warn = [];
+    //  ① 매물 입력값 (개인정보·호수 제외)
+    var un = String(p.unitInfo || ''), dongOnly = (un.match(/\d+\s*동/) || [''])[0];
+    var mine = [];
+    function m(k, v){ v = String(v == null ? '' : v).trim(); if(v && v !== '㎡') mine.push('- ' + k + ': ' + v); }
+    m('매물 종류', p.propertyType); m('단지명', p.complexName); m('동', p.naverDong || dongOnly);
+    m('전용면적', p.areaInfo); m('공급면적', p.pxGross ? p.pxGross + '㎡' : '');
+    if(num(p.pxGross) && sq) m('전용률', (sq / num(p.pxGross) * 100).toFixed(1) + '%');
+    m('층', p.floorInfo); m('향', p.direction); m('가격', typeof priceTxt === 'function' ? priceTxt(p) : '');
+    m('입주', p.moveIn || '협의'); m('사용승인일(건축물대장)', p.useApr); m('월 관리비', p.pxMgmt);
+    m('방/욕실', p.pxRooms); m('난방', p.pxHeat); m('소장 메모', p.memo);
+    src.push('매물 입력값');
+    var out = { mine:mine.join('\n'), kapt:'', br:'', deal:'', src:src, warn:warn, found:false };
+    if(!/^아파트/.test(p.propertyType || '') || !window.sdMgmtAuto) return Promise.resolve(out);
+    say('단지 자료(K-apt)를 찾는 중…');
+    return window.sdMgmtAuto.get(p.complexName).then(function(K){
+      if(!K.code){ warn.push(K.many ? '단지명이 여러 단지와 비슷함' : 'K-apt 자료에 없는 단지'); return out; }
+      out.found = true; out.kaptName = K.apt.n;
+      if(K.di){ out.kapt = kaptFacts(K.apt, K.di, sq, !!String(p.pxMgmt || '').trim()); src.push('K-apt 단지'); }
+      say('건축물대장 · 실거래를 불러오는 중… (처음 한 번은 몇 초 걸립니다)');
+      var tBr = limit(ledger(K.code, K.apt), 12000, '응답이 늦어 건너뜀').then(function(d){
+        var o = [];
+        if(d.dongs) o.push('- 주거동 ' + d.dongs + '개' + (d.flMax ? ' · 지상 ' + (d.flMin !== d.flMax ? d.flMin + '~' : '') + d.flMax + '층' : '') + (d.ugMax ? ' · 지하 ' + d.ugMax + '층' : ''));
+        if(d.useApr) o.push('- 사용승인일: ' + d.useApr);
+        if(d.purp) o.push('- 주용도: ' + d.purp); if(d.strct) o.push('- 구조: ' + d.strct);
+        if(d.elev) o.push('- 승강기(주거동 합계): ' + d.elev + '대');
+        if(d.vlRat) o.push('- 용적률 ' + d.vlRat + '%' + (d.bcRat ? ' · 건폐율 ' + d.bcRat + '%' : ''));
+        if(d.pk) o.push('- 총 주차(대장): ' + d.pk.toLocaleString() + '대');
+        out.br = o.join('\n'); if(out.br) src.push('건축물대장');
+      }).catch(function(e){ warn.push('건축물대장: ' + e.message); });
+      var tDeal = (sq ? limit(deals(), 25000, '불러오기가 늦어 건너뜀') : Promise.reject(new Error('전용면적 없음'))).then(function(D){
+        var f = dealFacts(D, deal, [p.complexName, K.apt.n], sq);
+        if(!f){ warn.push('실거래: 단지명을 맞추지 못함'); return; }
+        if(!f.n){ warn.push('실거래: 최근 12개월 같은 평형 ' + deal + ' 없음'); return; }
+        out.deal = f.txt; src.push('실거래 ' + f.n + '건');
+      }).catch(function(e){ warn.push('실거래: ' + e.message); });
+      return Promise.all([tBr, tDeal]).then(function(){ return out; });
+    });
+  };
 })();
 </script>
 </body>
