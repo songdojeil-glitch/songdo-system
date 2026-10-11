@@ -1050,7 +1050,7 @@ window.addEventListener('load', function() {
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
       <div><label class="fl">접수일</label><input id="f-rdate" type="date" class="fi"></div>
       <div><label class="fl">접수 경로</label>
-        <select id="f-route" class="fi"><option value="">선택</option><option>내방</option><option>전화</option><option>문자</option><option>카톡</option><option>지인소개</option><option>기존고객</option><option>타업소</option></select>
+        <select id="f-route" class="fi"><option value="">선택</option><option>내방</option><option>전화</option><option>문자</option><option>카톡</option><option>지인소개</option><option>기존고객</option><option>직방요청</option><option>타업소</option></select>
       </div>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:12px;margin-bottom:12px;align-items:end">
@@ -2904,6 +2904,14 @@ function saveProp(){
   }
   clearF();
 }
+/* 접수경로 고르기 — 예전 「직방」(직방 가격 제안에서 넘어온 매물)은 「직방요청」으로 맞추고,
+   목록에 없는 값(네이버자사·핵심매물 등)은 칸에 덧붙여 두어 수정·저장 때 지워지지 않게 한다 (2026-10-11) */
+function setRouteSel(v){
+  var e=document.getElementById('f-route'); if(!e) return;
+  v=String(v||''); if(v==='직방') v='직방요청';
+  if(v && ![].some.call(e.options,function(o){return (o.value||o.text)===v;})){ var o=document.createElement('option'); o.textContent=v; e.appendChild(o); }
+  e.value=v;
+}
 function clearF(){
   ['f-cx','f-un','f-fl','fp-ma','fp-su','fp-b1','fp-b2','fp-b3','fp-sb1','fp-sb2','fp-db1','fp-db2','fp-g','f-my','f-mm','f-mo','f-rdate','f-c1name','f-c1tel','f-c2name','f-c2tel','f-chkdate','f-lastmemo','f-md','f-mt'].forEach(function(id){var el=document.getElementById(id);if(el)el.value='';});
   // 면적 ㎡ 기본값 복원
@@ -3202,7 +3210,7 @@ document.getElementById('detail-modal').addEventListener('click',function(e){
 function editP(id){
   var p=props.find(function(x){return x.id===id;});if(!p)return;
   editId=id;sw(1);document.getElementById('f-type').value=p.propertyType;onTC();
-  document.getElementById('f-cx').value=p.complexName||'';document.getElementById('f-un').value=(p.naverDong&&p.unitInfo?p.naverDong+' '+p.unitInfo:p.naverDong||p.unitInfo||'');document.getElementById('f-ar').value=p.areaInfo||'';document.getElementById('f-fl').value=p.floorInfo||'';document.getElementById('f-di').value=p.direction||'';document.getElementById('f-mo').value=p.memo||'';document.getElementById('f-rdate').value=p.receiveDate||'';document.getElementById('f-route').value=p.route||'';document.getElementById('f-c1name').value=p.c1name||'';document.getElementById('f-c1tel').value=p.c1tel||'';document.getElementById('f-c2name').value=p.c2name||'';document.getElementById('f-c2tel').value=p.c2tel||'';
+  document.getElementById('f-cx').value=p.complexName||'';document.getElementById('f-un').value=(p.naverDong&&p.unitInfo?p.naverDong+' '+p.unitInfo:p.naverDong||p.unitInfo||'');document.getElementById('f-ar').value=p.areaInfo||'';document.getElementById('f-fl').value=p.floorInfo||'';document.getElementById('f-di').value=p.direction||'';document.getElementById('f-mo').value=p.memo||'';document.getElementById('f-rdate').value=p.receiveDate||'';setRouteSel(p.route||'');document.getElementById('f-c1name').value=p.c1name||'';document.getElementById('f-c1tel').value=p.c1tel||'';document.getElementById('f-c2name').value=p.c2name||'';document.getElementById('f-c2tel').value=p.c2tel||'';
   var c1c=document.getElementById('f-c1carrier');if(c1c)c1c.value=p.c1carrier||'';
   var c2c=document.getElementById('f-c2carrier');if(c2c)c2c.value=p.c2carrier||'';document.getElementById('f-chkdate').value=p.checkDate||'';document.getElementById('f-lastmemo').value=p.lastMemo||'';document.getElementById('f-naver').checked=!!p.naver;
   if(p.propertyType==='아파트 분양권 매매'){document.getElementById('fp-b1').value=p.bun||'';document.getElementById('fp-b2').value=p.opt||'';document.getElementById('fp-b3').value=p.pre||'';calcB();}else if(p.propertyType==='상가 분양권 매매'){document.getElementById('fp-sb1').value=p.bun||'';document.getElementById('fp-sb2').value=p.pre||'';calcSB();}else if(p.propertyType==='분양상가 매매'){document.getElementById('fp-db1').value=p.bun||'';document.getElementById('fp-db2').value=p.vat||'';calcDB();}else{document.getElementById('fp-ma').value=p.pm||'';document.getElementById('fp-su').value=p.ps||'';document.getElementById('fp-g').value=p.gw||'';}
@@ -8670,7 +8678,7 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.10.10-4';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.10.11-1';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_props.html';      // 이 파일 이름
   var SD_NAME = '매물관리';      // 사람이 부르는 이름
 
@@ -11507,7 +11515,7 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
      직방 가격 제안 → 매물 등록 (데이터관리 탭 26 「🏠 매물 등록으로 넘기기」)
      · sd_props.html?po={가격제안 id} 로 열린다. 내용은 같은 PC의 localStorage 'sjrws_po_handoff'
        (연락처가 들어 있어 주소창에 싣지 않는다 — 받자마자 지운다), 없으면 파이어베이스 sd/sd_price_offers/{id}
-     · 매물 등록 양식을 비우고 채운다: 종류·단지·동/호·전용·공급·층·향·제안가·접수일·경로(직방)·소유주·입주(집주인 거주→협의)·주요정보·메모
+     · 매물 등록 양식을 비우고 채운다: 종류·단지·동/호·전용·공급·층·향·제안가·접수일·경로(직방요청)·소유주·입주(집주인 거주→협의)·주요정보·메모
      · 「매물 저장」이 끝나면 매물에 poId 를 붙이고, 가격 제안 기록은 상태 「매물 등록 완료」 + propId 로 바꾼다
      · 이미 이 가격 제안으로 등록한 매물이 있으면 새로 만들지 않고 그 매물을 수정으로 열지 묻는다
      ═══════════════════════════════════════════════════════════════════════ -->
@@ -11567,7 +11575,7 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
     if(num(rec.price)) setVal('fp-ma', wonTxt(rec.price));
     if(q.sup) setVal('px-gross', String(q.sup));
     setVal('f-rdate', today());
-    setSel('f-route', '직방');
+    setSel('f-route', '직방요청');
     var who = deal === '매매' ? '매도인' : '임대인';
     if(rec.owner) setVal('f-c1name', who + ' ' + rec.owner);
     if(rec.ownerTel) setVal('f-c1tel', rec.ownerTel);
