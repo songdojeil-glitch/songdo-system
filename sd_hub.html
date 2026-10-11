@@ -2162,7 +2162,7 @@ function hbMount(){
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.10.08-2';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.10.12-1';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_hub.html';      // 이 파일 이름
   var SD_NAME = '허브';      // 사람이 부르는 이름
 
@@ -3001,6 +3001,149 @@ function hbMount(){
   window.addEventListener('resize', fit);
   try{ new MutationObserver(function(){ fit(); }).observe(document.body, { childList:true }); }catch(e){}
   window.sdBrand = { fit:fit, scale:scale };
+})();
+</script>
+<!-- ═════════════════════════════════════════════════════════════════
+     🏠 홈페이지 뉴스 등록 (2026-10-12)
+     · 뉴스 줄의 「🏠 홈페이지 등록」 → 기간(기본: 이번 달 1일 ~ 오늘)의 허브 뉴스 중 아직 안 올린 기사를 모아
+       송도국제도시 → 「송도국제도시뉴스」, 부동산&경제 → 「부동산핫뉴스」 로 나눠 보여 준다
+     · 「① 관리자 창 열기」 → 송도제일 홈페이지 관리자(부동산뉴스관리)가 새 창으로 열림
+       → 그 창에서 즐겨찾기 「SJRWS 뉴스등록」 한 번 → 기사를 받아 차례로 등록 (sd_home_news.js)
+     · 등록한 기사는 Firebase sd/sd_news_home 에 적어 두고, 다음엔 빼고 보여 준다 (두 번 올라가지 않게)
+     · 홈페이지 로그인은 관리자 창에서 대표님이 직접 (SJRWS 는 비밀번호를 갖고 있지 않다)
+     · 언론사가 도메인(asiatime.co.kr 등)으로 들어온 기사는 한글 이름으로 바꿔 올린다
+     ═════════════════════════════════════════════════════════════════ -->
+<script>
+(function(){
+  'use strict';
+  if(window.__hbhOn) return; window.__hbhOn = true;
+  var ADMIN = 'http://www.songdojeil.com/new/?mo=admin&mid=adminNews';
+  var HOME_RE = /^https?:\/\/(www\.)?songdojeil\.com$/;
+  var REG = 'sd_news_home';
+  var BM = "javascript:(function(){var s=document.createElement('script');s.charset='utf-8';s.src='https://songdojeil-glitch.github.io/songdo-system/sd_home_news.js?v='+Date.now();document.body.appendChild(s);})();";
+  var PRESS = { 'asiatime.co.kr':'아시아타임즈', 'ngetnews.com':'뉴스저널리즘', 'theguru.co.kr':'더구루', 'mygoyang.com':'고양신문', 'dnews.co.kr':'대한경제',
+    'viva100.com':'브릿지경제', 'dailymedi.com':'데일리메디', 'kado.net':'강원도민일보', 'ppss.kr':'ㅍㅍㅅㅅ', 'wikitree.co.kr':'위키트리', 'voakorea.com':'VOA',
+    'hitnews.co.kr':'히트뉴스', 'cstimes.com':'컨슈머타임스', 'hapt.co.kr':'한국아파트신문',
+    'kwnews.co.kr':'강원일보', 'sisajournal-e.com':'시사저널e', 'm-i.kr':'매일일보' };
+  var ITEMS = [], REGMAP = {}, WIN = null;
+  function $(id){ return document.getElementById(id); }
+  function esc(s){ return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+  function ds(d){ return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
+  function norm(v){ if(typeof v === 'string'){ try{ v = JSON.parse(v); }catch(e){ v = null; } } return v && typeof v === 'object' ? v : null; }
+  async function sget(k){ try{ var r = await window.storage.get(k); return r ? norm(r.value) : null; }catch(e){ return null; } }
+  async function sset(k, v){ if(!window.storage || !window.storage.set) throw new Error('저장소 없음'); var r = await window.storage.set(k, JSON.stringify(v)); if(!r) throw new Error('저장 실패'); }
+  function ukey(x){ return String(x.url || '').split('#')[0] || ('t:' + x.t); }
+  window.hbhKey = ukey;
+
+  function css(){
+    if($('hbh-css')) return;
+    var s = document.createElement('style'); s.id = 'hbh-css';
+    s.textContent = '.hbh-ov{position:fixed;inset:0;z-index:9500;background:rgba(0,0,0,.45);display:flex;align-items:flex-start;justify-content:center;padding:6vh 14px;overflow:auto}'
+      + '.hbh-m{width:min(720px,100%);background:var(--bg2,#fff);color:var(--text,#111);border:1px solid var(--border,#ddd);border-radius:14px;padding:18px 20px;box-shadow:0 20px 50px rgba(0,0,0,.3)}'
+      + '.hbh-m h3{margin:0 0 4px;font-size:16px}.hbh-m .sub{font-size:12px;color:var(--text3,#777);margin-bottom:12px;line-height:1.6}'
+      + '.hbh-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px;font-size:13px}'
+      + '.hbh-row input[type=date]{padding:5px 8px;border:1px solid var(--border,#ddd);border-radius:8px;background:var(--bg,#fff);color:inherit;font:inherit}'
+      + '.hbh-sum{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 10px}.hbh-sum span{font-size:12.5px;padding:4px 10px;border-radius:20px;background:var(--bg3,#f1f3f5)}'
+      + '.hbh-list{max-height:34vh;overflow:auto;border:1px solid var(--border,#ddd);border-radius:10px;font-size:12px}'
+      + '.hbh-list div{display:flex;gap:8px;padding:5px 9px;border-bottom:1px solid var(--border,#eee)}.hbh-list div:last-child{border-bottom:0}'
+      + '.hbh-list b{flex-shrink:0;font-size:10.5px;padding:0 6px;border-radius:4px;align-self:center}.hbh-list .S{background:rgba(79,142,247,.15);color:#3b6fd8}.hbh-list .H{background:rgba(232,92,92,.15);color:#d0504a}'
+      + '.hbh-list i{font-style:normal;color:var(--text3,#888);flex-shrink:0}.hbh-list span{flex:1;min-width:0}'
+      + '.hbh-steps{margin:12px 0 0;padding:12px 14px;border-radius:10px;background:var(--bg3,#f6f7f9);font-size:12.5px;line-height:1.8}'
+      + '.hbh-bm{display:inline-block;padding:3px 10px;border-radius:7px;background:#14213d;color:#fff!important;text-decoration:none;font-weight:700;cursor:grab}'
+      + '.hbh-res{margin-top:10px;font-size:13px;font-weight:700}';
+    document.head.appendChild(s);
+  }
+  async function collect(from, to){
+    var out = [], seen = {}, d = new Date(from + 'T00:00:00'), end = new Date(to + 'T00:00:00');
+    for(; d <= end; d.setDate(d.getDate() + 1)){
+      var day = ds(d), doc = await sget('sd_news/' + day); if(!doc) continue;
+      [['songdo', 'news_songdo'], ['econ', 'news_hot']].forEach(function(p){
+        var arr = (doc[p[0]] || []).filter(function(x){ return x && x.t && /^https?:\/\//i.test(x.url || ''); });
+        //  같은 날은 거꾸로 올린다 → 홈페이지 목록에서 허브 1번 기사가 위에 온다
+        arr.slice().reverse().forEach(function(x){
+          var k = ukey(x); if(seen[k]) return; seen[k] = 1;
+          out.push({ key:k, date:day, kind:p[1], subject:x.t, corp:PRESS[x.press] || x.press || '', link:x.url });
+        });
+      });
+    }
+    return out;
+  }
+  function paintList(){
+    var skip = $('hbh-skip').checked;
+    var L = ITEMS.filter(function(x){ return !(skip && REGMAP[x.key]); });
+    var nS = L.filter(function(x){ return x.kind === 'news_songdo'; }).length, done = ITEMS.length - L.length;
+    $('hbh-sum').innerHTML = '<span>🏙 송도국제도시뉴스 <b>' + nS + '</b></span><span>📈 부동산핫뉴스 <b>' + (L.length - nS) + '</b></span>'
+      + (done ? '<span>✓ 이미 올림 ' + done + '건 제외</span>' : '');
+    $('hbh-list').innerHTML = L.length ? L.slice().reverse().map(function(x){
+      return '<div><i>' + esc(x.date.slice(5)) + '</i><b class="' + (x.kind === 'news_songdo' ? 'S">송도' : 'H">부동산') + '</b><span>' + esc(x.subject) + '</span><i>' + esc(x.corp) + '</i></div>';
+    }).join('') : '<div style="justify-content:center;color:#888;padding:14px">올릴 새 기사가 없습니다</div>';
+    $('hbh-go').disabled = !L.length;
+    return L;
+  }
+  async function reload(){
+    $('hbh-list').innerHTML = '<div style="justify-content:center;color:#888;padding:14px">불러오는 중…</div>';
+    REGMAP = (await sget(REG)) || {};
+    ITEMS = await collect($('hbh-from').value, $('hbh-to').value);
+    paintList();
+  }
+  window.hbhOpen = function(){
+    css();
+    var now = new Date(), first = ds(new Date(now.getFullYear(), now.getMonth(), 1)), t = ds(now);
+    var ov = document.createElement('div'); ov.className = 'hbh-ov'; ov.id = 'hbh-ov';
+    ov.innerHTML = '<div class="hbh-m" role="dialog" aria-label="홈페이지 뉴스 등록">'
+      + '<h3>🏠 홈페이지 뉴스 등록</h3><div class="sub">허브 뉴스를 송도제일 홈페이지(www.songdojeil.com) 「부동산뉴스관리」에 올립니다. 🏙 송도국제도시 → 송도국제도시뉴스 · 📈 부동산&amp;경제 → 부동산핫뉴스</div>'
+      + '<div class="hbh-row">기간 <input type="date" id="hbh-from" value="' + first + '"> ~ <input type="date" id="hbh-to" value="' + t + '">'
+      + '<label style="margin-left:8px"><input type="checkbox" id="hbh-skip" checked> 이미 올린 기사 빼기</label></div>'
+      + '<div class="hbh-sum" id="hbh-sum"></div><div class="hbh-list" id="hbh-list"></div>'
+      + '<div class="hbh-steps"><b>올리는 법</b><br>'
+      + '① 아래 <b>「관리자 창 열기」</b> → 홈페이지 관리자가 새 창으로 열립니다 (로그인이 풀려 있으면 그 창에서 로그인)<br>'
+      + '② 그 창에서 즐겨찾기 막대의 <a class="hbh-bm" id="hbh-bm" title="이 단추를 즐겨찾기 막대로 끌어다 놓으세요 (처음 한 번)">SJRWS 뉴스등록</a> 을 누르면 차례로 등록됩니다<br>'
+      + '<small style="color:var(--text3,#888)">처음 한 번: 위의 「SJRWS 뉴스등록」 단추를 브라우저 즐겨찾기 막대로 끌어다 놓으세요 (Ctrl+Shift+B 로 막대 보이기). 이 허브 창은 등록이 끝날 때까지 닫지 마세요.</small></div>'
+      + '<div class="hbh-res" id="hbh-res"></div>'
+      + '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px"><button class="hb-btn" type="button" id="hbh-close">닫기</button>'
+      + '<button class="hb-btn" type="button" id="hbh-go" style="background:var(--accent,#3b6fd8);color:#fff;border-color:transparent">① 관리자 창 열기</button></div></div>';
+    document.body.appendChild(ov);
+    $('hbh-bm').setAttribute('href', BM);
+    $('hbh-bm').onclick = function(e){ e.preventDefault(); alert('이 단추는 여기서 누르는 것이 아니라 즐겨찾기 막대로 끌어다 놓는 것입니다.\n그 다음 홈페이지 관리자 창에서 즐겨찾기를 누르세요.'); };
+    ov.addEventListener('click', function(e){ if(e.target === ov) ov.remove(); });
+    $('hbh-close').onclick = function(){ ov.remove(); };
+    $('hbh-from').onchange = $('hbh-to').onchange = reload;
+    $('hbh-skip').onchange = paintList;
+    $('hbh-go').onclick = function(){
+      WIN = window.open(ADMIN, 'sjadm');
+      $('hbh-res').textContent = '② 열린 관리자 창에서 즐겨찾기 「SJRWS 뉴스등록」을 눌러 주세요…';
+    };
+    reload();
+  };
+
+  //  관리자 창(sd_home_news.js)과 주고받기 — 송도제일 홈페이지에서 온 메시지만 받는다
+  window.addEventListener('message', async function(e){
+    if(!HOME_RE.test(e.origin)) return;
+    var m = e.data || {};
+    if(m.sjrws === 'news-req'){
+      var L = $('hbh-ov') ? paintList() : [];
+      e.source.postMessage({ sjrws:'news-list', items:L }, e.origin);
+      if($('hbh-res')) $('hbh-res').textContent = '관리자 창으로 ' + L.length + '건을 넘겼습니다 — 그 창에서 확인을 누르면 등록됩니다.';
+    } else if(m.sjrws === 'news-done'){
+      var now = ds(new Date());
+      REGMAP = (await sget(REG)) || {};
+      (m.keys || []).forEach(function(k){ if(k) REGMAP[k] = now; });
+      try{ await sset(REG, REGMAP); }catch(err){}
+      if($('hbh-res')) $('hbh-res').textContent = '✅ 홈페이지 등록 ' + (m.ok || 0) + '건' + (m.fail ? ' · ⚠️ 실패 ' + m.fail + '건' : '') + (m.skip ? ' · 이미 있던 ' + m.skip + '건 건너뜀' : '') + ' — 올린 기사로 기록했습니다.';
+      if($('hbh-ov')) paintList();
+    }
+  });
+
+  //  뉴스 줄에 단추 달기 (뉴스 상자가 그려진 뒤)
+  function addBtn(){
+    var bt = document.querySelector('#hbn .hbn-bt'); if(!bt) return false;
+    if($('hbh-btn')) return true;
+    var b = document.createElement('button'); b.className = 'hb-btn'; b.type = 'button'; b.id = 'hbh-btn';
+    b.textContent = '🏠 홈페이지 등록'; b.title = '허브 뉴스를 송도제일 홈페이지 부동산뉴스관리에 올리기';
+    b.onclick = function(){ window.hbhOpen(); };
+    bt.appendChild(b); return true;
+  }
+  var tries = 0; (function wait(){ if(addBtn() || ++tries > 60) return; setTimeout(wait, 500); })();
 })();
 </script>
 </body>
