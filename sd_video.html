@@ -13,6 +13,7 @@
 <link rel="apple-touch-icon" sizes="180x180" href="sjrws-180.png">
 <!-- ═════════════════════════════════════════════════════════════════
      🎬 영상 (video) · 비디오 스튜디오 (sd_video.html)  v2026.10.04-3
+     · 2026.10.11-6: 입지 영상 화면 스타일 「🌃 네온사인」 — 지도를 어둡게(채도↓·보라 덧칠), 핀·거리 선·이름표·카드 테두리가 분홍/하늘색으로 빛남, 첫 제목 깜빡 켜짐. 입지 영상에서만 보임(styOf)
      · 2026.10.11-4: 🎭 출연진 관리 — 도구 탭(sd_video.html?embed=1&cast=1)에서 영상 작업 없이 내 출연진 등록·이름·픽스/무브·👄·AI 한꺼번에·지우기.
        입 벌림 「크게(지금 모양)/작게」(o.lipSz='s' — AI 벌린 입 그림을 위아래 78% · 그려 넣기 입도 작게), 👄 창·출연진 관리에서 고름
        「나오는 때 — 첫 장면·사무소 장면만(제목·연락처 화면만)」이 장면별로 고른 출연진에도 적용 (avEnds — 사진·영상은 첫·마지막 장면 포함)
@@ -577,7 +578,7 @@ html.sv-castm .sv-wrap{display:block!important}
    ═════════════════════════════════════════════════════════════════ */
 (function(){
 'use strict';
-var SD_VER = '2026.10.11-4';
+var SD_VER = '2026.10.11-6';
 window.SD_VERSION = SD_VER;
 var EMBED = /[?&]embed=1\b/.test(location.search);
 if(EMBED) document.documentElement.classList.add('sv-embed');
@@ -1794,8 +1795,14 @@ async function mixAudio(tl){
 var STY = {
   clean:{ n:'깔끔한 흰 자막', g1:'#1d3557', g2:'#0b1626', fg:'#ffffff', ac:'#ffd43b', sb:'rgba(255,255,255,.95)', sf:'#111418' },
   dark:{ n:'다크 시네마', g1:'#202024', g2:'#050506', fg:'#f5f5f2', ac:'#f2c94c', sb:'rgba(0,0,0,.74)', sf:'#ffffff' },
-  blue:{ n:'송도제일 블루', g1:'#1864ab', g2:'#0a2f57', fg:'#ffffff', ac:'#8ce99a', sb:'rgba(10,47,87,.9)', sf:'#ffffff' }
+  blue:{ n:'송도제일 블루', g1:'#1864ab', g2:'#0a2f57', fg:'#ffffff', ac:'#8ce99a', sb:'rgba(10,47,87,.9)', sf:'#ffffff' },
+  /* 🌃 네온사인 (2026-10-11 · 입지 영상 전용) — 지도를 어둡게 눌러 두고 핀·선·글자가 빛나게. 다크 시네마(차분한 어둠+금색)와 달리 형광 분홍·하늘색이 번져 보인다 */
+  neon:{ n:'🌃 네온사인', g1:'#140a2e', g2:'#04020c', fg:'#ffffff', ac:'#ff2bd6', ac2:'#00e5ff', sb:'rgba(10,4,26,.82)', sf:'#ffffff', neon:true, loc:true }
 };
+/* 지금 영상에 쓸 스타일 — 입지 영상 전용 스타일(네온)은 다른 영상에서는 다크 시네마로 */
+function styOf(){ var t = STY[OPT.style] || STY.clean; return t.loc && !(P && P.kind === 'loc') ? STY.dark : t; }
+var LNEON = null;   // 입지 영상 그리는 중 네온이면 그 스타일 (lPin·lLabel 등이 본다)
+function glow(ctx, col, b){ ctx.shadowColor = col; ctx.shadowBlur = b; ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 0; }
 var FONT = "'Noto Sans KR','Apple SD Gothic Neo','Malgun Gothic',sans-serif";
 var IMGS = {};
 function imgOf(s){ if(!s || !s.pic) return null; var c = IMGS[s.id]; if(c && c.src === s.pic) return c.el.complete && c.el.naturalWidth ? c.el : null; var el = new Image(); el.src = s.pic; IMGS[s.id] = { src:s.pic, el:el }; return null; }
@@ -1886,7 +1893,7 @@ function drawFrame(ctx, t, W, H, tl){
   if(P.kind === 'loc') return drawLocFrame(ctx, t, W, H, tl);
   if(P.kind === 'photo') return drawPhotoFrame(ctx, t, W, H, tl);
   if(P.kind === 'clip') return drawClipFrame(ctx, t, W, H, tl);
-  var sty = STY[OPT.style] || STY.clean, segs = tl.segs, gi = 0;
+  var sty = styOf(), segs = tl.segs, gi = 0;
   for(var i = 0; i < segs.length; i++){ if(t >= segs[i].t0) gi = i; }
   var g = segs[gi], local = t - g.t0;
   ctx.save(); ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
@@ -1900,7 +1907,7 @@ function drawFrame(ctx, t, W, H, tl){
     txt(ctx, author().office, u * 0.045, u * 0.05, u * 0.026, 700, '#fff', 'left', true); ctx.globalAlpha = 1;
   }
   ctx.fillStyle = 'rgba(255,255,255,.18)'; ctx.fillRect(0, H - Math.max(4, H * 0.004), W, H);
-  ctx.fillStyle = (STY[OPT.style] || STY.clean).ac; ctx.fillRect(0, H - Math.max(4, H * 0.004), W * Math.min(1, t / tl.total), H);
+  ctx.fillStyle = (styOf()).ac; ctx.fillRect(0, H - Math.max(4, H * 0.004), W * Math.min(1, t / tl.total), H);
   ctx.restore();
 }
 function dims(){ return P.fmt === '16:9' ? { W:1920, H:1080 } : { W:1080, H:1920 }; }
@@ -1916,7 +1923,7 @@ function pVideo(el){
     + (noAud ? '<div class="sv-warn">' + noAud + '개 장면에 음성이 없습니다 — 그 장면은 소리 없이 글 길이만큼 나옵니다. <button class="sv-btn sm" data-go="' + (isLoc() ? 'lscript' : P.kind === 'clip' ? 'cedit' : P.kind === 'photo' ? 'pscript' : 'voice') + '">음성 만들러 가기</button></div>' : '')
     + '<div class="sv-vid"><div><div class="sv-pv ' + (P.fmt === '16:9' ? 'h' : 'v') + '"><canvas id="svCv" width="' + D.W / 2 + '" height="' + D.H / 2 + '"></canvas></div>'
     + '<div class="sv-ctl"><button class="sv-btn sm" id="svPlay">▶ 재생</button><input type="range" id="svSeek" min="0" max="' + tl.total.toFixed(2) + '" step="0.05" value="' + Math.min(PV.t, tl.total) + '"><small id="svTm">' + fmtT(PV.t) + ' / ' + fmtT(tl.total) + '</small></div></div>'
-    + '<div><div class="sv-f"><label>화면 스타일</label>' + seg('style', Object.keys(STY).map(function(k){ return [k, STY[k].n]; }), OPT.style) + '</div>'
+    + '<div><div class="sv-f"><label>화면 스타일</label>' + seg('style', Object.keys(STY).filter(function(k){ return !STY[k].loc || isLoc(); }).map(function(k){ return [k, STY[k].n]; }), styOf() === STY[OPT.style] ? OPT.style : 'dark') + '</div>'
     + '<label class="sv-tg"><input type="checkbox" data-o="sub"' + (OPT.sub ? ' checked' : '') + '> 자막 넣기</label>'
     + (OPT.sub ? '<div class="sv-subopt"><div class="sv-f"><label>자막 크기</label>' + seg('subSize', [['s', '작게'], ['m', '보통'], ['l', '크게'], ['xl', '아주 크게']], OPT.subSize) + '</div>'
       + '<div class="sv-f"><label>자막 위치</label>' + seg('subPos', SUB_POS, OPT.subPos || 'bottom') + '</div>'
@@ -3589,7 +3596,7 @@ function hookOverlay(ctx, s, local, W, H, sty){
   if(I.viol) pill(ctx, '⚠ 위반건축물', W - u * 0.05, u * 0.05 + u * 0.065, u * 0.032, '#c92a2a', '#fff', 'right');
 }
 function drawPhotoFrame(ctx, t, W, H, tl){
-  var sty = STY[OPT.style] || STY.clean, segs = tl.segs, gi = 0;
+  var sty = styOf(), segs = tl.segs, gi = 0;
   for(var i = 0; i < segs.length; i++){ if(t >= segs[i].t0) gi = i; }
   var g = segs[gi]; if(!g){ ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H); return; }
   var local = t - g.t0;
@@ -4023,18 +4030,33 @@ function lBg(im){ if(LBG.src === im.src && LBG.c) return LBG.c; var c = document
 /* ── 한 장면 그리기 ── */
 function lPin(ctx, x, y, r, col, icon, pop){
   ctx.save(); ctx.translate(x, y); var sc = pop < 1 ? (pop < 0.7 ? pop / 0.7 * 1.2 : 1.2 - (pop - 0.7) / 0.3 * 0.2) : 1; ctx.scale(sc, sc);
+  if(LNEON){   // 네온 — 어두운 알 + 빛나는 테두리
+    glow(ctx, col, r * 1.1); ctx.fillStyle = 'rgba(8,4,22,.9)'; ctx.beginPath(); ctx.arc(0, 0, r * 1.08, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = col; ctx.lineWidth = r * 0.22; ctx.beginPath(); ctx.arc(0, 0, r * 1.02, 0, Math.PI * 2); ctx.stroke(); ctx.stroke();
+    ctx.shadowBlur = 0; ctx.font = Math.round(r * 1.05) + 'px ' + FONT; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#fff'; ctx.fillText(icon, 0, r * 0.06);
+    ctx.restore(); return;
+  }
   ctx.shadowColor = 'rgba(0,0,0,.4)'; ctx.shadowBlur = r * 0.5; ctx.shadowOffsetY = r * 0.12;
   ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(0, 0, r * 1.12, 0, Math.PI * 2); ctx.fill(); ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
   ctx.fillStyle = col; ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.fill();
   ctx.font = Math.round(r * 1.05) + 'px ' + FONT; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(icon, 0, r * 0.06);
   ctx.restore();
 }
-function lLabel(ctx, t, x, y, fs, bg, fg, al){ if(!t) return; ctx.save(); ctx.globalAlpha *= al == null ? 1 : al; pill(ctx, t, x, y, fs, bg, fg, 'center'); ctx.restore(); }
+function lLabel(ctx, t, x, y, fs, bg, fg, al, nc){ if(!t) return; ctx.save(); ctx.globalAlpha *= al == null ? 1 : al;
+  if(LNEON){ nPill(ctx, t, x, y, fs, nc || LNEON.ac2); ctx.restore(); return; }
+  pill(ctx, t, x, y, fs, bg, fg, 'center'); ctx.restore(); }
+/* 네온 이름표 — 어두운 알약 + 빛나는 테두리 + 빛나는 글자 */
+function nPill(ctx, t, x, y, fs, col){
+  ctx.font = '800 ' + fs + 'px ' + FONT; var tw = ctx.measureText(t).width, pw = tw + fs * 1.3, ph = fs * 1.75;
+  ctx.save(); glow(ctx, col, fs * 0.9); ctx.fillStyle = 'rgba(8,4,22,.86)'; rr(ctx, x - pw / 2, y - ph / 2, pw, ph, ph / 2); ctx.fill();
+  ctx.strokeStyle = col; ctx.lineWidth = Math.max(1.5, fs * 0.09); rr(ctx, x - pw / 2, y - ph / 2, pw, ph, ph / 2); ctx.stroke();
+  glow(ctx, col, fs * 0.55); ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(t, x, y + fs * 0.04); ctx.restore();
+}
 function lHome(ctx, x, y, u, local, sty, drop, big){
   var r = u * (big ? 0.045 : 0.034), k = clamp(drop, 0, 1), yy = y - (1 - ease(k)) * u * 0.25 - Math.abs(Math.sin(clamp((drop - 1) * 3, 0, 1) * Math.PI)) * u * 0.02;
   if(k <= 0) return;
-  for(var i = 0; i < 2; i++){ var ph = ((local * 0.7 + i * 0.5) % 1); ctx.save(); ctx.globalAlpha = (1 - ph) * 0.45 * k; ctx.strokeStyle = sty.ac; ctx.lineWidth = u * 0.006; ctx.beginPath(); ctx.arc(x, y, r * (1.2 + ph * 2.8), 0, Math.PI * 2); ctx.stroke(); ctx.restore(); }
-  ctx.save(); ctx.globalAlpha *= k; ctx.translate(x, yy); ctx.shadowColor = 'rgba(0,0,0,.45)'; ctx.shadowBlur = r * 0.6; ctx.shadowOffsetY = r * 0.15;
+  for(var i = 0; i < 2; i++){ var ph = ((local * 0.7 + i * 0.5) % 1); ctx.save(); ctx.globalAlpha = (1 - ph) * (sty.neon ? 0.8 : 0.45) * k; ctx.strokeStyle = sty.ac; ctx.lineWidth = u * 0.006; if(sty.neon) glow(ctx, sty.ac, u * 0.02); ctx.beginPath(); ctx.arc(x, y, r * (1.2 + ph * 2.8), 0, Math.PI * 2); ctx.stroke(); ctx.restore(); }
+  ctx.save(); ctx.globalAlpha *= k; ctx.translate(x, yy); ctx.shadowColor = 'rgba(0,0,0,.45)'; ctx.shadowBlur = r * 0.6; ctx.shadowOffsetY = r * 0.15; if(sty.neon) glow(ctx, sty.ac, r * 1.3);
   ctx.fillStyle = sty.ac; ctx.beginPath(); ctx.moveTo(0, 0); ctx.bezierCurveTo(-r * 0.4, -r * 0.9, -r * 1.1, -r * 1.3, -r * 1.1, -r * 2.1); ctx.arc(0, -r * 2.1, r * 1.1, Math.PI, 0); ctx.bezierCurveTo(r * 1.1, -r * 1.3, r * 0.4, -r * 0.9, 0, 0); ctx.closePath(); ctx.fill();
   ctx.shadowBlur = 0; ctx.shadowOffsetY = 0; ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(0, -r * 2.1, r * 0.72, 0, Math.PI * 2); ctx.fill();
   ctx.font = Math.round(r * 0.95) + 'px ' + FONT; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(LI().kind === 'bldg' ? '🏢' : '🏠', 0, -r * 2.05);
@@ -4047,12 +4069,13 @@ function lCard(ctx, W, H, local, sty, out){
   if(k <= 0) return;
   var cw = V ? W * 0.88 : W * 0.46, ch = V ? H * 0.38 : H * 0.68, cx = V ? (W - cw) / 2 : W * 0.51, cy = V ? H * 0.47 : H * 0.08, off = (1 - k) * (V ? H * 0.5 : W * 0.5);
   ctx.save(); ctx.translate(V ? 0 : off, V ? off : 0); ctx.globalAlpha = k;
-  ctx.shadowColor = 'rgba(0,0,0,.45)'; ctx.shadowBlur = u * 0.04; ctx.fillStyle = 'rgba(14,22,38,.92)'; rr(ctx, cx, cy, cw, ch, u * 0.03); ctx.fill(); ctx.shadowBlur = 0;
+  ctx.shadowColor = 'rgba(0,0,0,.45)'; ctx.shadowBlur = u * 0.04; ctx.fillStyle = sty.neon ? 'rgba(10,4,26,.9)' : 'rgba(14,22,38,.92)'; rr(ctx, cx, cy, cw, ch, u * 0.03); ctx.fill(); ctx.shadowBlur = 0;
+  if(sty.neon) nFrame(ctx, cx, cy, cw, ch, u, sty);
   var nf = (L.facts || []).filter(function(f){ return nv(f[0]) && nv(f[1]); }).length, pad = u * 0.03, im = lImg(L.aerial), ih = im ? ch * (nf > 5 ? 0.34 : 0.42) : 0, iw = cw * 0.4;
   if(im){ var ix = cx + pad, iy = cy + pad, ihh = ch - pad * 2; ctx.save(); rr(ctx, ix, iy, iw, ihh, u * 0.02); ctx.clip(); var s = Math.max(iw / im.naturalWidth, ihh / im.naturalHeight), sz = 1 + 0.06 * clamp(local / 6, 0, 1); ctx.drawImage(im, ix + iw / 2 - im.naturalWidth * s * sz / 2, iy + ihh / 2 - im.naturalHeight * s * sz / 2, im.naturalWidth * s * sz, im.naturalHeight * s * sz); ctx.restore(); }
   var tx = im ? cx + pad * 2 + iw : cx + pad, ty = cy + pad, tw = (im ? cw - iw - pad * 3 : cw - pad * 2), fsT = u * (V ? 0.042 : 0.038);
-  ctx.textAlign = 'left'; ctx.textBaseline = 'top'; ctx.fillStyle = sty.ac; ctx.font = '800 ' + (fsT * 0.5) + 'px ' + FONT; ctx.fillText(L.kind === 'bldg' ? '건물 개요' : '단지 개요', tx, ty);
-  ctx.fillStyle = '#fff'; ctx.font = '900 ' + fsT + 'px ' + FONT; var nl = wrap(ctx, L.name || '', tw, 2); nl.forEach(function(l, i){ ctx.fillText(l, tx, ty + fsT * 0.75 + i * fsT * 1.15); });
+  ctx.textAlign = 'left'; ctx.textBaseline = 'top'; ctx.fillStyle = sty.ac; ctx.font = '800 ' + (fsT * 0.5) + 'px ' + FONT; if(sty.neon) glow(ctx, sty.ac, fsT * 0.4); ctx.fillText(L.kind === 'bldg' ? '건물 개요' : '단지 개요', tx, ty); ctx.shadowBlur = 0;
+  ctx.fillStyle = '#fff'; ctx.font = '900 ' + fsT + 'px ' + FONT; var nl = wrap(ctx, L.name || '', tw, 2); if(sty.neon) glow(ctx, sty.ac2, fsT * 0.45); nl.forEach(function(l, i){ ctx.fillText(l, tx, ty + fsT * 0.75 + i * fsT * 1.15); }); ctx.shadowBlur = 0;
   var fy = ty + fsT * 0.95 + nl.length * fsT * 1.15, facts = (L.facts || []).filter(function(f){ return nv(f[0]) && nv(f[1]); }).slice(0, 8), lh = Math.min(u * 0.06, (cy + ch - pad - fy) / Math.max(1, facts.length)), fs = Math.min(u * (V ? 0.034 : 0.031), lh / 1.45);
   facts.forEach(function(f, i){
     var t0 = 0.6 + i * 0.32, kk = clamp((local - t0) / 0.4, 0, 1); if(kk <= 0) return;
@@ -4067,6 +4090,12 @@ function lCard(ctx, W, H, local, sty, out){
 function lRouteLine(ctx, a, b, k, col, u, dim, solid){
   if(k <= 0) return; var x = a.x + (b.x - a.x) * ease(k), y = a.y + (b.y - a.y) * ease(k);
   ctx.save(); ctx.globalAlpha *= dim ? 0.45 : 1; ctx.lineCap = 'round';
+  if(LNEON){   // 네온 — 색 빛 번짐 + 흰 심지
+    glow(ctx, col, u * 0.03); ctx.strokeStyle = col; ctx.lineWidth = u * (solid ? 0.012 : 0.01); if(!solid) ctx.setLineDash([u * 0.02, u * 0.014]); ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(x, y); ctx.stroke(); ctx.stroke();
+    ctx.shadowBlur = 0; ctx.strokeStyle = 'rgba(255,255,255,.85)'; ctx.lineWidth = u * 0.0035; ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(x, y); ctx.stroke(); ctx.setLineDash([]);
+    if(k < 1 && !dim){ glow(ctx, col, u * 0.03); ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(x, y, u * 0.011, 0, Math.PI * 2); ctx.fill(); }
+    ctx.restore(); return;
+  }
   ctx.strokeStyle = 'rgba(255,255,255,.9)'; ctx.lineWidth = u * 0.016; ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(x, y); ctx.stroke();
   ctx.strokeStyle = col; ctx.lineWidth = u * (solid ? 0.011 : 0.009); if(!solid) ctx.setLineDash([u * 0.02, u * 0.014]); ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(x, y); ctx.stroke(); ctx.setLineDash([]);
   if(k < 1 && !dim){ ctx.fillStyle = col; ctx.beginPath(); ctx.arc(x, y, u * 0.012, 0, Math.PI * 2); ctx.fill(); }
@@ -4077,10 +4106,16 @@ function lBadge(ctx, p, x, y, u, k, sty, W, H){
   var fs = u * 0.03, f2 = u * 0.036; ctx.save(); ctx.font = '800 ' + fs + 'px ' + FONT; var w1 = ctx.measureText(t1).width; ctx.font = '900 ' + f2 + 'px ' + FONT; var w2 = ctx.measureText(t2).width;
   var w = Math.max(w1, w2) + u * 0.05, h = fs * 1.4 + f2 * 1.5 + u * 0.03; x = clamp(x, w / 2 + u * 0.03, W - w / 2 - u * 0.03); var by = clamp(y - h - u * 0.03, u * 0.1, H - h - u * 0.2);
   ctx.globalAlpha *= ease(k); ctx.translate(x, by + h); ctx.scale(0.8 + 0.2 * ease(k), 0.8 + 0.2 * ease(k)); ctx.translate(-x, -(by + h));
+  if(sty.neon){
+    glow(ctx, K[2], u * 0.03); ctx.fillStyle = 'rgba(8,4,22,.9)'; rr(ctx, x - w / 2, by, w, h, u * 0.02); ctx.fill(); ctx.strokeStyle = K[2]; ctx.lineWidth = u * 0.004; rr(ctx, x - w / 2, by, w, h, u * 0.02); ctx.stroke(); ctx.shadowBlur = 0;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'top'; ctx.fillStyle = '#d0bfff'; ctx.font = '800 ' + fs + 'px ' + FONT; ctx.fillText(t1, x, by + u * 0.018);
+    glow(ctx, sty.ac2, f2 * 0.5); ctx.fillStyle = '#fff'; ctx.font = '900 ' + f2 + 'px ' + FONT; ctx.fillText(t2, x, by + u * 0.018 + fs * 1.4);
+  } else {
   ctx.shadowColor = 'rgba(0,0,0,.4)'; ctx.shadowBlur = u * 0.025; ctx.fillStyle = '#fff'; rr(ctx, x - w / 2, by, w, h, u * 0.02); ctx.fill(); ctx.shadowBlur = 0;
   ctx.fillStyle = K[2]; rr(ctx, x - w / 2, by, w, u * 0.008, u * 0.004); ctx.fill();
   ctx.textAlign = 'center'; ctx.textBaseline = 'top'; ctx.fillStyle = '#495057'; ctx.font = '800 ' + fs + 'px ' + FONT; ctx.fillText(t1, x, by + u * 0.018);
   ctx.fillStyle = '#111'; ctx.font = '900 ' + f2 + 'px ' + FONT; ctx.fillText(t2, x, by + u * 0.018 + fs * 1.4);
+  }
   ctx.restore();
 }
 function drawLocScene(ctx, g, local, W, H, sty){
@@ -4092,7 +4127,8 @@ function drawLocScene(ctx, g, local, W, H, sty){
     P2 = function(p){ return { x:(p.x - cam.x) * S2 + W / 2, y:(p.y - cam.y) * S2 + H / 2 }; };
     if(im){ var tl = P2({ x:0, y:0 }), mw = m.w * S2, mh = m.h * S2;
       if(tl.x > 0.5 || tl.y > 0.5 || tl.x + mw < W - 0.5 || tl.y + mh < H - 0.5){ var bg = lBg(im), k2 = Math.max(W / bg.width, H / bg.height); ctx.save(); ctx.imageSmoothingQuality = 'high'; ctx.drawImage(bg, (W - bg.width * k2) / 2, (H - bg.height * k2) / 2, bg.width * k2, bg.height * k2); ctx.fillStyle = 'rgba(8,14,26,.45)'; ctx.fillRect(0, 0, W, H); ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = u * 0.03; ctx.fillStyle = '#fff'; ctx.fillRect(tl.x, tl.y, mw, mh); ctx.restore(); }
-      ctx.save(); ctx.imageSmoothingQuality = 'high'; ctx.drawImage(im, tl.x, tl.y, mw, mh); ctx.restore(); }
+      ctx.save(); ctx.imageSmoothingQuality = 'high'; if(sty.neon){ try{ ctx.filter = 'saturate(.45) brightness(.62) contrast(1.08)'; }catch(e){} } ctx.drawImage(im, tl.x, tl.y, mw, mh); ctx.restore();
+      if(sty.neon){ ctx.fillStyle = 'rgba(30,6,60,.32)'; ctx.fillRect(0, 0, W, H); } }
   } else {
     var gr = ctx.createLinearGradient(0, 0, 0, H); gr.addColorStop(0, sty.g1 || '#1d3557'); gr.addColorStop(1, sty.g2 || '#0b1626'); ctx.fillStyle = gr; ctx.fillRect(0, 0, W, H);
     ctx.fillStyle = 'rgba(255,255,255,.7)'; ctx.font = '700 ' + u * 0.03 + 'px ' + FONT; ctx.textAlign = 'center'; ctx.fillText('지도 그림을 넣어 주세요', W / 2, H / 2);
@@ -4119,7 +4155,7 @@ function drawLocScene(ctx, g, local, W, H, sty){
   /* 단지 핀 */
   if(home){
     var drop = s.type === 'lmap' ? (local - 1.0) / 0.5 : 2, top = lHome(ctx, home.x, home.y, u, local, sty, drop, s.type === 'lmap' || s.type === 'linfo');
-    if(top != null){ var la = s.type === 'lmap' ? clamp((local - 1.5) / 0.4, 0, 1) : 1, fs = u * (s.type === 'lmap' ? 0.042 : 0.03); lLabel(ctx, L.name, home.x, top - fs * 1.8, fs, sty.ac, '#fff', la); }
+    if(top != null){ var la = s.type === 'lmap' ? clamp((local - 1.5) / 0.4, 0, 1) : 1, fs = u * (s.type === 'lmap' ? 0.042 : 0.03); lLabel(ctx, L.name, home.x, top - fs * 1.8, fs, sty.ac, '#fff', la, sty.ac); }
   }
   /* 거리 배지 */
   if(s.type === 'lroute' && home){ var seg2 = (g.d - 0.6) / Math.max(1, R.length), j2 = clamp(Math.floor(local / seg2), 0, R.length - 1), p2 = R[j2]; if(p2){ var b2 = P2(lPx(p2)), mx = (home.x + b2.x) / 2, my = (home.y + b2.y) / 2; lBadge(ctx, p2, mx, my, u, (local - j2 * seg2 - 1.6) / 0.4, sty, W, H); } }
@@ -4131,13 +4167,16 @@ function lEnd(ctx, W, H, local, sty){
   var by = genBrand().by;
   var cw = V ? W * 0.88 : W * 0.42, rows = R.length, fs = u * 0.03, ch = u * 0.13 + rows * fs * 1.9 + u * 0.08, cx = V ? (W - cw) / 2 : W - cw - u * 0.05, cy = V ? H * 0.6 : u * 0.1;
   ctx.save(); ctx.globalAlpha = k; ctx.translate(0, (1 - k) * u * 0.06);
-  ctx.shadowColor = 'rgba(0,0,0,.45)'; ctx.shadowBlur = u * 0.04; ctx.fillStyle = 'rgba(14,22,38,.92)'; rr(ctx, cx, cy, cw, ch, u * 0.03); ctx.fill(); ctx.shadowBlur = 0;
-  ctx.textAlign = 'left'; ctx.textBaseline = 'top'; ctx.fillStyle = '#fff'; ctx.font = '900 ' + u * 0.044 + 'px ' + FONT; ctx.fillText(L.name || '', cx + u * 0.035, cy + u * 0.03, cw - u * 0.07);
+  ctx.shadowColor = 'rgba(0,0,0,.45)'; ctx.shadowBlur = u * 0.04; ctx.fillStyle = sty.neon ? 'rgba(10,4,26,.9)' : 'rgba(14,22,38,.92)'; rr(ctx, cx, cy, cw, ch, u * 0.03); ctx.fill(); ctx.shadowBlur = 0;
+  if(sty.neon) nFrame(ctx, cx, cy, cw, ch, u, sty);
+  ctx.textAlign = 'left'; ctx.textBaseline = 'top'; ctx.fillStyle = '#fff'; ctx.font = '900 ' + u * 0.044 + 'px ' + FONT; if(sty.neon) glow(ctx, sty.ac2, u * 0.02); ctx.fillText(L.name || '', cx + u * 0.035, cy + u * 0.03, cw - u * 0.07); ctx.shadowBlur = 0;
   R.forEach(function(p, i){ var K = POI_K[p.kind] || POI_K.etc, e = lEst(p), y = cy + u * 0.1 + i * fs * 1.9; ctx.font = '700 ' + fs + 'px ' + FONT; ctx.fillStyle = '#ced4da'; ctx.fillText(K[0] + ' ' + (p.name || K[1]), cx + u * 0.035, y, cw * 0.55);
     ctx.textAlign = 'right'; ctx.fillStyle = '#fff'; ctx.font = '900 ' + fs + 'px ' + FONT; ctx.fillText((p.mode === 'car' ? '차량 ' : '도보 ') + (e.time || '') + (e.dist ? ' · ' + e.dist : ''), cx + cw - u * 0.035, y); ctx.textAlign = 'left'; });
-  ctx.fillStyle = sty.ac; ctx.font = '800 ' + u * 0.024 + 'px ' + FONT; ctx.fillText(by, cx + u * 0.035, cy + ch - u * 0.055, cw - u * 0.07);
+  ctx.fillStyle = sty.ac; ctx.font = '800 ' + u * 0.024 + 'px ' + FONT; if(sty.neon) glow(ctx, sty.ac, u * 0.015); ctx.fillText(by, cx + u * 0.035, cy + ch - u * 0.055, cw - u * 0.07);
   ctx.restore();
 }
+/* 네온 테두리 — 분홍 바깥 빛 + 하늘색 안쪽 선 */
+function nFrame(ctx, x, y, w, h, u, sty){ ctx.save(); glow(ctx, sty.ac, u * 0.03); ctx.strokeStyle = sty.ac; ctx.lineWidth = u * 0.005; rr(ctx, x, y, w, h, u * 0.03); ctx.stroke(); ctx.stroke(); ctx.shadowBlur = 0; ctx.strokeStyle = 'rgba(0,229,255,.55)'; ctx.lineWidth = u * 0.0018; rr(ctx, x + u * 0.008, y + u * 0.008, w - u * 0.016, h - u * 0.016, u * 0.024); ctx.stroke(); ctx.restore(); }
 /* 첫 화면 — 지도 전체 위에 「단지 이름 · 입지」 큰 제목 (0~1.2초, 쇼츠 첫 장면·썸네일 겸용) */
 function lTitle(ctx, W, H, local, sty){
   var a = 1 - clamp((local - 0.8) / 0.45, 0, 1); if(a <= 0) return;
@@ -4146,16 +4185,25 @@ function lTitle(ctx, W, H, local, sty){
   var gr = ctx.createLinearGradient(0, 0, 0, H); gr.addColorStop(0, 'rgba(5,10,20,.15)'); gr.addColorStop(0.5, 'rgba(5,10,20,.62)'); gr.addColorStop(1, 'rgba(5,10,20,.15)'); ctx.fillStyle = gr; ctx.fillRect(0, 0, W, H);
   var fs = u * (V ? 0.085 : 0.09); ctx.font = '900 ' + fs + 'px ' + FONT; var nl = wrap(ctx, L.name || '', W * 0.86, 2), y0 = H / 2 - (nl.length - 1) * fs * 0.6;
   ctx.translate(0, (1 - k) * u * 0.05);
+  if(sty.neon){
+    /* 네온사인이 켜지듯 — 처음 0.45초 두어 번 깜빡 */
+    var fl = local < 0.45 ? ([1, 0.25, 1, 0.5, 1, 1][Math.floor(local / 0.075)] || 1) : 1; ctx.globalAlpha *= fl;
+    nPill(ctx, '📍 ' + (lPlace() || '입지') + ' · 입지', W / 2, y0 - fs * 1.25, u * 0.03, sty.ac);
+    nl.forEach(function(l, i){ ctx.save(); ctx.font = '900 ' + fs + 'px ' + FONT; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; glow(ctx, sty.ac2, fs * 0.5); ctx.fillStyle = '#fff'; ctx.fillText(l, W / 2, y0 + i * fs * 1.2); ctx.fillText(l, W / 2, y0 + i * fs * 1.2); ctx.restore(); });
+    glow(ctx, sty.ac, u * 0.02);
+  } else {
   pill(ctx, '📍 ' + (lPlace() || '입지') + ' · 입지', W / 2, y0 - fs * 1.25, u * 0.03, sty.ac, '#111', 'center');
   nl.forEach(function(l, i){ txt(ctx, l, W / 2, y0 + i * fs * 1.2, fs, 900, '#fff', 'center', true); });
+  }
   ctx.fillStyle = sty.ac; ctx.fillRect(W / 2 - u * 0.12 * k, y0 + (nl.length - 1) * fs * 1.2 + fs * 0.85, u * 0.24 * k, u * 0.008);
   ctx.restore();
 }
 function drawLocFrame(ctx, t, W, H, tl){
-  var sty = STY[OPT.style] || STY.clean, segs = tl.segs, gi = 0;
+  var sty = styOf(), segs = tl.segs, gi = 0;
   for(var i = 0; i < segs.length; i++){ if(t >= segs[i].t0) gi = i; }
   var g = segs[gi]; if(!g){ ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H); return; }
   var local = t - g.t0, u = Math.min(W, H);
+  LNEON = sty.neon ? sty : null;
   ctx.save(); drawLocScene(ctx, g, local, W, H, sty);
   if(g.s && g.s.say && OPT.sub){ var V = H > W; drawSubs(ctx, g.s, local, W, H, sty, g.s.type === 'linfo' && V ? 0.93 : g.s.type === 'lend' && V ? 0.5 : null); }
   var L = LI(), b = genBrand();
@@ -4756,7 +4804,7 @@ function drawClipScene(ctx, tg, local, W, H, sty){
   drawSubs(ctx, s, local, W, H, sty);
 }
 function drawClipFrame(ctx, t, W, H, tl){
-  var sty = STY[OPT.style] || STY.clean, segs = tl.segs, gi = 0;
+  var sty = styOf(), segs = tl.segs, gi = 0;
   for(var i = 0; i < segs.length; i++){ if(t >= segs[i].t0) gi = i; }
   var tg = segs[gi]; if(!tg){ ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H); return; }
   var local = t - tg.t0, FADE = P.vtype === 'promo' ? 0.22 : 0.3, cv = ctx.canvas;
