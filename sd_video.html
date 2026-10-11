@@ -13,6 +13,9 @@
 <link rel="apple-touch-icon" sizes="180x180" href="sjrws-180.png">
 <!-- ═════════════════════════════════════════════════════════════════
      🎬 영상 (video) · 비디오 스튜디오 (sd_video.html)  v2026.10.04-3
+     · 2026.10.11-4: 🎭 출연진 관리 — 도구 탭(sd_video.html?embed=1&cast=1)에서 영상 작업 없이 내 출연진 등록·이름·픽스/무브·👄·AI 한꺼번에·지우기.
+       입 벌림 「크게(지금 모양)/작게」(o.lipSz='s' — AI 벌린 입 그림을 위아래 78% · 그려 넣기 입도 작게), 👄 창·출연진 관리에서 고름
+       「나오는 때 — 첫 장면·사무소 장면만(제목·연락처 화면만)」이 장면별로 고른 출연진에도 적용 (avEnds — 사진·영상은 첫·마지막 장면 포함)
      · 2026.10.11-3: 입지 영상 포인트 종류 3가지 추가 — 🏘 주거단지 · 🏬 상업시설 · 🏢 업무시설 (매물 종류에 따른 입지 분석). 거리 선은 각자 색의 실선(생활시설은 점선)
      · 2026.10.11-2: 🎞 영상 ADD — 대본·사진·영상 세 갈래의 「영상」 다음 단계. 🎬 인트로 → 🗺 입지 영상 → 📹 본 영상 → 🏁 엔딩을 MP4 하나로 (보관함 sd_video_adds ·
        입지 영상 작업 완성 화면 「🗂 영상 ADD 보관함에 넣기」 · 시작/끝 자르기 · 방향 다르면 흐린 배경 · 이음 0.25초 · 설명란 목차·자막 시각을 앞 길이만큼 뒤로)
@@ -297,6 +300,13 @@ html.sv-embed body{background:#f7f8fa}
 .sv-sector button.on b{color:var(--sv-ac2)}
 @media(max-width:1600px){.sv-sector{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:700px){.sv-sector{grid-template-columns:1fr}}
+/* 🎭 출연진 관리 (도구 탭) */
+html.sv-castm .sv-side,html.sv-castm #svSector,html.sv-castm #svBrand,html.sv-castm #svSteps{display:none!important}
+html.sv-castm .sv-wrap{display:block!important}
+.sv-cmgg{border:1px solid #e9ecef;border-radius:12px;padding:10px 12px;margin-top:12px;background:#fff}.sv-cmgg .hd{display:flex;gap:8px;align-items:center;margin-bottom:8px}.sv-cmgg .hd small{color:#868e96;font-size:11.5px}.sv-cmgg .hd .sp{flex:1}
+.sv-cmgl{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:8px}
+.sv-cmg{display:flex;gap:10px;border:1px solid #f1f3f5;border-radius:10px;padding:8px;background:#fafbfc}.sv-cmg img{width:84px;height:84px;object-fit:contain;background:#fff;border-radius:8px;border:1px solid #eee}
+.sv-cmg .bd{flex:1;min-width:0;display:flex;flex-direction:column;gap:5px}.sv-cmg .l2,.sv-cmg .l3{display:flex;gap:6px;align-items:center;flex-wrap:wrap}.sv-cmg .l3{justify-content:space-between}
 /* 🎞 영상 ADD */
 .sv-va-order{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:10px 0;padding:10px 12px;background:#f8f9fa;border-radius:10px;font-size:13px}
 .sv-va-order .ar{color:#adb5bd}.sv-va-chip{padding:4px 10px;border-radius:14px;background:#fff;border:1px solid #dee2e6;font-size:12px}.sv-va-chip.on{border-color:#d6336c;color:#a61e4d}
@@ -567,7 +577,7 @@ html.sv-embed body{background:#f7f8fa}
    ═════════════════════════════════════════════════════════════════ */
 (function(){
 'use strict';
-var SD_VER = '2026.10.11-3';
+var SD_VER = '2026.10.11-4';
 window.SD_VERSION = SD_VER;
 var EMBED = /[?&]embed=1\b/.test(location.search);
 if(EMBED) document.documentElement.classList.add('sv-embed');
@@ -625,7 +635,7 @@ function idbDel(id){ return idbDo('readwrite', function(s){ return s.delete(id);
 var P = null, LIST = [], LIST_ALL = [], saveT = 0;
 function newProject(kind){ if((kind || SECTOR) === 'loc') return newLocProject(); if((kind || SECTOR) === 'photo') return newPhotoProject(); if((kind || SECTOR) === 'clip') return newClipProject(); return { id:'v' + uid(), title:'', src:'', fmt:'9:16', len:'short', scenes:[], step:'src', createdAt:Date.now(), updatedAt:Date.now() }; }
 function touch(now){
-  if(!P) return; P.updatedAt = Date.now(); clearTimeout(saveT);
+  if(!P || CASTM) return;   // 출연진 관리 화면은 작업을 저장하지 않는다 P.updatedAt = Date.now(); clearTimeout(saveT);
   if(LSX.get('sdv.cur', '') !== P.id) LSX.set('sdv.cur', P.id);   // 다시 열면 이 작업부터
   var go = function(){ idbPut(P).then(refreshList, function(e){ toast('작업을 저장하지 못했습니다: ' + e.message, true); }); };
   if(now) go(); else saveT = setTimeout(go, 700);
@@ -684,6 +694,7 @@ function stepDone(k){
 function go(k){ stopPreview(); P.step = k; touch(); render(); try{ window.scrollTo(0, 0); }catch(e){} }
 var RENDERING = false;
 function render(){
+  if(CASTM) return castMgrPaint();
   if(!P || RENDERING) return;
   RENDERING = true;
   try{ renderNow(); }finally{ RENDERING = false; }
@@ -4964,7 +4975,7 @@ function castSig(o){ return o.src.length + ':' + o.src.slice(-16) + '|' + (o.lip
 /* 큰 그림은 바뀌었을 때만(o.upSig) 올리고, 이름·입 자리 같은 작은 것은 매번 */
 async function castCloudPut(k, o){
   var db = await fbDb(), up = o.upSig !== castSig(o);
-  var idx = { kind:k, label:o.label || '', mo:o.mo || 'fix', cut:k === 'char' ? o.cut !== false : false, mouth:o.mouth || null, mouthSet:!!o.mouthSet, lipsN:(o.lips || []).length, at:Date.now(), by:author().name || '' };
+  var idx = { kind:k, label:o.label || '', mo:o.mo || 'fix', cut:k === 'char' ? o.cut !== false : false, mouth:o.mouth || null, mouthSet:!!o.mouthSet, lipsN:(o.lips || []).length, lipSz:o.lipSz || null, at:Date.now(), by:author().name || '' };
   if(up){
     cloudSt('☁ ' + (o.label || '출연진') + ' 올리는 중…');
     var img = { src:await toJpeg(o.src, 900, 0.88), lips:o.lips && o.lips.length ? await Promise.all(o.lips.map(function(u){ return toJpeg(u, 900, 0.85); })) : null };
@@ -4975,7 +4986,7 @@ async function castCloudPut(k, o){
   } else await db.ref('sd_media/cast_idx/' + o.id).update(idx);
   cloudSt('☁ Firebase 에 저장됨');
 }
-function castLocalPut(k, o){ return castDb('readwrite', function(st){ st.put({ id:o.id, kind:k, src:o.src, label:o.label || '', cut:o.cut, mo:o.mo || 'fix', mouth:o.mouth || null, mouthSet:!!o.mouthSet, lips:o.lips || null, upSig:o.upSig || '', at:Date.now() }); }); }
+function castLocalPut(k, o){ return castDb('readwrite', function(st){ st.put({ id:o.id, kind:k, src:o.src, label:o.label || '', cut:o.cut, mo:o.mo || 'fix', mouth:o.mouth || null, mouthSet:!!o.mouthSet, lips:o.lips || null, lipSz:o.lipSz || null, upSig:o.upSig || '', at:Date.now() }); }); }
 function castSave(k, o){
   if(!o || !o.src) return Promise.resolve();
   return castLocalPut(k, o).then(function(){
@@ -4989,7 +5000,7 @@ function castLibAll(){
   return Promise.all([loc, cl]).then(function(v){
     var map = {};
     v[0].forEach(function(r){ map[r.id] = Object.assign({}, r, { local:true }); });
-    if(v[1]) Object.keys(v[1]).forEach(function(id){ var c = v[1][id] || {}; map[id] = Object.assign({ id:id, kind:c.kind, label:c.label, mo:c.mo, cut:c.cut, mouth:c.mouth, mouthSet:c.mouthSet, lipsN:c.lipsN, at:c.at }, map[id] || {}, { cloud:true, thumb:c.thumb, by:c.by }); });
+    if(v[1]) Object.keys(v[1]).forEach(function(id){ var c = v[1][id] || {}; map[id] = Object.assign({ id:id, kind:c.kind, label:c.label, mo:c.mo, cut:c.cut, mouth:c.mouth, mouthSet:c.mouthSet, lipsN:c.lipsN, lipSz:c.lipSz || null, at:c.at }, map[id] || {}, { cloud:true, thumb:c.thumb, by:c.by }); });
     return { list:Object.keys(map).map(function(id){ return map[id]; }).filter(function(r){ return r.kind === 'prof' || r.kind === 'char'; }).sort(function(x, y){ return (y.at || 0) - (x.at || 0); }), cloudOk:!!v[1] };
   });
 }
@@ -5008,7 +5019,7 @@ async function castImport(r){
     src = img.src; lips = img.lips || null;
   }
   var o = { id:r.id, src:src, label:r.label || '', cut:k === 'char' ? r.cut !== false : undefined, mo:r.mo || 'fix' };
-  if(r.mouth) o.mouth = r.mouth; if(r.mouthSet) o.mouthSet = true; if(lips && lips.length) o.lips = lips;
+  if(r.mouth) o.mouth = r.mouth; if(r.mouthSet) o.mouthSet = true; if(lips && lips.length) o.lips = lips; if(r.lipSz) o.lipSz = r.lipSz;
   o.upSig = r.src ? (r.upSig || '') : castSig(o);
   L.push(o); if(!avaOf().def[k]) avaOf().def[k] = o.id;
   await castLocalPut(k, o);
@@ -5050,6 +5061,80 @@ async function castAiAll(out){
   }
   return list.length;
 }
+/* ═════════════════════════════════════════════════════════════════
+   🎭 출연진 관리 (2026-10-11) — 도구 탭 「🎭 출연진 관리」 = sd_video.html?embed=1&cast=1
+   영상 작업을 열지 않고 내 출연진(☁ Firebase sd_media/cast_* + 💻 이 PC sd_video_cast)을 바로 다룬다:
+   등록(＋ 프로필·캐릭터) · 이름 · 픽스/무브 · 👄 입 자리·AI 입모양 · 입 벌림 크게/작게 · 흰 배경 지우기 · 지우기 · AI 한꺼번에
+   작업용 P 는 저장하지 않는 빈 작업(touch 안 함) — 고친 것은 castSave 로 내 출연진에 바로 저장
+   ═════════════════════════════════════════════════════════════════ */
+var CASTM = /[?&]cast=1\b/.test(location.search), CM = { list:null, cloudOk:false, busy:'', msg:'' };
+if(CASTM) document.documentElement.classList.add('sv-castm');
+/* 목록 한 줄(r) → 다룰 수 있는 출연진(o) — 그림이 Firebase 에만 있으면 받아 온다. 받은 것은 P.ava.cast 에 둔다 (lipModal·castNo 가 씀) */
+async function castFull(r){
+  var k = r.kind, L = castOf(k), have = castById(k, r.id); if(have) return have;
+  var src = r.src, lips = r.lips;
+  if(!src){ var db = await fbDb(), img = (await db.ref('sd_media/cast_img/' + r.id).once('value')).val(); if(!img || !img.src) throw new Error('Firebase 에서 그림을 받지 못했습니다'); src = img.src; lips = img.lips || null; }
+  var o = { id:r.id, src:src, label:r.label || '', cut:k === 'char' ? r.cut !== false : undefined, mo:r.mo || 'fix' };
+  if(r.mouth) o.mouth = r.mouth; if(r.mouthSet) o.mouthSet = true; if(lips && lips.length) o.lips = lips; if(r.lipSz) o.lipSz = r.lipSz;
+  o.upSig = r.src ? (r.upSig || '') : castSig(o);
+  L.push(o); return o;
+}
+function castMgrLoad(){ CM.list = null; castMgrPaint(); return castLibAll().then(function(res){ CM.list = res.list; CM.cloudOk = res.cloudOk; castMgrPaint(); if(res.cloudOk) res.list.filter(function(r){ return r.local && !r.cloud; }).forEach(function(r){ castCloudPut(r.kind, r).then(function(){ castLocalPut(r.kind, r); }, function(e){ cloudSt('', (e && e.message) || e); }); }); }); }
+function castMgrRow(r){
+  var o = castById(r.kind, r.id), x = o || r, n = o ? (o.lips || []).length : r.lips ? r.lips.length : (r.lipsN || 0), rd = o ? lipReady(o) : !!(r.mouthSet || n);
+  var mo = x.mo || 'fix', sz = x.lipSz === 's' ? 's' : 'l';
+  return '<div class="sv-cmg" data-id="' + esc(r.id) + '" data-k="' + r.kind + '"><img src="' + (x.src || r.thumb || '') + '" alt="">'
+    + '<div class="bd"><input class="sv-in sm" data-g-nm value="' + esc(x.label || '') + '" placeholder="이름 (예: 문형은 대표)">'
+    + '<div class="l2"><span class="sv-mo">' + MOUTH_N.map(function(m){ return '<button data-g-mo="' + m[0] + '"' + (mo === m[0] ? ' class="on"' : '') + '>' + m[1] + '</button>'; }).join('') + '</span>'
+    + '<button class="sv-btn sm' + (mo === 'move' && !rd ? ' warn' : '') + '" data-g-lip>' + (n ? '👄 AI ✓' : rd ? '👄 그려 넣기' : '👄 입 준비') + '</button></div>'
+    + '<div class="l2"><span class="sv-note">입 벌림</span><span class="sv-mo">' + LIPSZ_N.map(function(m){ return '<button data-g-sz="' + m[0] + '"' + (sz === m[0] ? ' class="on"' : '') + '>' + m[1] + '</button>'; }).join('') + '</span>'
+    + (r.kind === 'char' ? '<label class="sv-tg sm"><input type="checkbox" data-g-cut' + (x.cut !== false ? ' checked' : '') + '> 흰 배경 지우기</label>' : '') + '</div>'
+    + '<div class="l3"><span class="sv-note">' + (r.cloud ? '☁' : '') + (r.local ? '💻' : '') + (r.by ? ' · ' + esc(r.by) : '') + '</span><button class="sv-btn sm" data-g-del title="내 출연진에서 지우기">🗑</button></div></div></div>';
+}
+function castMgrPaint(){
+  var el = $('#svPanel'); if(!el) return;
+  var L = CM.list, need = L ? L.filter(function(r){ var o = castById(r.kind, r.id), x = o || r; return (x.mo || 'fix') === 'move' && !((o ? (o.lips || []).length : r.lips ? r.lips.length : r.lipsN)); }).length : 0;
+  var grp = function(k, nm, sub){ var a = (L || []).filter(function(r){ return r.kind === k; }); return '<div class="sv-cmgg"><div class="hd"><b>' + nm + '</b><small>' + sub + ' · ' + a.length + '명</small><span class="sp"></span><button class="sv-btn sm pri" data-g-add="' + k + '">＋ ' + (k === 'prof' ? '프로필' : '캐릭터') + ' 등록</button></div>'
+    + (a.length ? '<div class="sv-cmgl">' + a.map(castMgrRow).join('') + '</div>' : '<div class="sv-empty" style="padding:14px">아직 없습니다 — ＋ 등록으로 넣으세요</div>') + '</div>'; };
+  el.innerHTML = '<div class="sv-card"><div class="sv-h"><h3>🎭 출연진 관리</h3><span class="sv-note">' + (L ? (CM.cloudOk ? '☁ Firebase 연결됨' : '<span style="color:#e8590c">⚠ Firebase 에 연결하지 못해 이 PC 것만</span>') : '불러오는 중…') + '</span></div>'
+    + '<p class="sv-sub">영상 작업을 열지 않고 <b>내 출연진</b>(프로필 사진·캐릭터)을 등록하고 <b>입모양</b>을 미리 준비합니다. 여기서 고친 것은 바로 Firebase·이 PC 에 저장되고, 영상 작업의 🎭 출연진 → <b>📥 내 출연진 불러오기</b>에서 넣으면 준비된 그대로 들어갑니다.</p>'
+    + '<div class="sv-cbar"><button class="sv-btn sm pri" id="svCmAi"' + (need && !CM.busy ? '' : ' disabled') + '>✨ 입모양 AI 한꺼번에 만들기' + (need ? ' (' + need + ')' : '') + '</button><button class="sv-btn sm" id="svCmKey">🔑 제미나이 열쇠</button><button class="sv-btn sm" id="svCmRe">↻ 다시 불러오기</button><span class="sv-cst" id="svCloudSt">' + cloudStHtml() + '</span></div>'
+    + '<div id="svCmOut">' + (CM.msg || '') + '</div>' + cloudHelp()
+    + (L ? grp('prof', '🧑‍💼 프로필 사진', '원형으로 나옴') + grp('char', '🐻 캐릭터', '도구에서 만든 16컷 등') : '<div class="sv-empty">내 출연진을 불러오는 중…</div>')
+    + '<div class="sv-note" style="margin-top:10px">「무브」는 목소리에 맞춰 입이 닫힘·반쯤·벌림으로 움직입니다 — 👄 에서 그림의 입을 누르거나 ✨ AI 입모양(제미나이 3장)을 만드세요. <b>입 벌림 「작게」</b>는 크게 벌린 입을 조금 줄여서 보여 줍니다 (AI 그림을 다시 만들 필요 없음). 이미 영상 작업에 넣은 출연진은 그 작업 안에서 따로 바꿉니다.</div></div>';
+  var keyB = $('#svCmKey', el); if(keyB) keyB.onclick = function(){ openKeys('geminiKeys'); };
+  $('#svCmRe', el).onclick = castMgrLoad;
+  $$('[data-g-add]', el).forEach(function(b){ b.onclick = function(){ var k = b.dataset.gAdd; pickAva(k, { onPick:function(src, label){
+    var o = { id:uid(), src:src, label:label || '', cut:k === 'char' ? true : undefined, mo:'move' }; castOf(k).push(o);
+    CM.msg = '<div class="sv-ok">✓ 등록했습니다 — 👄 에서 입 자리를 누르거나 AI 입모양을 만드세요</div>';
+    castSave(k, o).then(castMgrLoad); lipModal(o, k);
+  } }); }; });
+  var ai = $('#svCmAi', el); if(ai) ai.onclick = async function(){
+    var out = $('#svCmOut'); CM.busy = 'ai'; ai.disabled = true;
+    try{
+      var todo = CM.list.filter(function(r){ var o = castById(r.kind, r.id), x = o || r; return (x.mo || 'fix') === 'move' && !((o ? (o.lips || []).length : r.lips ? r.lips.length : r.lipsN)); });
+      for(var i = 0; i < todo.length; i++){
+        var r = todo[i], o = await castFull(r), nm = o.label || (r.kind === 'prof' ? '프로필' : '캐릭터');
+        await lipAi(o, r.kind, function(t){ out.innerHTML = '<div class="sv-ok">⏳ ' + (i + 1) + '/' + todo.length + ' · ' + esc(nm) + ' — ' + esc(t) + '</div>'; });
+        await castSave(r.kind, o);
+      }
+      CM.msg = '<div class="sv-ok">✓ ' + todo.length + '명의 입모양 그림을 만들었습니다 — 👄 에서 확인하고, 입 자리가 어긋나면 그림에서 입을 눌러 고치세요</div>';
+    }catch(e){ CM.msg = '<div class="sv-err">' + esc(e.message || String(e)) + '</div>'; }
+    CM.busy = ''; castMgrLoad();
+  };
+  $$('.sv-cmg', el).forEach(function(row){
+    var r = (CM.list || []).find(function(x){ return x.id === row.dataset.id; }); if(!r) return; var k = r.kind;
+    var withO = function(fn){ return castFull(r).then(fn).catch(function(e){ toast(e.message || String(e), true); }); };
+    var save = function(o, reload){ return castSave(k, o).then(function(){ if(reload) castMgrLoad(); }); };
+    $('[data-g-nm]', row).onchange = function(){ var v = this.value.trim(); withO(function(o){ o.label = v; r.label = v; return save(o); }); };
+    $$('[data-g-mo]', row).forEach(function(b){ b.onclick = function(){ withO(function(o){ o.mo = b.dataset.gMo; r.mo = o.mo; save(o); castMgrPaint(); if(o.mo === 'move' && !lipReady(o)) lipModal(o, k); }); }; });
+    $$('[data-g-sz]', row).forEach(function(b){ b.onclick = function(){ withO(function(o){ if(b.dataset.gSz === 's') o.lipSz = 's'; else delete o.lipSz; r.lipSz = o.lipSz; save(o); castMgrPaint(); }); }; });
+    $('[data-g-lip]', row).onclick = function(){ withO(function(o){ if(o.mo !== 'move'){ o.mo = 'move'; r.mo = 'move'; } lipModal(o, k); }); };
+    var ct = $('[data-g-cut]', row); if(ct) ct.onchange = function(){ var v = this.checked; withO(function(o){ o.cut = v; r.cut = v; save(o); }); };
+    $('[data-g-del]', row).onclick = function(){ if(!confirm('「' + (r.label || '그림') + '」 을(를) 내 출연진에서 지울까요?\nFirebase 와 이 PC 모두에서 지워집니다. (이미 영상 작업에 넣은 것은 그대로 남습니다)')) return;
+      var A = avaOf(); A.cast[k] = A.cast[k].filter(function(x){ return x.id !== r.id; }); castLibDel(r.id).then(castMgrLoad); };
+  });
+}
 /* 장면 하나에서 실제로 쓰는 프로필/캐릭터 — 장면에서 고른 출연진(s.av[k].cid)이 있으면 그것, 없으면 ★기본 */
 function avaEff(s, k){
   var A = avaOf(), o = (s && s.av && s.av[k]) || {}; if(o.off) return null;
@@ -5057,7 +5142,14 @@ function avaEff(s, k){
   return { img:img, pos:o.pos || A[k + 'Pos'] || (k === 'prof' ? 'lb' : 'rb'), sz:o.sz ? o.sz / 100 : avaSz(A, k), mouth:img.mo || 'fix', own:!!(o.cid || o.pos || o.sz) };
 }
 /* 「첫 장면·사무소 장면만」 이면 그 밖의 장면은 장면에서 따로 정한 것만 */
-function visEff(s, k){ var e = avaEff(s, k); if(e && /^(intro|outro)$/.test(s.type) && avaOf().cards === false) return null; if(e && !e.own && avaOf().show === 'ends' && !/^(hook|office|end|intro|outro)$/.test(s.type)) return null; return e; }
+/* 「나오는 때」가 처음·끝이면 장면에서 따로 고른 출연진도 그 밖의 장면에서는 나오지 않는다 (2026-10-11 — 예전에는 장면별 설정이 이겨서 전체에 나왔음)
+   처음·끝 = 제목·후킹·사무소·끝 장면 + (사진·영상 갈래) 첫 장면·마지막 장면 */
+function avEnds(s){
+  if(/^(hook|office|end|intro|outro)$/.test(s.type)) return true;
+  if(!(P.kind === 'photo' || P.kind === 'clip')) return false;
+  var L = (P.scenes || []).filter(function(x){ return !x.off; }), i = L.indexOf(s); return i === 0 || (i > 0 && i === L.length - 1);
+}
+function visEff(s, k){ var e = avaEff(s, k); if(e && /^(intro|outro)$/.test(s.type) && avaOf().cards === false) return null; if(e && avaOf().show === 'ends' && !avEnds(s)) return null; return e; }
 /* 대본 영상의 제목(intro)·연락처(outro) 화면은 장면이 아니라 이 자리표로 */
 var AV_PS = { intro:{ id:'_intro', type:'intro' }, outro:{ id:'_outro', type:'outro' } };
 function avSeg(g){ return !g ? null : g.s ? g : AV_PS[g.kind] ? { s:AV_PS[g.kind], t0:g.t0 } : null; }
@@ -5131,8 +5223,8 @@ function avaSz(A, k){ var v = k === 'prof' ? A.profSz : A.charSz; return v ? v /
    픽스 = 그림 그대로 · 무브 = 목소리에 맞춰 입이 닫힘/반쯤/벌림으로 바뀐다.
    AI 입모양: 제미나이에 같은 그림을 주고 입만 바꾼 그림 3장(닫힘·반쯤·벌림)을 한 번 받아(o.lips), 입 둘레만 부드럽게 오려 원본 위에 덮는다 (얼굴 나머지는 원본 그대로라 깜빡이지 않는다).
    AI 그림이 없으면 입 자리에 말하는 입을 그려 넣는다(간단). 입 자리 o.mouth = { x, y, w } (그림 너비 비율) ── */
-var LIPC = {};
-function lipKey(o, k){ var m = o.mouth || {}; return avaKey(o, avaCut(o, k)) + '|' + k + '|' + [m.x, m.y, m.w].map(function(v){ return v == null ? '' : (+v).toFixed(3); }).join(',') + '|' + (o.lips ? o.lips.map(function(u){ return u.length + u.slice(-12); }).join(',') : 'draw'); }
+var LIPC = {}, LIP_SMALL = 0.78, LIPSZ_N = [['l', '크게'], ['s', '작게']];   // 입 벌림 크게(지금까지 모양) · 작게(벌린 입을 78% 높이로)
+function lipKey(o, k){ var m = o.mouth || {}; return avaKey(o, avaCut(o, k)) + '|' + k + '|' + [m.x, m.y, m.w].map(function(v){ return v == null ? '' : (+v).toFixed(3); }).join(',') + '|' + (o.lips ? o.lips.map(function(u){ return u.length + u.slice(-12); }).join(',') : 'draw') + '|' + (o.lipSz === 's' ? 's' : 'l'); }
 function lipGuess(k){ return k === 'prof' ? { x:0.5, y:0.42, w:0.13 } : { x:0.5, y:0.4, w:0.14 }; }
 function lipFrames(o, k){
   if(!o || !o.src) return null; var key = lipKey(o, k), L = LIPC[key];
@@ -5189,9 +5281,10 @@ function lipFind(base, vs){
   var cxx = x1 > x0 ? (x0 + x1) / 2 : bx;
   return { x:clamp(cxx / w, 0.05, 0.95), y:clamp(by / h, 0.05, 0.95), w:clamp((x1 > x0 ? (x1 - x0) * 1.05 : ws) / w, 0.05, 0.3) };
 }
-function lipPatch(base, v, m, off){
+/* sq < 1 — 입 벌림 「작게」: AI 의 벌린 입 그림을 입 자리 중심으로 위아래로 조금 눌러 덜 벌어지게 */
+function lipPatch(base, v, m, off, sq){
   var W = base.width, H = base.height, t = document.createElement('canvas'); t.width = W; t.height = H; var x = t.getContext('2d');
-  x.drawImage(v, off.dx, off.dy);
+  if(sq && sq < 1){ x.save(); x.translate(0, m.y * H * (1 - sq)); x.scale(1, sq); x.drawImage(v, off.dx, off.dy); x.restore(); } else x.drawImage(v, off.dx, off.dy);
   x.globalCompositeOperation = 'destination-in';
   var R = m.w * W * 0.9; x.translate(m.x * W, m.y * H + m.w * W * 0.08); x.scale(1, 0.8);
   var g = x.createRadialGradient(0, 0, R * 0.5, 0, 0, R); g.addColorStop(0, 'rgba(0,0,0,1)'); g.addColorStop(1, 'rgba(0,0,0,0)');
@@ -5199,10 +5292,10 @@ function lipPatch(base, v, m, off){
   var o = document.createElement('canvas'); o.width = W; o.height = H; var ox = o.getContext('2d'); ox.drawImage(base, 0, 0); ox.drawImage(t, 0, 0); return o;
 }
 /* AI 그림이 없을 때 — 입 자리에 말하는 입을 그려 넣기 (캐릭터에 잘 어울림) */
-function lipDraw(base, m, lv){
+function lipDraw(base, m, lv, small){
   var W = base.width, H = base.height, o = document.createElement('canvas'); o.width = W; o.height = H; var x = o.getContext('2d'); x.drawImage(base, 0, 0);
   if(!lv) return o;
-  var cx = m.x * W, cy = m.y * H, mw = m.w * W, rx = mw * (lv === 1 ? 0.34 : 0.4), ry = mw * (lv === 1 ? 0.12 : 0.25);
+  var cx = m.x * W, cy = m.y * H, mw = m.w * W, rx = mw * (lv === 1 ? 0.34 : small ? 0.37 : 0.4), ry = mw * (lv === 1 ? 0.12 : small ? 0.18 : 0.25);
   var sm = function(px, py){ var d = x.getImageData(clamp(Math.round(px), 0, W - 1), clamp(Math.round(py), 0, H - 1), 1, 1).data; return d; };
   var a = sm(cx - mw * 0.55, cy), b = sm(cx + mw * 0.55, cy), lip = 'rgb(' + Math.round((a[0] + b[0]) / 2 * 0.62 + 40) + ',' + Math.round((a[1] + b[1]) / 2 * 0.42) + ',' + Math.round((a[2] + b[2]) / 2 * 0.42) + ')';
   x.save(); x.beginPath(); x.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2); x.fillStyle = '#4a1010'; x.fill(); x.clip();
@@ -5216,9 +5309,9 @@ async function buildLip(o, k){
   var el = await loadEl(o.src); if(!el) throw new Error('그림을 읽지 못했습니다');
   var W = el.naturalWidth, H = el.naturalHeight, base = canvasOf(el, W, H), m = o.mouth || lipGuess(k), raw = [];
   if(o.lips && o.lips.length){
-    for(var i = 0; i < o.lips.length; i++){ var v = await loadEl(o.lips[i]); if(!v){ raw.push(base); continue; } var vc = canvasOf(v, W, H); raw.push(lipPatch(base, vc, m, lipAlign(base, vc, m))); }
+    for(var i = 0; i < o.lips.length; i++){ var v = await loadEl(o.lips[i]); if(!v){ raw.push(base); continue; } var vc = canvasOf(v, W, H); raw.push(lipPatch(base, vc, m, lipAlign(base, vc, m), i === 2 && o.lipSz === 's' ? LIP_SMALL : 1)); }
     while(raw.length < 3) raw.push(raw[raw.length - 1] || base);
-  } else raw = [0, 1, 2].map(function(lv){ return lipDraw(base, m, lv); });
+  } else raw = [0, 1, 2].map(function(lv){ return lipDraw(base, m, lv, o.lipSz === 's'); });
   if(k === 'prof') return raw.map(circleOf);
   if(avaCut(o, k)){ var g = cutGeo(el); return raw.map(function(c){ return applyCut(c, g); }); }
   return raw;
@@ -5250,6 +5343,7 @@ function lipModal(o, k){
     '<div class="sv-lipm"><div class="pic" id="svLipPic"><img src="' + o.src + '" alt=""><i class="mo" id="svLipMo"></i></div>'
     + '<div class="side"><canvas id="svLipPv" width="220" height="220"></canvas><div class="sv-note" style="text-align:center">말하는 모습 미리보기</div>'
     + '<label class="sv-avsz">입 크기 <input type="range" min="4" max="32" step="1" id="svLipW"><b id="svLipWv"></b></label>'
+    + '<div class="sv-avsz" style="justify-content:center">입 벌림 <span class="sv-mo" id="svLipSz">' + LIPSZ_N.map(function(x){ return '<button data-lsz="' + x[0] + '">' + x[1] + '</button>'; }).join('') + '</span></div>'
     + '<div id="svLipSt" class="sv-note"></div>'
     + '<button class="sv-btn pri w" id="svLipAi">✨ AI 입모양 그림 만들기</button><button class="sv-btn w" id="svLipDel" style="margin-top:6px">AI 그림 지우기 (간단히 그려 넣기)</button>'
     + '<div id="svLipOut"></div>'
@@ -5263,12 +5357,14 @@ function lipModal(o, k){
     mo.style.left = (r.left - pr.left + q.x * r.width) + 'px'; mo.style.top = (r.top - pr.top + q.y * r.height) + 'px'; mo.style.width = (q.w * r.width) + 'px'; mo.style.height = (q.w * r.width * 0.55) + 'px';
     wr.value = Math.round(q.w * 100); $('#svLipWv', m).textContent = Math.round(q.w * 100) + '%';
     $('#svLipSt', m).innerHTML = o.lips ? '<span style="color:#2b8a3e;font-weight:700">✓ AI 입모양 그림 3장</span>' + (o.mouthSet ? '' : ' · 입 자리는 AI 그림에서 찾았습니다') : '<span style="color:#868e96">AI 입모양 그림 없음 — 입을 그려 넣습니다</span>' + (o.mouth ? '' : ' · <b style="color:#e8590c">그림에서 입을 눌러 주세요</b>');
+    $$('#svLipSz [data-lsz]', m).forEach(function(b){ b.classList.toggle('on', b.dataset.lsz === (o.lipSz === 's' ? 's' : 'l')); });
     $('#svLipDel', m).style.display = o.lips ? '' : 'none'; $('#svLipAi', m).textContent = o.lips ? '✨ AI 입모양 다시 만들기' : '✨ AI 입모양 그림 만들기 (제미나이 · 3장)';
   };
   img.onload = paint; if(img.complete) setTimeout(paint, 0);
   img.onclick = function(e){ var r = img.getBoundingClientRect(), q = cur(); o.mouth = { x:clamp((e.clientX - r.left) / r.width, 0.02, 0.98), y:clamp((e.clientY - r.top) / r.height, 0.02, 0.98), w:q.w }; o.mouthSet = true; chg(); };
   wr.oninput = function(){ var q = cur(); o.mouth = { x:q.x, y:q.y, w:(+wr.value) / 100 }; o.mouthSet = true; chg(); };
   $('#svLipDel', m).onclick = function(){ delete o.lips; chg(); };
+  $$('#svLipSz [data-lsz]', m).forEach(function(b){ b.onclick = function(){ if(b.dataset.lsz === 's') o.lipSz = 's'; else delete o.lipSz; chg(); }; });
   $('#svLipAi', m).onclick = function(){
     var b = this; b.disabled = true; var out = $('#svLipOut', m);
     lipAi(o, k, function(t){ out.innerHTML = '<div class="sv-ok">⏳ ' + esc(t) + '</div>'; }).then(function(){ out.innerHTML = '<div class="sv-ok">✓ 입모양 그림을 만들었습니다 — 미리보기로 확인하고, 입 자리가 어긋나면 그림에서 입을 눌러 고치세요</div>'; b.disabled = false; touch(true); chg(); },
@@ -5390,7 +5486,7 @@ function avaPanel(el, at){
     + '<div class="sv-cbar"><button class="sv-btn sm" data-cm-lib>📥 내 출연진 불러오기 (☁ Firebase)</button>'
     + '<button class="sv-btn sm pri" data-cm-ai' + (need ? '' : ' disabled') + '>✨ 입모양 AI 한꺼번에 만들기' + (need ? ' (' + need + ')' : '') + '</button><span class="sv-cst" id="svCloudSt">' + cloudStHtml() + '</span></div><div id="svCastOut"></div>' + cloudHelp() + ''
     + '<div class="sv-cast">' + group('prof', '🧑‍💼 프로필 사진', '원형 + 이름') + group('char', '🐻 캐릭터', '도구에서 만든 16컷 등') + '</div>'
-    + (has ? '<div class="sv-f" style="margin-top:8px"><label>나오는 때</label>' + seg('avshow', [['all', '처음부터 끝까지'], ['ends', !(P.kind === 'photo' || P.kind === 'clip') ? '제목·연락처 화면만' : '첫 장면·사무소 장면만']], A.show || 'all') + '</div>'
+    + (has ? '<div class="sv-f" style="margin-top:8px"><label>나오는 때</label>' + seg('avshow', [['all', '처음부터 끝까지'], ['ends', !(P.kind === 'photo' || P.kind === 'clip') ? '제목·연락처 화면만' : '첫 장면·사무소 장면만']], A.show || 'all') + '</div>' + (A.show === 'ends' ? '<div class="sv-note" style="margin:-4px 0 6px">장면마다 고른 출연진도 이 설정을 따라 처음·끝 장면에서만 나옵니다 (그 장면에서 고른 그림·자리·크기로).</div>' : '')
       + (!(P.kind === 'photo' || P.kind === 'clip') ? '<label class="sv-tg" style="margin:0 0 6px"><input type="checkbox" id="svAvCards"' + (A.cards !== false ? ' checked' : '') + '> 제목 화면·연락처 화면에도 넣기 (위로 작게)</label>' : '')
       + '<div class="sv-note">입 「픽스」는 그림 그대로, 「무브」는 목소리에 맞춰 입이 말하듯 움직입니다 — 무브는 👄 에서 입 자리를 누르거나 AI 입모양(제미나이 3장)을 만들어 두세요. 출연진은 「내 출연진」(Firebase · 이 PC)에 자동 저장돼 다른 PC·다음 영상에서도 불러 쓸 수 있습니다. '
       + (at ? '아래 장면마다 오른쪽 칸에서 출연진 고르기·자리·크기·빼기를 합니다.' : '장면마다 다르게 하려면 ' + (P.kind === 'clip' ? '3단계 「편집표 · 목소리」' : P.kind === 'photo' ? '3단계 「대본 · 목소리」' : '2단계 「대본」') + ' 오른쪽 칸에서 고르세요.') + ' 정보 카드·가격·사무소(명시사항) 장면에서는 글을 가리지 않게 위로 작게 옮깁니다.</div>' : '') + '</div>';
@@ -5416,7 +5512,7 @@ function avaPanel(el, at){
   });
   $$('[data-avpos]', box).forEach(function(s){ s.onchange = function(){ A[s.dataset.avpos + 'Pos'] = s.value; chg(); if(at) render(); }; });
   $$('[data-avsz]', box).forEach(function(r){ r.oninput = function(){ r.nextElementSibling.textContent = r.value + '%'; A[r.dataset.avsz + 'Sz'] = +r.value; drawAt(PV.t); redrawAvPv(); }; r.onchange = function(){ chg(); if(at) render(); }; });
-  bindSeg(box, 'avshow', function(v){ A.show = v; chg(); if(at) render(); });
+  bindSeg(box, 'avshow', function(v){ A.show = v; chg(); render(); });
   var cd = $('#svAvCards', box); if(cd) cd.onchange = function(){ A.cards = this.checked; chg(); };
   loadAva().then(function(){ drawAt(PV.t); redrawAvPv(); });
 }
@@ -6002,7 +6098,8 @@ window.addEventListener('beforeunload', function(e){ if(ENC.busy || YT.busy){ e.
 window.addEventListener('pagehide', function(){ if(saveT && P){ clearTimeout(saveT); saveT = 0; try{ idbPut(P); }catch(e){} } });
 
 /* ───────── 시작 ───────── */
-refreshList().then(function(){
+if(CASTM){ P = { id:'_castmgr', kind:'cast', title:'', scenes:[], ava:{ cast:{ prof:[], char:[] }, def:{ prof:null, char:null } } }; castMgrLoad(); }
+else refreshList().then(function(){
   var cur = LSX.get('sdv.cur', '');
   var p = cur && LIST_ALL.find(function(x){ return x.id === cur; });
   if(/[?&]mode=photo\b/.test(location.search) && !(p && p.kind === 'photo')){ setSector('photo'); p = LIST_ALL.find(function(x){ return x.kind === 'photo'; }) || null; }
@@ -6013,7 +6110,7 @@ refreshList().then(function(){
   render(); paintList(); fromProps();
 }, function(e){ P = newProject(SECTOR); render(); toast('작업 저장소를 열지 못했습니다 (개인 정보 보호 창이면 저장되지 않습니다): ' + e.message, true); });
 
-window.sdVideo = { _loc:{ lEst:lEst, lMpp:lMpp }, _t:{ lipFrames:lipFrames, avaImg:avaImg, mouthLv:mouthLv, avaEff:avaEff, avaOf:avaOf, castLibAll:castLibAll, render:function(){ render(); } }, genImage:genImage, composeDesc:function(){ return composeDesc(ytOf()); }, chapterLines:function(){ return chapterLines(ytOf()); }, tagsText:function(){ return tagsText(ytOf()); }, thumbBlob:thumbBlob, collageBlob:collageBlob, thBundle:thBundle, ytMeta:function(){ return ytMeta(upOf()); }, u8len:u8len, u8cut:u8cut, ytTagList:ytTagList, yt:YT, extPrompt:extPrompt, get project(){ return P; }, timeline:timeline, cuesFor:cuesFor, srt:srt, drawFrame:drawFrame, encode:encode, go:go, opt:function(){ return OPT; }, out:function(){ return OUT; } };
+window.sdVideo = { _loc:{ lEst:lEst, lMpp:lMpp }, _t:{ visEff:function(i, k){ return !!visEff(P.scenes[i], k); }, lipFrames:lipFrames, avaImg:avaImg, mouthLv:mouthLv, avaEff:avaEff, avaOf:avaOf, castLibAll:castLibAll, render:function(){ render(); } }, genImage:genImage, composeDesc:function(){ return composeDesc(ytOf()); }, chapterLines:function(){ return chapterLines(ytOf()); }, tagsText:function(){ return tagsText(ytOf()); }, thumbBlob:thumbBlob, collageBlob:collageBlob, thBundle:thBundle, ytMeta:function(){ return ytMeta(upOf()); }, u8len:u8len, u8cut:u8cut, ytTagList:ytTagList, yt:YT, extPrompt:extPrompt, get project(){ return P; }, timeline:timeline, cuesFor:cuesFor, srt:srt, drawFrame:drawFrame, encode:encode, go:go, opt:function(){ return OPT; }, out:function(){ return OUT; } };
 })();
 </script>
 
