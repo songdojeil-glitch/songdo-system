@@ -8678,7 +8678,7 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.10.11-1';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.10.11-2';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_props.html';      // 이 파일 이름
   var SD_NAME = '매물관리';      // 사람이 부르는 이름
 
@@ -12122,6 +12122,115 @@ textarea.bf-in{resize:vertical;line-height:1.6}
 })();
 </script>
 <script src="sd_logo.js?v=2026.10.09-1"></script>
+<script>
+/* ════════════════════════════════════════════════════════════════════
+   🏢 관리비 자동 채우기 (2026-10-11)
+   매물 등록에서 아파트 단지명 + 전용면적을 넣으면 「월 관리비」 칸을 K-apt 단지 평균으로 채운다.
+   · 자료: sd_apt.json (공동주택관리정보시스템 K-apt · 관리비부과면적 1㎡당 월 원) + sd_danji_info.json(별칭·면적형)
+   · 세대 부담 = ㎡당 값 × 관리비부과면적(= 전용㎡ × 단지별 k) — 실거래가 화면(sd_data)과 같은 계산
+   · 칸 값: 「약 25.2만원 (공용 11.4 + 개별 13.8 · 단지평균 2026.5) · 장충금 4.7만원 별도」
+   · 직접 적은 값은 덮어쓰지 않는다 (아래 「K-apt 값으로 바꾸기」로만). 공급면적 칸이 비었으면(또는 자동으로 채운 값이면) 함께 채운다.
+   · 단지를 못 찾거나 두 곳 이상과 비슷하면 채우지 않고 알려만 준다. 오피스텔·상가 등은 대상 아님.
+   ════════════════════════════════════════════════════════════════════ */
+(function(){
+  var A = null, DI = null, Q = null, IDX = null;
+  function load(){
+    if(Q) return Q;
+    Q = Promise.all([
+      fetch('sd_apt.json', { cache:'no-cache' }).then(function(r){ return r.ok ? r.json() : null; }).catch(function(){ return null; }),
+      fetch('sd_danji_info.json', { cache:'no-cache' }).then(function(r){ return r.ok ? r.json() : null; }).catch(function(){ return null; })
+    ]).then(function(v){
+      A = (v[0] && v[0].apt) || {}; DI = v[1] || {};
+      IDX = {};
+      function put(nm, c){ var k = key(nm); if(k && A[c]) (IDX[k] = IDX[k] || {})[c] = 1; }
+      Object.keys(A).forEach(function(c){ put(A[c].n, c); });
+      var nx = (v[0] && v[0].nidx) || {}; Object.keys(nx).forEach(function(n){ put(n, nx[n]); });
+      var al = DI.alias || {}; Object.keys(al).forEach(function(n){ put(n, al[n]); });
+      return true;
+    });
+    return Q;
+  }
+  //  이름 맞추기 — 띄어쓰기·괄호(주상복합)·「송도」「인천」·끝의 아파트/단지 를 빼고, Ⅱ→2
+  function key(x){
+    var t = String(x || '').toLowerCase().replace(/\(.*?\)/g, '').replace(/\s+/g, '')
+      .replace(/ⅰ|Ⅰ/g, '1').replace(/ⅱ|Ⅱ/g, '2').replace(/ⅲ|Ⅲ/g, '3').replace(/ⅳ|Ⅳ/g, '4')
+      .replace(/송도|인천/g, '');
+    while(/(아파트|단지)$/.test(t)) t = t.replace(/(아파트|단지)$/, '');
+    return t;
+  }
+  function find(nm){
+    var k = key(nm); if(!k || k.length < 3 || !IDX) return { c:null };
+    if(IDX[k]){ var e = Object.keys(IDX[k]); return e.length === 1 ? { c:e[0] } : { c:null, many:true }; }
+    var hit = {};
+    Object.keys(IDX).forEach(function(n){
+      if(n.length >= 3 && (n.indexOf(k) >= 0 || k.indexOf(n) >= 0)) Object.keys(IDX[n]).forEach(function(c){ hit[c] = 1; });
+    });
+    var cs = Object.keys(hit);
+    return cs.length === 1 ? { c:cs[0] } : { c:null, many:cs.length > 1 };
+  }
+  function man(v){ return (Math.round(v / 1000) / 10).toFixed(1).replace(/\.0$/, ''); }   // 원 → 만원(소수 1자리)
+  function $(id){ return document.getElementById(id); }
+  function isApt(){ var t = ($('f-type') || {}).value || ''; return /^아파트/.test(t); }
+  function net(){ var v = parseFloat(String(($('f-ar') || {}).value || '').replace(/[^\d.]/g, '')); return v > 0 ? v : 0; }
+
+  function hintBox(){
+    var m = $('px-mgmt'); if(!m) return null;
+    var h = $('px-mgmt-auto');
+    if(!h){ h = document.createElement('div'); h.id = 'px-mgmt-auto'; h.className = 'px-note'; h.style.marginTop = '4px'; m.parentNode.appendChild(h); }
+    return h;
+  }
+  //  계산만 — 결과 {txt, info} 또는 {why}
+  function calc(){
+    if(!isApt()) return { why:'' };
+    var nm = (($('f-cx') || {}).value || '').trim(), sq = net();
+    if(!nm) return { why:'' };
+    var f = find(nm);
+    if(!f.c) return { why: f.many ? '🏢 관리비 자동: 「' + nm + '」 — 이름이 비슷한 단지가 여러 곳이라 고르지 못했습니다. 단지명을 정확히 적거나(예: 1단지·2차) 직접 입력해 주세요'
+                                  : '🏢 관리비 자동: 「' + nm + '」 — K-apt 자료에서 단지를 찾지 못했습니다. 직접 입력해 주세요' };
+    var a = A[f.c];
+    if(!a.fee || !a.k) return { why:'🏢 관리비 자동: ' + a.n + ' — K-apt 에 관리비 공개 자료가 없는 단지입니다. 직접 입력해 주세요' };
+    if(!sq) return { why:'🏢 관리비 자동: ' + a.n + ' — 전용면적을 넣으면 관리비를 채웁니다' };
+    var ar = sq * a.k, fe = a.fee;
+    var pub = fe.pub * ar, ind = fe.ind * ar, ltr = fe.ltr * ar;
+    var ym = String(fe.ym || ''); ym = ym.slice(0, 4) + '.' + (+ym.slice(4, 6));
+    var txt = '약 ' + man(pub + ind) + '만원 (공용 ' + man(pub) + ' + 개별 ' + man(ind) + ' · 단지평균 ' + ym + ') · 장충금 ' + man(ltr) + '만원 별도';
+    //  공급면적 — 면적형 표에 같은 전용이 있으면 그 공급㎡, 없으면 전용 × k
+    var sup = Math.round(ar * 100) / 100, sz = ((DI.apt || {})[f.c] || {}).sizes || [];
+    sz.forEach(function(s){ if(Math.abs(s[0] - sq) < 0.05 && s[2]) sup = s[2]; });
+    return { txt:txt, sup:sup, info:'🏢 K-apt ' + a.n + ' · 부과면적 ' + (Math.round(ar * 100) / 100) + '㎡ · ' + ym + ' 단지 평균 (개별사용료는 집마다 다름 · 장충금은 소유자 부담)' };
+  }
+  function run(force){
+    if(!$('px-mgmt')) return;
+    load().then(function(){
+      var m = $('px-mgmt'), h = hintBox(); if(!m || !h) return;
+      var r = calc();
+      if(!r.txt){ h.innerHTML = ''; if(r.why){ h.textContent = r.why; } if(m.value && m.value === m.dataset.auto && !r.txt){ /* 단지가 바뀌어 자동값이 안 맞으면 비운다 */ m.value = ''; m.dataset.auto = ''; } return; }
+      var mine = m.value.trim() && m.value !== m.dataset.auto;   // 직접 적은 값
+      if(force || !mine){ m.value = r.txt; m.dataset.auto = r.txt; mine = false; }
+      var g = $('px-gross');
+      if(g && r.sup && (!String(g.value || '').trim() || g.value === g.dataset.auto)){ g.value = String(r.sup); g.dataset.auto = g.value; try{ if(typeof pxCalc === 'function') pxCalc(); }catch(e){} }
+      h.innerHTML = '';
+      var s = document.createElement('span'); s.textContent = r.info; h.appendChild(s);
+      if(mine && m.value !== r.txt){
+        var b = document.createElement('button'); b.type = 'button'; b.textContent = 'K-apt 값으로 바꾸기';
+        b.style.cssText = 'margin-left:6px;font-size:11px;padding:2px 8px;border:1px solid #c7d2fe;background:#eef2ff;color:#3730a3;border-radius:6px;cursor:pointer';
+        b.title = r.txt; b.onclick = function(){ run(true); };
+        h.appendChild(b);
+      }
+    });
+  }
+  var tm = null;
+  function later(){ clearTimeout(tm); tm = setTimeout(function(){ run(false); }, 450); }
+  document.addEventListener('input', function(e){ var id = e.target && e.target.id; if(id === 'f-cx' || id === 'f-ar') later(); }, true);
+  document.addEventListener('change', function(e){ var id = e.target && e.target.id; if(id === 'f-cx' || id === 'f-ar' || id === 'f-type') later(); }, true);
+  //  수정 화면을 열 때 — 저장된 값은 그대로 두고 안내만 (값이 비었으면 채움)
+  var _e = window.editP;
+  if(typeof _e === 'function'){ window.editP = function(){ var r = _e.apply(this, arguments); var m = $('px-mgmt'); if(m) m.dataset.auto = ''; var g = $('px-gross'); if(g) g.dataset.auto = ''; later(); return r; }; }
+  var _c = window.clearF;
+  if(typeof _c === 'function'){ window.clearF = function(){ var r = _c.apply(this, arguments); var m = $('px-mgmt'); if(m){ m.dataset.auto = ''; } var g = $('px-gross'); if(g) g.dataset.auto = ''; var h = $('px-mgmt-auto'); if(h) h.innerHTML = ''; return r; }; }
+  window.sdMgmtAuto = { run:run, calc:calc, find:function(n){ return load().then(function(){ return find(n); }); }, load:load, key:key };
+})();
+</script>
 </body>
 </html>
 
