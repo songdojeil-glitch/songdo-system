@@ -13,6 +13,7 @@
 <link rel="apple-touch-icon" sizes="180x180" href="sjrws-180.png">
 <!-- ═════════════════════════════════════════════════════════════════
      🎬 영상 (video) · 비디오 스튜디오 (sd_video.html)  v2026.10.04-3
+     · 2026.10.11-3: 입지 영상 포인트 종류 3가지 추가 — 🏘 주거단지 · 🏬 상업시설 · 🏢 업무시설 (매물 종류에 따른 입지 분석). 거리 선은 각자 색의 실선(생활시설은 점선)
      · 2026.10.11-2: 🎞 영상 ADD — 대본·사진·영상 세 갈래의 「영상」 다음 단계. 🎬 인트로 → 🗺 입지 영상 → 📹 본 영상 → 🏁 엔딩을 MP4 하나로 (보관함 sd_video_adds ·
        입지 영상 작업 완성 화면 「🗂 영상 ADD 보관함에 넣기」 · 시작/끝 자르기 · 방향 다르면 흐린 배경 · 이음 0.25초 · 설명란 목차·자막 시각을 앞 길이만큼 뒤로)
      · 2026.10.08-2: 🎭 출연진(프로필·캐릭터·입 픽스/무브·장면별 고르기)을 📸 사진에서 영상 만들기·📝 대본에서 영상 만들기에도.
@@ -566,7 +567,7 @@ html.sv-embed body{background:#f7f8fa}
    ═════════════════════════════════════════════════════════════════ */
 (function(){
 'use strict';
-var SD_VER = '2026.10.11-2';
+var SD_VER = '2026.10.11-3';
 window.SD_VERSION = SD_VER;
 var EMBED = /[?&]embed=1\b/.test(location.search);
 if(EMBED) document.documentElement.classList.add('sv-embed');
@@ -3913,7 +3914,9 @@ function isPK(){ return !!P && (P.kind === 'photo' || P.kind === 'clip'); }
    · 16:9 / 9:16 (둘 다 한 번에), 1920×1080·1080×1920 고화질 MP4, 멘트·목소리·자막·배경음악·효과음은 다른 갈래와 같이
    ═════════════════════════════════════════════════════════════════ */
 var LSTEPS = [['linfo', '단지 정보'], ['lmap', '지도·포인트'], ['lscript', '멘트·목소리'], ['video', '영상']];
-var POI_K = { sub:['🚇', '지하철역', '#1c7ed6'], sch:['🏫', '학교', '#37b24d'], shop:['🛍', '쇼핑', '#e64980'], park:['🌳', '공원', '#2f9e44'], hosp:['🏥', '병원', '#f03e3e'], gov:['🏛', '관공서', '#7048e8'], bus:['🚌', '버스', '#f59f00'], etc:['📍', '기타', '#495057'] };
+var POI_K = { sub:['🚇', '지하철역', '#1c7ed6'], sch:['🏫', '학교', '#37b24d'], shop:['🛍', '쇼핑', '#e64980'], park:['🌳', '공원', '#2f9e44'], hosp:['🏥', '병원', '#f03e3e'], gov:['🏛', '관공서', '#7048e8'], bus:['🚌', '버스', '#f59f00'], apt:['🏘️', '주거단지', '#0c8599'], com:['🏬', '상업시설', '#d9480f'], biz:['🏢', '업무시설', '#1e3a8a'], etc:['📍', '기타', '#495057'] };
+/* 입지 분석용 3종(2026-10-11) — 매물 종류에 따라 주거단지·상업시설·업무시설까지 거리. 거리 선을 실선으로 그려 생활시설(점선)과 구분 */
+var POI_SOLID = { apt:1, com:1, biz:1 };
 var L_CREDIT = ['네이버지도', '카카오맵', '브이월드', 'OpenStreetMap'];
 function lJ(w, a, b){ w = String(w || ''); var c = w.trim().slice(-1).charCodeAt(0); if(c >= 0xAC00 && c <= 0xD7A3) return w + ((c - 0xAC00) % 28 ? a : b); return w + (/[013678lmnr]$/i.test(w.trim()) ? a : b); }
 function isLoc(){ return !!P && P.kind === 'loc'; }
@@ -4050,11 +4053,11 @@ function lCard(ctx, W, H, local, sty, out){
   });
   ctx.restore();
 }
-function lRouteLine(ctx, a, b, k, col, u, dim){
+function lRouteLine(ctx, a, b, k, col, u, dim, solid){
   if(k <= 0) return; var x = a.x + (b.x - a.x) * ease(k), y = a.y + (b.y - a.y) * ease(k);
   ctx.save(); ctx.globalAlpha *= dim ? 0.45 : 1; ctx.lineCap = 'round';
   ctx.strokeStyle = 'rgba(255,255,255,.9)'; ctx.lineWidth = u * 0.016; ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(x, y); ctx.stroke();
-  ctx.strokeStyle = col; ctx.lineWidth = u * 0.009; ctx.setLineDash([u * 0.02, u * 0.014]); ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(x, y); ctx.stroke(); ctx.setLineDash([]);
+  ctx.strokeStyle = col; ctx.lineWidth = u * (solid ? 0.011 : 0.009); if(!solid) ctx.setLineDash([u * 0.02, u * 0.014]); ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(x, y); ctx.stroke(); ctx.setLineDash([]);
   if(k < 1 && !dim){ ctx.fillStyle = col; ctx.beginPath(); ctx.arc(x, y, u * 0.012, 0, Math.PI * 2); ctx.fill(); }
   ctx.restore();
 }
@@ -4091,7 +4094,7 @@ function drawLocScene(ctx, g, local, W, H, sty){
   /* 지나간 경로 선 (거리 장면 이후) */
   if(s.type === 'lroute' || s.type === 'lend'){
     var seg = (g.d - 0.6) / Math.max(1, R.length), cur = s.type === 'lroute' ? Math.floor(local / seg) : R.length;
-    R.forEach(function(p, j){ if(!home) return; var b = P2(lPx(p)), K = POI_K[p.kind] || POI_K.etc, kk = s.type === 'lroute' ? (j < cur ? 1 : j === cur ? (local - j * seg - 0.5) / 1.3 : 0) : 1; lRouteLine(ctx, home, b, kk, K[2], u, s.type === 'lend' ? false : j < cur); });
+    R.forEach(function(p, j){ if(!home) return; var b = P2(lPx(p)), K = POI_K[p.kind] || POI_K.etc, kk = s.type === 'lroute' ? (j < cur ? 1 : j === cur ? (local - j * seg - 0.5) / 1.3 : 0) : 1; lRouteLine(ctx, home, b, kk, K[2], u, s.type === 'lend' ? false : j < cur, !!POI_SOLID[p.kind]); });
   }
   /* 주변 포인트 */
   if(s.type === 'lpoi' || s.type === 'lroute' || s.type === 'lend'){
@@ -4390,7 +4393,7 @@ function lmDraw(){
   x.setTransform(k, 0, 0, k, 0, 0); x.clearRect(0, 0, W, H);
   if(im) x.drawImage(im, 0, 0, W, H); else { x.fillStyle = '#dee2e6'; x.fillRect(0, 0, W, H); var el = LIMG[m.src.length + ':' + m.src.slice(-40)]; if(el) el.onload = lmDraw; }
   var r = 13, pt = function(p){ return { x:p.x * W, y:p.y * H }; };
-  if(L.home) lRoutes().forEach(function(p){ var a = pt(L.home), b = pt(p); x.save(); x.strokeStyle = (POI_K[p.kind] || POI_K.etc)[2]; x.lineWidth = 3; x.setLineDash([8, 6]); x.beginPath(); x.moveTo(a.x, a.y); x.lineTo(b.x, b.y); x.stroke(); x.restore(); });
+  if(L.home) lRoutes().forEach(function(p){ var a = pt(L.home), b = pt(p); x.save(); x.strokeStyle = (POI_K[p.kind] || POI_K.etc)[2]; x.lineWidth = POI_SOLID[p.kind] ? 3.5 : 3; x.setLineDash(POI_SOLID[p.kind] ? [] : [8, 6]); x.beginPath(); x.moveTo(a.x, a.y); x.lineTo(b.x, b.y); x.stroke(); x.restore(); });
   var sc = L.scale && L.scale.a ? L.scale : LSCA ? { a:LSCA } : null;
   if(sc){ x.save(); x.strokeStyle = '#e8590c'; x.fillStyle = '#e8590c'; x.lineWidth = 3; var a = pt(sc.a); x.beginPath(); x.arc(a.x, a.y, 5, 0, 7); x.fill(); if(sc.b){ var b = pt(sc.b); x.beginPath(); x.arc(b.x, b.y, 5, 0, 7); x.fill(); x.beginPath(); x.moveTo(a.x, a.y); x.lineTo(b.x, b.y); x.stroke(); if(sc.m){ x.font = '800 13px ' + FONT; x.textAlign = 'center'; x.fillText(sc.m + 'm', (a.x + b.x) / 2, (a.y + b.y) / 2 - 8); } } x.restore(); }
   (L.pois || []).forEach(function(p, i){
