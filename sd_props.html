@@ -8744,7 +8744,7 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.10.12-2';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.10.12-3';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_props.html';      // 이 파일 이름
   var SD_NAME = '매물관리';      // 사람이 부르는 이름
 
@@ -12512,6 +12512,8 @@ textarea.bf-in{resize:vertical;line-height:1.6}
      · 1단계: 아파트·주상복합 / 글 정보만 (사진 · 오피스텔 · 분양권은 다음 단계)
      · 2026-10-12 오후: 상가 매매·임대 · 사무실 매매·임대 추가 — 홈페이지 상가점포(31) · 사무실(34), 상가명은 SJRWS 단지/건물명 그대로,
        상가 종류(일반/아파트/전문/지하상가)는 물건구분·층으로 정하고 줄에서 바꿀 수 있음 · 권리금 · 기존 임대(매매의 「보증금/월세」) · 현업종 · 사용승인일
+     · 2026-10-12 사진: 매물 사진(대표 ★ 먼저 · 최대 10장)을 관리자 창이 목록을 달라고 할 때 받아서(Firebase 저장소) 1MB 가 넘거나 1600px 보다 크면
+       JPEG 로 줄여 함께 넘긴다 → 관리자 창이 홈페이지 사진 올리기로 올리고 매물에 붙인다 (홈페이지 한도: 10장 · 1장 1MB · jpg/png/gif)
      ═════════════════════════════════════════════════════════════════ -->
 <script>
 (function(){
@@ -12614,6 +12616,36 @@ textarea.bf-in{resize:vertical;line-height:1.6}
     var under = /^\s*(b|지하)/i.test(parts[0] || '');
     return { story:a ? (under ? 'B' + a[1] : a[1]) : '', total:b ? b[1] : '', under:under };
   }
+  //  매물 사진 — 대표(★) 먼저, 최대 10장
+  function phList(p){
+    var a = Array.isArray(p.photos) ? p.photos.filter(function(x){ return x && x.url; }) : [];
+    a = a.slice().sort(function(x, y){ return (y.star ? 1 : 0) - (x.star ? 1 : 0); });
+    return a.slice(0, 10).map(function(x){ return { url:x.url, name:String(x.name || 'photo.jpg') }; });
+  }
+  //  홈페이지 한도(1장 1MB) — 넘거나 너무 크면 JPEG 로 줄인다
+  async function shrink(blob, name){
+    var okType = /^image\/(jpeg|png|gif)$/.test(blob.type);
+    if(okType && blob.size <= 950 * 1024){
+      try{ var b0 = await createImageBitmap(blob); var big = Math.max(b0.width, b0.height) > 2400; b0.close && b0.close(); if(!big) return { blob:blob, name:name }; }catch(e){ return { blob:blob, name:name }; }
+    }
+    var bmp = await createImageBitmap(blob), sc = Math.min(1, 1600 / Math.max(bmp.width, bmp.height)), q = 0.85, out = blob;
+    for(var k = 0; k < 6; k++){
+      var c = document.createElement('canvas'); c.width = Math.max(1, Math.round(bmp.width * sc)); c.height = Math.max(1, Math.round(bmp.height * sc));
+      c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
+      out = await new Promise(function(r){ c.toBlob(r, 'image/jpeg', q); });
+      if(out && out.size <= 950 * 1024) break;
+      sc *= 0.8; q = Math.max(0.6, q - 0.05);
+    }
+    return { blob:out, name:String(name).replace(/\.[a-z0-9]+$/i, '') + '.jpg' };
+  }
+  async function photoBlobs(list, say){
+    var out = [];
+    for(var i = 0; i < list.length; i++){
+      if(say) say(i + 1, list.length);
+      try{ var r = await fetch(list[i].url); if(!r.ok) continue; out.push(await shrink(await r.blob(), list[i].name)); }catch(e){}
+    }
+    return out;
+  }
   function py(m){ return m ? String(Math.round(m / 3.3058 * 100) / 100) : ''; }
   //  상가 · 사무실 → 홈페이지 상가점포(10) · 사무실(13)
   function buildShop(p){
@@ -12646,7 +12678,7 @@ textarea.bf-in{resize:vertical;line-height:1.6}
     var sec = ['SJRWS 매물 #' + p.id, unit ? '호수 ' + unit : '', p.c1name || p.c1tel ? '연락처1 ' + [p.c1name, p.c1tel].filter(Boolean).join(' ') : '', p.c2name || p.c2tel ? '연락처2 ' + [p.c2name, p.c2tel].filter(Boolean).join(' ') : '',
       p.receiveDate ? '접수 ' + p.receiveDate + (p.route ? ' (' + p.route + ')' : '') : '', p.lastMemo ? '최종메모 ' + p.lastMemo : ''].filter(Boolean).join(' | ');
     var ok = !!bname && !!price && bname !== '이미지';
-    return { pid:String(p.id), cx:p.complexName, shop:true, label:label, M:{ cls:cls, how:'상가' }, ok:ok,
+    return { pid:String(p.id), cx:p.complexName, shop:true, label:label, M:{ cls:cls, how:'상가' }, ok:ok, ph:phList(p),
       why:!bname || bname === '이미지' ? '상가명이 비어 있음' : !price ? '가격이 비어 있음' : '',
       it:{ pid:String(p.id), label:label, cls:cls, kind:kind, bname:bname, find:bname.slice(0, 3), sub:sub, addr:'', area1:sup ? String(sup) : '', area1p:py(sup), area2:ex ? String(ex) : '', area2p:py(ex),
         price:price, monthly:monthly, loan:man(p.pxLoan), g:man(p.gw), tb:tb, tm:tm, total:fl.total, story:fl.story, useH:String(p.pxBizName || ''), useG:'', heat:String(p.pxHeat || ''), parking:'',
@@ -12675,7 +12707,7 @@ textarea.bf-in{resize:vertical;line-height:1.6}
     var sec = ['SJRWS 매물 #' + p.id, p.c1name || p.c1tel ? '연락처1 ' + [p.c1name, p.c1tel].filter(Boolean).join(' ') : '', p.c2name || p.c2tel ? '연락처2 ' + [p.c2name, p.c2tel].filter(Boolean).join(' ') : '',
       p.receiveDate ? '접수 ' + p.receiveDate + (p.route ? ' (' + p.route + ')' : '') : '', p.lastMemo ? '최종메모 ' + p.lastMemo : ''].filter(Boolean).join(' | ');
     return {
-      pid:String(p.id), cx:p.complexName, label:label.trim(), M:M, ok:!!M.cls && !!price,
+      pid:String(p.id), cx:p.complexName, label:label.trim(), M:M, ok:!!M.cls && !!price, ph:phList(p),
       why:!M.cls ? M.why : !price ? '가격이 비어 있음' : '',
       it:{ pid:String(p.id), label:label.trim(), cls:M.cls, kind:kind, danji:M.id, dong:u.dong, ho:u.ho, area1:sup ? String(sup) : '', area2:ex ? String(ex) : '',
         hyung:sup ? String(Math.round(sup / 3.3058)) : '', price:price, monthly:monthly, loan:'', tb:tb, tm:'', total:fl.total, story:fl.story,
@@ -12712,7 +12744,7 @@ textarea.bf-in{resize:vertical;line-height:1.6}
         var it = r.it, pr = esc(it.kind === 3 ? it.price + ' / ' + it.monthly : it.price);
         if(it.g) pr += ' <small style="color:#888">권리 ' + esc(it.g) + '</small>';
         if(r.shop && it.kind === 1 && (it.tb || it.tm)) pr += ' <small style="color:#888">(임대 ' + esc(it.tb) + '/' + esc(it.tm) + ')</small>';
-        return '<tr class="' + (r.ok ? '' : 'no') + '"><td>' + (r.ok ? '<input type="checkbox" class="hp-c" data-p="' + esc(r.pid) + '"' + (CHK[r.pid] ? ' checked' : '') + '>' : '') + '</td><td>' + esc(r.label) + '</td><td>'
+        return '<tr class="' + (r.ok ? '' : 'no') + '"><td>' + (r.ok ? '<input type="checkbox" class="hp-c" data-p="' + esc(r.pid) + '"' + (CHK[r.pid] ? ' checked' : '') + '>' : '') + '</td><td>' + esc(r.label) + (r.ph && r.ph.length ? ' <small title="사진도 함께 올라갑니다">📷' + r.ph.length + '</small>' : '') + '</td><td>'
           + (r.shop ? ssel(r) : dsel(r)) + (r.M.how === '추정' ? ' <span class="hp-est" title="단지 짝을 추정했습니다 — 맞는지 확인해 주세요">확인</span>' : '') + (!r.ok && r.why ? '<div class="hp-warn">⚠️ ' + esc(r.why) + '</div>' : '')
           + '</td><td>' + esc(it.area2) + '</td><td>' + esc(it.story) + (it.total ? '/' + esc(it.total) : '') + '</td><td>' + pr + '</td></tr>';
       }).join('') + '</table>';
@@ -12808,6 +12840,12 @@ textarea.bf-in{resize:vertical;line-height:1.6}
     var m = e.data || {};
     if(m.sjrws === 'props-req'){
       var P = $('hp-ov') ? picked() : { adds:[], dones:[] };
+      //  사진이 있는 매물은 사진 파일을 받아 함께 넘긴다
+      var need = P.adds.filter(function(a){ var r = ROWS.filter(function(x){ return x.pid === a.pid; })[0]; return r && r.ph && r.ph.length; });
+      for(var q = 0; q < need.length; q++){
+        var a = need[q], r0 = ROWS.filter(function(x){ return x.pid === a.pid; })[0];
+        a.photos = await photoBlobs(r0.ph, function(n, t){ if($('hp-res')) $('hp-res').textContent = '📷 사진 준비 중… (' + (q + 1) + '/' + need.length + '번째 매물 ' + n + '/' + t + '장)'; });
+      }
       e.source.postMessage({ sjrws:'props-list', adds:P.adds, dones:P.dones }, e.origin);
       if($('hp-res')) $('hp-res').textContent = '관리자 창으로 넘겼습니다 (올리기 ' + P.adds.length + ' · 거래완료 ' + P.dones.length + ') — 그 창에서 확인을 누르면 반영됩니다.';
     } else if(m.sjrws === 'props-done'){

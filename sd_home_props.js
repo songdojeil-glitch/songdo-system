@@ -5,6 +5,8 @@
    · 새 매물: 홈페이지 등록 양식과 같은 요청(관리자 매물 쓰기)으로 올리고, 목록에서 새 매물 번호를 찾아 SJRWS 에 알려 준다
    · 거래완료: 숨은 창으로 그 매물 「수정」 화면을 열어, 화면이 보내는 저장 요청 모양을 그대로 읽고 거래상태만 「거래완료」로 바꿔 보낸다
    · 소유주 이름·연락처는 「관리메모(보안)」 칸으로만 간다 (홈페이지 밖으로는 안 보이는 칸 — 대표님 확인)
+   · 2026-10-12 사진: SJRWS 가 사진 파일(최대 10장 · 1MB 이하로 줄인 것)을 함께 넘겨 주면, 홈페이지 사진 올리기(swfupload.php)로 한 장씩 올려
+     사진 번호(file_id)를 받고, 매물 저장 때 fileIds 로 함께 보낸다. 올리기 설정은 숨은 창으로 연 쓰기 화면에서 읽는다
    ════════════════════════════════════════════════════════════════════ */
 (function(){
   'use strict';
@@ -51,7 +53,7 @@
     else o.push(['price', it.price], ['price_m', it.monthly], ['price_f', it.loan]);
     o.push(['total_story', it.total], ['story', it.story], ['room', it.room], ['bathroom', it.bath], ['heating', it.heat], ['parking', it.parking],
       ['date_transfer', it.moveIn], ['direction', it.dir], ['fee', it.fee], ['subject', it.subject], ['myImageSkey', ''], ['content_main', it.content],
-      ['swfSequence', '1'], ['upload', ''], ['memo', it.memo], ['request_uri', ru], ['fileIds', ''], ['error_style', 'proc']);
+      ['swfSequence', '1'], ['upload', ''], ['memo', it.memo], ['request_uri', ru], ['fileIds', it.fileIds || ''], ['error_style', 'proc']);
     return enc(o);
   }
   //  상가점포(31) · 사무실(34) — 상가명은 직접 입력, 상가 종류(아파트/일반/전문/지하상가)는 상가만, 사무실은 「점포」 칸이 더 있다
@@ -68,8 +70,49 @@
     if(!shop) o.push(['jumpo', '']);
     o.push(['use_h', it.useH], ['use_g', it.useG], ['heating', it.heat], ['parking', it.parking], ['date_build_select1', ''], ['date_build_select2', ''],
       ['date_transfer', it.moveIn], ['direction', it.dir], ['date_approved', it.approved], ['fee', it.fee], ['subject', it.subject], ['myImageSkey', ''],
-      ['content_main', it.content], ['swfSequence', '1'], ['upload', ''], ['memo', it.memo], ['request_uri', ru], ['fileIds', ''], ['error_style', 'proc']);
+      ['content_main', it.content], ['swfSequence', '1'], ['upload', ''], ['memo', it.memo], ['request_uri', ru], ['fileIds', it.fileIds || ''], ['error_style', 'proc']);
     return enc(o);
+  }
+  //  ── 사진 ── 쓰기 화면을 숨은 창으로 열어 사진 올리기 설정(swfUploadSettings[1] · swfUploadPath)을 읽는다
+  var UP = null;
+  function upSettings(){
+    if(UP) return Promise.resolve(UP);
+    return new Promise(function(res){
+      var ws = document.forms.writeSelectForm; if(!ws){ res(null); return; }
+      var nm = 'sjup' + Date.now(), fr = document.createElement('iframe'), f = document.createElement('form'), done = false;
+      fr.name = nm; fr.style.cssText = 'position:absolute;width:10px;height:10px;left:-99px;top:-99px;opacity:0';
+      f.method = 'post'; f.action = ws.getAttribute('action') || location.href; f.target = nm; f.style.display = 'none';
+      var fd = new FormData(ws); fd.forEach(function(v, k){ var i = document.createElement('input'); i.type = 'hidden'; i.name = k; i.value = k === 'mmClass' ? '1' : k === 'mmKind' ? '1' : v; f.appendChild(i); });
+      function fin(v){ if(done) return; done = true; setTimeout(function(){ fr.remove(); f.remove(); }, 50); res(v); }
+      fr.onload = function(){ setTimeout(function(){
+        try{ var w = fr.contentWindow, st = w.swfUploadSettings && w.swfUploadSettings[1];
+          if(st && st.post_params && w.swfUploadPath){ var pp = st.post_params; UP = { url:w.swfUploadPath + '../swfupload.php', pp:{ swfPath:pp.swfPath, swfTbl:pp.swfTbl, swfMid:pp.swfMid + (pp.mo ? '&mo=' + pp.mo : ''), mid:pp.mid, act:pp.act, bpath:pp.bpath, editorPaste:pp.editorPaste }, max:st.fileMaxUploadEa || 10 }; }
+        }catch(e){}
+        fin(UP);
+      }, 900); };
+      setTimeout(function(){ fin(UP); }, 15000);
+      document.body.appendChild(fr); document.body.appendChild(f); f.submit();
+    });
+  }
+  //  사진 한 장 올리기 — 홈페이지 쓰기 화면의 사진 올리기(swfInsertImage)와 같은 칸 → { file_id }
+  async function upPhoto(up, ph){
+    var d = new FormData();
+    d.append('Filedata', new File([ph.blob], ph.name || 'photo.jpg', { type:ph.blob.type || 'image/jpeg' }));
+    ['swfPath', 'swfTbl', 'swfMid', 'mid', 'act', 'bpath', 'editorPaste'].forEach(function(k){ d.append(k, up.pp[k]); });
+    d.append('atype', 'fileUpload');
+    var r = await fetch(up.url, { method:'POST', body:d, credentials:'include' }), t = await r.text(), j = null;
+    try{ j = JSON.parse(t); }catch(e){}
+    return j && j.file_id ? String(j.file_id) : '';
+  }
+  async function upPhotos(it){
+    if(!it.photos || !it.photos.length) return { ids:'', n:0, fail:0 };
+    var up = await upSettings(); if(!up) return { ids:'', n:0, fail:it.photos.length };
+    var ids = [], fail = 0, list = it.photos.slice(0, up.max || 10);
+    for(var i = 0; i < list.length; i++){
+      try{ var id = await upPhoto(up, list[i]); if(id) ids.push(id); else fail++; }catch(e){ fail++; }
+      await wait(150);
+    }
+    return { ids:ids.join(','), n:ids.length, fail:fail };
   }
   //  새로 올린 매물 번호 찾기 — 그 분류 목록에서 같은 동(아파트) 또는 같은 상가명(상가·사무실) 줄 중 가장 큰 내부번호
   async function findNew(it){
@@ -129,13 +172,14 @@
     if(!confirm('SJRWS 매물을 홈페이지에 반영할까요?\n\n· 새로 올리기 ' + adds.length + '건\n· 거래완료로 바꾸기 ' + dones.length + '건')){ msg('취소했습니다.'); return; }
     var added = [], doned = [], fail = [], tot = adds.length + dones.length, k = 0;
     for(var i = 0; i < adds.length; i++, k++){
-      var it = adds[i]; bar(k / tot); msg('올리는 중… ' + (k + 1) + ' / ' + tot);
+      var it = adds[i]; bar(k / tot); msg('올리는 중… ' + (k + 1) + ' / ' + tot + (it.photos && it.photos.length ? ' · 사진 ' + it.photos.length + '장' : ''));
+      var P = await upPhotos(it); it.fileIds = P.ids;
       var r = await post('procAdminMmWrite', addBody(it));
       if(r.status === true){
         await wait(400);
         var nw = await findNew(it);
         added.push({ pid:it.pid, num:nw ? nw.num : 0, no:nw ? nw.no : '', cls:it.cls });
-        log('✅ ' + esc(it.label) + (nw && nw.no ? ' → 매물번호 ' + nw.no : ''));
+        log('✅ ' + esc(it.label) + (nw && nw.no ? ' → 매물번호 ' + nw.no : '') + (P.n ? ' · 📷 ' + P.n + '장' : '') + (P.fail ? ' · ⚠️ 사진 ' + P.fail + '장 실패' : ''));
       } else { fail.push({ pid:it.pid, why:r.message || '등록 실패' }); log('⚠️ ' + esc(it.label) + ' — ' + esc(r.message || '등록 실패')); }
       await wait(300);
     }
