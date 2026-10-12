@@ -1,6 +1,7 @@
 /* ════════════════════════════════════════════════════════════════════
    🏠 SJRWS → 송도제일 홈페이지 뉴스 등록 (2026-10-12)
    송도제일 홈페이지 관리자 「부동산뉴스관리」 화면에서 즐겨찾기 「SJRWS 뉴스등록」을 누르면 실행된다.
+   (「매물관리」 화면에서 누르면 sd_home_props.js — SJRWS 매물 올리기 · 거래완료 — 로 넘긴다)
    · 이 창은 SJRWS 허브의 「🏠 홈페이지 등록」 버튼이 연 창이어야 한다 (허브가 기사 목록을 넘겨 준다)
    · 허브 → 기사 목록(제목·언론사·URL·구분) 받기 → 이미 목록에 있는 제목은 건너뜀 → 확인 → 한 건씩 등록
    · 등록은 화면의 등록 양식과 똑같은 요청(관리자 「뉴스 등록」)을 쓴다 — 양식이 바뀌어도 그 양식에서 요청 모양을 읽어 온다
@@ -9,6 +10,12 @@
 (function(){
   'use strict';
   var HUB_ORIGIN = 'https://songdojeil-glitch.github.io';
+  //  2026-10-12: 같은 즐겨찾기로 「매물관리」 화면에서 누르면 매물 등록(sd_home_props.js)을 부른다
+  if(/[?&]mid=adminMm\b/.test(location.search)){
+    var s = document.createElement('script'); s.charset = 'utf-8';
+    s.src = HUB_ORIGIN + '/songdo-system/sd_home_props.js?v=' + Date.now();
+    document.body.appendChild(s); return;
+  }
   if(window.__sjHomeNews){ alert('SJRWS 뉴스등록이 이미 실행 중입니다.'); return; }
   var f = document.forms && document.forms.writeForm;
   if(!f || !window.jQuery || !f.w_subject){ alert('송도제일 홈페이지 관리자 → 「부동산뉴스관리」 화면에서 눌러 주세요.'); return; }

@@ -8744,7 +8744,7 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.10.11-3';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.10.12-1';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_props.html';      // 이 파일 이름
   var SD_NAME = '매물관리';      // 사람이 부르는 이름
 
@@ -12497,6 +12497,276 @@ textarea.bf-in{resize:vertical;line-height:1.6}
       return Promise.all([tBr, tDeal]).then(function(){ return out; });
     });
   };
+})();
+</script>
+<!-- ═════════════════════════════════════════════════════════════════
+     🏠 홈페이지 매물 (2026-10-12) — SJRWS 자사 매물 → 송도제일 홈페이지(www.songdojeil.com) 매물관리
+     · 「📊 자사 매물 관리」 줄의 「🏠 홈페이지 매물」 → 활성 아파트 매물(매매·전세·월세) 중 고른 것을 올리고,
+       홈페이지에 올라가 있는데 SJRWS 에서 거래완료·보류·삭제된 매물은 「거래완료」로 바꾼다 (표시·광고 — 끝난 매물 방치 방지)
+     · 「관리자 창 열기」 → 홈페이지 관리자(매물관리) 새 창 → 그 창에서 즐겨찾기 「SJRWS 뉴스등록」 (같은 즐겨찾기가 매물 화면을 알아본다)
+     · 단지: 홈페이지 자체 단지 목록(아파트 61 · 주상복합 27, 2026-10-12 관리자 화면에서 읽음)과 맞춘다 —
+       대표님이 고른 것(sd_home_danji_map) → 네이버식 이름표(ALIAS) → 이름이 같은 것 → K-apt 단지번호 표(KMAP) 순서.
+       줄마다 단지 고르기 칸이 있어 바꿀 수 있고, 고른 것은 단지명별로 기억한다. 못 맞추면 체크할 수 없다
+     · 동·호수·소유주 연락처까지 넣는다 — 호수는 홈페이지 밖에선 층까지만, 연락처는 「관리메모(보안)」라 밖에 안 보임 (대표님 확인)
+     · 올린 기록: Firebase sd/sd_home_props { SJRWS매물id: { num(홈페이지 내부번호), no(매물번호), cls, st:'거래중'|'거래완료', at, label } }
+     · 1단계: 아파트·주상복합 / 글 정보만 (사진 · 오피스텔 · 분양권 · 상가는 다음 단계)
+     ═════════════════════════════════════════════════════════════════ -->
+<script>
+(function(){
+  'use strict';
+  if(window.__hpOn) return; window.__hpOn = true;
+  var ADMIN = 'http://www.songdojeil.com/new/?mo=admin&mid=adminMm&act=viewAdminMmList&mc=1';
+  var HOME_RE = /^https?:\/\/(www\.)?songdojeil\.com$/;
+  var REG = 'sd_home_props';
+  var BM = "javascript:(function(){var s=document.createElement('script');s.charset='utf-8';s.src='https://songdojeil-glitch.github.io/songdo-system/sd_home_news.js?v='+Date.now();document.body.appendChild(s);})();";
+  //  홈페이지 단지 목록 (관리자 매물 쓰기 화면의 아파트명 칸)
+  var HP = {
+    1:{ 'e편한세상':3120, 'SK VIEW':3124, '금호어울림':2507, '더샵그린스퀘어':2945, '더샵그린애비뉴(D7-1BL)':2674, '더샵그린애비뉴(D8BL)':2675, '더샵그린워크1차':3017, '더샵그린워크2차':3046,
+        '더샵그린워크3차(D17-1BL)':3102, '더샵그린워크3차(D18-1BL)':3104, '더샵마리나베이':3122, '더샵마스터뷰(F21블럭)':3072, '더샵마스터뷰(F22블럭)':3071, '더샵마스터뷰(F23-1블럭)':3073,
+        '더샵센트럴시티':3116, '더샵송도센터니얼':3160, '더샵엑스포10단지':3016, '더샵엑스포6단지':3014, '더샵엑스포9단지':3015, '더샵파크에비뉴':3134, '더샵퍼스트파크(F13-1)':3112,
+        '더샵퍼스트파크(F14)':3113, '더샵퍼스트파크(F15)':3114, '더샵프라임뷰F20-1BL':3153, '더샵프라임뷰F25-1BL':3154, '더샵하버뷰13BL':2554, '더샵하버뷰14BL':2555, '더샵하버뷰Ⅱ':1086,
+        '랜드마크시티센트럴더샵':3126, '럭스오션SK뷰':3168, '롯데캐슬':2647, '성지리벨루스':2512, '송도자이더스타':3164, '아메리칸타운더샵':3167, '에듀포레푸르지오(Rc2 BL)':3103,
+        '웰카운티1단지':2527, '웰카운티2단지':2526, '웰카운티3단지':2602, '웰카운티4단지':2496, '자이하버뷰1단지':2447, '자이하버뷰2단지':2451, '캐슬해모로':2789, '크리스탈오션자이':3162,
+        '푸르지오하버뷰':2556, '풍림아이원1단지':2504, '풍림아이원2단지':2505, '풍림아이원3단지':2506, '풍림아이원4단지':2502, '풍림아이원6단지':2503, '한진해모로':2513, '한진해모로월드뷰':2648,
+        '현대아이파크':1095, '현대힐스테이트레이크':3119, '현대힐스테이트레이크2차':3123, '현대힐스테이트레이크3차':3159, '현대힐스테이트레이크4차':3170, '호반베르디움':3110,
+        '호반베르디움 3차':3125, '호반베르디움2차':3115, '호반써밋':3148, '힐스테이트송도더스카이':3157 },
+    3:{ 'SK VIEW 센트럴':3132, '글로벌캠퍼스푸르지오':2590, '대방디엠시티':3155, '대우월드마크1단지':2548, '대우월드마크2단지':2549, '대우월드마크7단지':2550, '대우월드마크8단지':2551,
+        '대우이안':2511, '더샵센트럴파크1':2560, '더샵센트럴파크2':2547, '더샵센트럴파크3차':3152, '더샵아크베이':3171, '더샵퍼스트월드':2559, '센트럴파크리버리치':3169,
+        '센트럴파크푸르지오':3060, '송도캠퍼스타운':3074, '아메리칸타운IPARK':3141, '아트윈푸르지오':3047, '월드메르디앙':3179, '위드프리상뜨':1094, '코오롱더프라우1단지':2596,
+        '코오롱더프라우2단지':2597, '코오롱더프라우2차':2495, '현대힐스테이트3단지':2448, '현대힐스테이트4단지':2449, '현대힐스테이트5단지':2553, '현대힐스테이트6단지':2552 }
+  };
+  //  K-apt 단지번호 → [분류(1 아파트 · 3 주상복합), 홈페이지 단지번호]  ※ ? 표시는 추정 — 목록에서 꼭 눈으로 확인
+  var KMAP = {
+    A10025886:[1,3120], A10025399:[1,3124], A40684004:[1,2507], A40673922:[1,2945], A40673915:[1,2674], A40673914:[1,2675], A40673923:[1,3017], A40673924:[1,3046],
+    A10027884:[1,3102], A10027888:[1,3104], A10024779:[1,3122], A10027925:[1,3072], A10027929:[1,3071], A10027930:[1,3073], A10026038:[1,3116], A10023207:[1,3160],
+    A10025853:[1,3134], A10026678:[1,3112], A10026681:[1,3113], A10026679:[1,3114], A10023693:[1,3153], A10024083:[1,3154], A40673912:[1,2554], A40673911:[1,2555], A40673913:[1,1086],
+    A10024710:[1,3126], A10020744:[1,3168], A40673917:[1,2647], A40684007:[1,2512], A10021000:[1,3164], A10020539:[1,3167], A10027367:[1,3103],
+    A40684011:[1,2527], A40684009:[1,2526], A40673903:[1,2602], A40673902:[1,2496], A40673908:[1,2447], A40673907:[1,2451], A40673920:[1,2789], A10022498:[1,3162], A40673906:[1,2556],
+    A40673412:[1,2504], A40673510:[1,2505], A40673603:[1,2506], A40673002:[1,2502], A40673101:[1,2503], A40684008:[1,2513], A40673916:[1,2648], A40684005:[1,1095],
+    A10025443:[1,3119], A10025071:[1,3123], A10022954:[1,3159], A10020527:[1,3170], A10027171:[1,3110,'?'], A10026547:[1,3115,'?'], A10025031:[1,3125,'?'], A10023361:[1,3148], A10022494:[1,3157],
+    A40673904:[3,2560], A40673910:[3,2547], A10023434:[3,3152], A10020712:[3,3171], A40684013:[3,2559], A10027887:[3,3060], A10024573:[3,3132], A40673921:[3,2590],
+    A10022395:[3,2511], A10027898:[3,3047], A10025745:[3,3141], A10027653:[3,3074,'?']
+  };
+  //  네이버식 이름 → 홈페이지 단지 (key() 로 고른 열쇠)
+  var ALIAS = {
+    '더샵14단지하버뷰':[1,2555], '더샵13단지하버뷰':[1,2554], '더샵8단지그린애비뉴':[1,2675], '더샵7단지그린애비뉴':[1,2674],
+    '더샵마스터뷰21블록':[1,3072], '더샵마스터뷰(21bl)':[1,3072], '더샵마스터뷰22블록':[1,3071], '더샵마스터뷰(22bl)':[1,3071], '더샵마스터뷰23-1블록':[1,3073], '더샵마스터뷰(23-1bl)':[1,3073],
+    '더샵하버뷰2':[1,1086], '푸르지오월드마크1':[3,2548], '푸르지오월드마크2':[3,2549], '푸르지오월드마크7':[3,2550], '푸르지오월드마크8':[3,2551],
+    '더샵그린워크3차(18블록)':[1,3104], '더샵그린워크3차(17블록)':[1,3102], '더샵그린워크3차(d18-1bl)':[1,3104], '더샵그린워크3차(d17-1bl)':[1,3102]
+  };
+  var DMAP = {};          // 대표님이 줄마다 고른 단지 (Firebase sd_home_danji_map — 다음에도 그대로)
+  var NAME = {}; [1, 3].forEach(function(c){ Object.keys(HP[c]).forEach(function(n){ NAME[HP[c][n]] = n; }); });
+  function $(id){ return document.getElementById(id); }
+  function esc(s){ return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+  function norm(v){ if(typeof v === 'string'){ try{ v = JSON.parse(v); }catch(e){ v = null; } } return v && typeof v === 'object' ? v : null; }
+  async function sget(k){ try{ var r = await window.storage.get(k); return r ? norm(r.value) : null; }catch(e){ return null; } }
+  async function sset(k, v){ var r = await window.storage.set(k, JSON.stringify(v)); if(!r) throw new Error('저장 실패'); }
+  function ymd(){ var d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
+  function num(v){ var x = parseFloat(String(v == null ? '' : v).replace(/[^0-9.]/g, '')); return isNaN(x) ? 0 : x; }
+  //  「9억 5,000만원」 → 95000 (만원)
+  function man(v){
+    var s = String(v || '').replace(/[,\s원]/g, ''); if(!s) return '';
+    var t = 0, m = s.match(/(\d+(?:\.\d+)?)억/);
+    if(m){ t += parseFloat(m[1]) * 10000; s = s.slice(s.indexOf('억') + 1); }
+    var m2 = s.match(/(\d+(?:\.\d+)?)(천)?/); if(m2){ var x = parseFloat(m2[1]); if(m2[2]) x *= 1000; t += x; }
+    return t ? String(Math.round(t)) : '';
+  }
+  //  단지 이름 맞추기 — 띄어쓰기·송도/인천·아파트·끝의 단지 를 빼고, Ⅱ→2, 괄호는 그대로
+  function key(x){
+    var t = String(x || '').toLowerCase().replace(/\s+/g, '').replace(/ⅱ|Ⅱ/g, '2').replace(/ii(?![a-z])/g, '2').replace(/송도|인천|아파트|\(주상복합\)|\(주상\)/g, '');
+    while(/단지$/.test(t)) t = t.replace(/단지$/, '');
+    return t;
+  }
+  var KEYS = null;
+  function keys(){
+    if(KEYS) return KEYS; KEYS = {};
+    [1, 3].forEach(function(c){ Object.keys(HP[c]).forEach(function(n){
+      var k = key(n), k2 = k.replace(/\(.*?\)/g, ''), k3 = k2.replace(/^(현대|한진|대우|코오롱)/, '');
+      [k, k2, k3].forEach(function(q){ if(!q) return; (KEYS[q] = KEYS[q] || []).push([c, HP[c][n]]); });
+    }); });
+    return KEYS;
+  }
+  async function matchDanji(p){
+    var dm = DMAP[p.complexName]; if(dm) return { cls:dm[0], id:dm[1], how:'직접' };
+    var k = key(p.complexName), al = ALIAS[k] || ALIAS[k.replace(/\(.*?\)/g, '')];
+    if(al) return { cls:al[0], id:al[1], how:'이름' };
+    var ks = keys(), hit = ks[k] || ks[k.replace(/\(.*?\)/g, '')];
+    if(hit){ var u = {}; hit.forEach(function(h){ u[h.join(':')] = h; }); var arr = Object.keys(u).map(function(x){ return u[x]; }); if(arr.length === 1) return { cls:arr[0][0], id:arr[0][1], how:'이름' }; }
+    if(window.sdMgmtAuto){
+      var K = await window.sdMgmtAuto.get(p.complexName);
+      if(K && K.code && KMAP[K.code]){ var m = KMAP[K.code]; return { cls:m[0], id:m[1], how:m[2] ? '추정' : 'K-apt', K:K }; }
+      if(K && K.code) return { cls:0, why:'홈페이지 단지 목록에 없음 (' + K.apt.n + ')', K:K };
+    }
+    return { cls:0, why:'단지를 찾지 못함' };
+  }
+  function parseUnit(p){
+    var s = String(p.unitInfo || ''), d = (s.match(/([A-Za-z]?\d+|[A-Za-z])\s*동/) || [])[1] || (String(p.naverDong || '').match(/(\d+)/) || [])[1] || '', h = (s.match(/(\d+)\s*호/) || [])[1] || '';
+    if(!d && !h){ var m = s.match(/(\d{2,4})\s*[-–]\s*(\d{2,5})/); if(m){ d = m[1]; h = m[2]; } else if(/^\s*\d{3,5}\s*$/.test(s)) h = s.trim(); }
+    return { dong:d, ho:h };
+  }
+  function parseFloor(s){
+    s = String(s || ''); var parts = s.split('/'), a = (parts[0] || '').match(/(\d+)/), b = (parts[1] || '').match(/(\d+)/);
+    return { story:a ? a[1] : '', total:b ? b[1] : '' };
+  }
+  async function build(p){
+    var M = await matchDanji(p), t = p.propertyType || '';
+    var kind = /월세/.test(t) ? 3 : /전세/.test(t) ? 2 : 1;
+    var u = parseUnit(p), fl = parseFloor(p.floorInfo), ex = num(p.areaInfo);
+    var K = M.K || (window.sdMgmtAuto ? await window.sdMgmtAuto.get(p.complexName) : null), di = K && K.di, ap = K && K.apt;
+    var sup = num(p.pxGross);
+    if(!sup && di && di.sizes && ex){ di.sizes.forEach(function(s){ if(Math.abs(s[0] - ex) < 0.6) sup = s[2]; }); }
+    var rm = String(p.pxRooms || '').match(/(\d+)\D+(\d+)/);
+    var fee = String(p.pxMgmt || ''), fm = fee.match(/약\s*[\d.]+만원/); if(fm) fee = fm[0];
+    var price = '', monthly = '', tb = '';
+    if(kind === 3){ price = man(p.ps); monthly = man(p.pm); } else { price = man(p.pm); if(kind === 1) tb = man(p.ps); }
+    var memo = String(p.memo || '').trim(), label = (p.complexName || '') + ' ' + (u.dong ? u.dong + '동 ' : '') + (u.ho ? u.ho + '호 ' : '') + t.replace(/^아파트\s*/, '');
+    var lines = [(p.complexName || '') + ' · 전용 ' + (ex || '-') + '㎡' + (sup ? '(공급 ' + sup + '㎡)' : '') + (fl.story ? ' · ' + fl.story + '층' + (fl.total ? '/' + fl.total + '층' : '') : '') + (p.direction ? ' · ' + p.direction : '')];
+    if(memo) lines.push(memo);
+    if(p.moveIn) lines.push('입주: ' + p.moveIn);
+    if(p.pxMgmt) lines.push('관리비: ' + p.pxMgmt);
+    if(ap) lines.push('단지: ' + [ap.h ? ap.h + '세대' : '', ap.y ? String(ap.y).slice(0, 4) + '년 준공' : '', di && di.park_ratio ? '세대당 주차 ' + di.park_ratio + '대' : '', (p.pxHeat || ap.heat || '')].filter(Boolean).join(' · '));
+    lines.push('송도제일공인중개사사무소 032-851-6688');
+    var sec = ['SJRWS 매물 #' + p.id, p.c1name || p.c1tel ? '연락처1 ' + [p.c1name, p.c1tel].filter(Boolean).join(' ') : '', p.c2name || p.c2tel ? '연락처2 ' + [p.c2name, p.c2tel].filter(Boolean).join(' ') : '',
+      p.receiveDate ? '접수 ' + p.receiveDate + (p.route ? ' (' + p.route + ')' : '') : '', p.lastMemo ? '최종메모 ' + p.lastMemo : ''].filter(Boolean).join(' | ');
+    return {
+      pid:String(p.id), cx:p.complexName, label:label.trim(), M:M, ok:!!M.cls && !!price,
+      why:!M.cls ? M.why : !price ? '가격이 비어 있음' : '',
+      it:{ pid:String(p.id), label:label.trim(), cls:M.cls, kind:kind, danji:M.id, dong:u.dong, ho:u.ho, area1:sup ? String(sup) : '', area2:ex ? String(ex) : '',
+        hyung:sup ? String(Math.round(sup / 3.3058)) : '', price:price, monthly:monthly, loan:'', tb:tb, tm:'', total:fl.total, story:fl.story,
+        room:rm ? rm[1] : '', bath:rm ? rm[2] : '', heat:p.pxHeat || (ap && ap.heat) || '', parking:di && di.park_ratio ? '세대당 ' + di.park_ratio + '대' : '',
+        moveIn:String(p.moveIn || ''), dir:/^(남|북|동|서|남동|남서|북동|북서)향$/.test(p.direction || '') ? p.direction : '', fee:fee,
+        subject:(memo ? memo.split(/\n/)[0] : lines[0]).slice(0, 60), content:lines.map(function(l){ return '<p>' + esc(l) + '</p>'; }).join(''), memo:sec, hurry:/급매/.test(memo) }
+    };
+  }
+
+  var REGMAP = {}, ROWS = [], DONES = [];
+  function css(){
+    if($('hp-css')) return;
+    var s = document.createElement('style'); s.id = 'hp-css';
+    s.textContent = '.hp-ov{position:fixed;inset:0;z-index:9500;background:rgba(0,0,0,.45);display:flex;align-items:flex-start;justify-content:center;padding:5vh 14px;overflow:auto}'
+      + '.hp-m{width:min(880px,100%);background:#fff;color:#1a1a1a;border-radius:14px;padding:18px 20px;box-shadow:0 20px 50px rgba(0,0,0,.3);font-size:13px}'
+      + '.hp-m h3{margin:0 0 4px;font-size:16px}.hp-sub{font-size:12px;color:#777;margin-bottom:10px;line-height:1.6}'
+      + '.hp-sec{font-weight:700;margin:12px 0 6px}.hp-tb{max-height:36vh;overflow:auto;border:1px solid #e3e6ee;border-radius:10px}'
+      + '.hp-tb table{width:100%;border-collapse:collapse;font-size:12px}.hp-tb th{position:sticky;top:0;background:#f5f6f8;text-align:left;padding:6px 8px;font-weight:600}'
+      + '.hp-tb td{padding:5px 8px;border-top:1px solid #eef0f4;vertical-align:top}.hp-tb tr.no td{color:#aaa}.hp-warn{color:#b45309}.hp-est{color:#b45309;font-weight:700}'
+      + '.hp-steps{margin:12px 0 0;padding:10px 14px;border-radius:10px;background:#f6f7f9;font-size:12.5px;line-height:1.8}'
+      + '.hp-bm{display:inline-block;padding:2px 10px;border-radius:7px;background:#14213d;color:#fff!important;text-decoration:none;font-weight:700;cursor:grab}'
+      + '.hp-res{margin-top:10px;font-weight:700}';
+    document.head.appendChild(s);
+  }
+  function paint(){
+    var on = ROWS.filter(function(r){ return r.ok && !REGMAP[r.pid]; }), done = ROWS.filter(function(r){ return REGMAP[r.pid]; });
+    $('hp-a').innerHTML = '<table><tr><th style="width:26px"><input type="checkbox" id="hp-all"></th><th>SJRWS 매물</th><th>→ 홈페이지 단지</th><th>전용</th><th>층</th><th>가격(만원)</th></tr>'
+      + ROWS.filter(function(r){ return !REGMAP[r.pid]; }).map(function(r){
+        var it = r.it, pr = it.kind === 3 ? it.price + ' / ' + it.monthly : it.price;
+        return '<tr class="' + (r.ok ? '' : 'no') + '"><td>' + (r.ok ? '<input type="checkbox" class="hp-c" data-p="' + esc(r.pid) + '">' : '') + '</td><td>' + esc(r.label) + '</td><td>'
+          + dsel(r) + (r.M.how === '추정' ? ' <span class="hp-est" title="단지 짝을 추정했습니다 — 맞는지 확인해 주세요">확인</span>' : '') + (!r.ok && r.why ? '<div class="hp-warn">⚠️ ' + esc(r.why) + '</div>' : '')
+          + '</td><td>' + esc(it.area2) + '</td><td>' + esc(it.story) + (it.total ? '/' + esc(it.total) : '') + '</td><td>' + esc(pr) + '</td></tr>';
+      }).join('') + '</table>';
+    if(!on.length) $('hp-a').innerHTML += '<div style="padding:12px;color:#888;text-align:center">새로 올릴 수 있는 매물이 없습니다</div>';
+    [].forEach.call(document.querySelectorAll('.hp-ds'), function(sel){ sel.onchange = async function(){
+      var pid = sel.getAttribute('data-p'), r = ROWS.filter(function(x){ return x.pid === pid; })[0]; if(!r) return;
+      var v = sel.value ? sel.value.split(':').map(Number) : null;
+      if(v){ DMAP[r.cx] = v; } else delete DMAP[r.cx];
+      try{ await sset('sd_home_danji_map', DMAP); }catch(e){}
+      //  같은 단지명인 줄은 모두 같이 바뀐다
+      ROWS.forEach(function(x){ if(x.cx !== r.cx) return; x.M = v ? { cls:v[0], id:v[1], how:'직접' } : { cls:0, why:'단지를 고르세요' }; x.it.cls = x.M.cls; x.it.danji = x.M.id;
+        x.ok = !!x.M.cls && !!x.it.price; x.why = !x.M.cls ? '단지를 고르세요' : !x.it.price ? '가격이 비어 있음' : ''; });
+      paint();
+    }; });
+    $('hp-all').onchange = function(){ [].forEach.call(document.querySelectorAll('.hp-c'), function(c){ c.checked = $('hp-all').checked; }); cnt(); };
+    [].forEach.call(document.querySelectorAll('.hp-c'), function(c){ c.onchange = cnt; });
+    $('hp-d').innerHTML = DONES.length ? '<table><tr><th style="width:26px"></th><th>홈페이지 매물</th><th>SJRWS 상태</th></tr>' + DONES.map(function(d){
+      return '<tr><td><input type="checkbox" class="hp-dc" data-p="' + esc(d.pid) + '" checked></td><td>' + esc(d.label) + (d.no ? ' <small>#' + esc(d.no) + '</small>' : '') + '</td><td>' + esc(d.why) + '</td></tr>';
+    }).join('') + '</table>' : '<div style="padding:10px;color:#888;text-align:center">없음 — 홈페이지에 올라간 매물은 모두 SJRWS 에서 활성입니다</div>';
+    [].forEach.call(document.querySelectorAll('.hp-dc'), function(c){ c.onchange = cnt; });
+    $('hp-n').textContent = '홈페이지에 올라가 거래 중인 매물 ' + Object.keys(REGMAP).filter(function(k){ return REGMAP[k].st !== '거래완료'; }).length + '건 · 이번 목록에서 이미 올린 것 ' + done.length + '건';
+    cnt();
+  }
+  function dsel(r){
+    var cur = r.M && r.M.cls ? r.M.cls + ':' + r.M.id : '';
+    var h = '<select class="hp-ds" data-p="' + esc(r.pid) + '" style="max-width:220px;font-size:12px"><option value="">— 홈페이지 단지 고르기 —</option>';
+    [[1, '아파트'], [3, '주상복합']].forEach(function(g){
+      h += '<optgroup label="' + g[1] + '">' + Object.keys(HP[g[0]]).map(function(n){ var v = g[0] + ':' + HP[g[0]][n]; return '<option value="' + v + '"' + (v === cur ? ' selected' : '') + '>' + esc(n) + '</option>'; }).join('') + '</optgroup>';
+    });
+    return h + '</select>';
+  }
+  function picked(){
+    var a = [].filter.call(document.querySelectorAll('.hp-c'), function(c){ return c.checked; }).map(function(c){ return c.getAttribute('data-p'); });
+    var d = [].filter.call(document.querySelectorAll('.hp-dc'), function(c){ return c.checked; }).map(function(c){ return c.getAttribute('data-p'); });
+    return { adds:ROWS.filter(function(r){ return a.indexOf(r.pid) >= 0; }).map(function(r){ return r.it; }),
+             dones:DONES.filter(function(x){ return d.indexOf(x.pid) >= 0; }).map(function(x){ return { pid:x.pid, num:x.num, cls:x.cls, label:x.label }; }) };
+  }
+  function cnt(){ var P = picked(); $('hp-go').textContent = '① 관리자 창 열기 (올리기 ' + P.adds.length + ' · 거래완료 ' + P.dones.length + ')'; }
+  async function reload(){
+    $('hp-a').innerHTML = '<div style="padding:12px;color:#888;text-align:center">불러오는 중…</div>';
+    REGMAP = (await sget(REG)) || {};
+    DMAP = (await sget('sd_home_danji_map')) || {};
+    var list = (window.props || []);
+    var mine = list.filter(function(p){ return p && p.status === '활성' && /^아파트 (매매|전세|월세)$/.test(p.propertyType || ''); });
+    ROWS = []; for(var i = 0; i < mine.length; i++) ROWS.push(await build(mine[i]));
+    var byId = {}; list.forEach(function(p){ if(p) byId[String(p.id)] = p; });
+    DONES = Object.keys(REGMAP).filter(function(k){ var r = REGMAP[k]; return r.st !== '거래완료' && r.num && (!byId[k] || byId[k].status !== '활성'); })
+      .map(function(k){ var r = REGMAP[k], p = byId[k]; return { pid:k, num:r.num, no:r.no, cls:r.cls, label:r.label || k, why:p ? p.status : 'SJRWS 에서 삭제됨' }; });
+    paint();
+  }
+  window.hpOpen = function(){
+    css();
+    var ov = document.createElement('div'); ov.className = 'hp-ov'; ov.id = 'hp-ov';
+    ov.innerHTML = '<div class="hp-m" role="dialog" aria-label="홈페이지 매물">'
+      + '<h3>🏠 홈페이지 매물</h3><div class="hp-sub">SJRWS 자사 매물을 송도제일 홈페이지(www.songdojeil.com) 매물관리에 올리고, 끝난 매물은 「거래완료」로 바꿉니다. 1단계: 아파트·주상복합 / 글 정보 (사진은 다음 단계). 동·호수·연락처까지 넣고, 연락처는 「관리메모(보안)」 칸으로 갑니다.</div>'
+      + '<div class="hp-sec">① 새로 올릴 매물 <small style="font-weight:400;color:#888">(활성 · 아파트 매매/전세/월세 · 아직 안 올린 것)</small></div><div class="hp-tb" id="hp-a"></div>'
+      + '<div class="hp-sec">② 거래완료로 바꿀 매물 <small style="font-weight:400;color:#888">(홈페이지엔 거래중인데 SJRWS 에선 끝났거나 지워진 것)</small></div><div class="hp-tb" id="hp-d"></div>'
+      + '<div style="font-size:12px;color:#888;margin-top:6px" id="hp-n"></div>'
+      + '<div class="hp-steps"><b>올리는 법</b> — ① 아래 「관리자 창 열기」 → 홈페이지 관리자(매물관리)가 새 창으로 열림 (로그인이 풀려 있으면 그 창에서 로그인)<br>'
+      + '② 그 창에서 즐겨찾기 <a class="hp-bm" id="hp-bm">SJRWS 뉴스등록</a> 을 누르면 확인 후 차례로 반영됩니다 (뉴스와 같은 즐겨찾기 — 매물 화면을 알아봅니다). 이 창은 끝날 때까지 닫지 마세요.</div>'
+      + '<div class="hp-res" id="hp-res"></div>'
+      + '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px"><button class="btn-s" type="button" id="hp-close">닫기</button>'
+      + '<button class="btn-p" type="button" id="hp-go">① 관리자 창 열기</button></div></div>';
+    document.body.appendChild(ov);
+    $('hp-bm').setAttribute('href', BM);
+    $('hp-bm').onclick = function(e){ e.preventDefault(); alert('이 단추는 즐겨찾기 막대로 끌어다 놓는 것입니다 (뉴스 등록 때 이미 놓으셨다면 그대로 쓰시면 됩니다).'); };
+    ov.addEventListener('click', function(e){ if(e.target === ov) ov.remove(); });
+    $('hp-close').onclick = function(){ ov.remove(); };
+    $('hp-go').onclick = function(){
+      var P = picked();
+      var w = window.open(ADMIN, 'sjadm');
+      if(!w){ $('hp-res').innerHTML = '⚠️ 새 창이 막혔습니다 — 주소창 오른쪽의 <b>팝업 차단 아이콘</b>에서 「항상 허용」 후 다시 눌러 주세요.'; return; }
+      try{ w.focus(); }catch(e){}
+      $('hp-res').textContent = (P.adds.length || P.dones.length) ? '② 열린 관리자 창에서 즐겨찾기 「SJRWS 뉴스등록」을 눌러 주세요… (올리기 ' + P.adds.length + ' · 거래완료 ' + P.dones.length + ')'
+        : 'ℹ️ 고른 매물이 없어 관리자 창만 열었습니다. 위 목록에서 올릴 매물에 체크해 주세요.';
+    };
+    reload();
+  };
+
+  window.addEventListener('message', async function(e){
+    if(!HOME_RE.test(e.origin)) return;
+    var m = e.data || {};
+    if(m.sjrws === 'props-req'){
+      var P = $('hp-ov') ? picked() : { adds:[], dones:[] };
+      e.source.postMessage({ sjrws:'props-list', adds:P.adds, dones:P.dones }, e.origin);
+      if($('hp-res')) $('hp-res').textContent = '관리자 창으로 넘겼습니다 (올리기 ' + P.adds.length + ' · 거래완료 ' + P.dones.length + ') — 그 창에서 확인을 누르면 반영됩니다.';
+    } else if(m.sjrws === 'props-done'){
+      REGMAP = (await sget(REG)) || {};
+      var t = ymd();
+      (m.added || []).forEach(function(a){ var r = ROWS.filter(function(x){ return x.pid === a.pid; })[0]; REGMAP[a.pid] = { num:a.num, no:a.no, cls:a.cls, st:'거래중', at:t, label:r ? r.label : a.pid }; });
+      (m.doned || []).forEach(function(pid){ if(REGMAP[pid]){ REGMAP[pid].st = '거래완료'; REGMAP[pid].doneAt = t; } });
+      try{ await sset(REG, REGMAP); }catch(err){}
+      if($('hp-res')) $('hp-res').textContent = '✅ 새로 올림 ' + (m.added || []).length + '건 · 거래완료 ' + (m.doned || []).length + '건' + ((m.fail || []).length ? ' · ⚠️ 실패 ' + m.fail.length + '건' : '') + ' — 기록했습니다.';
+      if($('hp-ov')) reload();
+    }
+  });
+
+  //  「📊 자사 매물 관리」 줄에 단추 달기 (엑셀 다운로드 앞)
+  function addBtn(){
+    var x = document.querySelector('#tc2 button[onclick="exportXL()"]'); if(!x) return false;
+    if($('hp-btn')) return true;
+    var b = document.createElement('button'); b.className = 'btn-s'; b.type = 'button'; b.id = 'hp-btn';
+    b.textContent = '🏠 홈페이지 매물'; b.title = '자사 매물을 송도제일 홈페이지에 올리기 · 끝난 매물 거래완료';
+    b.onclick = function(){ window.hpOpen(); };
+    x.parentNode.insertBefore(b, x); return true;
+  }
+  var tries = 0; (function wait(){ if(addBtn() || ++tries > 60) return; setTimeout(wait, 500); })();
 })();
 </script>
 </body>
