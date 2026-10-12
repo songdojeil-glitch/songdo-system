@@ -37,10 +37,13 @@
     });
   }
 
+  //  목록 분류(mc) → 저장 분류값(mm_class) — 관리자 쓰기 화면에서 읽음 (아파트 11 · 주상복합 13 · 상가점포 31 · 사무실 34)
+  var MMC = { 1:11, 3:13, 10:31, 13:34 };
   //  ── 새 매물 ── 화면 등록 양식과 같은 칸 순서·이름으로 보낸다
   function addBody(it){
+    if(it.cls === 10 || it.cls === 13) return shopBody(it);
     var ru = BASE + '?mo=admin&mid=adminMm&act=viewAdminMmWrite';
-    var o = [['request_uri', ru], ['mm_class', 10 + it.cls], ['mm_kind', it.kind], ['dong_id', it.dongId || '4435'], ['redevelopment', ''], ['mm_use', '1']];
+    var o = [['request_uri', ru], ['mm_class', MMC[it.cls]], ['mm_kind', it.kind], ['dong_id', it.dongId || '4435'], ['redevelopment', ''], ['mm_use', '1']];
     if(it.hurry) o.push(['mm_hurry', 'Y']);   // 홈페이지 급매 칸 값은 Y
     o.push(['bname_select', it.danji], ['danji_dong', it.dong], ['ho', it.ho], ['area1', it.area1], ['area2', it.area2], ['hyung', it.hyung]);
     if(it.kind === 1) o.push(['price', it.price], ['price_f', it.loan], ['price_tb', it.tb], ['price_tm', it.tm]);
@@ -51,14 +54,32 @@
       ['swfSequence', '1'], ['upload', ''], ['memo', it.memo], ['request_uri', ru], ['fileIds', ''], ['error_style', 'proc']);
     return enc(o);
   }
-  //  새로 올린 매물 번호 찾기 — 그 분류 목록에서 같은 동·호·가격 줄 중 가장 큰 내부번호
+  //  상가점포(31) · 사무실(34) — 상가명은 직접 입력, 상가 종류(아파트/일반/전문/지하상가)는 상가만, 사무실은 「점포」 칸이 더 있다
+  function shopBody(it){
+    var ru = BASE + '?mo=admin&mid=adminMm&act=viewAdminMmWrite', shop = it.cls === 10;
+    var o = [['request_uri', ru], ['mm_class', MMC[it.cls]], ['mm_kind', it.kind], ['dong_id', it.dongId || '4435'], ['redevelopment', ''], ['mm_use', '1']];
+    if(it.hurry) o.push(['mm_hurry', 'Y']);
+    o.push(['dong_detail', '송도동'], ['addr_others', it.addr || '']);
+    if(shop) o.push(['mm_class_sub_select', it.sub || '일반상가']);
+    o.push(['bname', it.bname], ['area1', it.area1], ['area1_p', it.area1p], ['area2', it.area2], ['area2_p', it.area2p]);
+    if(it.kind === 1) o.push(['price', it.price], ['price_f', it.loan], ['price_g', it.g], ['price_tb', it.tb], ['price_tm', it.tm]);
+    else o.push(['price', it.price], ['price_m', it.monthly], ['price_f', it.loan], ['price_g', it.g]);
+    o.push(['total_story', it.total], ['story', it.story]);
+    if(!shop) o.push(['jumpo', '']);
+    o.push(['use_h', it.useH], ['use_g', it.useG], ['heating', it.heat], ['parking', it.parking], ['date_build_select1', ''], ['date_build_select2', ''],
+      ['date_transfer', it.moveIn], ['direction', it.dir], ['date_approved', it.approved], ['fee', it.fee], ['subject', it.subject], ['myImageSkey', ''],
+      ['content_main', it.content], ['swfSequence', '1'], ['upload', ''], ['memo', it.memo], ['request_uri', ru], ['fileIds', ''], ['error_style', 'proc']);
+    return enc(o);
+  }
+  //  새로 올린 매물 번호 찾기 — 그 분류 목록에서 같은 동(아파트) 또는 같은 상가명(상가·사무실) 줄 중 가장 큰 내부번호
   async function findNew(it){
     var h = await fetch(BASE + '?mo=admin&mid=adminMm&act=viewAdminMmList&mc=' + it.cls, { credentials:'include' }).then(function(r){ return r.text(); });
     var d = new DOMParser().parseFromString(h, 'text/html'), best = null;
     [].forEach.call(d.querySelectorAll('input[name=chkid]'), function(c){
       var tr = c.closest('tr'); if(!tr) return;
       var t = tr.textContent.replace(/\s+/g, ' ');
-      if(it.dong && t.indexOf(' ' + it.dong + ' ') < 0 && t.indexOf(it.dong) < 0) return;
+      var needle = it.find || it.dong;
+      if(needle && t.indexOf(needle) < 0) return;
       var n = parseInt(c.value, 10); if(!(n > 0)) return;
       if(!best || n > best.num){ var m = t.match(/\b(\d{5})\b/); best = { num:n, no:m ? m[1] : '' }; }
     });
