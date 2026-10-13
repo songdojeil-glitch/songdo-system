@@ -968,7 +968,7 @@ a.sjb-btn.on::after,span.sjb-btn.on::after{background:linear-gradient(100deg,rgb
     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
       <div>
         <div style="font-size:14px;font-weight:700;color:var(--text)">🖼️ 단지 이미지 관리 <span id="di-ver" style="font-size:11px;color:var(--text3);font-weight:400"></span></div>
-        <div style="font-size:11px;color:var(--text3);margin-top:2px">단지별 위치지도·배치도·전경·평면도 등록 (Firebase Storage · 자동 리사이즈)</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:2px">단지별 위치지도·배치도·단지사진·평면도 등록 (Firebase Storage · 자동 리사이즈)</div>
       </div>
       <button onclick="diReloadIndex()" style="padding:7px 14px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:8px;font-size:12px;cursor:pointer">🔄 목록 새로고침</button>
     </div>
@@ -6906,7 +6906,7 @@ function hsOpenModal(nm){
       (g.donghos||[]).forEach(function(u,i){ cells.push({u:u,c:'동호수배치도 '+(i+2)}); });
       if(g.price)  cells.push({u:g.price,c:'분양가'});
       (g.prices||[]).forEach(function(u,i){ cells.push({u:u,c:'분양가 '+(i+2)}); });
-      g.photos.forEach(function(u,i){ cells.push({u:u,c:'전경'+(i+1)}); });
+      g.photos.forEach(function(u,i){ cells.push({u:u,c:'단지사진 '+(i+1)}); });
       g.plans.forEach(function(p){ cells.push({u:p.url,c:'평면도 '+p.타입+(p.전용?' (전용'+p.전용+'㎡)':'')}); });
       if(!cells.length){ box.innerHTML=''; return; }
       box.innerHTML='<div style="font-size:13px;font-weight:700;margin-bottom:8px;border-top:1px solid var(--border);padding-top:14px">🖼️ 등록 이미지 ('+cells.length+')</div>'
@@ -6947,7 +6947,9 @@ var DI_FIXED=[
   //  분양가 — 표가 여러 장인 단지가 있다(평형대별). 첫 장은 종전 이름 price.jpg 를
   //  그대로 쓴다(bare1) — 이미 올린 분양가가 사라지지 않게.
   {key:'price',label:'💰 분양가',multi:true,max:3,bare1:true},
-  {key:'photo',label:'📷 단지전경',multi:true,max:4}
+  //  단지사진 (종전 「단지전경」) — 2026-10-13 4장 → 15장. 파일 이름은 그대로 photo1~15.jpg
+  //  매물관리 「매물 등록」의 📸 매물 사진에서 새 창(popup=dp)으로 열어 바로 올리고 매물 사진으로 넣는다
+  {key:'photo',label:'📷 단지사진',multi:true,max:15}
 ];
 function diSlotFile(s, i){ return (s.bare1 && i===1) ? s.key+'.jpg' : s.key+i+'.jpg'; }
 // 슬롯별 리사이즈 옵션 (긴 변 px, JPEG 품질).
@@ -6960,6 +6962,7 @@ var DI_OPT={
   dongho:{raw:true},
   price :{px:3000,q:0.92},
   aerial:{px:2400,q:0.90},
+  photo :{px:1600,q:0.86},   // 단지사진 — 매물 사진·영상에도 그대로 쓰므로 매물 사진(1600px)과 맞춘다
   _def  :{px:1200,q:0.85}
 };
 var DI_RAW_WARN=12*1024*1024;   // 이보다 크면 업로드 전에 한 번 확인받는다
@@ -7056,8 +7059,12 @@ function diRenderPanel(){
   var fixedHtml=singleHtml+DI_FIXED.filter(function(x){return x.multi;}).map(function(s){
     if(s.multi){
       var cells='';
-      for(var i=1;i<=s.max;i++){ var fn=diSlotFile(s,i); cells+=diSlotCell(nm,fn,s.label+' '+i,imgs[fn]); }
-      return '<div style="margin-bottom:14px"><div style="font-size:12px;font-weight:700;margin-bottom:8px">'+s.label+' <span style="font-size:11px;color:var(--text3)">(최대 '+s.max+'장)</span></div><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px">'+cells+'</div></div>';
+      var have=0; for(var i=1;i<=s.max;i++){ var fn=diSlotFile(s,i); if(imgs[fn]) have++; cells+=diSlotCell(nm,fn,s.label+' '+i,imgs[fn]); }
+      var tools=s.key==='photo'
+        ? ' <label style="margin-left:6px;padding:3px 10px;background:var(--accent);color:#fff;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer">＋ 여러 장 한꺼번에<input type="file" accept="image/*" multiple onchange="diUploadPhotos(this)" style="display:none"></label>'
+          +' <button type="button" onclick="diOpenPhotoWin()" style="padding:3px 10px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:6px;font-size:11px;cursor:pointer">🗗 새 창으로 크게</button>'
+        : '';
+      return '<div style="margin-bottom:14px"><div style="font-size:12px;font-weight:700;margin-bottom:8px">'+s.label+' <span style="font-size:11px;color:var(--text3)">('+(s.key==='photo'?have+' / ':'최대 ')+s.max+'장)</span>'+tools+'</div><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px">'+cells+'</div></div>';
     } else {
       var fn=s.key+'.jpg';
       return '<div style="margin-bottom:14px"><div style="font-size:12px;font-weight:700;margin-bottom:8px">'+s.label+'</div><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px">'+diSlotCell(nm,fn,s.label,imgs[fn])+'</div></div>';
@@ -7139,6 +7146,37 @@ function diUploadFixed(input, nm, filename){
     diPutImage(nm, filename, dataUrl);
   }, opt.q);
   input.value='';
+}
+//  단지사진 여러 장 한꺼번에 — 빈 칸(photo1~15)에 파일 이름 차례로 채운다 (2026-10-13)
+async function diUploadPhotos(input){
+  var nm=G_DI.selDanji, fs=Array.prototype.slice.call(input.files||[]); input.value='';
+  if(!nm||!fs.length) return;
+  if(!diStorageReady()){ showToast('⚠️ Storage 연결 대기 중'); return; }
+  var slot=DI_FIXED.filter(function(x){ return x.key==='photo'; })[0], imgs=G_DI.curImgs||{}, free=[];
+  for(var i=1;i<=slot.max;i++){ var fn=diSlotFile(slot,i); if(!imgs[fn]) free.push(fn); }
+  fs=fs.filter(function(f){ return /^image\//.test(f.type||''); }).sort(function(a,b){ return a.name.localeCompare(b.name,'ko',{numeric:true}); });
+  if(!free.length){ showToast('⚠️ 단지사진은 '+slot.max+'장까지입니다 — 지우고 올려 주세요'); return; }
+  if(fs.length>free.length){ showToast('⚠️ 빈 칸이 '+free.length+'장이라 앞의 '+free.length+'장만 올립니다', 5000); fs=fs.slice(0,free.length); }
+  var opt=DI_OPT.photo||DI_OPT._def, ok=0;
+  for(var k=0;k<fs.length;k++){
+    showToast('⏫ 단지사진 올리는 중… '+(k+1)+' / '+fs.length);
+    var du=await new Promise(function(r){ diResizeImage(fs[k], opt.px, function(d){ r(d); }, opt.q); });
+    if(!du) continue;
+    try{
+      var r=window._fbSRef(window._fbStorage,'sd_danji_images/'+nm+'/'+free[k]);
+      await window._fbUploadStr(r, du, 'data_url');
+      G_DI.curImgs[free[k]]=await window._fbGetURL(r); ok++;
+    }catch(e){ showToast('❌ 업로드 오류: '+e.message); break; }
+  }
+  if(ok) G_DI.index[nm]=true;
+  diRenderPanel(); diRenderChips();
+  showToast('✅ 단지사진 '+ok+'장 등록');
+}
+//  단지사진 새 창 — 매물 등록에서 여는 것과 같은 창 (여기서 열면 넣기 단추 없이 올리기·지우기만)
+function diOpenPhotoWin(){
+  var nm=G_DI.selDanji||'';
+  var w=window.open(location.pathname+'?popup=dp&q='+encodeURIComponent(nm),'sjrws_dp_view','width=1280,height=900');
+  if(!w) showToast('⚠️ 팝업이 막혀 있습니다 — 주소창 오른쪽에서 팝업을 허용해 주세요');
 }
 function diUploadPlan(input){
   var file=input.files[0]; if(!file) return;
@@ -7280,13 +7318,15 @@ async function diGetImages(nm){
       else if(f==='price.jpg')  out.price=url;
       else if(/^price\d+\.jpg$/.test(f)) out.prices.push(url);
       else if(f.indexOf('aerial')===0) out.aerials.push(url);
-      else if(f.indexOf('photo')===0) out.photos.push(url);
+      else if(f.indexOf('photo')===0){ (out._ph=out._ph||[]).push({n:parseInt(f.replace(/\D/g,''),10)||0,url:url}); }
       else if(f.indexOf('plan__')===0){
         var m=f.replace('plan__','').replace('.jpg','').split('_');
         out.plans.push({타입:m[0]||'',전용:m[1]||'',url:url,path:item.fullPath||('sd_danji_images/'+nm+'/'+f)});
       }
     }
   }catch(e){}
+  //  단지사진은 번호 차례로 (저장소 목록은 photo1, photo10, photo11 … photo2 처럼 글자 차례라서)
+  if(out._ph){ out.photos=out._ph.sort(function(a,b){ return a.n-b.n; }).map(function(x){ return x.url; }); delete out._ph; }
   return out;
 }
 window.diGetImages=diGetImages;
@@ -7312,7 +7352,7 @@ async function diGetImagesB64(nm){
     if(g.price){  var b2c=await urlToB64(g.price);  out.push({label:'['+nm+' 분양가표]',type:b2c.type,data:b2c.data}); }
     for(var pi=0;pi<(g.prices||[]).length;pi++){ var bpx=await urlToB64(g.prices[pi]); out.push({label:'['+nm+' 분양가표 '+(pi+2)+']',type:bpx.type,data:bpx.data}); }
     for(var ai=0;ai<(g.aerials||[]).length;ai++){ var bax=await urlToB64(g.aerials[ai]); out.push({label:'['+nm+' 조감도'+(ai+1)+']',type:bax.type,data:bax.data}); }
-    for(var i=0;i<g.photos.length;i++){ var bp=await urlToB64(g.photos[i]); out.push({label:'['+nm+' 전경'+(i+1)+']',type:bp.type,data:bp.data}); }
+    for(var i=0;i<g.photos.length;i++){ var bp=await urlToB64(g.photos[i]); out.push({label:'['+nm+' 단지사진'+(i+1)+']',type:bp.type,data:bp.data}); }
     for(var j=0;j<g.plans.length;j++){ var pl=g.plans[j]; var bpl=await urlToB64(pl.url);
       out.push({label:'['+nm+' 평면도 '+pl.타입+(pl.전용?' 전용'+pl.전용+'㎡':'')+']',type:bpl.type,data:bpl.data}); }
   }catch(e){}
@@ -19690,7 +19730,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.10.11-5';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.10.13-1';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_data.html';      // 이 파일 이름
   var SD_NAME = '실거래가';      // 사람이 부르는 이름
 
@@ -35466,7 +35506,7 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
 
     파일 이름 → 칸  (이름에 이 말이 들어 있으면 — 차례가 중요: 동호수를 배치도보다 먼저)
       동호수 → 동호수배치도 · 조감도 → 조감도 · 배치도 → 단지배치도 · 분양가 → 분양가
-      평면도 → 평면도(타입) · 위치 → 위치지도 · 전경 → 단지전경 · 참고_/약도 → 건너뜀
+      평면도 → 평면도(타입) · 위치 → 위치지도 · 전경·사진 → 단지사진 · 참고_/약도 → 건너뜀
 
     단지 짝 맞추기 — 네 단계, 앞에서 맞으면 멈춘다
       ① 이름   NVB.normDanji 로 표기를 맞춰 같으면
@@ -35518,7 +35558,7 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
     if(/전경|사진/.test(b)) return 'photo';
     return '';
   }
-  var KNM = { aerial:'조감도', layout:'배치도', dongho:'동호수', price:'분양가', plan:'평면도', map:'위치', photo:'전경' };
+  var KNM = { aerial:'조감도', layout:'배치도', dongho:'동호수', price:'분양가', plan:'평면도', map:'위치', photo:'단지사진' };
   //  같은 칸에 여러 장 — 파일 이름의 번호(_1, _2 …) 차례로
   function seqOf(name){ var m = /_(\d+)\.[^.]+$/.exec(name) || /(\d+)\.[^.]+$/.exec(name); return m ? parseInt(m[1],10) : 1; }
 
@@ -36072,6 +36112,180 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
   }
   if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
   W.sdDip = { findNames:findNames, show:show, cur:function(){ return CUR; }, att:function(){ return ATT; }, have:function(){ return Object.keys(HAVE); } };
+})();
+</script>
+<!-- ═════════════════════════════════════════════════════════════════
+     📷 단지사진 — 새 창 전용 (매물관리 「매물 등록」의 📸 매물 사진에서 연다) 2026-10-13
+     sd_data.html?popup=dp&q=단지명&att=1  (창 이름 sjrws_dp 로도 알아본다)
+     · 단지이미지(Firebase Storage sd_danji_images/{단지}/photo1~15.jpg)의 「단지사진」만 크게 모아 보여 주고
+       이 창에서 바로 여러 장 올리기 · 지우기
+     · att=1 (매물 등록에서 열었을 때): 사진을 골라 「📎 매물 사진으로 넣기」 → opener 로 {type:'sjrws-dp-photos', items:[{url,name}], danji}
+       매물 등록이 사진을 받아 매물 사진 칸에 복사해 올린다 (단지사진 원본은 그대로) → sjrws-dp-ack 로 결과
+     ══════════════════════════════════════════════════════════════════ -->
+<script>
+(function(){
+  'use strict';
+  var W = window;
+  var POP = /[?&]popup=dp(&|$)/.test(location.search) || W.name === 'sjrws_dp';
+  W.__dpPopup = POP;
+  if(!POP || W.__dppOn) return; W.__dppOn = true;
+  var MAXP = 15;
+  function $(id){ return document.getElementById(id); }
+  function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+  function qp(k){ var m = new RegExp('[?&]' + k + '=([^&]*)').exec(location.search); return m ? decodeURIComponent(m[1].replace(/\+/g,' ')) : ''; }
+  function ss(k){ try{ return sessionStorage.getItem(k) || ''; }catch(e){ return ''; } }
+  var Q = (qp('q') || ss('sjrws_dp_q')).trim();
+  var ATT = (qp('att') === '1' || ss('sjrws_dp_att') === '1') && !!W.opener;
+  var CUR = '', PH = [], SEL = {}, ROOM = null, BUSY = false;   // PH = [{n, file, url}]
+  function msg(t, c){ var e = $('dpp-msg'); if(e){ e.textContent = t; e.style.color = c || ''; } }
+  function nd(s){ var f = W.NVB && W.NVB.normDanji; var t = String(s||'').replace(/아파트$/,''); return f ? f(t) : t.replace(/\s/g,''); }
+  function allNames(){
+    var o = {}, out = [];
+    ((W.G_HS && W.G_HS.danji) || []).forEach(function(d){ if(d.단지명 && !o[d.단지명]){ o[d.단지명] = 1; out.push(d.단지명); } });
+    ((W.G_DI && W.G_DI.extra) || []).forEach(function(n){ if(n && !o[n]){ o[n] = 1; out.push(n); } });
+    return out.sort(function(a,b){ return a.localeCompare(b,'ko'); });
+  }
+  function nameFind(q){
+    var N = allNames(); if(!q) return [];
+    if(N.indexOf(q) >= 0) return [q];
+    var k = nd(q), a = N.filter(function(n){ return nd(n) === k; });
+    if(a.length) return a;
+    function kb(s){ return String(s||'').toUpperCase().replace(/^송도/,'').replace(/[\s()\[\]{}\-_.·,]/g,'').replace(/(BL|블록|블럭)/g,''); }
+    var b = kb(q);
+    return N.filter(function(n){ var x = kb(n); return x && b && (x.indexOf(b) >= 0 || b.indexOf(x) >= 0); });
+  }
+  function css(){
+    var st = document.createElement('style');
+    st.textContent = '#dpp-wrap{position:fixed;inset:0;z-index:9000;background:var(--bg,#f7f8fa);overflow:auto}'
+      + '#dpp-bar{position:sticky;top:0;z-index:2;display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 16px;background:#1a2744;color:#fff;font-size:13px}'
+      + '#dpp-bar b{font-size:14.5px}#dpp-bar .sp{flex:1}'
+      + '#dpp-bar input[type=text]{padding:5px 9px;border-radius:7px;border:1px solid rgba(255,255,255,.5);background:#fff;color:#222;font-size:13px;width:230px}'
+      + '#dpp-bar button,#dpp-bar label.b{border:1px solid rgba(255,255,255,.5);background:transparent;color:#fff;border-radius:7px;padding:5px 12px;cursor:pointer;font-size:12.5px}'
+      + '#dpp-bar button.x{background:#fff;color:#1a2744;font-weight:700}#dpp-bar button.g,#dpp-bar label.g{background:#1a7f3c;border-color:#1a7f3c;font-weight:700}'
+      + '#dpp-bar button:disabled{opacity:.45;cursor:default}'
+      + '#dpp-in{max-width:1400px;margin:0 auto;padding:14px 16px 40px}'
+      + '.dpp-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}'
+      + '.dpp-card{position:relative;background:var(--bg2,#fff);border:2px solid var(--border,#e2e5ea);border-radius:12px;overflow:hidden}'
+      + '.dpp-card.on{border-color:#1a7f3c;box-shadow:0 0 0 3px rgba(26,127,60,.15)}'
+      + '.dpp-card img{width:100%;height:200px;object-fit:cover;display:block;cursor:pointer;background:#eee}'
+      + '.dpp-cap{padding:7px 10px;font-size:12.5px;display:flex;justify-content:space-between;gap:6px;align-items:center;border-top:1px solid var(--border,#eee)}'
+      + '.dpp-ck{position:absolute;top:8px;left:8px;width:26px;height:26px;border-radius:7px;background:rgba(255,255,255,.92);border:2px solid #1a7f3c;display:flex;align-items:center;justify-content:center;font-weight:900;color:#1a7f3c;cursor:pointer}'
+      + '.dpp-x{position:absolute;top:8px;right:8px;background:rgba(224,49,49,.92);border:none;color:#fff;border-radius:50%;width:26px;height:26px;cursor:pointer}'
+      + '.dpp-btn{border:1px solid #1a7f3c;background:#1a7f3c;color:#fff;border-radius:8px;padding:3px 9px;font-size:12px;cursor:pointer;white-space:nowrap;font-weight:600}'
+      + '.dpp-empty{display:flex;align-items:center;justify-content:center;height:200px;border:2px dashed var(--border,#ccd);border-radius:12px;color:var(--text3,#888);font-size:13px;cursor:pointer;background:var(--bg3,#f1f3f5)}'
+      + '.dpp-chip{display:inline-block;margin:0 6px 6px 0;padding:4px 10px;border:1px solid #cfd6e4;border-radius:14px;background:#fff;cursor:pointer;font-size:12px}'
+      + 'body.dpp-open{overflow:hidden}body.dpp-open #_sda_b{display:none!important}';
+    document.head.appendChild(st);
+  }
+  function mount(){
+    css();
+    var w = document.createElement('div'); w.id = 'dpp-wrap';
+    w.innerHTML = '<div id="dpp-bar"><b>📷 단지사진</b>'
+      + '<input type="text" id="dpp-q" list="dpp-names" placeholder="단지명" value="' + esc(Q) + '" onkeydown="if(event.key===\'Enter\')dppGo(this.value)">'
+      + '<datalist id="dpp-names"></datalist><button type="button" onclick="dppGo(document.getElementById(\'dpp-q\').value)">찾기</button>'
+      + '<label class="b g" id="dpp-upl" style="display:none">＋ 사진 올리기 (여러 장)<input type="file" id="dpp-file" accept="image/*" multiple hidden></label>'
+      + (ATT ? '<button type="button" class="g" id="dpp-send" disabled onclick="dppSend()">📎 고른 사진 매물에 넣기</button><button type="button" id="dpp-all" disabled onclick="dppAll()">모두 고르기</button>' : '')
+      + '<span class="sp"></span><span id="dpp-msg" style="font-size:12px"></span>'
+      + '<button type="button" class="x" onclick="dppClose()">✕ 창 닫기</button></div><div id="dpp-in"></div>';
+    document.body.appendChild(w); document.body.classList.add('dpp-open');
+    document.title = '단지사진 — SJRWS';
+    $('dpp-file').onchange = function(){ var fs = Array.prototype.slice.call(this.files || []); this.value = ''; upload(fs); };
+  }
+  W.dppClose = function(){ window.close(); setTimeout(function(){ msg('이 창은 직접 닫아 주세요 (브라우저가 스스로 닫는 것을 막았습니다).', '#ffb4b4'); }, 300); };
+  function ready(){ return typeof W.diStorageReady === 'function' && W.diStorageReady(); }
+  async function list(nm){
+    var out = [];
+    var res = await W._fbListAll(W._fbSRef(W._fbStorage, 'sd_danji_images/' + nm));
+    for(var i = 0; i < res.items.length; i++){ var it = res.items[i], m = /^photo(\d+)\.jpg$/.exec(it.name); if(!m) continue; out.push({ n:+m[1], file:it.name, url:await W._fbGetURL(it) }); }
+    return out.sort(function(a, b){ return a.n - b.n; });
+  }
+  function paintBar(){
+    var u = $('dpp-upl'); if(u) u.style.display = CUR ? '' : 'none';
+    var k = Object.keys(SEL).filter(function(x){ return SEL[x]; }).length, s = $('dpp-send'), a = $('dpp-all');
+    if(s){ s.disabled = !k || BUSY; s.textContent = '📎 고른 ' + (k || '') + (k ? '장 ' : '사진 ') + '매물에 넣기' + (ROOM != null ? ' (매물에 ' + ROOM + '장 더 넣을 수 있음)' : ''); }
+    if(a){ a.disabled = !PH.length; a.textContent = k && k === PH.length ? '모두 빼기' : '모두 고르기'; }
+  }
+  function render(){
+    var box = $('dpp-in'); if(!box) return;
+    var cells = PH.map(function(p, i){
+      var on = !!SEL[p.file];
+      return '<div class="dpp-card' + (on ? ' on' : '') + '" data-f="' + esc(p.file) + '">' + (ATT ? '<div class="dpp-ck" onclick="dppTog(\'' + esc(p.file) + '\')">' + (on ? '✓' : '') + '</div>' : '')
+        + '<button class="dpp-x" title="단지사진에서 지우기" onclick="dppDel(\'' + esc(p.file) + '\')">✕</button>'
+        + '<img loading="lazy" src="' + esc(p.url) + '" onclick="' + (ATT ? 'dppTog(\'' + esc(p.file) + '\')' : 'diZoomImage(\'' + esc(p.url) + '\',\'단지사진 ' + p.n + '\')') + '" alt="단지사진 ' + p.n + '">'
+        + '<div class="dpp-cap"><b>단지사진 ' + (i + 1) + '</b><span style="display:flex;gap:6px"><button class="dpp-btn" style="background:#fff;color:#1a7f3c" onclick="diZoomImage(\'' + esc(p.url) + '\',\'단지사진\')">크게</button>' + (ATT ? '<button class="dpp-btn" onclick="dppSend(\'' + esc(p.file) + '\')">📎 넣기</button>' : '') + '</span></div></div>';
+    }).join('');
+    if(PH.length < MAXP) cells += '<label class="dpp-empty">＋ 사진 올리기<br>(' + PH.length + ' / ' + MAXP + '장)<input type="file" accept="image/*" multiple hidden onchange="dppUp(this)"></label>';
+    box.innerHTML = '<div style="font-size:13.5px;font-weight:800;margin:4px 0 10px">「' + esc(CUR) + '」 단지사진 ' + PH.length + ' / ' + MAXP + '장'
+      + ' <span style="font-size:11.5px;font-weight:400;color:var(--text3,#888)">' + (ATT ? '사진을 눌러 고른 뒤 「📎 고른 사진 매물에 넣기」 — 매물 사진 칸에 복사해 올립니다 (단지사진 원본은 그대로)' : '그림을 누르면 크게 봅니다') + '</span></div><div class="dpp-grid">' + cells + '</div>';
+    paintBar();
+  }
+  async function show(nm){
+    CUR = nm; SEL = {}; var q = $('dpp-q'); if(q) q.value = nm;
+    $('dpp-in').innerHTML = '<div style="padding:30px;color:var(--text3,#888)">「' + esc(nm) + '」 단지사진을 불러오는 중…</div>';
+    try{ PH = await list(nm); }catch(e){ PH = []; msg('불러오지 못했습니다: ' + e.message, '#ffb4b4'); }
+    render();
+  }
+  W.dppUp = function(inp){ var fs = Array.prototype.slice.call(inp.files || []); inp.value = ''; upload(fs); };
+  async function upload(fs){
+    if(!CUR) return msg('단지를 먼저 고르세요.', '#ffb4b4');
+    fs = fs.filter(function(f){ return /^image\//.test(f.type || ''); }).sort(function(a, b){ return a.name.localeCompare(b.name, 'ko', { numeric:true }); });
+    var used = {}; PH.forEach(function(p){ used[p.n] = 1; }); var free = []; for(var i = 1; i <= MAXP; i++) if(!used[i]) free.push(i);
+    if(!fs.length) return; if(!free.length) return msg('단지사진은 ' + MAXP + '장까지입니다 — 지우고 올려 주세요.', '#ffb4b4');
+    if(fs.length > free.length){ msg('빈 칸이 ' + free.length + '장이라 앞의 ' + free.length + '장만 올립니다.', '#ffe08a'); fs = fs.slice(0, free.length); }
+    var opt = (W.DI_OPT && (W.DI_OPT.photo || W.DI_OPT._def)) || { px:1600, q:0.86 };
+    BUSY = true; paintBar();
+    for(var k = 0; k < fs.length; k++){
+      msg('⏫ 올리는 중… ' + (k + 1) + ' / ' + fs.length);
+      var du = await new Promise(function(r){ W.diResizeImage(fs[k], opt.px, function(d){ r(d); }, opt.q); });
+      if(!du) continue;
+      try{ var r = W._fbSRef(W._fbStorage, 'sd_danji_images/' + CUR + '/photo' + free[k] + '.jpg'); await W._fbUploadStr(r, du, 'data_url'); }catch(e){ msg('올리지 못했습니다: ' + e.message, '#ffb4b4'); }
+    }
+    BUSY = false; msg('✅ ' + fs.length + '장 올렸습니다 — 데이터관리 「단지이미지」에도 바로 보입니다.', '#b9f6ca');
+    if(W.G_DI){ W.G_DI.index[CUR] = true; }
+    await show(CUR);
+  }
+  W.dppDel = async function(file){
+    if(!confirm('이 사진을 단지사진에서 지울까요? (매물에 이미 넣은 사진은 그대로 남습니다)')) return;
+    try{ await W._fbDelObj(W._fbSRef(W._fbStorage, 'sd_danji_images/' + CUR + '/' + file)); msg('🗑 지웠습니다'); }catch(e){ msg('지우지 못했습니다: ' + e.message, '#ffb4b4'); }
+    await show(CUR);
+  };
+  W.dppTog = function(file){ SEL[file] = !SEL[file]; render(); };
+  W.dppAll = function(){ var all = PH.length && PH.every(function(p){ return SEL[p.file]; }); SEL = {}; if(!all) PH.forEach(function(p){ SEL[p.file] = true; }); render(); };
+  W.dppSend = function(one){
+    if(!W.opener || W.opener.closed) return msg('매물 등록 창이 닫혀 있어 넣을 수 없습니다.', '#ffb4b4');
+    var pick = one ? PH.filter(function(p){ return p.file === one; }) : PH.filter(function(p){ return SEL[p.file]; });
+    if(!pick.length) return;
+    BUSY = true; paintBar(); msg('📎 매물 등록으로 보내는 중… (' + pick.length + '장)');
+    try{ W.opener.postMessage({ type:'sjrws-dp-photos', v:1, danji:CUR, items:pick.map(function(p, i){ return { url:p.url, name:CUR + '_단지사진' + String(p.n).padStart(2, '0') + '.jpg' }; }) }, location.origin); }
+    catch(e){ BUSY = false; paintBar(); return msg('보내지 못했습니다: ' + e.message, '#ffb4b4'); }
+    setTimeout(function(){ if(BUSY){ BUSY = false; paintBar(); msg('매물 등록 화면이 답하지 않습니다 — 매물관리 화면을 새로고침(Ctrl+F5)한 뒤 다시 열어 주세요.', '#ffb4b4'); } }, 6000);
+  };
+  W.addEventListener('message', function(ev){
+    if(ev.origin !== location.origin) return;
+    var d = ev.data; if(!d || typeof d !== 'object') return;
+    if(d.type === 'sjrws-dp-state'){ ROOM = d.room; paintBar(); return; }
+    if(d.type === 'sjrws-dp-busy'){ msg('⏫ 매물 사진으로 옮기는 중… ' + (d.done || 0) + ' / ' + (d.total || 0)); return; }
+    if(d.type === 'sjrws-dp-ack'){ BUSY = false; ROOM = d.room; if(d.ok) SEL = {}; render(); msg(d.ok ? (d.msg || '📎 매물 사진에 넣었습니다 — 매물 저장을 눌러야 남습니다.') : ('넣지 못했습니다: ' + (d.msg || '')), d.ok ? '#b9f6ca' : '#ffb4b4'); }
+  });
+  W.dppGo = function(q){
+    q = String(q||'').trim(); if(!q) return;
+    var hit = nameFind(q); if(hit.length === 1) return show(hit[0]);
+    var box = $('dpp-in');
+    if(!hit.length){ box.innerHTML = '<div style="padding:24px;font-size:13px">「' + esc(q) + '」 단지를 찾지 못했습니다. 위 칸에서 목록을 열어 골라 주세요. 마스터에 없는 건물이면 <span class="dpp-chip" onclick="dppNew(\'' + esc(q).replace(/\\/g,'\\\\') + '\')">「' + esc(q) + '」 이름 그대로 단지사진 만들기</span></div>'; return; }
+    box.innerHTML = '<div style="font-size:13.5px;font-weight:800;margin:4px 0 10px">「' + esc(q) + '」 비슷한 단지 ' + hit.length + '곳 — 골라 주세요</div>' + hit.map(function(n){ return '<span class="dpp-chip" onclick="dppGo(\'' + esc(n).replace(/\\/g,'\\\\') + '\')">' + esc(n) + '</span>'; }).join('');
+  };
+  W.dppNew = function(n){ show(n); };
+  async function boot(){
+    mount(); msg('단지 목록을 불러오는 중…');
+    var n = 0; while(!(ready() && typeof W._fbListAll === 'function') && n++ < 120) await new Promise(function(r){ setTimeout(r, 250); });
+    if(!(W.G_HS && (W.G_HS.danji || []).length) && typeof W.hsFbLoad === 'function'){ try{ await W.hsFbLoad(); }catch(e){} }
+    try{ if(W.sdDib && W.sdDib.loadExtra) await W.sdDib.loadExtra(); }catch(e){}
+    var dl = $('dpp-names'); if(dl) dl.innerHTML = allNames().map(function(x){ return '<option value="' + esc(x) + '">'; }).join('');
+    msg(ready() ? '' : '⚠️ 저장소(Storage)에 아직 연결되지 않았습니다 — 잠시 뒤 새로고침해 주세요.', ready() ? '' : '#ffb4b4');
+    if(ATT){ try{ W.opener.postMessage({ type:'sjrws-dp-hello' }, location.origin); }catch(e){} }
+    if(Q) W.dppGo(Q); else $('dpp-in').innerHTML = '<div style="padding:24px;font-size:13px">위 칸에 단지명을 넣어 주세요.</div>';
+  }
+  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
 })();
 </script>
 <!-- ═════════════════════════════════════════════════════════════════

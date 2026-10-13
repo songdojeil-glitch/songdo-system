@@ -1203,7 +1203,8 @@ window.addEventListener('load', function() {
     <!-- ═══ 사진 첨부 섹션 (신규) ═══ -->
     <div class="ph-sec">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:6px">
-        <span style="font-size:13px;font-weight:500;color:#1565c0">📸 매물 사진 <span id="f-ph-cnt" style="font-size:11px;color:#666;font-weight:400">(0 / 15장)</span></span>
+        <span style="font-size:13px;font-weight:500;color:#1565c0">📸 매물 사진 <span id="f-ph-cnt" style="font-size:11px;color:#666;font-weight:400">(0 / 15장)</span>
+          <button type="button" onclick="pdpOpen()" title="단지이미지의 단지사진을 새 창으로 — 거기서 바로 올리고, 골라서 이 매물 사진으로 넣습니다" style="margin-left:6px;padding:3px 10px;font-size:11.5px;font-weight:700;border:1px solid #1a7f3c;background:#eef8f1;color:#1a7f3c;border-radius:6px;cursor:pointer;vertical-align:1px">🏙 단지사진 (새 창)</button></span>
         <div style="display:flex;gap:6px;align-items:center">
           <span style="font-size:10px;color:#888">⭐ 대표 · ☑ 선택→삭제 · ◀▶ 순서 · 드래그 이동 · 클릭 확대</span>
           <div id="batch-delete-controls" style="display:none;gap:4px;align-items:center">
@@ -8744,7 +8745,7 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.10.12-3';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.10.13-1';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_props.html';      // 이 파일 이름
   var SD_NAME = '매물관리';      // 사람이 부르는 이름
 
@@ -12185,6 +12186,88 @@ textarea.bf-in{resize:vertical;line-height:1.6}
   window.sdBrief = { add:addFromDetail, open:open, close:close,
     // 시험용
     _cart:function(){ return CART; }, _draft:function(){ return D; }, _doc:docHtml, _won:won, _opt:function(){ return OPT; }, _hist:function(){ return HIST; }, _author:function(){ return author(); }, _reset:function(){ CUSTS = null; BRK = null; HIST = null; } };
+})();
+</script>
+<!-- ═══════════════════════════════════════════════════════════════════════
+     🏙 단지사진 (새 창) — 매물 등록의 📸 매물 사진 머리에서 연다 (2026-10-13)
+     · sd_data.html?popup=dp&q=단지명&att=1 — 단지이미지의 「단지사진」(최대 15장)을 크게 모아 보여 준다
+     · 그 창에서 바로 사진을 올리고(단지이미지에 저장), 골라서 「📎 매물에 넣기」 → 여기로
+       {type:'sjrws-dp-photos', danji, items:[{url,name}]}
+     · 받은 사진은 내려받아 매물 사진으로 「복사해」 올린다 (onPhFileSelect 그대로 — 압축·썸네일·대표 지정)
+       → 매물 사진을 지우거나 매물을 지워도 단지사진 원본은 그대로
+     · 내려받기가 막히면(CORS) 주소만 붙인다 (path 비움 → 지울 때 저장소를 건드리지 않는다)
+     ═══════════════════════════════════════════════════════════════════════ -->
+<script>
+(function(){
+  'use strict';
+  if(window.__pdpOn) return; window.__pdpOn = true;
+  var WIN = null, POP = null;
+  function $(id){ return document.getElementById(id); }
+  function toast(t){
+    var e = document.createElement('div');
+    e.style.cssText = 'position:fixed;top:18px;left:50%;transform:translateX(-50%);z-index:10050;background:#1a2744;color:#fff;'
+      + 'padding:10px 16px;border-radius:10px;font-size:13px;box-shadow:0 6px 20px rgba(0,0,0,.2);max-width:90vw;line-height:1.6';
+    e.textContent = t; document.body.appendChild(e);
+    setTimeout(function(){ e.remove(); }, 4200);
+  }
+  function room(){ var m = typeof PH_MAX === 'number' ? PH_MAX : 15, n = (window._formPhotos || (typeof _formPhotos !== 'undefined' ? _formPhotos : [])).length; return Math.max(0, m - n); }
+  function photos(){ return typeof _formPhotos !== 'undefined' ? _formPhotos : []; }
+  window.pdpOpen = function(){
+    var q = (($('f-cx')||{}).value || '').trim();
+    var url = 'sd_data.html?popup=dp' + (q ? '&q=' + encodeURIComponent(q) : '') + '&att=1&v=' + Date.now();
+    try{ sessionStorage.setItem('sjrws_dp_q', q); sessionStorage.setItem('sjrws_dp_att', '1'); }catch(e){}
+    var w = Math.min(1320, screen.availWidth - 40), h = Math.min(960, screen.availHeight - 60);
+    if(WIN && !WIN.closed){ try{ WIN.location.href = url; WIN.focus(); return; }catch(e){} }
+    WIN = window.open(url, 'sjrws_dp', 'width=' + w + ',height=' + h + ',left=80,top=40,resizable=yes,scrollbars=yes');
+    if(!WIN) toast('팝업이 막혔습니다 — 주소창 오른쪽 「팝업 차단」 표시를 눌러 이 사이트를 허용해 주세요.');
+    else if(!q) toast('단지명이 비어 있습니다 — 새 창 위 칸에서 단지를 골라 주세요.');
+  };
+  function tell(src, o){ var w = src || POP; if(!w) return; try{ w.postMessage(o, location.origin); }catch(e){} }
+  async function toFile(it, i){
+    var r = await fetch(it.url, { mode:'cors' }); if(!r.ok) throw new Error('HTTP ' + r.status);
+    var b = await r.blob(), ty = /^image\//.test(b.type || '') ? b.type : 'image/jpeg';
+    var nm = String(it.name || ('단지사진_' + String(i + 1).padStart(2, '0') + '.jpg'));
+    try{ return new File([b], nm, { type:ty }); }catch(e){ b.name = nm; return b; }
+  }
+  window.addEventListener('message', async function(ev){
+    if(ev.origin !== location.origin) return;
+    var d = ev.data; if(!d || typeof d !== 'object') return;
+    if(d.type === 'sjrws-dp-hello'){ POP = ev.source; tell(ev.source, { type:'sjrws-dp-state', room:room() }); return; }
+    if(d.type !== 'sjrws-dp-photos') return;
+    POP = ev.source;
+    var src = ev.source, reply = function(ok, m){ tell(src, { type:'sjrws-dp-ack', ok:ok, msg:m || '', room:room() }); };
+    if(!$('f-ph-grid') || typeof window.onPhFileSelect !== 'function'){ reply(false, '매물 등록 화면이 열려 있지 않습니다 — 매물관리에서 「매물 등록」을 연 뒤 다시 넣어 주세요'); return; }
+    if(typeof _phUploading !== 'undefined' && _phUploading){ reply(false, '매물 사진을 올리는 중입니다 — 끝난 뒤 다시 넣어 주세요'); return; }
+    var items = (d.items || []).filter(function(x){ return x && x.url; });
+    //  이미 넣은 사진(같은 단지사진)은 다시 넣지 않는다
+    var have = {}; photos().forEach(function(p){ if(p && p.from) have[p.from] = 1; });
+    var dup = items.filter(function(x){ return have[x.url.split('?')[0]]; }).length;
+    items = items.filter(function(x){ return !have[x.url.split('?')[0]]; });
+    if(!items.length){ reply(true, dup ? '이미 넣은 사진입니다' : '넣을 사진이 없습니다'); return; }
+    var rm = room(); if(rm <= 0){ reply(false, '매물 사진은 ' + (typeof PH_MAX === 'number' ? PH_MAX : 15) + '장까지입니다 — 매물 등록에서 몇 장 지운 뒤 넣어 주세요'); return; }
+    var cut = items.length > rm; if(cut) items = items.slice(0, rm);
+    var files = [], refs = [];
+    for(var i = 0; i < items.length; i++){
+      tell(src, { type:'sjrws-dp-busy', done:i, total:items.length });
+      try{ var f = await toFile(items[i], i); f._from = items[i].url.split('?')[0]; files.push(f); }catch(e){ refs.push(items[i]); }
+    }
+    var n0 = photos().length;
+    if(files.length){
+      var froms = files.map(function(f){ return f._from; });
+      await window.onPhFileSelect({ target:{ files:files } });
+      //  onPhFileSelect 는 파일 이름 차례로 올린다 — 이름 차례로 맞춰 원본 주소를 적어 둔다 (다시 넣기 막기)
+      var order = files.map(function(f, k){ return { n:f.name, from:froms[k] }; }).sort(function(a, b){ return a.n.localeCompare(b.n, 'ko', { numeric:true, sensitivity:'base' }); });
+      photos().slice(n0).forEach(function(p, k){ if(order[k]) p.from = order[k].from; });
+    }
+    refs.forEach(function(it){
+      photos().push({ url:it.url, thumbUrl:it.url, path:'', thumbPath:'', name:it.name || '단지사진', size:0, uploadedAt:Date.now(), star:photos().length === 0, from:it.url.split('?')[0], src:'danji' });
+    });
+    if(refs.length && typeof window.renderFormPhotos === 'function') window.renderFormPhotos();
+    var got = photos().length - n0;
+    var m = '📸 단지사진 ' + got + '장을 매물 사진에 넣었습니다' + (cut ? ' (빈 칸이 모자라 ' + got + '장만)' : '') + (dup ? ' · 이미 넣은 ' + dup + '장은 건넜습니다' : '') + ' — 「매물 저장」을 눌러야 남습니다.';
+    reply(got > 0, got > 0 ? m : '넣지 못했습니다');
+    if(got > 0){ toast(m); var g = $('f-ph-grid'); if(g){ g.style.transition = 'background .3s'; g.style.background = '#f1faf3'; setTimeout(function(){ g.style.background = ''; }, 1400); } }
+  });
 })();
 </script>
 <script src="sd_logo.js?v=2026.10.09-1"></script>
