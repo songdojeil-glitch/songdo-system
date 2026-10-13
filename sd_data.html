@@ -970,7 +970,10 @@ a.sjb-btn.on::after,span.sjb-btn.on::after{background:linear-gradient(100deg,rgb
         <div style="font-size:14px;font-weight:700;color:var(--text)">🖼️ 단지 이미지 관리 <span id="di-ver" style="font-size:11px;color:var(--text3);font-weight:400"></span></div>
         <div style="font-size:11px;color:var(--text3);margin-top:2px">단지별 위치지도·배치도·단지사진·평면도 등록 (Firebase Storage · 자동 리사이즈)</div>
       </div>
+      <span style="display:flex;gap:6px;flex-wrap:wrap">
+      <button onclick="diOldPlanClean()" title="새 이름으로 다시 올린 단지에 남아 있는 예전 이름(전용 정수) 평면도를 찾아 지웁니다" style="padding:7px 14px;background:#fff4e5;border:1px solid #f0b46a;color:#8a4b00;border-radius:8px;font-size:12px;cursor:pointer">🧹 예전 이름 평면도 정리</button>
       <button onclick="diReloadIndex()" style="padding:7px 14px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:8px;font-size:12px;cursor:pointer">🔄 목록 새로고침</button>
+      </span>
     </div>
   </div>
 
@@ -7136,6 +7139,40 @@ function diPlanArea(nm, typ, exa){
            text:[head, par.length?'('+par.join(', ')+')':''].filter(Boolean).join(' ')+(tp?' · 타입 '+tp:'') };
 }
 function diPlanLabel(nm, typ, exa){ return diPlanArea(nm, typ, exa).text || (typ||'평면도'); }
+//  🧹 예전 이름 평면도 정리 (2026-10-13)
+//    새 맞춤 방식(plan__{타입}_{전용 소수 둘째}.jpg)으로 다시 올린 단지에는 예전 이름(plan__128_102_4.jpg — 전용 정수)이 함께 남는다.
+//    새 이름 평면도가 한 장이라도 있는 단지만 골라, 그 단지의 예전 이름 평면도를 지운다. 새 이름이 없는 단지는 건드리지 않는다.
+var DI_PLAN_NEW=/^plan__[^_]+_\d+\.\d{2}(?:_\d+)?\.jpg$/;
+async function diOldPlanScan(){
+  var root=await window._fbListAll(window._fbSRef(window._fbStorage,'sd_danji_images')), out=[];
+  for(var i=0;i<root.prefixes.length;i++){
+    var r=await window._fbListAll(root.prefixes[i]);
+    var p=r.items.filter(function(it){ return it.name.indexOf('plan__')===0; });
+    var nw=p.filter(function(it){ return DI_PLAN_NEW.test(it.name); }), old=p.filter(function(it){ return !DI_PLAN_NEW.test(it.name); });
+    if(nw.length && old.length) out.push({ nm:root.prefixes[i].name, nw:nw.length, old:old });
+  }
+  return out;
+}
+async function diOldPlanClean(){
+  if(!diStorageReady()){ showToast('⚠️ Storage 연결 대기 중'); return; }
+  showToast('🔍 예전 이름 평면도를 찾는 중…', 8000);
+  var L; try{ L=await diOldPlanScan(); }catch(e){ showToast('❌ 찾지 못했습니다: '+e.message); return; }
+  if(!L.length){ showToast('✅ 정리할 예전 이름 평면도가 없습니다'); return; }
+  var tot=L.reduce(function(a,x){ return a+x.old.length; },0);
+  var msg='새 이름으로 다시 올린 단지 '+L.length+'곳에 예전 이름 평면도가 '+tot+'장 남아 있습니다.\n\n'
+    +L.map(function(x){ return '· '+x.nm+' — 예전 '+x.old.length+'장 지움 (새 이름 '+x.nw+'장은 그대로)'; }).join('\n')
+    +'\n\n지운 평면도는 되살릴 수 없습니다. 지울까요?';
+  if(!confirm(msg)) return;
+  var ok=0, bad=0;
+  for(var i=0;i<L.length;i++){
+    for(var j=0;j<L[i].old.length;j++){
+      try{ await window._fbDelObj(L[i].old[j]); ok++; }catch(e){ bad++; }
+      if((ok+bad)%10===0) showToast('🧹 지우는 중… '+(ok+bad)+' / '+tot);
+    }
+  }
+  showToast('🧹 예전 이름 평면도 '+ok+'장 지웠습니다'+(bad?' · 실패 '+bad+'장':''), 6000);
+  if(G_DI.selDanji && typeof diLoadDanjiImages==='function') diLoadDanjiImages(G_DI.selDanji);
+}
 function diSlotCell(nm, filename, caption, url, capHtml){
   var box='';
   if(url){
@@ -19770,7 +19807,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.10.13-4';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.10.13-5';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_data.html';      // 이 파일 이름
   var SD_NAME = '실거래가';      // 사람이 부르는 이름
 
@@ -35683,41 +35720,58 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
       를 함께 보아 가장 가까운 면적형을 고르고, 다른 그룹이 이미 가져간 면적형은 피한다.
       같은 면적형의 _1 · _2 (여러 장) 는 같은 면적형으로 묶는다.
       저장 이름: plan__{타입열쇠}_{전용 소수 둘째}[_n].jpg — 타입열쇠는 마스터 타입이 겹치면 분양㎡ (diTypeKey) */
-  function planFile(nm, pi, used){
+  /*  2026-10-13 (2) — 홈페이지 키트로 전체 점검하며 다듬음
+        · 마스터의 끝 글자(A·B…)와 키트 글자가 같으면 −5, 다르면 +5 (전용 표기가 홈페이지와 마스터가 조금씩 다른 단지가 많다 — e편한세상송도)
+        · 분양㎡가 0.02 안으로 같으면 −8, 전용까지 같으면 또 −7 (글자가 서로 엇갈린 단지 — 더샵파크애비뉴 118A/118B)
+        · 한 장씩 차례로 고르지 않고 단지의 평면도 묶음 전체를 놓고 점수가 좋은 짝부터 정한다
+          (차례대로 고르면 앞 묶음이 뒤 묶음의 정확한 짝을 가로챈다 — 더샵그린스퀘어 112.37D 가 112.67C 의 짝을 가져감) */
+  function planScore(x, pi){
+    var de = Math.abs((x['전용㎡']||0) - pi.ex); if(de > 1.5) return null;
+    var sc = de * 10;
+    if(pi.sup && x['공급㎡']){ var ds = Math.abs(x['공급㎡'] - pi.sup); sc += ds * 5; if(ds < 0.02){ sc -= 8; if(de < 0.02) sc -= 7; } }
+    var ml = (String(x.타입||'').toUpperCase().match(/^\d+(?:\.\d+)?([A-Z]+)/) || [])[1] || '';
+    if(pi.letter && ml) sc += (ml === pi.letter ? -5 : 5);
+    return sc;
+  }
+  function planAssign(nm, names){
     var d = masters().filter(function(x){ return x.단지명 === nm; })[0];
-    var T = (d && d.types) || [];
-    var t = null, gk = '@g|' + nm + '|' + pi.tag + '|' + (pi.ex || '');
-    if(used[gk] != null) t = T[used[gk]] || null;
-    else if(T.length && pi.ex){
-      var best = null, bs = 1e9;
-      T.forEach(function(x, i){
-        var de = Math.abs((x['전용㎡']||0) - pi.ex); if(de > 1.5) return;
-        var sc = de * 10;
-        if(pi.sup && x['공급㎡']) sc += Math.abs(x['공급㎡'] - pi.sup) * 5;
-        if(pi.letter && String(x.타입||'').toUpperCase().slice(-pi.letter.length) === pi.letter) sc -= 0.5;
-        if(used['@t|' + nm + '|' + i]) sc += 1000;          // 다른 평면도 그룹이 이미 가져간 면적형
-        if(sc < bs){ bs = sc; best = i; }
-      });
-      if(best != null){ t = T[best]; used[gk] = best; used['@t|' + nm + '|' + best] = 1; }
-    }
-    var base = t ? (typeof W.diTypeKey === 'function' ? W.diTypeKey(t, T) : String(t.타입).replace(/[_\/\\]/g,'')) + '_' + (Number(t['전용㎡'])||0).toFixed(2)
-                 : (pi.tag || '타입') + (pi.ex ? '_' + Number(pi.ex).toFixed(2) : '');
-    var fn = 'plan__' + base + (pi.n > 1 ? '_' + pi.n : '') + '.jpg';
-    var k = 2; while(used[fn]){ fn = 'plan__' + base + '_' + (k++) + '.jpg'; }
-    used[fn] = 1;
-    return { fn:fn, typed:!!t };
+    var T = (d && d.types) || [], G = {}, gt = {}, tu = {}, pairs = [], used = {}, out = {};
+    names.forEach(function(n){ var pi = planInfo(n), k = pi.tag + '|' + pi.ex; (G[k] = G[k] || { pi:pi }); });
+    Object.keys(G).forEach(function(k){ if(!G[k].pi.ex) return; T.forEach(function(x, i){ var sc = planScore(x, G[k].pi); if(sc != null) pairs.push([sc, k, i]); }); });
+    pairs.sort(function(a, b){ return a[0] - b[0]; });
+    pairs.forEach(function(p){ if(gt[p[1]] != null || tu[p[2]]) return; gt[p[1]] = p[2]; tu[p[2]] = 1; });
+    pairs.forEach(function(p){ if(gt[p[1]] == null) gt[p[1]] = p[2]; });     //  면적형보다 묶음이 많으면 가장 가까운 곳에
+    names.slice().sort(function(a,b){ return a.localeCompare(b, 'ko', { numeric:true }); }).forEach(function(n){
+      var pi = planInfo(n), k = pi.tag + '|' + pi.ex, t = gt[k] != null ? T[gt[k]] : null;
+      var base = t ? (typeof W.diTypeKey === 'function' ? W.diTypeKey(t, T) : String(t.타입).replace(/[_\/\\]/g,'')) + '_' + (Number(t['전용㎡'])||0).toFixed(2)
+                   : (pi.tag || '타입') + (pi.ex ? '_' + Number(pi.ex).toFixed(2) : '');
+      var fn = 'plan__' + base + (pi.n > 1 ? '_' + pi.n : '') + '.jpg', c = 2;
+      while(used[fn]) fn = 'plan__' + base + '_' + (c++) + '.jpg';
+      used[fn] = 1; out[n] = { fn:fn, typed:!!t };
+    });
+    return out;
+  }
+  //  한 장만 볼 때 (예전 부르는 곳 호환) — 같은 used 를 넘기면 그 사이에서도 겹치지 않게
+  function planFile(nm, pi, used){
+    var name = '평면도_' + pi.tag + (pi.ex ? '_전용' + pi.ex : '') + '_' + (pi.n || 1) + '.jpg';
+    var r = planAssign(nm, [name])[name];
+    var fn = r.fn, c = 2, base = fn.replace(/\.jpg$/, '');
+    while(used && used[fn]) fn = base + '_' + (c++) + '.jpg';
+    if(used) used[fn] = 1;
+    return { fn:fn, typed:r.typed };
   }
 
   //  한 단지 폴더의 파일들 → 올릴 파일 이름
   function plan(row){
     var used = {}, cnt = {}, out = [], unk = [];
     var fs = row.files.slice().sort(function(a,b){ return a.name.localeCompare(b.name, 'ko', { numeric:true }); });
+    var PA = planAssign(target(row) || row.folder, fs.filter(function(f){ return kindOf(f.name) === 'plan'; }).map(function(f){ return f.name; }));
     fs.forEach(function(f){
       var k = kindOf(f.name);
       if(k === 'skip') return;
       if(!k){ unk.push(f.name); return; }
       if(k === 'plan'){
-        var pi = planInfo(f.name), r = planFile(target(row) || row.folder, pi, used);
+        var r = PA[f.name];
         out.push({ f:f, key:'plan', fn:r.fn, typed:r.typed }); return;
       }
       var slot = (W.DI_FIXED || []).filter(function(s){ return s.key === k; })[0];
@@ -35800,8 +35854,8 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
       var best = null, second = null;
       function key(x){ return x ? x.sc * 1000 + x.cov : -1; }
       M.forEach(function(d){
-        var have = S[d.단지명], used = {}, hit = 0;
-        ps.forEach(function(f){ var q = planFile(d.단지명, planInfo(f.name), used); if(have[q.fn]) hit++; });
+        var have = S[d.단지명], hit = 0, PA = planAssign(d.단지명, ps.map(function(f){ return f.name; }));
+        ps.forEach(function(f){ if(have[PA[f.name].fn]) hit++; });
         if(!hit) return;                  //  타입이 없는 단지는 파일의 면적표기 이름 그대로 올라갔으니 그 이름으로 찾는다
         var np = Object.keys(have).filter(function(k){ return k.indexOf('plan__') === 0; }).length;
         var c = { nm:d.단지명, sc:hit / ps.length, cov:hit / Math.max(1, np), hit:hit };
@@ -35948,7 +36002,7 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
       + list.reduce(function(a,r){ return a + (r.done||0); }, 0) + '장 올림'
       + (fails.length ? ' · <b style="color:#c33">실패 ' + fails.length + '</b><div style="font-size:11px;color:#c33;margin-top:4px">' + fails.slice(0,12).map(esc).join('<br>') + '</div>' : '');
   };
-  W.sdDib = { kindOf:kindOf, match:match, planInfo:planInfo, planFile:planFile, group:group,
+  W.sdDib = { kindOf:kindOf, match:match, planInfo:planInfo, planFile:planFile, planAssign:planAssign, group:group,
               rows:function(){ return ROWS; }, loadExtra:loadExtra, nb:nb, map:function(){ return MAP; } };
 
   // ── 탭 14 에 단추 달기 ──────────────────────────────────────────────
