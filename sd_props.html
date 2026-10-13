@@ -8745,7 +8745,7 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.10.13-1';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.10.13-2';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_props.html';      // 이 파일 이름
   var SD_NAME = '매물관리';      // 사람이 부르는 이름
 
@@ -11123,7 +11123,10 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
   window.pbrOpen = function(){
     var q = (($('f-cx')||{}).value || '').trim();
     //  v= 는 브라우저가 옛 데이터관리 화면을 캐시에서 꺼내 쓰지 않게 하려고 붙인다
-    var url = 'sd_data.html?popup=br' + (q ? '&q=' + encodeURIComponent(q) : '') + '&v=' + Date.now();
+    //  목록에서 고른 단지·건물이 지번을 알면 함께 넘긴다 — 대장 창이 지번으로 바로 연다 (2026-10-13)
+    try{ sessionStorage.removeItem('sjrws_br_jb'); }catch(e){}
+    var loc = (q && typeof window.pcxLoc === 'function') ? window.pcxLoc(q) : '';
+    var url = 'sd_data.html?popup=br' + (q ? '&q=' + encodeURIComponent(q) : '') + loc + '&v=' + Date.now();
     try{ sessionStorage.setItem('sjrws_br_q', q); }catch(e){}
     var w = Math.min(1240, screen.availWidth - 40), h = Math.min(960, screen.availHeight - 60);
     if(WIN && !WIN.closed){ try{ WIN.location.href = url; WIN.focus(); return; }catch(e){} }
@@ -11185,7 +11188,8 @@ document.addEventListener('DOMContentLoaded', function(){ sdApplyPerms(); });
     b.title = '데이터관리의 건축물대장을 새 창으로 엽니다. 호실 표의 「↩ 매물등록에 넣기」로 동/호수·전용면적·층이 들어옵니다.';
     b.style.cssText = 'margin-top:6px;padding:5px 11px;font-size:11.5px;border:1px solid #9fb3d9;background:#eef3fb;color:#1a2744;border-radius:7px;cursor:pointer';
     b.onclick = window.pbrOpen;
-    cx.parentNode.appendChild(b);
+    var host = cx.parentNode; if(host && host.id === 'pcx-wrap') host = host.parentNode;   //  단지 목록 찾기 칸 바깥에
+    host.appendChild(b);
     return true;
   }
   //  ── 사용승인일 칸 — 「층수 / 전체층」 줄 바로 아래 ───────────────
@@ -12268,6 +12272,302 @@ textarea.bf-in{resize:vertical;line-height:1.6}
     reply(got > 0, got > 0 ? m : '넣지 못했습니다');
     if(got > 0){ toast(m); var g = $('f-ph-grid'); if(g){ g.style.transition = 'background .3s'; g.style.background = '#f1faf3'; setTimeout(function(){ g.style.background = ''; }, 1400); } }
   });
+})();
+</script>
+<!-- ═══════════════════════════════════════════════════════════════════════
+     🔎 단지명 / 건물명 — 목록에서 찾기 (2026-10-13)
+     매물 등록의 「단지명 / 건물명」 칸을 목록에서 고르는 칸으로 바꾼다. 직접 쓰기도 그대로 된다.
+     · 목록 (한 번 받아 두고 하루 동안 이 컴퓨터에 남긴다)
+         🏢 아파트      Firebase sd_housing(주택공급현황 — 단지이미지와 같은 이름) + sd_apt.json(공동주택 단지 사전 — 지번)
+         🏬 상가·업무   sd/sd_bldg_names(실거래 건물명 사전 — 지번) + 네이버 상가 매물의 건물 이름
+         🏨 오피스텔·생숙 네이버 OP 매물의 건물 이름
+         ⭐ 우리 매물   지금까지 매물에 쓴 이름 (목록에 없는 단지내 상가 등)
+     · 찾기: 띄어쓰기·「송도」·「아파트」 무시, 낱말 여러 개(AND), 초성(ㄷㅅㅎㅂ) — ↑↓ Enter Esc
+     · 매물 종류에 맞는 갈래를 먼저 보여 준다 (아파트 → 아파트, 상가·사무실 → 상가·업무, 오피스텔·생숙 → 오피스텔)
+     · 칸 아래 한 줄: ✅ 목록 이름 / ⚠️ 목록에는 다른 표기로 있음 [맞추기] / ✏️ 직접 입력
+     · 고른 뒤 동·호·전용면적·층은 🏗 건축물대장 조회로 넣는다 — 지번을 아는 단지·건물은 대장 창이 지번으로 바로 연다
+     ═══════════════════════════════════════════════════════════════════════ -->
+<style>
+#pcx-dd{position:absolute;right:0;top:100%;margin-top:3px;z-index:3000;width:max(100%,580px);max-width:94vw;background:#fff;border:1px solid #b9c6e0;border-radius:10px;box-shadow:0 10px 30px rgba(20,40,80,.18);overflow:hidden;font-size:13px}
+#pcx-dd .pcx-tabs{display:flex;gap:4px;padding:7px 8px;background:#f3f6fb;border-bottom:1px solid #e3e8f2;flex-wrap:wrap;align-items:center}
+#pcx-dd .pcx-tab{border:1px solid #d3dbea;background:#fff;color:#334;border-radius:14px;padding:3px 10px;font-size:11.5px;cursor:pointer;white-space:nowrap}
+#pcx-dd .pcx-tab.on{background:#1a2744;border-color:#1a2744;color:#fff;font-weight:700}
+#pcx-dd .pcx-tab small{opacity:.7;margin-left:2px}
+#pcx-dd .pcx-gz{display:flex;gap:4px;flex-wrap:wrap;padding:6px 8px 0}
+#pcx-dd .pcx-gz span{border:1px solid #e0e5ee;border-radius:10px;padding:1px 8px;font-size:11px;cursor:pointer;color:#556}
+#pcx-dd .pcx-gz span.on{background:#e8f0fe;border-color:#7aa2e8;color:#1a3d8f;font-weight:700}
+#pcx-dd .pcx-list{max-height:340px;overflow:auto;padding:4px 0}
+#pcx-dd .pcx-h{padding:6px 12px 3px;font-size:11px;color:#8a94a6;font-weight:700}
+#pcx-dd .pcx-it{display:flex;align-items:center;gap:8px;padding:7px 12px;cursor:pointer;line-height:1.35}
+#pcx-dd .pcx-it.on,#pcx-dd .pcx-it:hover{background:#eef4ff}
+#pcx-dd .pcx-it .ic{width:20px;text-align:center;flex:none}
+#pcx-dd .pcx-it .nm{font-weight:600;color:#1a2744;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#pcx-dd .pcx-it .nm mark{background:#fff3a8;color:inherit;padding:0}
+#pcx-dd .pcx-it .mt{font-size:11px;color:#8a94a6;white-space:nowrap}
+#pcx-dd .pcx-it .ct{font-size:10.5px;color:#1a7f3c;background:#eaf7ee;border-radius:8px;padding:0 6px;white-space:nowrap}
+#pcx-dd .pcx-it.free{border-top:1px dashed #dde3ee;color:#555}
+#pcx-dd .pcx-it.free .nm{font-weight:500;color:#555}
+#pcx-dd .pcx-ft{padding:6px 12px;font-size:11px;color:#8a94a6;border-top:1px solid #eef1f6;background:#fafbfd}
+#pcx-st{margin-top:5px;font-size:11.5px;line-height:1.6;color:#667}
+#pcx-st .ok{color:#1a7f3c;font-weight:700}
+#pcx-st .wn{color:#b26a00;font-weight:700}
+#pcx-st .fr{color:#5a6a82;font-weight:700}
+#pcx-st button{border:1px solid #c9d3e6;background:#fff;border-radius:6px;padding:1px 8px;font-size:11px;cursor:pointer;margin-left:4px;color:#1a2744}
+#pcx-st button.g{border-color:#1a7f3c;background:#eef8f1;color:#1a7f3c;font-weight:700}
+#pcx-btn{position:absolute;right:6px;top:50%;transform:translateY(-50%);border:none;background:#eef3fb;color:#1a2744;border-radius:6px;padding:3px 8px;font-size:11.5px;cursor:pointer}
+.pcx-pulse{animation:pcxP 1.1s ease-in-out 3}
+@keyframes pcxP{0%,100%{box-shadow:0 0 0 0 rgba(26,127,60,0)}50%{box-shadow:0 0 0 5px rgba(26,127,60,.28)}}
+</style>
+<script>
+(function(){
+  'use strict';
+  if(window.__pcxOn) return; window.__pcxOn = true;
+  var W = window, LIST = null, LOADING = null, TAB = '', GZ = '', SEL = -1, VIS = [], PICK = null, OPEN = false;
+  var CACHE = 'sd_pcx_list_v1', DAY = 864e5;
+  var KN = { apt:['🏢','아파트'], bld:['🏬','상가·업무'], op:['🏨','오피스텔·생숙'], mine:['⭐','우리 매물'] };
+  function $(id){ return document.getElementById(id); }
+  function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  //  이름 견주기 — 띄어쓰기·「송도」·끝의 「아파트」를 걷어 낸다 (괄호 안 블록 표기는 남긴다: F13-1BL ≠ F15BL)
+  function nk(s){ return String(s||'').toLowerCase().replace(/\s+/g,'').replace(/송도/g,'').replace(/아파트$/,''); }
+  //  더 느슨하게 — 괄호까지 걷어 낸다 (두 사전의 같은 단지 짝 맞출 때만)
+  //  (데이터관리 normDanji 와 같은 생각: 「송도더샵그린애비뉴7단지」 = 「더샵그린애비뉴7」 = 「송도더샵그린애비뉴7」)
+  function nl(s){
+    var t = String(s||'').replace(/\(.*?\)|\[.*?\]/g,'').replace(/[\s\-_·,]/g,'').replace(/아파트$/,'');
+    if(/^송도.{2,}/.test(t)) t = t.slice(2);
+    if(/.{3,}송도$/.test(t)) t = t.slice(0, -2);
+    var n = '', m = /(\d{1,2})단지/.exec(t);
+    if(m){ n = m[1]; t = t.replace(m[0], ''); }
+    else { var m2 = /^(.{4,}?)(\d{1,2})$/.exec(t); if(m2){ n = m2[2]; t = m2[1]; } }
+    return t.toLowerCase() + (n ? '#' + n : '');
+  }
+  var CHO = 'ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ';
+  function cho(s){ var o = ''; String(s||'').replace(/\s+/g,'').split('').forEach(function(c){ var k = c.charCodeAt(0) - 0xAC00; o += (k >= 0 && k < 11172) ? CHO[Math.floor(k / 588)] : c.toLowerCase(); }); return o; }
+  function isCho(t){ return /^[ㄱ-ㅎ]+$/.test(t); }
+  function kindOfType(t){ t = String(t||''); if(/아파트/.test(t)) return 'apt'; if(/오피스텔|생활형/.test(t)) return 'op'; if(/상가|사무실|건물|공장|토지/.test(t)) return 'bld'; return ''; }
+  function fmtN(n){ return Number(n||0).toLocaleString(); }
+
+  // ── 목록 모으기 ───────────────────────────────────────────────
+  function waitFb(){ return new Promise(function(r){ var n = 0; (function t(){ if(W._fbGet && W._fbRef && W._fbDb) return r(true); if(n++ > 60) return r(false); setTimeout(t, 250); })(); }); }
+  async function getHousing(){
+    if(!(await waitFb())) return [];
+    try{ var s = await W._fbGet(W._fbRef(W._fbDb, 'sd_housing/danji')); var v = s && s.exists && s.exists() ? s.val() : null; return Array.isArray(v) ? v : (v ? Object.values(v) : []); }catch(e){ return []; }
+  }
+  async function getApt(){ try{ var r = await fetch('sd_apt.json', { cache:'no-cache' }); return r.ok ? await r.json() : null; }catch(e){ return null; } }
+  async function getBldNames(){
+    try{ if(!W.storage || !W.storage.get) return {}; var r = await W.storage.get('sd_bldg_names'); var v = r && r.value; if(typeof v === 'string') v = JSON.parse(v); return v || {}; }catch(e){ return {}; }
+  }
+  async function build(){
+    //  한 곳이 늦어도 나머지로 목록을 만든다 (각 10초)
+    function tmo(p, d){ return Promise.race([p, new Promise(function(r){ setTimeout(function(){ r(d); }, 10000); })]); }
+    var R = await Promise.all([tmo(getHousing(), []), tmo(getApt(), null), tmo(getBldNames(), {})]);
+    var H = R[0] || [], A = R[1], B = R[2] || {}, out = [], byK = {}, byL = {};
+    function add(o){ o.key = nk(o.n); if(!o.key || byK[o.key]) return byK[o.key]; o.cho = cho(o.n); out.push(o); byK[o.key] = o; var l = nl(o.n); (byL[l] = byL[l] || []).push(o); return o; }
+    //  ① 주택공급현황 — 단지이미지·실거래와 같은 이름이라 아파트의 기준 이름으로 쓴다
+    H.forEach(function(d){ if(!d || !d.단지명) return;
+      var m = []; if(d.공구 != null && d.공구 !== '') m.push(d.공구 + '공구'); if(d.세대수) m.push(fmtN(d.세대수) + '세대'); var y = /(\d{4})/.exec(d.입주일 || ''); if(y) m.push(y[1] + ' 입주');
+      add({ n:String(d.단지명).trim(), k:'apt', src:'hs', gz:d.공구 != null && d.공구 !== '' ? String(d.공구) : '', meta:m.join(' · ') }); });
+    //  ② 공동주택 단지 사전 — 지번을 붙인다. ①에 없는 단지(주상복합 등)는 새로 넣는다
+    var sgg = (A && A.sgg) || '28185';
+    if(A && A.apt) Object.keys(A.apt).forEach(function(c){ var a = A.apt[c]; if(!a || !a.n) return;
+      var hit = byK[nk(a.n)] || ((byL[nl(a.n)] || []).length === 1 ? byL[nl(a.n)][0] : null);
+      var jb = (a.j || [])[0] || '';
+      if(hit && hit.k === 'apt'){ if(!hit.jb && jb){ hit.jb = jb; hit.umd = a.d || '송도동'; hit.sgg = sgg; } if(!hit.alias) hit.alias = a.n; return; }
+      var m = [a.cls || '아파트']; if(a.h) m.push(fmtN(a.h) + '세대'); if(a.y) m.push(String(a.y).slice(0,4) + ' 승인');
+      add({ n:a.n, k:'apt', src:'apt', gz:'', meta:m.join(' · '), jb:jb, umd:a.d || '송도동', sgg:sgg }); });
+    //  ③ 실거래 건물명 사전 — 상가·업무·오피스텔 건물 (지번이 있어 대장이 정확하다)
+    Object.keys(B).forEach(function(k){ var v = B[k], n = String((v && typeof v === 'object') ? (v.n || '') : (v || '')).trim(), p = k.split('|');
+      if(!n || p.length < 3) return; var jb = String(p[2]).trim(), ok = /^\d+(-\d+)?$/.test(jb);
+      var o = add({ n:n, k:'bld', src:'bn', gz:'', meta:(p[1] || '') + (ok ? ' ' + jb : ''), jb:ok ? jb : '', umd:p[1] || '', sgg:p[0] || sgg });
+      if(o && !o.jb && ok){ o.jb = jb; o.umd = p[1]; o.sgg = p[0]; } });
+    LIST = out; try{ localStorage.setItem(CACHE, JSON.stringify({ at:Date.now(), list:out })); }catch(e){}
+    return out;
+  }
+  //  매물 화면에 이미 있는 것들 — 네이버 상가·OP 매물의 건물 이름, 우리 매물에 쓴 이름 (받을 때마다 새로 센다)
+  function live(base){
+    var out = base.slice(), byK = {};
+    out.forEach(function(o){ o.cnt = 0; byK[o.key] = o; });
+    function add(n, k, src){ n = String(n||'').trim(); var key = nk(n); if(!key) return null; var o = byK[key];
+      if(!o){ o = { n:n, k:k, src:src, key:key, cho:cho(n), gz:'', meta:'', cnt:0 }; out.push(o); byK[key] = o; }
+      return o; }
+    var G = W.G || {};
+    (G.naverSanggaData || []).forEach(function(r){ var n = r.단지명; try{ if(typeof W.sanggaDispNm === 'function') n = W.sanggaDispNm(n) || n; }catch(e){} var o = add(n, 'bld', 'nv'); if(o && !o.meta) o.meta = '네이버 상가 매물'; });
+    (G.naverOpData || []).forEach(function(r){ var o = add(r.단지명, 'op', 'nv'); if(o && !o.meta) o.meta = '네이버 오피스텔 매물'; });
+    (W.props || []).forEach(function(p){ var o = add(p.complexName, kindOfType(p.propertyType) || 'apt', 'mine'); if(o){ o.cnt++; if(o.src === 'mine' && !o.meta) o.meta = '우리 매물에 쓴 이름'; } });
+    return out;
+  }
+  function load(force){
+    if(LIST && !force) return Promise.resolve(LIST);
+    if(!force){ try{ var c = JSON.parse(localStorage.getItem(CACHE) || 'null'); if(c && c.list && Date.now() - c.at < DAY){ LIST = c.list; return Promise.resolve(LIST); } }catch(e){} }
+    if(LOADING) return LOADING;
+    LOADING = build().catch(function(){ return LIST || []; }).then(function(x){ LOADING = null; return x; });
+    return LOADING;
+  }
+
+  // ── 찾기 ────────────────────────────────────────────────────
+  function score(o, toks){
+    var s = 0;
+    for(var i = 0; i < toks.length; i++){ var t = toks[i], h = o.key, al = o.alias ? nk(o.alias) : '';
+      if(isCho(t)){ var p = o.cho.indexOf(t); if(p < 0) return -1; s += p === 0 ? 30 : 10; continue; }
+      var q = nk(t); if(!q) continue;
+      var p2 = h.indexOf(q), p3 = al ? al.indexOf(q) : -1;
+      if(p2 < 0 && p3 < 0) return -1;
+      s += h === q ? 100 : (p2 === 0 ? 40 : 15);
+    }
+    return s + Math.min(o.cnt || 0, 20);
+  }
+  function hl(n, toks){
+    var t = toks.filter(function(x){ return !isCho(x) && x.replace(/\s/g,''); }).sort(function(a,b){ return b.length - a.length; })[0];
+    if(!t) return esc(n);
+    var i = n.replace(/\s/g,'').toLowerCase().indexOf(t.toLowerCase()); if(i < 0) return esc(n);
+    //  띄어쓰기를 건너뛴 위치를 원래 글자 위치로
+    var a = -1, b = -1, k = 0;
+    for(var j = 0; j < n.length; j++){ if(/\s/.test(n[j])) continue; if(k === i) a = j; if(k === i + t.length - 1){ b = j; break; } k++; }
+    if(a < 0 || b < 0) return esc(n);
+    return esc(n.slice(0, a)) + '<mark>' + esc(n.slice(a, b + 1)) + '</mark>' + esc(n.slice(b + 1));
+  }
+
+  // ── 화면 ────────────────────────────────────────────────────
+  function inp(){ return $('f-cx'); }
+  function ensureDd(){
+    var dd = $('pcx-dd'); if(dd) return dd;
+    dd = document.createElement('div'); dd.id = 'pcx-dd'; dd.style.display = 'none';
+    dd.addEventListener('mousedown', function(e){ e.preventDefault(); });   // 칸의 포커스를 잃지 않게
+    inp().parentNode.appendChild(dd); return dd;
+  }
+  function open(){ OPEN = true; var dd = ensureDd(); dd.style.display = ''; if(!TAB) TAB = kindOfType(($('f-type')||{}).value) || 'all'; paint(); }
+  function close(){ OPEN = false; var dd = $('pcx-dd'); if(dd) dd.style.display = 'none'; SEL = -1; }
+  function paint(){
+    var dd = $('pcx-dd'); if(!dd || !OPEN) return;
+    if(!LIST){ dd.innerHTML = '<div class="pcx-ft" style="border:none;padding:12px">⏳ 단지·건물 목록을 불러오는 중…</div>'; load().then(function(){ paint(); }); return; }
+    var all = live(LIST), q = String(inp().value || '').trim(), toks = q.split(/\s+/).filter(Boolean);
+    var cnt = { all:all.length, apt:0, bld:0, op:0, mine:0 };
+    all.forEach(function(o){ cnt[o.k] = (cnt[o.k] || 0) + 1; if(o.cnt) cnt.mine++; });
+    var pool = all.filter(function(o){ return TAB === 'all' || (TAB === 'mine' ? o.cnt > 0 : o.k === TAB); });
+    var gzs = []; if(TAB === 'apt'){ var gs = {}; pool.forEach(function(o){ if(o.gz) gs[o.gz] = 1; }); gzs = Object.keys(gs).sort(function(a,b){ return a - b; }); if(GZ && !gs[GZ]) GZ = ''; }
+    if(TAB === 'apt' && GZ && !toks.length) pool = pool.filter(function(o){ return o.gz === GZ; });
+    var rows;
+    if(toks.length){
+      rows = pool.map(function(o){ return { o:o, s:score(o, toks) }; }).filter(function(x){ return x.s >= 0; })
+        .sort(function(a,b){ return b.s - a.s || a.o.n.localeCompare(b.o.n, 'ko'); }).map(function(x){ return x.o; });
+    } else {
+      rows = pool.slice().sort(function(a,b){
+        if(TAB === 'apt' && !GZ){ var ga = a.gz ? +a.gz : 99, gb = b.gz ? +b.gz : 99; if(ga !== gb) return ga - gb; }
+        return (b.cnt || 0) - (a.cnt || 0) || a.n.localeCompare(b.n, 'ko'); });
+    }
+    var MAX = 80, more = rows.length - MAX; VIS = rows.slice(0, MAX);
+    var exact = q && all.some(function(o){ return o.n === q; });
+    var h = '<div class="pcx-tabs">' + [['all','전체'],['apt','🏢 아파트'],['bld','🏬 상가·업무'],['op','🏨 오피스텔·생숙'],['mine','⭐ 우리 매물']].map(function(t){
+        return '<span class="pcx-tab' + (TAB === t[0] ? ' on' : '') + '" data-tab="' + t[0] + '">' + t[1] + '<small>' + (cnt[t[0]] || 0) + '</small></span>'; }).join('')
+      + '<span style="flex:1"></span><span class="pcx-tab" data-re="1" title="목록을 새로 받습니다 (하루 한 번 저절로)">🔄</span></div>';
+    if(gzs.length && !toks.length) h += '<div class="pcx-gz"><span data-gz=""' + (GZ ? '' : ' class="on"') + '>전체 공구</span>' + gzs.map(function(g){ return '<span data-gz="' + g + '"' + (GZ === g ? ' class="on"' : '') + '>' + g + '공구</span>'; }).join('') + '</div>';
+    h += '<div class="pcx-list">';
+    var lastG = null;
+    VIS.forEach(function(o, i){
+      if(!toks.length && TAB === 'apt' && !GZ){ var g = o.gz ? o.gz + '공구' : '그 밖의 단지'; if(g !== lastG){ h += '<div class="pcx-h">' + g + '</div>'; lastG = g; } }
+      var K = KN[o.k] || KN.apt;
+      h += '<div class="pcx-it' + (i === SEL ? ' on' : '') + '" data-i="' + i + '"><span class="ic">' + K[0] + '</span><span class="nm">' + hl(o.n, toks) + '</span>'
+        + (o.cnt ? '<span class="ct">매물 ' + o.cnt + '</span>' : '') + '<span class="mt">' + esc(o.meta || '') + (o.jb && o.k === 'apt' ? ' · ' + esc(o.jb) : '') + '</span></div>';
+    });
+    if(!VIS.length) h += '<div class="pcx-ft" style="border:none">' + (toks.length ? '목록에 「' + esc(q) + '」 이(가) 없습니다.' : '이 갈래에 목록이 없습니다.') + '</div>';
+    if(more > 0) h += '<div class="pcx-ft">…외 ' + more + '곳 — 이름을 더 넣어 좁혀 주세요 (초성 ㄷㅅㅎㅂ 도 됩니다)</div>';
+    if(q && !exact) h += '<div class="pcx-it free' + (SEL === VIS.length ? ' on' : '') + '" data-free="1"><span class="ic">✏️</span><span class="nm">「' + esc(q) + '」 그대로 쓰기</span><span class="mt">목록에 없는 건물·단지내 상가</span></div>';
+    h += '</div><div class="pcx-ft">↑↓ 고르기 · Enter 넣기 · Esc 닫기 · 띄어쓰기·「송도」 없이도 · 초성 검색</div>';
+    dd.innerHTML = h;
+    dd.querySelectorAll('[data-tab]').forEach(function(e){ e.onclick = function(){ TAB = e.dataset.tab; SEL = -1; paint(); }; });
+    dd.querySelectorAll('[data-gz]').forEach(function(e){ e.onclick = function(){ GZ = e.dataset.gz; SEL = -1; paint(); }; });
+    var re = dd.querySelector('[data-re]'); if(re) re.onclick = function(){ LIST = null; try{ localStorage.removeItem(CACHE); }catch(e){} paint(); };
+    dd.querySelectorAll('[data-i]').forEach(function(e){ e.onclick = function(){ pick(VIS[+e.dataset.i]); }; });
+    var fr = dd.querySelector('[data-free]'); if(fr) fr.onclick = function(){ pickFree(); };
+    var on = dd.querySelector('.pcx-it.on'); if(on) on.scrollIntoView({ block:'nearest' });
+  }
+  function fire(el){ ['input','change'].forEach(function(t){ try{ el.dispatchEvent(new Event(t, { bubbles:true })); }catch(e){} }); }
+  function pick(o){
+    if(!o) return; var el = inp(); el.value = o.n; PICK = o; close(); fire(el); stat(true);
+  }
+  function pickFree(){ PICK = null; close(); fire(inp()); stat(true); }
+  function areaEmpty(){ var a = $('f-ar'); return !a || !String(a.value || '').replace(/[㎡\s]/g,''); }
+  //  칸 아래 한 줄
+  function stat(justPicked){
+    var st = $('pcx-st'); if(!st) return;
+    var v = String(inp().value || '').trim();
+    if(!v){ st.innerHTML = '<span style="color:#99a">목록에서 고르거나 직접 쓰세요 — 칸을 누르면 목록이 열립니다</span>'; return; }
+    if(!LIST){ load().then(function(){ stat(justPicked); }); return; }
+    var all = live(LIST), o = all.filter(function(x){ return x.n === v; })[0];
+    var h = '';
+    if(o && o.src !== 'mine'){ PICK = o; var K = KN[o.k] || KN.apt; h = '<span class="ok">✅ 목록 이름</span> ' + K[0] + ' ' + esc([o.meta, o.k === 'apt' && o.jb ? '지번 ' + o.jb : ''].filter(Boolean).join(' · ')); }
+    else {
+      var key = nk(v), loose = nl(v);
+      var near = all.filter(function(x){ return x.src !== 'mine' && x.n !== v && (x.key === key || (x.alias && nk(x.alias) === key)); });
+      if(!near.length) near = all.filter(function(x){ return x.src !== 'mine' && nl(x.n) === loose; });
+      if(near.length && near.length <= 3){
+        h = '<span class="wn">⚠️ 목록에는 다른 표기로 있습니다</span>' + near.map(function(x, i){ return '<button type="button" class="g" data-fix="' + i + '">「' + esc(x.n) + '」(으)로 맞추기</button>'; }).join('');
+        st.innerHTML = h; st.querySelectorAll('[data-fix]').forEach(function(b){ b.onclick = function(){ pick(near[+b.dataset.fix]); }; }); return;
+      }
+      PICK = null;
+      h = '<span class="fr">✏️ 직접 입력</span> 목록에 없는 이름입니다' + (o && o.cnt ? ' (우리 매물 ' + o.cnt + '건에 쓴 이름)' : '') + ' — 단지내 상가·새 건물은 그대로 저장하셔도 됩니다';
+    }
+    if(areaEmpty()) h += '<br><span style="color:#1a2744">🏗 동·호·전용면적·층은 건축물대장 조회로 넣으세요</span><button type="button" class="g" id="pcx-br">🏗 건축물대장 열기</button>';
+    st.innerHTML = h;
+    var b = $('pcx-br'); if(b) b.onclick = function(){ if(typeof W.pbrOpen === 'function') W.pbrOpen(); };
+    if(justPicked){ var pb = $('pbr-btn'); if(pb && areaEmpty()){ pb.classList.remove('pcx-pulse'); void pb.offsetWidth; pb.classList.add('pcx-pulse'); } }
+  }
+  //  건축물대장 창에 지번을 함께 넘긴다 (pbrOpen 이 부른다)
+  W.pcxLoc = function(q){
+    var o = PICK && PICK.n === q ? PICK : null;
+    if(!o && LIST){ o = live(LIST).filter(function(x){ return x.n === q; })[0] || null; }
+    if(!o || !o.jb) return '';
+    try{ sessionStorage.setItem('sjrws_br_jb', o.jb); sessionStorage.setItem('sjrws_br_umd', o.umd || ''); sessionStorage.setItem('sjrws_br_sgg', o.sgg || ''); }catch(e){}
+    return '&jb=' + encodeURIComponent(o.jb) + '&umd=' + encodeURIComponent(o.umd || '송도동') + '&sgg=' + encodeURIComponent(o.sgg || '28185');
+  };
+  W.pcxStat = function(){ stat(false); };
+
+  function mount(){
+    var el = inp(); if(!el) return false; if(el.__pcx) return true; el.__pcx = true;
+    el.setAttribute('autocomplete', 'off'); el.placeholder = '단지·건물 이름 일부나 초성 (예: 하버뷰, ㅎㅂㅂ) — 목록에 없으면 직접';
+    var box = el.parentNode; box.style.position = 'relative';
+    var wrap = document.createElement('div'); wrap.id = 'pcx-wrap'; wrap.style.position = 'relative';
+    box.insertBefore(wrap, el); wrap.appendChild(el);
+    el.style.paddingRight = '64px';
+    var bt = document.createElement('button'); bt.type = 'button'; bt.id = 'pcx-btn'; bt.textContent = '📋 목록';
+    bt.addEventListener('mousedown', function(e){ e.preventDefault(); });
+    bt.onclick = function(){ if(OPEN) close(); else { el.focus(); open(); } };
+    wrap.appendChild(bt);
+    var dd = document.createElement('div'); dd.id = 'pcx-dd'; dd.style.display = 'none'; dd.addEventListener('mousedown', function(e){ e.preventDefault(); }); wrap.appendChild(dd);
+    var st = document.createElement('div'); st.id = 'pcx-st'; wrap.parentNode.insertBefore(st, wrap.nextSibling);
+    el.addEventListener('focus', function(){ open(); });
+    el.addEventListener('input', function(e){ if(!e.isTrusted) return; PICK = null; SEL = -1; if(!OPEN) open(); else paint(); });
+    el.addEventListener('blur', function(){ setTimeout(function(){ close(); stat(false); }, 120); });
+    el.addEventListener('keydown', function(e){
+      if(!OPEN && (e.key === 'ArrowDown')){ open(); e.preventDefault(); return; }
+      if(!OPEN) return;
+      var nFree = $('pcx-dd').querySelector('[data-free]') ? 1 : 0, n = VIS.length + nFree;
+      if(e.key === 'ArrowDown'){ SEL = Math.min(n - 1, SEL + 1); paint(); e.preventDefault(); }
+      else if(e.key === 'ArrowUp'){ SEL = Math.max(-1, SEL - 1); paint(); e.preventDefault(); }
+      else if(e.key === 'Enter'){ e.preventDefault(); if(SEL >= 0 && SEL < VIS.length) pick(VIS[SEL]); else if(SEL === VIS.length && nFree) pickFree(); else if(VIS.length === 1) pick(VIS[0]); else { close(); stat(false); } }
+      else if(e.key === 'Escape'){ close(); stat(false); }
+      else if(e.key === 'Tab'){ close(); }
+    });
+    //  매물 종류를 바꾸면 그 갈래를 먼저
+    var ft = $('f-type'); if(ft) ft.addEventListener('change', function(){ TAB = kindOfType(ft.value) || 'all'; GZ = ''; if(OPEN) paint(); });
+    //  면적을 넣으면 안내 줄을 다시 (대장에서 넣으면 사라진다)
+    document.addEventListener('input', function(e){ if(e.target && e.target.id === 'f-ar') stat(false); }, true);
+    //  수정 열기·비우기 뒤에도 안내 줄을 맞춘다
+    (function hook(n){
+      if(typeof W.editP === 'function' && typeof W.clearF === 'function' && !W.__pcxHooked){
+        W.__pcxHooked = true;
+        var e0 = W.editP, c0 = W.clearF;
+        W.editP = function(){ var r = e0.apply(this, arguments); PICK = null; setTimeout(function(){ stat(false); }, 60); return r; };
+        W.clearF = function(){ var r = c0.apply(this, arguments); PICK = null; setTimeout(function(){ stat(false); }, 60); return r; };
+        return;
+      }
+      if(n < 40) setTimeout(function(){ hook(n + 1); }, 250);
+    })(0);
+    stat(false);
+    //  목록은 미리 받아 둔다 (처음 칸을 누를 때 기다리지 않게)
+    setTimeout(function(){ load(); }, 2500);
+    return true;
+  }
+  (function t(n){ if(!mount() && n < 80) setTimeout(function(){ t(n + 1); }, 250); })(0);
 })();
 </script>
 <script src="sd_logo.js?v=2026.10.09-1"></script>
