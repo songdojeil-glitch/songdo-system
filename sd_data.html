@@ -6907,7 +6907,8 @@ function hsOpenModal(nm){
       if(g.price)  cells.push({u:g.price,c:'분양가'});
       (g.prices||[]).forEach(function(u,i){ cells.push({u:u,c:'분양가 '+(i+2)}); });
       g.photos.forEach(function(u,i){ cells.push({u:u,c:'단지사진 '+(i+1)}); });
-      g.plans.forEach(function(p){ cells.push({u:p.url,c:'평면도 '+p.타입+(p.전용?' (전용'+p.전용+'㎡)':'')}); });
+      g.plans.slice().sort(function(a,b){ return diPlanArea(nm,a.타입,a.전용).ex-diPlanArea(nm,b.타입,b.전용).ex; })
+        .forEach(function(p){ cells.push({u:p.url,c:'평면도 '+diPlanLabel(nm,p.타입,p.전용)}); });
       if(!cells.length){ box.innerHTML=''; return; }
       box.innerHTML='<div style="font-size:13px;font-weight:700;margin-bottom:8px;border-top:1px solid var(--border);padding-top:14px">🖼️ 등록 이미지 ('+cells.length+')</div>'
         +'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px">'
@@ -7073,17 +7074,20 @@ function diRenderPanel(){
   var planFiles=Object.keys(imgs).filter(function(f){ return f.indexOf('plan__')===0; });
   var planCells=planFiles.map(function(fn){
     var m=fn.replace('plan__','').replace('.jpg','').split('_');
-    var typ=m[0]||'', exa=m[1]||'';
-    var cap=typ+(exa?' (전용 '+exa+'㎡)':'');
-    return diSlotCell(nm,fn,cap,imgs[fn]);
+    return { fn:fn, a:diPlanArea(nm, m[0]||'', m[1]||'') };
+  }).sort(function(x,y){ return (x.a.ex||9999)-(y.a.ex||9999) || String(x.a.typ).localeCompare(String(y.a.typ),'ko',{numeric:true}); })
+  .map(function(x){
+    var a=x.a, html='<b style="color:var(--text);font-size:12px">'+(a.head||a.typ||'평면도')+'</b>'
+      +(a.sub?' <span>'+a.sub+'</span>':'')+(a.typ&&a.head?'<br><span style="font-size:10.5px">타입 '+a.typ+'</span>':'');
+    return diSlotCell(nm,x.fn,a.text||a.typ||'평면도',imgs[x.fn],html);
   }).join('');
   var typeOpts=(d&&d.types?d.types:[]).map(function(t){
     var ex=t['전용㎡']?Math.round(t['전용㎡']):'';
     var val=(t.타입||'')+'_'+ex;
-    var lbl=(t.평형||'')+'평 '+(t.타입||'')+(ex?' (전용 '+ex+'㎡)':'');
+    var lbl=diPlanLabel(nm, t.타입, ex);
     return '<option value="'+val+'">'+lbl+'</option>';
   }).join('');
-  var planHtml='<div style="margin-bottom:4px"><div style="font-size:12px;font-weight:700;margin-bottom:8px">📐 분양면적타입별 평면도 <span style="font-size:11px;color:var(--text3)">(대표 면적형만)</span></div>'
+  var planHtml='<div style="margin-bottom:4px"><div style="font-size:12px;font-weight:700;margin-bottom:8px">📐 타입별 평면도 <span style="font-size:11px;color:var(--text3)">(전용면적 순 · 전용㎡ (분양㎡, 분양평수) · 대표 면적형만)</span></div>'
     +'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px;margin-bottom:10px">'+(planCells||'')+'</div>'
     +'<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:var(--bg3);padding:10px;border-radius:8px">'
     +'<span style="font-size:11px;color:var(--text3)">타입 선택</span>'
@@ -7097,7 +7101,28 @@ function diRenderPanel(){
     +fixedHtml+planHtml+'</div>';
 }
 
-function diSlotCell(nm, filename, caption, url){
+//  평면도 이름표 (2026-10-13) — 전용㎡(소수 둘째 자리)를 앞에, 분양㎡·분양평수는 괄호 안에 소수 없이
+//    「전용 84.97㎡ (분양 112㎡, 34평)」 · 타입 112A
+//  주택공급현황(마스터)의 면적형에서 타입으로 찾는다. 마스터에 없으면 파일 이름의 전용(정수)으로 「전용 약 84㎡」
+function diTypeOf(nm, typ, exa){
+  var d=(G_HS.danji||[]).filter(function(x){ return x.단지명===nm; })[0], T=(d&&d.types)||[];
+  var c=T.filter(function(t){ return String(t.타입)===String(typ); });
+  if(c.length>1 && exa){ var c2=c.filter(function(t){ return Math.round(t['전용㎡']||0)===Math.round(parseFloat(exa)||0); }); if(c2.length) c=c2; }
+  if(!c.length && exa) c=T.filter(function(t){ return Math.round(t['전용㎡']||0)===Math.round(parseFloat(exa)||0); });
+  return c[0]||null;
+}
+function diPlanArea(nm, typ, exa){
+  var t=diTypeOf(nm, typ, exa), ex=t&&t['전용㎡']?Number(t['전용㎡']):0;
+  var sup=t&&t['공급㎡']?Math.round(t['공급㎡']):0;
+  var py=t?Math.round(t.평형||t.평||(sup?sup/3.3058:0)):0;
+  var head=ex?'전용 '+ex.toFixed(2)+'㎡':(parseFloat(exa)?'전용 약 '+Math.round(parseFloat(exa))+'㎡':'');
+  var par=[]; if(sup) par.push('분양 '+sup+'㎡'); if(py) par.push(py+'평');
+  var tp=String(typ||'').replace(/타입$/,'');
+  return { ex:ex||parseFloat(exa)||0, head:head, sub:par.length?'('+par.join(', ')+')':'', typ:tp,
+           text:[head, par.length?'('+par.join(', ')+')':''].filter(Boolean).join(' ')+(tp?' · 타입 '+tp:'') };
+}
+function diPlanLabel(nm, typ, exa){ return diPlanArea(nm, typ, exa).text || (typ||'평면도'); }
+function diSlotCell(nm, filename, caption, url, capHtml){
   var box='';
   if(url){
     box='<div style="position:relative;border-radius:8px;overflow:hidden;border:1px solid var(--border)">'
@@ -7106,6 +7131,7 @@ function diSlotCell(nm, filename, caption, url){
   } else {
     box='<label style="display:flex;align-items:center;justify-content:center;height:130px;border:1.5px dashed var(--border);border-radius:8px;cursor:pointer;color:var(--text3);font-size:11px;background:var(--bg3)">＋ 업로드<input type="file" accept="image/*" onchange="diUploadFixed(this,\''+nm+'\',\''+filename+'\')" style="display:none"></label>';
   }
+  if(capHtml) return '<div><div style="font-size:11px;color:var(--text3);margin-bottom:4px;line-height:1.45" title="'+String(caption).replace(/"/g,'')+'">'+capHtml+'</div>'+box+'</div>';
   return '<div><div style="font-size:11px;color:var(--text3);margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+caption+'</div>'+box+'</div>';
 }
 
@@ -7354,7 +7380,7 @@ async function diGetImagesB64(nm){
     for(var ai=0;ai<(g.aerials||[]).length;ai++){ var bax=await urlToB64(g.aerials[ai]); out.push({label:'['+nm+' 조감도'+(ai+1)+']',type:bax.type,data:bax.data}); }
     for(var i=0;i<g.photos.length;i++){ var bp=await urlToB64(g.photos[i]); out.push({label:'['+nm+' 단지사진'+(i+1)+']',type:bp.type,data:bp.data}); }
     for(var j=0;j<g.plans.length;j++){ var pl=g.plans[j]; var bpl=await urlToB64(pl.url);
-      out.push({label:'['+nm+' 평면도 '+pl.타입+(pl.전용?' 전용'+pl.전용+'㎡':'')+']',type:bpl.type,data:bpl.data}); }
+      out.push({label:'['+nm+' 평면도 '+diPlanLabel(nm,pl.타입,pl.전용)+']',type:bpl.type,data:bpl.data}); }
   }catch(e){}
   return out;
 }
@@ -19730,7 +19756,7 @@ document.addEventListener('DOMContentLoaded',function(){sdApplyPerms();});
 (function(){
   'use strict';
 
-  var SD_VER  = '2026.10.13-2';       // 배포 버전 — 파일을 고칠 때마다 올린다
+  var SD_VER  = '2026.10.13-3';       // 배포 버전 — 파일을 고칠 때마다 올린다
   var SD_FILE = 'sd_data.html';      // 이 파일 이름
   var SD_NAME = '실거래가';      // 사람이 부르는 이름
 
@@ -36033,7 +36059,7 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
     var d = masters().filter(function(x){ return x.단지명 === nm; })[0];
     var ty = d && (d.types||[]).filter(function(x){ return String(x.타입) === String(t); })[0];
     if(!ty) return '';
-    return [ty['전용㎡'] ? '전용 ' + ty['전용㎡'] + '㎡' : '', ty.평 ? ty.평 + '평형' : '', ty.세대수 ? ty.세대수 + '세대' : ''].filter(Boolean).join(' · ');
+    return ty.세대수 ? ty.세대수 + '세대' : '';
   }
   async function show(nm){
     CUR = nm; var box = $('dip-in'); if(!box) return;
@@ -36053,8 +36079,9 @@ root.NVE = { load:load, cached:cached, put:put, putMany:putMany, purge:purge, id
     PLS = plans.map(function(x){ return x.p; });
     h += plans.length
       ? '<div class="dip-grid">' + plans.map(function(x, i){
-          var cap = (x.p.타입 || '타입') + (x.p.전용 ? ' · 전용 약 ' + x.p.전용 + '㎡' : '');
-          return card(x.p.url, cap, typeInfo(nm, x.p.타입), x.hit, i);
+          var cap = typeof W.diPlanLabel === 'function' ? W.diPlanLabel(nm, x.p.타입, x.p.전용) : ((x.p.타입 || '타입') + (x.p.전용 ? ' · 전용 약 ' + x.p.전용 + '㎡' : ''));
+          var ty = typeInfo(nm, x.p.타입);
+          return card(x.p.url, cap, ty, x.hit, i);
         }).join('') + '</div>'
       : '<div style="padding:16px;background:#fff8e1;border-radius:10px;font-size:13px">이 단지에는 올라간 평면도가 없습니다. 데이터관리 「단지이미지」 탭에서 올릴 수 있습니다.</div>';
     var ref = [];
