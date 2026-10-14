@@ -619,7 +619,7 @@ html.sv-castm .sv-wrap{display:block!important}
    ═════════════════════════════════════════════════════════════════ */
 (function(){
 'use strict';
-var SD_VER = '2026.10.13-4';
+var SD_VER = '2026.10.14-1';
 window.SD_VERSION = SD_VER;
 var EMBED = /[?&]embed=1\b/.test(location.search);
 if(EMBED) document.documentElement.classList.add('sv-embed');
@@ -764,6 +764,15 @@ function seg(name, list, cur){
   return '<div class="sv-seg" data-seg="' + name + '">' + list.map(function(x){ return '<button data-v="' + x[0] + '"' + (String(cur) === String(x[0]) ? ' class="on"' : '') + '>' + x[1] + '</button>'; }).join('') + '</div>';
 }
 function bindSeg(root, name, fn){ var s = $('[data-seg="' + name + '"]', root); if(!s) return; $$('button', s).forEach(function(b){ b.onclick = function(){ $$('button', s).forEach(function(x){ x.classList.toggle('on', x === b); }); fn(b.dataset.v); }; }); }
+/* 🖥📱 만들 영상 모양 — 가로 16:9 / 세로 9:16 / 둘 다 (2026-10-14) — 예전 「가로도 같이 만들기」 체크 대신 셋 중 하나 고르기.
+   P.fmt = 주 모양(설명글·썸네일·올리기 기준), P.both = 다른 모양도 같이 */
+function fmtPickHtml(){
+  var cur = P.both ? 'both' : P.fmt, o = P.fmt === '16:9' ? '세로 9:16' : '가로 16:9';
+  return '<div class="sv-f"><label>만들 영상 모양</label>' + seg('vfmt', [['16:9', '🖥 가로 16:9 (유튜브)'], ['9:16', '📱 세로 9:16 (쇼츠·릴스)'], ['both', '🖥📱 둘 다 만들기']], cur)
+    + '<div class="sv-note">' + (P.both ? '먼저 ' + (P.fmt === '16:9' ? '가로 16:9' : '세로 9:16') + ' 영상을 만들고, 이어서 ' + o + ' 영상도 만듭니다. (설명글·썸네일은 ' + (P.fmt === '16:9' ? '가로' : '세로') + ' 기준)'
+      : P.fmt === '16:9' ? '유튜브 일반 영상 — 가로 1920×1080 하나만 만듭니다.' : '쇼츠·릴스용 — 세로 1080×1920 하나만 만듭니다.') + '</div></div>';
+}
+function bindFmtPick(el, after){ bindSeg(el, 'vfmt', function(v){ if(v === 'both') P.both = true; else { P.both = false; P.fmt = v; } OUT = null; OUTS = {}; if(typeof BLUR !== 'undefined') BLUR = {}; MIXKEY = ''; touch(); if(after) after(); render(); }); }
 function paintKey(){
   var g = keysOf('gemini').length, c = keysOf('claude').length, o = keysOf('openai').length, e = textEngine();
   $('#svKeyInfo').innerHTML = (g ? '제미나이 <b>' + g + '개</b> — 그림·목소리' + (e === 'gemini' ? '·대본' : '') : '<b style="color:#c92a2a">제미나이 열쇠가 없습니다</b> — 그림·목소리에 꼭 필요합니다')
@@ -3966,7 +3975,7 @@ function pInfo(el){
     + '<button class="sv-btn sm" id="svOffDef">송도제일 정보로 채우기</button></details>'
     /* 영상 종류 */
     + '<div class="sv-f" style="margin-top:6px"><label>영상 종류</label><div class="sv-vt">' + Object.keys(VTYPE).map(function(k){ return '<button data-vt="' + k + '"' + (P.vtype === k ? ' class="on"' : '') + '><b>' + VTYPE[k].n + '</b><small>' + VTYPE[k].d + '</small></button>'; }).join('') + '</div></div>'
-    + '<label class="sv-tg"><input type="checkbox" id="svBoth"' + (P.both ? ' checked' : '') + '> 가로 16:9 영상도 같이 만들기 (기본은 세로 9:16)</label>'
+    + fmtPickHtml()
     + '<label class="sv-tg"><input type="checkbox" id="svSfx"' + (P.sfx ? ' checked' : '') + '> 효과음 넣기 (장면 넘어갈 때 「휙」, 동그라미·화살표가 짚을 때 「띠링」)</label>'
     /* 불러오기 */
     + '<div class="sv-tabs2" style="margin-top:14px">' + [['sjrws', '🏢 SJRWS 매물에서'], ['danji', '🏘 단지 자료·건축물대장'], ['paste', '📋 글 붙여넣기']].map(function(t){ return '<button data-pt="' + t[0] + '"' + (PSRC_TAB === t[0] ? ' class="on"' : '') + '>' + t[1] + '</button>'; }).join('') + '</div>'
@@ -3992,7 +4001,7 @@ function pInfo(el){
   $$('[data-off]', el).forEach(function(i){ i.oninput = function(){ var x = LSX.get('sdv.office', {}) || {}; x[i.dataset.off] = i.value; LSX.set('sdv.office', x); OUT = null; }; });
   $('#svOffDef', el).onclick = function(){ LSX.set('sdv.office', {}); render(); toast('송도제일공인중개사사무소 정보로 채웠습니다'); };
   $$('[data-vt]', el).forEach(function(b){ b.onclick = function(){ P.vtype = b.dataset.vt; syncScenes(); OUT = null; MIXKEY = ''; touch(); render(); }; });
-  $('#svBoth', el).onchange = function(){ P.both = this.checked; touch(); };
+  bindFmtPick(el);
   $('#svSfx', el).onchange = function(){ P.sfx = this.checked; MIXKEY = ''; OUT = null; touch(); };
   $$('[data-pt]', el).forEach(function(b){ b.onclick = function(){ PSRC_TAB = b.dataset.pt; render(); }; });
   var pp = $('#svPickProp', el); if(pp) pp.onclick = pickProp;
@@ -4132,15 +4141,13 @@ function photoVideoExtras(el){
   var miss = missingReq();
   var box = document.createElement('div');
   box.innerHTML = '<div class="sv-f"><label>영상 종류</label>' + seg('pvt', Object.keys(VTYPE).map(function(k){ return [k, VTYPE[k].n]; }), P.vtype) + '</div>'
-    + '<div class="sv-f"><label>화면 모양</label>' + seg('pfmt', [['9:16', '세로 9:16 (쇼츠·릴스)'], ['16:9', '가로 16:9']], P.fmt) + '</div>'
-    + '<label class="sv-tg"><input type="checkbox" id="svBoth2"' + (P.both ? ' checked' : '') + '> 다른 모양(' + (P.fmt === '9:16' ? '가로 16:9' : '세로 9:16') + ')도 같이 만들기</label>'
+    + fmtPickHtml()
     + '<label class="sv-tg"><input type="checkbox" id="svSfx2"' + (P.sfx ? ' checked' : '') + '> 효과음 넣기</label>'
     + (miss.length ? '<div class="sv-warn" style="margin-top:8px">표시·광고 명시사항 빈칸 ' + miss.length + '개: ' + esc(miss.map(function(k){ return REQ_N[k]; }).join(', ')) + ' <button class="sv-btn sm" data-go="pinfo">채우러 가기</button></div>' : '');
   var styF = $('[data-seg="style"]', el); var host = styF ? styF.closest('.sv-f') : null;
   if(host) host.parentNode.insertBefore(box, host);
   bindSeg(el, 'pvt', function(v){ P.vtype = v; syncScenes(); OUT = null; MIXKEY = ''; touch(); render(); });
-  bindSeg(el, 'pfmt', function(v){ P.fmt = v; OUT = null; OUTS = {}; BLUR = {}; touch(); render(); });
-  $('#svBoth2', el).onchange = function(){ P.both = this.checked; touch(); };
+  bindFmtPick(el);
   $('#svSfx2', el).onchange = function(){ P.sfx = this.checked; MIXKEY = ''; OUT = null; touch(); };
   var enc = $('#svEnc', el); if(enc) enc.onclick = function(){ encodePhoto(); };
   var oh = $('#svOuts', el); if(oh) bindOuts(oh);
@@ -5351,15 +5358,13 @@ function pLScript(el){
 /* ── 4단계 — 영상 (대본 영상의 미리보기·MP4 를 쓰고 모양·효과음만 더한다) ── */
 function locVideoExtras(el){
   var L = LI(), box = document.createElement('div');
-  box.innerHTML = '<div class="sv-f"><label>화면 모양</label>' + seg('pfmt', [['16:9', '가로 16:9 (유튜브)'], ['9:16', '세로 9:16 (쇼츠)']], P.fmt) + '</div>'
-    + '<label class="sv-tg"><input type="checkbox" id="svBoth2"' + (P.both ? ' checked' : '') + '> 다른 모양(' + (P.fmt === '9:16' ? '가로 16:9' : '세로 9:16') + ')도 같이 만들기</label>'
+  box.innerHTML = fmtPickHtml()
     + '<label class="sv-tg"><input type="checkbox" id="svSfx2"' + (P.sfx ? ' checked' : '') + '> 효과음 넣기 (핀·포인트 「띠링」, 장면 「휙」)</label>'
     + (!L.map ? '<div class="sv-warn" style="margin-top:8px">지도 그림이 없습니다 <button class="sv-btn sm" data-go="lmap">넣으러 가기</button></div>' : !L.home ? '<div class="sv-warn" style="margin-top:8px">단지 위치를 찍지 않았습니다 <button class="sv-btn sm" data-go="lmap">찍으러 가기</button></div>' : '')
     + (L.map && !nv(L.credit) ? '<div class="sv-warn" style="margin-top:8px">지도 출처가 비어 있습니다 — 2단계에서 적어 주세요.</div>' : '');
   var styF = $('[data-seg="style"]', el), host = styF ? styF.closest('.sv-f') : null;
   if(host) host.parentNode.insertBefore(box, host);
-  bindSeg(el, 'pfmt', function(v){ P.fmt = v; OUT = null; OUTS = {}; touch(); render(); });
-  $('#svBoth2', el).onchange = function(){ P.both = this.checked; touch(); };
+  bindFmtPick(el);
   $('#svSfx2', el).onchange = function(){ P.sfx = this.checked; MIXKEY = ''; OUT = null; touch(); };
   var enc = $('#svEnc', el); if(enc){ enc.disabled = !(L.map && L.home && P.scenes.length); enc.onclick = function(){ encodeLoc(); }; }
   bindFoot(el);
@@ -6500,7 +6505,7 @@ function pGenInfo(el){
     + '<div class="sv-f" style="grid-column:span 2"><label>서명 <span>화면 오른쪽 위 · 끝 장면</span></label><input class="sv-in" data-gb="by" value="' + esc(b.by) + '"></div></div>'
     + '<a href="#" class="sv-link" id="svGbDef" style="margin:0 0 8px">기본값으로 (송도제일부동산TV · BY 송도제일공인중개사 851-6688)</a></div>'
     + '<div class="sv-f"><label>영상 종류</label><div class="sv-vt">' + Object.keys(VTYPE).map(function(k){ return '<button data-vt="' + k + '"' + (P.vtype === k ? ' class="on"' : '') + '><b>' + VTYPE[k].n + '</b><small>' + (k === 'promo' ? '큰 글·빠른 화면, 30~40초' : '동그라미·화살표로 짚으며 설명, 45~60초') + '</small></button>'; }).join('') + '</div></div>'
-    + '<label class="sv-tg"><input type="checkbox" id="svBoth"' + (P.both ? ' checked' : '') + '> 가로 16:9 영상도 같이 만들기 (기본은 세로 9:16)</label>'
+    + fmtPickHtml()
     + '<label class="sv-tg"><input type="checkbox" id="svSfx"' + (P.sfx ? ' checked' : '') + '> 효과음 넣기</label>'
     + autoBox()
     + (P.kind === 'photo' ? foot('', 'ppics', '다음: 사진 넣기 →', !!nv(G.title)) : foot('', 'cclips', '다음: 영상 넣기 →', !!nv(G.title))) + '</div>';
@@ -6513,7 +6518,7 @@ function pGenInfo(el){
   $$('[data-gb]', el).forEach(function(i){ i.oninput = function(){ var x = LSX.get('sdv.genbrand', {}) || {}; x[i.dataset.gb] = i.value; LSX.set('sdv.genbrand', x); OUT = null; P.scenes.forEach(function(sc){ if(sc.key === 'end' && sc.tpl) sc.say = ''; }); syncScenes(); touch(); }; });
   $('#svGbDef', el).onclick = function(e){ e.preventDefault(); LSX.set('sdv.genbrand', {}); render(); };
   $$('[data-vt]', el).forEach(function(b2){ b2.onclick = function(){ P.vtype = b2.dataset.vt; syncScenes(); OUT = null; MIXKEY = ''; touch(); render(); }; });
-  $('#svBoth', el).onchange = function(){ P.both = this.checked; touch(); };
+  bindFmtPick(el);
   $('#svSfx', el).onchange = function(){ P.sfx = this.checked; MIXKEY = ''; OUT = null; touch(); };
   bindAuto(el);
   bindFoot(el);
