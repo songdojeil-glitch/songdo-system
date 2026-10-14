@@ -619,7 +619,7 @@ html.sv-castm .sv-wrap{display:block!important}
    ═════════════════════════════════════════════════════════════════ */
 (function(){
 'use strict';
-var SD_VER = '2026.10.14-1';
+var SD_VER = '2026.10.14-2';
 window.SD_VERSION = SD_VER;
 var EMBED = /[?&]embed=1\b/.test(location.search);
 if(EMBED) document.documentElement.classList.add('sv-embed');
@@ -6780,7 +6780,8 @@ function engBtns(){
 function bindEngBtns(el){ $$('#svClEng [data-e]', el).forEach(function(b){ b.onclick = function(){ var k = b.dataset.e; if(!keysOf(k).length) return openKeys(k + 'Keys'); P.aiEng = k; touch(); render(); }; }); }
 function hyPhotoBox(){
   var L = P.photos || [];
-  return '<div class="sv-grp"><div class="gh"><span>📷 사진 ' + L.length + ' / ' + PH_MAX + '</span><small>★ = 첫 장면 후보 · AI 가 디테일·빨간 동그라미에 씁니다</small></div>'
+  return '<div class="sv-grp"><div class="gh"><span>📷 사진 ' + L.length + ' / ' + PH_MAX + '</span><small>★ = 첫 장면 후보 · AI 가 디테일·빨간 동그라미에 씁니다</small>'
+    + (L.length ? '<button class="sv-btn sm" id="svHyPhAll" style="margin-left:auto" title="넣은 사진을 모두 빼기">🗑 사진 전체 삭제 (' + L.length + '장)</button>' : '') + '</div>'
     + (L.length < PH_MAX ? '<label class="sv-drop" id="svHyPhDrop" style="padding:14px">사진을 여기에 끌어 놓거나 눌러서 고르기<span>JPG·PNG·WEBP · 긴 변 1600px 로 줄여 이 브라우저에 저장</span><input type="file" id="svHyPhFile" accept="image/*" multiple hidden></label>' : '')
     + (L.length ? '<div class="sv-hyph">' + L.map(function(ph, i){ return '<div class="it" data-ph="' + esc(ph.id) + '"><img src="' + ph.src + '" alt=""><span class="n">사진 ' + (i + 1) + (ph.star ? ' ★' : '') + '</span><div class="bt"><button class="sv-btn sm" data-phl' + (i ? '' : ' disabled') + ' title="앞으로">◀</button><button class="sv-btn sm" data-phr' + (i < L.length - 1 ? '' : ' disabled') + ' title="뒤로">▶</button><button class="sv-btn sm" data-phs title="첫 장면 후보">' + (ph.star ? '★' : '☆') + '</button><button class="sv-btn sm" data-phx title="빼기">🗑</button></div></div>'; }).join('') + '</div>' : '')
     + '<div style="height:8px"></div></div>';
@@ -6788,6 +6789,15 @@ function hyPhotoBox(){
 function bindHyPhotos(el){
   var f = $('#svHyPhFile', el); if(f) f.onchange = function(){ addPhotoFiles(this.files); this.value = ''; };
   var dz = $('#svHyPhDrop', el); if(dz){ dz.ondragover = function(e){ e.preventDefault(); dz.classList.add('ov'); }; dz.ondragleave = function(){ dz.classList.remove('ov'); }; dz.ondrop = function(e){ e.preventDefault(); dz.classList.remove('ov'); addPhotoFiles(e.dataTransfer.files); }; }
+  /* 🗑 사진 전체 삭제 (2026-10-14) */
+  var pa = $('#svHyPhAll', el); if(pa) pa.onclick = function(){
+    var n = (P.photos || []).length; if(!n) return;
+    if(!confirm('넣은 사진 ' + n + '장을 모두 뺄까요? 편집표의 사진 줄도 함께 빠집니다. (영상은 그대로)')) return;
+    var ids = {}; P.photos.forEach(function(x){ ids[x.id] = 1; delete PIMG[x.id]; });
+    P.photos = []; P.segs = (P.segs || []).filter(function(g){ return !(g.ph && ids[g.ph]); });
+    if(P.coverSeg && !P.segs.some(function(g){ return g.id === P.coverSeg; })) P.coverSeg = '';
+    if(P.segAuto) defaultSegs(); syncScenes(); OUT = null; MIXKEY = ''; touch(true); render(); toast('사진 ' + n + '장을 모두 뺐습니다');
+  };
   $$('.sv-hyph [data-ph]', el).forEach(function(it){
     var ph = phById(it.dataset.ph); if(!ph) return; var i = P.photos.indexOf(ph);
     var re = function(){ if(P.segAuto) defaultSegs(); syncScenes(); OUT = null; MIXKEY = ''; touch(true); render(); clipThumbs().then(function(n){ if(n) render(); }); };
@@ -6812,6 +6822,7 @@ function pClips(el){
     + (hy ? '' : '<p class="sv-sub">' + (isGen() ? '모델하우스·단지 등을 찍은 영상을 넣으세요' : '휴대폰으로 찍은 매물 영상을 넣으세요') + ' (여러 개 가능, 모두 합쳐 ' + (CL_MAXSEC / 60) + '분까지). 앞뒤 필요 없는 부분은 <b>시작·끝</b>으로 자릅니다. 그다음 <b>AI 영상 분석</b>을 누르면 AI가 장면을 보고 구간·화면 글·멘트·효과·<b style="color:#e03131">개인정보 경고</b>를 달아 줍니다.</p>')
     + (list.length < CL_MAX ? '<label class="sv-drop" id="svClDrop">영상을 여기에 끌어 놓거나 눌러서 고르기<span>MP4·MOV·WEBM · 원본은 이 브라우저에만 저장 (작업 파일 내려받기에는 들어가지 않습니다)</span><input type="file" id="svClFile" accept="video/*,.mov,.mp4,.m4v,.webm" multiple hidden></label>' : '')
     + '<div id="svClMsg"></div>'
+    + (list.length ? '<div style="display:flex;justify-content:flex-end;margin:8px 0 4px"><button class="sv-btn sm" id="svClAll" title="넣은 영상을 모두 빼기">🗑 영상 전체 삭제 (' + list.length + '개)</button></div>' : '')
     + '<div class="sv-cll">' + list.map(function(c, i){
         return '<div class="sv-clc" data-id="' + esc(c.id) + '"><div class="pv"><video data-v muted playsinline controls preload="metadata" poster="' + (c.thumb || '') + '"></video><span class="n">클립 ' + (i + 1) + '</span></div>'
           + '<div class="bd"><b title="' + esc(c.name) + '">' + esc(c.name) + '</b><small>' + fmtT(c.dur) + ' · ' + c.w + '×' + c.h + (c.h > c.w ? ' 세로' : ' 가로') + ' · ' + (c.size / 1048576).toFixed(1) + 'MB</small>'
@@ -6862,6 +6873,16 @@ function pClips(el){
       if(P.segAuto) defaultSegs(); syncScenes(); OUT = null; MIXKEY = ''; touch(true); render();
     };
   });
+  /* 🗑 영상 전체 삭제 (2026-10-14) */
+  var ca = $('#svClAll', el); if(ca) ca.onclick = function(){
+    var n = (P.clips || []).length; if(!n) return;
+    if(!confirm('넣은 영상 ' + n + '개를 모두 뺄까요? 이 영상들에서 고른 구간도 함께 빠집니다.' + (isHy() ? ' (사진은 그대로)' : ''))) return;
+    var ids = {}; P.clips.forEach(function(x){ ids[x.id] = 1; });
+    clipsForget({ clips:P.clips.slice() }); P.clips = []; P.segs = (P.segs || []).filter(function(g){ return !(g.clip && ids[g.clip]); });
+    if(P.coverSeg && !P.segs.some(function(g){ return g.id === P.coverSeg; })) P.coverSeg = '';
+    if(P.coverClip && ids[P.coverClip]){ P.coverClip = ''; P.coverT = null; }
+    if(P.segAuto) defaultSegs(); syncScenes(); OUT = null; MIXKEY = ''; touch(true); render(); toast('영상 ' + n + '개를 모두 뺐습니다');
+  };
   bindAuto(el);
   bindFoot(el);
 }
