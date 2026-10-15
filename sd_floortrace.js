@@ -12,7 +12,7 @@
 (function(){
 'use strict';
 if(window.sdTrace) return;
-var VER = '2026.10.08-2';
+var VER = '2026.10.15-1';
 var FONT = "'Noto Sans KR','Apple SD Gothic Neo','Malgun Gothic',sans-serif";
 function $(s, r){ return (r || document).querySelector(s); }
 function $$(s, r){ return Array.prototype.slice.call((r || document).querySelectorAll(s)); }
@@ -493,7 +493,10 @@ function mount(root, opts){
 
   /* 영상 */
   function onVideoFile(f){
-    if(!f) return; var u = URL.createObjectURL(f); V.src = u; V.dataset.name = f.name;
+    if(!f) return; var u = URL.createObjectURL(f); V.src = u; V.dataset.name = f.name; V.load();
+    /* 2026-10-15 — 영상이 안 틀릴 때 까닭을 알려 준다 (코덱·파일 문제) */
+    V.onerror = function(){ var e = V.error, c = e ? e.code : 0; toast('영상을 읽지 못했습니다' + (c === 4 ? ' — 이 브라우저가 이 영상 형식(코덱)을 틀 수 없습니다. 아이폰 HEVC·4K 영상이면 MP4(H.264)로 바꿔 넣어 주세요' : c === 3 ? ' — 영상 해독 중 오류 (파일이 깨졌거나 너무 큼)' : c ? ' (오류 ' + c + ')' : ''), true); };
+    V.onstalled = V.onwaiting = function(){ var e = $('#ftTm', root); if(e && !V.paused) e.textContent = '⏳ 영상 읽는 중…'; };
     V.onloadedmetadata = function(){
       var d = { name:f.name, size:f.size, dur:V.duration, w:V.videoWidth, h:V.videoHeight };
       if(T.video && Math.abs(T.video.dur - d.dur) > 0.6 && T.wp.length) toast('찍어 둔 영상과 길이가 다릅니다 (' + fmtT(T.video.dur) + ' → ' + fmtT(d.dur) + ') — 같은 영상인지 확인해 주세요', true);
@@ -503,13 +506,18 @@ function mount(root, opts){
     };
   }
   $('#ftVf', root).onchange = function(){ onVideoFile(this.files[0]); }; $('#ftVf2', root).onchange = function(){ onVideoFile(this.files[0]); };
-  $('#ftPlay', root).onclick = function(){ if(!V.src) return; if(V.paused) V.play(); else V.pause(); };
+  $('#ftPlay', root).onclick = function(){
+    if(!V.src) return toast('영상이 아직 없습니다 — 영상을 넣어 주세요', true);
+    if(!V.paused) return V.pause();
+    var pr = V.play(); if(pr && pr.catch) pr.catch(function(e){ toast('영상을 틀지 못했습니다: ' + (e && (e.name === 'NotSupportedError' ? '이 영상 형식(코덱)을 이 브라우저가 틀 수 없습니다 — MP4(H.264)로 바꿔 넣어 주세요' : e.message || e.name) || ''), true); });
+    setTimeout(function(){ if(!V.paused && V.currentTime < 0.05 && V.readyState < 3) toast('영상이 시작되지 않습니다 — 4K·HEVC 처럼 무거운 영상은 크롬에서 안 틀릴 수 있습니다. 1080p MP4(H.264)로 바꿔 넣어 보세요', true); }, 3500);
+  };
   V.onplay = function(){ $('#ftPlay', root).textContent = '⏸ 멈춤'; loop(); }; V.onpause = function(){ $('#ftPlay', root).textContent = '▶ 재생'; tick(); };
   V.onseeked = tick; V.ontimeupdate = function(){ if(V.paused) tick(); };
   $$('[data-sk]', root).forEach(function(b){ b.onclick = function(){ seek(V.currentTime + (+b.dataset.sk)); }; });
   $('#ftRate', root).onchange = function(){ V.playbackRate = +this.value; };
-  function seek(t){ if(!V.src || !V.duration) return; V.currentTime = clamp(t, 0, V.duration - 0.01); }
-  function now(){ return V.src && V.duration ? V.currentTime : 0; }
+  function seek(t){ if(!V.src) return; var D = isFinite(V.duration) && V.duration > 0 ? V.duration : dur(T); if(!D) return; try{ V.currentTime = clamp(t, 0, D - 0.01); }catch(e){ toast('이 영상은 원하는 시각으로 옮길 수 없습니다: ' + e.message, true); } }
+  function now(){ return V.src ? V.currentTime || 0 : 0; }
   function loop(){ cancelAnimationFrame(raf); var f = function(){ tick(); if(!V.paused) raf = requestAnimationFrame(f); }; raf = requestAnimationFrame(f); }
   function tick(){ var D = dur(T); $('#ftTm', root).textContent = fmtT(now()) + ' / ' + fmtT(D); drawTl(); drawPlan(); drawPv(); }
   document.addEventListener('keydown', function(e){
